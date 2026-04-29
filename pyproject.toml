@@ -253,10 +253,9 @@ precision = 2
 show_missing = true
 
 # Raised progressively as feature branches land:
-#   feat/ranking-engine    -> 60
 #   feat/report-renderer   -> 75
 #   feat/cli               -> 80
-fail_under = 40
+fail_under = 60
 
 exclude_lines = [
     "pragma: no cover",
