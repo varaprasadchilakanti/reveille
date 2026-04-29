@@ -1,0 +1,273 @@
+# ==================================================================
+# Reveille -- Git Repository Intelligence
+# CLI tool for generating self-contained HTML performance reports
+# from local Git repositories.
+# ==================================================================
+
+[tool.poetry]
+name = "reveille"
+version = "0.1.0"
+description = "A CLI tool that generates self-contained HTML performance reports from local Git repositories."
+authors = ["Varaprasad Chilakanti <varaprasadchilakanti@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+homepage = "https://github.com/varaprasadchilakanti/reveille"
+repository = "https://github.com/varaprasadchilakanti/reveille"
+documentation = "https://github.com/varaprasadchilakanti/reveille#readme"
+keywords = [
+    "git",
+    "analytics",
+    "reporting",
+    "cli",
+    "dashboard",
+    "contributors",
+    "devtools",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Version Control :: Git",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Utilities",
+    "Typing :: Typed",
+]
+packages = [
+    { include = "reveille", from = "src" },
+]
+
+
+# ------------------------------------------------------------------
+# RUNTIME DEPENDENCIES
+# ------------------------------------------------------------------
+
+[tool.poetry.dependencies]
+python = "^3.11"
+
+# CLI Layer
+typer = { version = "^0.12.0", extras = ["all"] }
+
+# Git Data Layer
+gitpython = "^3.1.40"
+
+# Templating
+jinja2 = "^3.1.0"
+
+# Charts -- self-contained JS bundle embedded in output HTML
+plotly = "^5.20.0"
+
+# Data Validation & Settings
+pydantic = "^2.0"
+pydantic-settings = "^2.0"
+
+# Date & Time Utilities
+python-dateutil = "^2.9.0"
+
+
+# ------------------------------------------------------------------
+# DEVELOPMENT DEPENDENCIES
+# ------------------------------------------------------------------
+
+[tool.poetry.group.dev]
+optional = false
+
+[tool.poetry.group.dev.dependencies]
+
+# Testing Framework
+pytest = "^8.0.0"
+pytest-cov = "^5.0.0"
+
+# Type Checking
+mypy = "^1.8.0"
+types-python-dateutil = "^2.9.0"
+
+# Linting & Formatting
+ruff = "^0.4.0"
+
+# Pre-commit Hooks
+pre-commit = "^3.6.0"
+
+
+# ------------------------------------------------------------------
+# CLI ENTRY POINT
+# ------------------------------------------------------------------
+
+[tool.poetry.scripts]
+reveille = "reveille.cli:app"
+
+
+# ------------------------------------------------------------------
+# BUILD SYSTEM
+# ------------------------------------------------------------------
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+
+# ==================================================================
+# TOOL CONFIGURATIONS
+# ==================================================================
+
+
+# ------------------------------------------------------------------
+# RUFF -- Linting & Formatting
+# ------------------------------------------------------------------
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    "*.egg-info",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "C",    # flake8-comprehensions
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "N",    # pep8-naming
+    "SIM",  # flake8-simplify
+    "D",    # pydocstyle
+    "RUF",  # ruff-specific rules
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "B008",  # function calls in argument defaults
+    "D100",  # missing docstring in public module
+    "D104",  # missing docstring in public package
+    "D203",  # blank line before class docstring (conflicts with D211)
+    "D213",  # multi-line summary second line (conflicts with D212)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401", "F403"]
+"tests/**/*.py" = ["S101", "D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+known-first-party = ["reveille"]
+section-order = [
+    "future",
+    "standard-library",
+    "third-party",
+    "first-party",
+    "local-folder",
+]
+
+
+# ------------------------------------------------------------------
+# MYPY -- Type Checking (strict mode)
+# ------------------------------------------------------------------
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+follow_imports = "normal"
+ignore_missing_imports = false
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = [
+    "git.*",
+    "plotly.*",
+]
+ignore_missing_imports = true
+
+
+# ------------------------------------------------------------------
+# PYTEST
+# ------------------------------------------------------------------
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = [
+    "--verbose",
+    "--strict-markers",
+    "--strict-config",
+    "--cov=reveille",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-report=xml",
+    "--no-cov-on-fail",
+]
+markers = [
+    "unit: Unit tests -- no I/O, no filesystem, no subprocess",
+    "integration: Integration tests -- real Git repositories via fixtures",
+    "e2e: End-to-end tests -- full CLI invocation against a fixture repository",
+    "slow: Tests with non-trivial runtime",
+]
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+
+# ------------------------------------------------------------------
+# COVERAGE
+# ------------------------------------------------------------------
+
+[tool.coverage.run]
+source = ["src/reveille"]
+branch = true
+omit = [
+    "*/tests/*",
+    "*/__init__.py",
+]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+fail_under = 80
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "\\.\\.\\.",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"
+
+[tool.coverage.xml]
+output = "coverage.xml"
+
+
+# ==================================================================
+# END OF CONFIGURATION
+# ==================================================================

@@ -218,17 +218,15 @@ CLI flags always take precedence over configuration file values. The configurati
 ```bash
 git clone git@github.com:varaprasadchilakanti/reveille.git
 cd reveille
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
+poetry install
 ```
 
 **Verify the environment:**
 
 ```bash
-reveille --version
-mypy src/
-ruff check src/
+poetry run reveille --version
+poetry run mypy src/
+poetry run ruff check src/
 ```
 
 ---
