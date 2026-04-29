@@ -105,6 +105,7 @@ __pypackages__/
 .cache/
 .coverage
 .coverage.*
+.coverage_data/
 htmlcov/
 coverage.xml
 *.cover
