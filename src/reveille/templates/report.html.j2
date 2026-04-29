@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ data.metadata.name }} -- Reveille Report</title>
+    <style>
+        :root {
+            --color-primary:        #1e40af;
+            --color-primary-light:  #dbeafe;
+            --color-surface:        #f8fafc;
+            --color-border:         #e2e8f0;
+            --color-text-primary:   #0f172a;
+            --color-text-secondary: #475569;
+            --color-positive:       #059669;
+            --color-negative:       #dc2626;
+            --color-tier-7:         #0f172a;
+            --color-tier-6:         #1e3a8a;
+            --color-tier-5:         #1d4ed8;
+            --color-tier-4:         #0891b2;
+            --color-tier-3:         #059669;
+            --color-tier-2:         #d97706;
+            --color-tier-1:         #64748b;
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+                         'Helvetica Neue', Arial, sans-serif;
+            font-size: 14px;
+            line-height: 1.6;
+            color: var(--color-text-primary);
+            background: #ffffff;
+        }
+        .page {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 32px 64px;
+        }
+        /* ---- Header ---- */
+        .report-header {
+            border-bottom: 2px solid var(--color-primary);
+            padding-bottom: 24px;
+            margin-bottom: 32px;
+        }
+        .report-header h1 {
+            font-size: 26px;
+            font-weight: 700;
+            color: var(--color-text-primary);
+            letter-spacing: -0.3px;
+        }
+        .report-subtitle {
+            font-size: 13px;
+            color: var(--color-text-secondary);
+            margin-top: 2px;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            font-weight: 500;
+        }
+        .report-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 24px;
+            margin-top: 14px;
+            font-size: 13px;
+            color: var(--color-text-secondary);
+        }
+        .report-meta span strong {
+            color: var(--color-text-primary);
+            font-weight: 600;
+        }
+        /* ---- Section headings ---- */
+        .section {
+            margin-bottom: 40px;
+        }
+        .section-title {
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: var(--color-text-secondary);
+            border-bottom: 1px solid var(--color-border);
+            padding-bottom: 8px;
+            margin-bottom: 20px;
+        }
+        /* ---- Summary cards ---- */
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 16px;
+            margin-bottom: 40px;
+        }
+        .summary-card {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: 6px;
+            padding: 18px 20px;
+        }
+        .summary-card .value {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--color-primary);
+            line-height: 1.1;
+        }
+        .summary-card .label {
+            font-size: 12px;
+            color: var(--color-text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 4px;
+            font-weight: 500;
+        }
+        /* ---- Chart containers ---- */
+        .chart-container {
+            background: #ffffff;
+            border: 1px solid var(--color-border);
+            border-radius: 6px;
+            padding: 16px 16px 8px;
+            margin-bottom: 20px;
+        }
+        .chart-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .chart-empty {
+            color: var(--color-text-secondary);
+            font-style: italic;
+            padding: 20px;
+            text-align: center;
+        }
+        /* ---- Ranking table ---- */
+        .ranking-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .ranking-table thead tr {
+            background: var(--color-surface);
+            border-bottom: 2px solid var(--color-border);
+        }
+        .ranking-table th {
+            padding: 10px 14px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            color: var(--color-text-secondary);
+            white-space: nowrap;
+        }
+        .ranking-table td {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--color-border);
+            vertical-align: middle;
+        }
+        .ranking-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+        .ranking-table tbody tr:hover td {
+            background: var(--color-surface);
+        }
+        .rank-number {
+            font-weight: 700;
+            color: var(--color-text-secondary);
+            font-size: 12px;
+        }
+        .contributor-name {
+            font-weight: 600;
+        }
+        .contributor-email {
+            font-size: 11px;
+            color: var(--color-text-secondary);
+            display: block;
+        }
+        .tier-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            color: #ffffff;
+            white-space: nowrap;
+        }
+        .tier-7 { background: var(--color-tier-7); }
+        .tier-6 { background: var(--color-tier-6); }
+        .tier-5 { background: var(--color-tier-5); }
+        .tier-4 { background: var(--color-tier-4); }
+        .tier-3 { background: var(--color-tier-3); }
+        .tier-2 { background: var(--color-tier-2); }
+        .tier-1 { background: var(--color-tier-1); }
+        .tier-0 { background: var(--color-tier-1); }
+        .num-positive { color: var(--color-positive); font-weight: 500; }
+        .num-negative { color: var(--color-negative); font-weight: 500; }
+        .score-bar-container {
+            width: 80px;
+            background: var(--color-border);
+            border-radius: 2px;
+            height: 6px;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        .score-bar-fill {
+            height: 100%;
+            background: var(--color-primary);
+            border-radius: 2px;
+        }
+        /* ---- Footer ---- */
+        .report-footer {
+            margin-top: 48px;
+            padding-top: 16px;
+            border-top: 1px solid var(--color-border);
+            font-size: 11px;
+            color: var(--color-text-secondary);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        @media (max-width: 768px) {
+            .chart-row { grid-template-columns: 1fr; }
+            .report-meta { gap: 12px; }
+        }
+    </style>
+    <script>{{ plotly_js | safe }}</script>
+</head>
+<body>
+<div class="page">
+
+    <!-- ============================================================ -->
+    <!-- Header                                                       -->
+    <!-- ============================================================ -->
+    <header class="report-header">
+        <h1>{{ data.metadata.name }}</h1>
+        <p class="report-subtitle">Repository Performance Report</p>
+        <div class="report-meta">
+            {% if data.metadata.remote_url %}
+            <span><strong>Remote:</strong> {{ data.metadata.remote_url }}</span>
+            {% endif %}
+            <span><strong>Branch:</strong> {{ data.metadata.default_branch }}</span>
+            <span><strong>Period:</strong>
+                {{ data.metadata.analysis_since }} to {{ data.metadata.analysis_until }}
+            </span>
+            <span><strong>Generated:</strong> {{ generated_at }}</span>
+        </div>
+    </header>
+
+    <!-- ============================================================ -->
+    <!-- Summary Cards                                                -->
+    <!-- ============================================================ -->
+    <div class="summary-grid">
+        <div class="summary-card">
+            <div class="value">{{ data.metadata.total_commits }}</div>
+            <div class="label">Total Commits</div>
+        </div>
+        <div class="summary-card">
+            <div class="value">{{ data.metadata.unique_contributors }}</div>
+            <div class="label">Contributors</div>
+        </div>
+        <div class="summary-card">
+            <div class="value">{{ derived.bus_factor }}</div>
+            <div class="label">Bus Factor</div>
+        </div>
+        <div class="summary-card">
+            <div class="value">{{ derived.longest_inactive_streak }}</div>
+            <div class="label">Max Inactive Days</div>
+        </div>
+        <div class="summary-card">
+            <div class="value">
+                {% if data.ranked_contributors %}
+                    {{ data.ranked_contributors[0].stats.name.split()[0] }}
+                {% else %}
+                    --
+                {% endif %}
+            </div>
+            <div class="label">Top Contributor</div>
+        </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- Activity Heatmap                                             -->
+    <!-- ============================================================ -->
+    <div class="section">
+        <h2 class="section-title">Commit Activity Heatmap</h2>
+        <div class="chart-container">
+            {{ charts.heatmap | safe }}
+        </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- Commit Timeline                                              -->
+    <!-- ============================================================ -->
+    <div class="section">
+        <h2 class="section-title">Weekly Commit Timeline</h2>
+        <div class="chart-container">
+            {{ charts.timeline | safe }}
+        </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- Contributor Rankings                                         -->
+    <!-- ============================================================ -->
+    <div class="section">
+        <h2 class="section-title">Contributor Rankings</h2>
+        <div style="overflow-x: auto;">
+            <table class="ranking-table">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Contributor</th>
+                        <th>Tier</th>
+                        <th style="text-align:right">Commits</th>
+                        <th style="text-align:right">Lines Added</th>
+                        <th style="text-align:right">Lines Deleted</th>
+                        <th style="text-align:right">Net Lines</th>
+                        <th style="text-align:right">Active Days</th>
+                        <th>Last Commit</th>
+                        <th>Score</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for contributor in data.ranked_contributors %}
+                    <tr>
+                        <td class="rank-number">{{ loop.index }}</td>
+                        <td>
+                            <span class="contributor-name">{{ contributor.stats.name }}</span>
+                            <span class="contributor-email">{{ contributor.stats.email }}</span>
+                        </td>
+                        <td>
+                            <span class="tier-badge tier-{{ contributor.tier }}">
+                                {% if contributor.tier > 0 %}
+                                    {{ contributor.tier_designation }}
+                                {% else %}
+                                    --
+                                {% endif %}
+                            </span>
+                        </td>
+                        <td style="text-align:right">{{ contributor.stats.commit_count }}</td>
+                        <td style="text-align:right" class="num-positive">
+                            +{{ contributor.stats.lines_added | int }}
+                        </td>
+                        <td style="text-align:right" class="num-negative">
+                            -{{ contributor.stats.lines_deleted | int }}
+                        </td>
+                        <td style="text-align:right">
+                            {% if contributor.stats.net_lines >= 0 %}
+                                <span class="num-positive">+{{ contributor.stats.net_lines }}</span>
+                            {% else %}
+                                <span class="num-negative">{{ contributor.stats.net_lines }}</span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align:right">{{ contributor.stats.active_days }}</td>
+                        <td>{{ contributor.stats.last_commit_date }}</td>
+                        <td>
+                            {% if contributor.tier > 0 %}
+                            <div class="score-bar-container">
+                                <div class="score-bar-fill"
+                                     style="width: {{ (contributor.composite_score * 100) | int }}%">
+                                </div>
+                            </div>
+                            <span style="font-size:11px; color: var(--color-text-secondary);
+                                         margin-left: 6px;">
+                                {{ "%.2f" | format(contributor.composite_score) }}
+                            </span>
+                            {% else %}
+                            <span style="color: var(--color-text-secondary);">--</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- Lines Changed and Commit Volume Charts                       -->
+    <!-- ============================================================ -->
+    <div class="section">
+        <h2 class="section-title">Contribution Breakdown</h2>
+        <div class="chart-row">
+            <div class="chart-container">
+                <p style="font-size:12px; font-weight:600; color: var(--color-text-secondary);
+                           text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">
+                    Commits by Contributor
+                </p>
+                {{ charts.contributor_commits | safe }}
+            </div>
+            <div class="chart-container">
+                <p style="font-size:12px; font-weight:600; color: var(--color-text-secondary);
+                           text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">
+                    Lines Changed by Contributor
+                </p>
+                {{ charts.contributor_lines | safe }}
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- Footer                                                       -->
+    <!-- ============================================================ -->
+    <footer class="report-footer">
+        <span>Generated by Reveille</span>
+        <span>{{ data.metadata.analysis_since }} -- {{ data.metadata.analysis_until }}</span>
+    </footer>
+
+</div>
+</body>
+</html>
