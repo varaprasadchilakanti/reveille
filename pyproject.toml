@@ -252,13 +252,11 @@ omit = [
 precision = 2
 show_missing = true
 
-# Threshold is 0 on chore/project-skeleton because all implementations
-# are stubs. Raised progressively as feature branches land:
-#   feat/git-data-layer    -> 40
+# Raised progressively as feature branches land:
 #   feat/ranking-engine    -> 60
 #   feat/report-renderer   -> 75
 #   feat/cli               -> 80
-fail_under = 0
+fail_under = 40
 
 exclude_lines = [
     "pragma: no cover",
