@@ -49,7 +49,11 @@ def _make_commit(
         author_name="Author",
         author_email=email,
         timestamp=datetime.datetime(
-            date.year, date.month, date.day, 12, 0,
+            date.year,
+            date.month,
+            date.day,
+            12,
+            0,
             tzinfo=datetime.UTC,
         ),
         lines_added=lines_added,
@@ -160,13 +164,13 @@ class TestComputeLongestInactiveStreak:
     def test_commits_every_day_returns_zero(self) -> None:
         start = datetime.date(2024, 1, 1)
         end = datetime.date(2024, 1, 5)
-        commits = [
-            _make_commit(start + datetime.timedelta(days=i))
-            for i in range(5)
-        ]
-        assert _compute_longest_inactive_streak(
-            commits=commits, window_start=start, window_end=end
-        ) == 0
+        commits = [_make_commit(start + datetime.timedelta(days=i)) for i in range(5)]
+        assert (
+            _compute_longest_inactive_streak(
+                commits=commits, window_start=start, window_end=end
+            )
+            == 0
+        )
 
     def test_gap_in_the_middle_is_detected(self) -> None:
         commits = [
@@ -263,20 +267,14 @@ class TestBuildHeatmapChart:
 
     def test_monthly_z_matrix_has_seven_rows(self) -> None:
         """Seven rows correspond to the seven days of the week."""
-        commits = [
-            _make_commit(datetime.date(2024, 1, d))
-            for d in (1, 8, 15, 22)
-        ]
+        commits = [_make_commit(datetime.date(2024, 1, d)) for d in (1, 8, 15, 22)]
         parsed = json.loads(_build_heatmap_monthly(commits))
         z = parsed["data"][0]["z"]
         assert len(z) == 7
 
     def test_yearly_z_matrix_has_twelve_rows(self) -> None:
         """Twelve rows correspond to the twelve months of the year."""
-        commits = [
-            _make_commit(datetime.date(2023, m, 1))
-            for m in range(1, 13)
-        ]
+        commits = [_make_commit(datetime.date(2023, m, 1)) for m in range(1, 13)]
         parsed = json.loads(_build_heatmap_yearly(commits))
         z = parsed["data"][0]["z"]
         assert len(z) == 12
@@ -352,7 +350,9 @@ class TestBuildContributorLinesChart:
         assert _build_contributor_lines_chart([]) == "null"
 
     def test_single_contributor_returns_valid_chart_json(self) -> None:
-        ranked = [_make_ranked("Alice", commit_count=10, lines_added=500, lines_deleted=80)]
+        ranked = [
+            _make_ranked("Alice", commit_count=10, lines_added=500, lines_deleted=80)
+        ]
         assert _is_valid_chart_json(_build_contributor_lines_chart(ranked))
 
     def test_multiple_contributors_return_valid_chart_json(self) -> None:
@@ -431,7 +431,7 @@ class TestAggregatePieData:
 
     def test_exactly_max_slices_returned_unchanged(self) -> None:
         items = [(f"Contributor{i}", 10 - i) for i in range(8)]
-        labels, values = _aggregate_pie_data(items)
+        labels, _values = _aggregate_pie_data(items)
         assert len(labels) == 8
         assert "Other Contributors" not in labels
 
@@ -443,9 +443,18 @@ class TestAggregatePieData:
         assert values[-1] == 20  # 2 contributors * 10 each
 
     def test_aggregate_value_is_sum_of_remainder(self) -> None:
-        items = [("A", 100), ("B", 80), ("C", 60), ("D", 40),
-                 ("E", 30), ("F", 20), ("G", 10), ("H", 5),
-                 ("I", 3), ("J", 2)]
+        items = [
+            ("A", 100),
+            ("B", 80),
+            ("C", 60),
+            ("D", 40),
+            ("E", 30),
+            ("F", 20),
+            ("G", 10),
+            ("H", 5),
+            ("I", 3),
+            ("J", 2),
+        ]
         labels, values = _aggregate_pie_data(items)
         # First 8 items kept; I (3) and J (2) aggregated = 5.
         assert values[-1] == 5

@@ -123,9 +123,7 @@ def load_config_from_toml(path: Path) -> dict[str, Any]:
         with path.open("rb") as fh:
             raw = tomllib.load(fh)
     except FileNotFoundError as exc:
-        raise ConfigurationError(
-            f"Configuration file not found: '{path}'."
-        ) from exc
+        raise ConfigurationError(f"Configuration file not found: '{path}'.") from exc
     except tomllib.TOMLDecodeError as exc:
         raise ConfigurationError(
             f"Configuration file is not valid TOML: {exc}"

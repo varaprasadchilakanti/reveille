@@ -93,9 +93,7 @@ def rank_contributors(
     total_days = max((window_end - window_start).days, 1)
     commit_index = _build_commit_index(commits)
 
-    raw_scores = _compute_raw_scores(
-        contributors, commit_index, total_days, window_end
-    )
+    raw_scores = _compute_raw_scores(contributors, commit_index, total_days, window_end)
     normalised = _normalise_scores(raw_scores)
     composite = _compute_composite(normalised, weights)
     percentiles = _compute_percentiles(composite)
@@ -133,9 +131,7 @@ def assign_tier(percentile: float) -> tuple[int, str]:
         ValueError: If percentile is outside the range [0.0, 100.0].
     """
     if not 0.0 <= percentile <= 100.0:
-        raise ValueError(
-            f"percentile must be in [0.0, 100.0], got {percentile}."
-        )
+        raise ValueError(f"percentile must be in [0.0, 100.0], got {percentile}.")
     for threshold, tier, designation in _TIER_BOUNDARIES:
         if percentile > threshold:
             return tier, designation
@@ -145,6 +141,7 @@ def assign_tier(percentile: float) -> tuple[int, str]:
 # ------------------------------------------------------------------
 # Private computation helpers
 # ------------------------------------------------------------------
+
 
 def _build_commit_index(commits: list[Commit]) -> dict[str, list[Commit]]:
     """Group commits by lowercased author email for O(1) lookup.
@@ -228,7 +225,7 @@ def _compute_recency_score(
         anchor_date = datetime.date.fromisocalendar(anchor_week[0], anchor_week[1], 1)
         commit_date = datetime.date.fromisocalendar(year, week, 1)
         weeks_ago = max((anchor_date - commit_date).days // 7, 0)
-        weight = _RECENCY_DECAY ** weeks_ago
+        weight = _RECENCY_DECAY**weeks_ago
         score += count * weight
 
     return score

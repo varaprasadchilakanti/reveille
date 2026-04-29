@@ -304,13 +304,9 @@ def _build_heatmap_weekly(commits: list[Commit]) -> str:
         week_indices.add(week_idx)
 
     num_weeks = max(week_indices) + 1
-    z = [
-        [cell.get((w, day), 0) for w in range(num_weeks)]
-        for day in range(7)
-    ]
+    z = [[cell.get((w, day), 0) for w in range(num_weeks)] for day in range(7)]
     week_labels = [
-        (base_week + datetime.timedelta(weeks=w)).isoformat()
-        for w in range(num_weeks)
+        (base_week + datetime.timedelta(weeks=w)).isoformat() for w in range(num_weeks)
     ]
     day_labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
@@ -356,10 +352,7 @@ def _build_heatmap_monthly(commits: list[Commit]) -> str:
 
     sorted_months = sorted(months_set)
     day_labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-    z = [
-        [cell.get((month, day), 0) for month in sorted_months]
-        for day in range(7)
-    ]
+    z = [[cell.get((month, day), 0) for month in sorted_months] for day in range(7)]
 
     fig = go.Figure(
         go.Heatmap(
@@ -401,12 +394,21 @@ def _build_heatmap_yearly(commits: list[Commit]) -> str:
 
     sorted_years = sorted(years_set)
     month_labels = [
-        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
     ]
     z = [
-        [cell.get((year, month + 1), 0) for year in sorted_years]
-        for month in range(12)
+        [cell.get((year, month + 1), 0) for year in sorted_years] for month in range(12)
     ]
 
     fig = go.Figure(
@@ -616,9 +618,7 @@ def _compute_bus_factor(ranked: list[RankedContributor]) -> int:
     if total == 0:
         return 0
     threshold = total * 0.5
-    sorted_by_commits = sorted(
-        ranked, key=lambda r: r.stats.commit_count, reverse=True
-    )
+    sorted_by_commits = sorted(ranked, key=lambda r: r.stats.commit_count, reverse=True)
     cumulative = 0
     for i, contributor in enumerate(sorted_by_commits, start=1):
         cumulative += contributor.stats.commit_count

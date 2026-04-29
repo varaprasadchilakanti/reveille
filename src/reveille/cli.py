@@ -145,15 +145,21 @@ def generate(
     ] = Path("reveille-report.html"),
     since: Annotated[
         str | None,
-        typer.Option("--since", help="Include commits on or after this date (YYYY-MM-DD)."),
+        typer.Option(
+            "--since", help="Include commits on or after this date (YYYY-MM-DD)."
+        ),
     ] = None,
     until: Annotated[
         str | None,
-        typer.Option("--until", help="Include commits on or before this date (YYYY-MM-DD)."),
+        typer.Option(
+            "--until", help="Include commits on or before this date (YYYY-MM-DD)."
+        ),
     ] = None,
     branch: Annotated[
         str | None,
-        typer.Option("--branch", "-b", help="Analyse commits reachable from this branch only."),
+        typer.Option(
+            "--branch", "-b", help="Analyse commits reachable from this branch only."
+        ),
     ] = None,
     exclude_author: Annotated[
         list[str] | None,
@@ -164,7 +170,9 @@ def generate(
     ] = None,
     min_commits: Annotated[
         int,
-        typer.Option("--min-commits", help="Exclude contributors below this commit threshold."),
+        typer.Option(
+            "--min-commits", help="Exclude contributors below this commit threshold."
+        ),
     ] = 1,
     title: Annotated[
         str | None,
@@ -172,7 +180,9 @@ def generate(
     ] = None,
     no_ranking: Annotated[
         bool,
-        typer.Option("--no-ranking", help="Omit the contributor ranking table from the output."),
+        typer.Option(
+            "--no-ranking", help="Omit the contributor ranking table from the output."
+        ),
     ] = False,
     heatmap_granularity: Annotated[
         str | None,
@@ -202,8 +212,16 @@ def generate(
             raise typer.Exit(code=1) from exc
 
     merged = _merge_cli_flags(
-        config_kwargs, repo, output, since, until,
-        branch, title, exclude_author, min_commits, no_ranking,
+        config_kwargs,
+        repo,
+        output,
+        since,
+        until,
+        branch,
+        title,
+        exclude_author,
+        min_commits,
+        no_ranking,
         heatmap_granularity,
     )
 

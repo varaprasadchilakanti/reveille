@@ -32,6 +32,7 @@ runner = CliRunner()
 # Fixtures
 # ------------------------------------------------------------------
 
+
 @pytest.fixture(scope="module")
 def e2e_repo(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Create a minimal Git repository for end-to-end CLI testing.
@@ -68,24 +69,39 @@ def e2e_repo(tmp_path_factory: pytest.TempPathFactory) -> Path:
     (repo_path / "module_a.py").write_text("x = 1\ny = 2\n")
     run(["git", "add", "."])
     run(
-        ["git", "commit", "-m", "feat: initial commit",
-         "--date=2024-02-01T10:00:00+00:00"],
+        [
+            "git",
+            "commit",
+            "-m",
+            "feat: initial commit",
+            "--date=2024-02-01T10:00:00+00:00",
+        ],
         env_override=alice,
     )
 
     (repo_path / "module_b.py").write_text("a = 10\nb = 20\n")
     run(["git", "add", "."])
     run(
-        ["git", "commit", "-m", "feat: add module_b",
-         "--date=2024-03-15T14:00:00+00:00"],
+        [
+            "git",
+            "commit",
+            "-m",
+            "feat: add module_b",
+            "--date=2024-03-15T14:00:00+00:00",
+        ],
         env_override=bob,
     )
 
     (repo_path / "module_a.py").write_text("x = 1\ny = 2\nz = 3\n")
     run(["git", "add", "."])
     run(
-        ["git", "commit", "-m", "fix: add z variable",
-         "--date=2024-03-20T09:00:00+00:00"],
+        [
+            "git",
+            "commit",
+            "-m",
+            "fix: add z variable",
+            "--date=2024-03-20T09:00:00+00:00",
+        ],
         env_override={**alice, "GIT_COMMITTER_DATE": "2024-03-20T09:00:00+00:00"},
     )
 
@@ -116,6 +132,7 @@ def default_report_content(
 # Version command
 # ------------------------------------------------------------------
 
+
 @pytest.mark.e2e
 class TestVersionCommand:
     """Tests for the reveille --version flag."""
@@ -135,13 +152,12 @@ class TestVersionCommand:
 # Validate command
 # ------------------------------------------------------------------
 
+
 @pytest.mark.e2e
 class TestValidateCommand:
     """Tests for the reveille validate command."""
 
-    def test_valid_repository_exits_zero(
-        self, e2e_repo: Path
-    ) -> None:
+    def test_valid_repository_exits_zero(self, e2e_repo: Path) -> None:
         result = runner.invoke(app, ["validate", "--repo", str(e2e_repo)])
         assert result.exit_code == 0
         assert "valid" in result.stdout.lower()
@@ -165,6 +181,7 @@ class TestValidateCommand:
 # Generate command
 # ------------------------------------------------------------------
 
+
 @pytest.mark.e2e
 class TestGenerateCommand:
     """Tests for the reveille generate command."""
@@ -176,15 +193,11 @@ class TestGenerateCommand:
     ) -> None:
         assert len(default_report_content) > 0
 
-    def test_output_is_valid_html(
-        self, default_report_content: str
-    ) -> None:
+    def test_output_is_valid_html(self, default_report_content: str) -> None:
         assert "<!DOCTYPE html>" in default_report_content
         assert "</html>" in default_report_content
 
-    def test_output_contains_plotly_bundle(
-        self, default_report_content: str
-    ) -> None:
+    def test_output_contains_plotly_bundle(self, default_report_content: str) -> None:
         assert "plotly" in default_report_content.lower()
 
     def test_output_contains_contributor_names(
@@ -224,9 +237,12 @@ class TestGenerateCommand:
             app,
             [
                 "generate",
-                "--repo", str(e2e_repo),
-                "--output", str(output),
-                "--title", "Q1 Engineering Review",
+                "--repo",
+                str(e2e_repo),
+                "--output",
+                str(output),
+                "--title",
+                "Q1 Engineering Review",
             ],
         )
         content = output.read_text(encoding="utf-8")
@@ -242,8 +258,10 @@ class TestGenerateCommand:
             app,
             [
                 "generate",
-                "--repo", str(e2e_repo),
-                "--output", str(output),
+                "--repo",
+                str(e2e_repo),
+                "--output",
+                str(output),
                 "--no-ranking",
             ],
         )
@@ -260,9 +278,12 @@ class TestGenerateCommand:
             app,
             [
                 "generate",
-                "--repo", str(e2e_repo),
-                "--output", str(output),
-                "--since", "2024-03-01",
+                "--repo",
+                str(e2e_repo),
+                "--output",
+                str(output),
+                "--since",
+                "2024-03-01",
             ],
         )
         assert result.exit_code == 0
@@ -280,9 +301,12 @@ class TestGenerateCommand:
             app,
             [
                 "generate",
-                "--repo", str(e2e_repo),
-                "--output", str(output),
-                "--since", "not-a-date",
+                "--repo",
+                str(e2e_repo),
+                "--output",
+                str(output),
+                "--since",
+                "not-a-date",
             ],
         )
         assert result.exit_code == 1
@@ -297,10 +321,14 @@ class TestGenerateCommand:
             app,
             [
                 "generate",
-                "--repo", str(e2e_repo),
-                "--output", str(output),
-                "--since", "2024-06-01",
-                "--until", "2024-01-01",
+                "--repo",
+                str(e2e_repo),
+                "--output",
+                str(output),
+                "--since",
+                "2024-06-01",
+                "--until",
+                "2024-01-01",
             ],
         )
         assert result.exit_code == 1
@@ -321,9 +349,12 @@ class TestGenerateCommand:
             app,
             [
                 "generate",
-                "--repo", str(e2e_repo),
-                "--output", str(output),
-                "--config", str(config_file),
+                "--repo",
+                str(e2e_repo),
+                "--output",
+                str(output),
+                "--config",
+                str(config_file),
             ],
         )
         content = output.read_text(encoding="utf-8")
@@ -345,10 +376,14 @@ class TestGenerateCommand:
             app,
             [
                 "generate",
-                "--repo", str(e2e_repo),
-                "--output", str(output),
-                "--config", str(config_file),
-                "--title", "CLI Title",
+                "--repo",
+                str(e2e_repo),
+                "--output",
+                str(output),
+                "--config",
+                str(config_file),
+                "--title",
+                "CLI Title",
             ],
         )
         content = output.read_text(encoding="utf-8")
@@ -365,9 +400,12 @@ class TestGenerateCommand:
             app,
             [
                 "generate",
-                "--repo", str(e2e_repo),
-                "--output", str(base / "report.html"),
-                "--config", str(base / "nonexistent.toml"),
+                "--repo",
+                str(e2e_repo),
+                "--output",
+                str(base / "report.html"),
+                "--config",
+                str(base / "nonexistent.toml"),
             ],
         )
         assert result.exit_code == 1
@@ -383,8 +421,10 @@ class TestGenerateCommand:
             app,
             [
                 "generate",
-                "--repo", str(plain),
-                "--output", str(base / "report.html"),
+                "--repo",
+                str(plain),
+                "--output",
+                str(base / "report.html"),
             ],
         )
         assert result.exit_code == 1

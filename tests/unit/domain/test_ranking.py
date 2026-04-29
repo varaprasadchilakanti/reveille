@@ -25,6 +25,7 @@ from reveille.domain.ranking import (
 # Shared fixtures
 # ------------------------------------------------------------------
 
+
 @pytest.fixture()
 def default_weights() -> RankingWeights:
     """Default RankingWeights with documented production values."""
@@ -75,7 +76,12 @@ def _make_commit(
         author_name=email.split("@")[0].capitalize(),
         author_email=email,
         timestamp=datetime.datetime(
-            date.year, date.month, date.day, 12, 0, 0,
+            date.year,
+            date.month,
+            date.day,
+            12,
+            0,
+            0,
             tzinfo=datetime.UTC,
         ),
         lines_added=lines_added,
@@ -87,6 +93,7 @@ def _make_commit(
 # assign_tier
 # ------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestAssignTier:
     """Tests for the assign_tier function."""
@@ -94,20 +101,20 @@ class TestAssignTier:
     @pytest.mark.parametrize(
         "percentile, expected_tier, expected_designation",
         [
-            (0.0,   1, "Recruit"),
-            (10.0,  1, "Recruit"),
-            (20.0,  1, "Recruit"),
-            (21.0,  2, "Operative"),
-            (40.0,  2, "Operative"),
-            (41.0,  3, "Specialist"),
-            (60.0,  3, "Specialist"),
-            (61.0,  4, "Senior Specialist"),
-            (75.0,  4, "Senior Specialist"),
-            (76.0,  5, "Lead"),
-            (88.0,  5, "Lead"),
-            (89.0,  6, "Principal"),
-            (95.0,  6, "Principal"),
-            (96.0,  7, "Commander"),
+            (0.0, 1, "Recruit"),
+            (10.0, 1, "Recruit"),
+            (20.0, 1, "Recruit"),
+            (21.0, 2, "Operative"),
+            (40.0, 2, "Operative"),
+            (41.0, 3, "Specialist"),
+            (60.0, 3, "Specialist"),
+            (61.0, 4, "Senior Specialist"),
+            (75.0, 4, "Senior Specialist"),
+            (76.0, 5, "Lead"),
+            (88.0, 5, "Lead"),
+            (89.0, 6, "Principal"),
+            (95.0, 6, "Principal"),
+            (96.0, 7, "Commander"),
             (100.0, 7, "Commander"),
         ],
     )
@@ -133,6 +140,7 @@ class TestAssignTier:
 # ------------------------------------------------------------------
 # rank_contributors
 # ------------------------------------------------------------------
+
 
 @pytest.mark.unit
 class TestRankContributors:
@@ -274,6 +282,7 @@ class TestRankContributors:
 # _compute_recency_score
 # ------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestComputeRecencyScore:
     """Tests for the recency scoring helper."""
@@ -303,14 +312,25 @@ class TestComputeRecencyScore:
 # _normalise_scores
 # ------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestNormaliseScores:
     """Tests for the min-max normalisation helper."""
 
     def test_all_values_identical_normalises_to_one(self) -> None:
         raw = {
-            "a@x.com": {"commits": 10.0, "lines": 100.0, "consistency": 0.5, "recency": 5.0},
-            "b@x.com": {"commits": 10.0, "lines": 100.0, "consistency": 0.3, "recency": 5.0},
+            "a@x.com": {
+                "commits": 10.0,
+                "lines": 100.0,
+                "consistency": 0.5,
+                "recency": 5.0,
+            },
+            "b@x.com": {
+                "commits": 10.0,
+                "lines": 100.0,
+                "consistency": 0.3,
+                "recency": 5.0,
+            },
         }
         result = _normalise_scores(raw)
         assert result["a@x.com"]["commits"] == 1.0
@@ -318,8 +338,18 @@ class TestNormaliseScores:
 
     def test_max_contributor_normalises_commits_to_one(self) -> None:
         raw = {
-            "a@x.com": {"commits": 50.0, "lines": 500.0, "consistency": 0.8, "recency": 10.0},
-            "b@x.com": {"commits": 10.0, "lines": 100.0, "consistency": 0.2, "recency": 2.0},
+            "a@x.com": {
+                "commits": 50.0,
+                "lines": 500.0,
+                "consistency": 0.8,
+                "recency": 10.0,
+            },
+            "b@x.com": {
+                "commits": 10.0,
+                "lines": 100.0,
+                "consistency": 0.2,
+                "recency": 2.0,
+            },
         }
         result = _normalise_scores(raw)
         assert result["a@x.com"]["commits"] == 1.0
@@ -327,7 +357,12 @@ class TestNormaliseScores:
 
     def test_consistency_passes_through_unchanged(self) -> None:
         raw = {
-            "a@x.com": {"commits": 20.0, "lines": 200.0, "consistency": 0.65, "recency": 4.0},
+            "a@x.com": {
+                "commits": 20.0,
+                "lines": 200.0,
+                "consistency": 0.65,
+                "recency": 4.0,
+            },
         }
         result = _normalise_scores(raw)
         assert result["a@x.com"]["consistency"] == pytest.approx(0.65)
@@ -336,6 +371,7 @@ class TestNormaliseScores:
 # ------------------------------------------------------------------
 # _compute_percentiles
 # ------------------------------------------------------------------
+
 
 @pytest.mark.unit
 class TestComputePercentiles:
@@ -346,19 +382,23 @@ class TestComputePercentiles:
         assert result["a@x.com"] == 100.0
 
     def test_lowest_score_receives_zero_percentile(self) -> None:
-        result = _compute_percentiles({
-            "a@x.com": 0.9,
-            "b@x.com": 0.5,
-            "c@x.com": 0.1,
-        })
+        result = _compute_percentiles(
+            {
+                "a@x.com": 0.9,
+                "b@x.com": 0.5,
+                "c@x.com": 0.1,
+            }
+        )
         assert result["c@x.com"] == 0.0
 
     def test_highest_score_receives_one_hundred_percentile(self) -> None:
-        result = _compute_percentiles({
-            "a@x.com": 0.9,
-            "b@x.com": 0.5,
-            "c@x.com": 0.1,
-        })
+        result = _compute_percentiles(
+            {
+                "a@x.com": 0.9,
+                "b@x.com": 0.5,
+                "c@x.com": 0.1,
+            }
+        )
         assert result["a@x.com"] == 100.0
 
     def test_all_percentiles_are_bounded(self) -> None:
