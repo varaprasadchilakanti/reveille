@@ -1,2 +1,286 @@
-# reveille
-A CLI tool that generates self-contained HTML performance reports from local Git repositories.
+# Reveille
+
+**A CLI tool that generates self-contained HTML performance reports from local Git repositories.**
+
+Reveille reads your repository's Git history and produces a single portable `.html` file containing interactive visualisations of contributor activity, commit trends, code volume, and repository health — with no server, no external API calls, and no configuration beyond the command itself. Open the output in any browser, share it over email, or drop it into a Confluence page without modification.
+
+---
+
+## Contents
+
+- [Overview](#overview)
+- [Installation](#installation)
+- [Quickstart](#quickstart)
+- [CLI Reference](#cli-reference)
+- [Output Description](#output-description)
+- [Contributor Ranking System](#contributor-ranking-system)
+- [Configuration](#configuration)
+- [Development Setup](#development-setup)
+- [Running Tests](#running-tests)
+- [Contributing](#contributing)
+- [Changelog](#changelog)
+- [Licence](#licence)
+
+---
+
+## Overview
+
+Reveille is designed for developers, engineering managers, and technical leads who need a production-grade, shareable retrospective from any Git repository — without configuring infrastructure or connecting to external services.
+
+**What it produces:**
+
+- Contribution heatmaps showing commit activity by day and hour
+- Commit frequency histograms and rolling activity timelines
+- Per-contributor breakdowns covering commits, lines added and removed, and active day counts
+- A structured ranking table assigning each contributor a tier designation based on weighted activity metrics
+- Repository health indicators including bus factor, activity recency, and consistency scores
+
+**Design constraints that are non-negotiable:**
+
+- The output is always a single `.html` file. No directories, no asset folders, no dependencies.
+- The file must open in any modern browser with no internet connection. All JavaScript, CSS, and chart data are embedded inline.
+- No external CDN calls. No iframes. No cookies. No tracking.
+- The output aesthetic is formal and stakeholder-ready. No emojis. No casual language. Typography is clean and readable.
+
+---
+
+## Installation
+
+Reveille requires Python 3.11 or later.
+
+**Install from PyPI:**
+
+```bash
+pip install reveille
+```
+
+**Install with pipx (recommended for CLI tools):**
+
+```bash
+pipx install reveille
+```
+
+**Verify the installation:**
+
+```bash
+reveille --version
+```
+
+---
+
+## Quickstart
+
+Navigate to any Git repository on your machine and run:
+
+```bash
+cd /path/to/your/repository
+reveille generate
+```
+
+Reveille reads the local Git history and writes a report to the current directory. The output file is named `reveille-report.html` by default. Open it in any browser.
+
+**Generate a report for a specific date range:**
+
+```bash
+reveille generate --since 2024-01-01 --until 2024-12-31
+```
+
+**Write the output to a specific path:**
+
+```bash
+reveille generate --output /tmp/q4-report.html
+```
+
+**Specify the repository path explicitly:**
+
+```bash
+reveille generate --repo /path/to/repository
+```
+
+---
+
+## CLI Reference
+
+### `reveille generate`
+
+Generates the HTML performance report for the target repository.
+
+| Flag | Short | Type | Default | Description |
+|---|---|---|---|---|
+| `--repo` | `-r` | `PATH` | `.` (current directory) | Path to the Git repository root. Must contain a `.git` directory. |
+| `--output` | `-o` | `PATH` | `./reveille-report.html` | Path for the generated HTML file. Parent directories must exist. |
+| `--since` | | `DATE` | Repository creation date | Include only commits on or after this date. Accepts `YYYY-MM-DD`. |
+| `--until` | | `DATE` | Today | Include only commits on or before this date. Accepts `YYYY-MM-DD`. |
+| `--branch` | `-b` | `TEXT` | Default branch | Analyse commits reachable from this branch only. |
+| `--exclude-author` | | `TEXT` | None | Exclude a contributor by name or email. Repeatable. |
+| `--min-commits` | | `INT` | `1` | Exclude contributors with fewer than this many commits in the analysis window. |
+| `--title` | | `TEXT` | Repository name | Override the report title displayed in the HTML output. |
+| `--no-ranking` | | Flag | Off | Omit the contributor ranking table from the output. |
+| `--config` | `-c` | `PATH` | None | Path to a TOML configuration file. CLI flags take precedence over config file values. |
+
+### `reveille version`
+
+Prints the installed version string and exits.
+
+### `reveille validate`
+
+Validates that the target path is a readable Git repository and that the analysis window contains at least one commit. Exits with a non-zero status code if validation fails. Useful for CI integration.
+
+```bash
+reveille validate --repo /path/to/repository
+```
+
+---
+
+## Output Description
+
+The generated HTML file is structured as a formal report with the following sections.
+
+**Repository Summary** — Name, remote URL if present, default branch, total commits in the analysis window, unique contributors, date range, and report generation timestamp.
+
+**Activity Heatmap** — A calendar-style matrix showing commit frequency by day across the analysis window. Modelled on GitHub's contribution graph but scoped to the repository and time range specified.
+
+**Commit Timeline** — A rolling line chart showing commit volume per week over the analysis window. Highlights periods of high and low activity.
+
+**Contributor Summary Table** — A ranked table listing each contributor with their commit count, lines added, lines removed, net line delta, active days, most recent commit date, and assigned tier designation.
+
+**Per-Contributor Activity Charts** — Commit frequency histograms for each contributor showing their distribution of activity across the analysis window.
+
+**Repository Health Indicators** — Bus factor estimate (minimum number of contributors accounting for 50% of commits), longest inactive streak, activity recency score, and contributor retention across the window.
+
+All charts are rendered with Plotly and are fully interactive — hover states, zoom, pan, and legend toggling are available without any external dependencies.
+
+---
+
+## Contributor Ranking System
+
+Reveille assigns each contributor a tier designation based on a weighted composite of four metrics.
+
+| Metric | Default Weight |
+|---|---|
+| Commit volume | 30% |
+| Lines contributed (additions + deletions) | 25% |
+| Activity consistency (active days / total days) | 25% |
+| Recency (decay-weighted recent activity) | 20% |
+
+Weights are configurable. See [Configuration](#configuration).
+
+The composite score maps to the following tier designations, applied relative to the contributor population in the analysis window.
+
+| Tier | Designation | Composite Score Percentile |
+|---|---|---|
+| I | Recruit | 0 – 20th |
+| II | Operative | 21st – 40th |
+| III | Specialist | 41st – 60th |
+| IV | Senior Specialist | 61st – 75th |
+| V | Lead | 76th – 88th |
+| VI | Principal | 89th – 95th |
+| VII | Commander | 96th – 100th |
+
+Tier boundaries and weights are documented defaults and are fully reproducible from the source. Changing the weights changes the scores but not the tier logic. Tiers are always relative to the contributor population within the analysis window, not absolute thresholds.
+
+---
+
+## Configuration
+
+Reveille accepts a TOML configuration file for parameters that are cumbersome to pass on the command line on every invocation.
+
+Create a file named `reveille.toml` at the repository root or pass the path explicitly with `--config`.
+
+```toml
+[report]
+title = "Engineering Performance Report — Q4 2024"
+output = "./reports/q4-2024.html"
+branch = "main"
+since = "2024-10-01"
+until = "2024-12-31"
+
+[filters]
+min_commits = 2
+exclude_authors = [
+    "dependabot[bot]",
+    "github-actions[bot]",
+]
+
+[ranking]
+enabled = true
+weights = { commits = 0.30, lines = 0.25, consistency = 0.25, recency = 0.20 }
+```
+
+CLI flags always take precedence over configuration file values. The configuration file is entirely optional — all values have defaults.
+
+---
+
+## Development Setup
+
+**Prerequisites:** Python 3.11 or later, `git`.
+
+```bash
+git clone git@github.com:varaprasadchilakanti/reveille.git
+cd reveille
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+```
+
+**Verify the environment:**
+
+```bash
+reveille --version
+mypy src/
+ruff check src/
+```
+
+---
+
+## Running Tests
+
+```bash
+pytest
+```
+
+**With coverage report:**
+
+```bash
+pytest --cov=reveille --cov-report=term-missing
+```
+
+**Type checking only:**
+
+```bash
+mypy src/
+```
+
+**Linting only:**
+
+```bash
+ruff check src/
+```
+
+---
+
+## Contributing
+
+Contributions are welcome. Before opening a pull request, please read the following.
+
+**Reporting issues.** Use GitHub Issues. Include the output of `reveille --version`, the operating system, Python version, and a minimal reproduction case. If the issue involves a specific repository, a sanitised `git log --oneline` covering the relevant range is sufficient — do not include source code.
+
+**Proposing changes.** Open an issue before starting significant work. This avoids duplication and ensures the direction is aligned before effort is invested.
+
+**Submitting pull requests.** All pull requests must target the `main` branch. The CI pipeline runs `ruff`, `mypy`, and `pytest` on every pull request. All three must pass. New public functions require docstrings. New behaviour requires tests. The output contract — single self-contained HTML file, no external calls, formal aesthetic — is non-negotiable and must be preserved in every contribution.
+
+**Code style.** Ruff handles linting and import ordering. Mypy runs in strict mode. Type annotations are required on every function signature. Early returns are preferred over nested conditionals throughout.
+
+**Commit messages.** Follow the Conventional Commits specification: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`. Scope is optional but encouraged, e.g. `feat(ranking): add recency decay weighting`.
+
+---
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for the full release history. Reveille follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format and [Semantic Versioning 2.0](https://semver.org/).
+
+---
+
+## Licence
+
+Reveille is released under the [MIT Licence](LICENSE).
