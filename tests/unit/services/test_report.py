@@ -213,7 +213,11 @@ class TestGenerateReport:
             reader_instance.read_metadata.return_value = sample_metadata
             mock_rank.return_value = [sample_ranked]
 
-            def capture_render(data: ReportData, path: Path) -> Path:
+            def capture_render(
+                data: ReportData,
+                path: Path,
+                heatmap_granularity: str = "monthly",
+            ) -> Path:
                 captured.append(data)
                 return path
 
@@ -270,7 +274,11 @@ class TestGenerateReport:
             reader_instance.read_metadata.return_value = sample_metadata
             mock_rank.return_value = [sample_ranked]
 
-            def capture(data: ReportData, path: Path) -> Path:
+            def capture(
+                data: ReportData,
+                path: Path,
+                heatmap_granularity: str = "monthly",
+            ) -> Path:
                 captured.append(data)
                 return path
 

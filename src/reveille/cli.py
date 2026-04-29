@@ -51,6 +51,26 @@ def main(
     """Reveille -- Git Repository Intelligence."""
 
 
+def _resolve_output_path(output: Path, repo_path: Path) -> Path:
+    """Return the resolved output path for the generated report.
+
+    When the output argument is still at its CLI default value, the report
+    is placed at the repository root rather than the current working directory.
+    This matches the documented behaviour: the default output path is
+    relative to the repository, not the shell's working directory.
+
+    Args:
+        output: The output path value received from the CLI flag.
+        repo_path: The resolved repository root path.
+
+    Returns:
+        The resolved output path.
+    """
+    if output == Path("reveille-report.html"):
+        return repo_path / "reveille-report.html"
+    return output
+
+
 def _merge_cli_flags(
     config_kwargs: dict[str, object],
     repo: Path,
@@ -62,6 +82,7 @@ def _merge_cli_flags(
     exclude_author: list[str] | None,
     min_commits: int,
     no_ranking: bool,
+    heatmap_granularity: str | None,
 ) -> dict[str, object]:
     """Merge CLI flag values into the base configuration dict.
 
@@ -80,6 +101,7 @@ def _merge_cli_flags(
         exclude_author: List of authors to exclude, or None.
         min_commits: Minimum commit threshold.
         no_ranking: Whether ranking is disabled.
+        heatmap_granularity: Heatmap resolution string, or None if not provided.
 
     Returns:
         A merged dict ready for ReportConfig construction.
@@ -88,11 +110,9 @@ def _merge_cli_flags(
     merged["repo_path"] = repo.resolve()
 
     if output != Path("reveille-report.html") or "output_path" not in merged:
-        # Default output is placed at the repository root, not the working directory.
-        if output == Path("reveille-report.html"):
-            merged["output_path"] = merged["repo_path"] / "reveille-report.html"  # type: ignore[operator]
-        else:
-            merged["output_path"] = output
+        merged["output_path"] = _resolve_output_path(
+            output, merged["repo_path"]  # type: ignore[arg-type]
+        )
     if since is not None:
         merged["since"] = _parse_date(since, "--since")
     if until is not None:
@@ -107,6 +127,8 @@ def _merge_cli_flags(
         merged["min_commits"] = min_commits
     if no_ranking:
         merged["ranking_enabled"] = False
+    if heatmap_granularity is not None:
+        merged["heatmap_granularity"] = heatmap_granularity
 
     return merged
 
@@ -152,6 +174,16 @@ def generate(
         bool,
         typer.Option("--no-ranking", help="Omit the contributor ranking table from the output."),
     ] = False,
+    heatmap_granularity: Annotated[
+        str | None,
+        typer.Option(
+            "--heatmap-granularity",
+            help=(
+                "Heatmap resolution. 'weekly' suits short histories. "
+                "'monthly' is the default. 'yearly' suits long histories."
+            ),
+        ),
+    ] = None,
     config: Annotated[
         Path | None,
         typer.Option("--config", "-c", help="Path to a TOML configuration file."),
@@ -172,6 +204,7 @@ def generate(
     merged = _merge_cli_flags(
         config_kwargs, repo, output, since, until,
         branch, title, exclude_author, min_commits, no_ranking,
+        heatmap_granularity,
     )
 
     try:

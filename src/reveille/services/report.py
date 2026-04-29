@@ -103,4 +103,4 @@ def generate_report(config: ReportConfig) -> Path:
     )
 
     renderer = Renderer()
-    return renderer.render(report_data, config.output_path)
+    return renderer.render(report_data, config.output_path, config.heatmap_granularity)
