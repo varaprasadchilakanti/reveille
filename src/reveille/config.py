@@ -9,9 +9,13 @@ taking precedence over file values in all cases.
 from __future__ import annotations
 
 import datetime
+import tomllib
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
+
+from reveille.exceptions import ConfigurationError
 
 
 class RankingWeights(BaseModel):
@@ -86,3 +90,111 @@ class ReportConfig(BaseModel):
                 f"since ({self.since}) must be earlier than until ({self.until})."
             )
         return self
+
+
+def load_config_from_toml(path: Path) -> dict[str, Any]:
+    """Load and flatten configuration values from a Reveille TOML file.
+
+    Reads the structured TOML format documented in the README and returns
+    a flat dict of keyword arguments suitable for constructing a ReportConfig.
+    Only keys present in the file are included in the returned dict -- absent
+    keys do not override CLI defaults.
+
+    Args:
+        path: Path to the TOML configuration file.
+
+    Returns:
+        A dict of ReportConfig-compatible keyword arguments.
+
+    Raises:
+        ConfigurationError: If the file does not exist, cannot be read,
+            is not valid TOML, or contains an invalid date string.
+    """
+    try:
+        with path.open("rb") as fh:
+            raw = tomllib.load(fh)
+    except FileNotFoundError as exc:
+        raise ConfigurationError(
+            f"Configuration file not found: '{path}'."
+        ) from exc
+    except tomllib.TOMLDecodeError as exc:
+        raise ConfigurationError(
+            f"Configuration file is not valid TOML: {exc}"
+        ) from exc
+
+    kwargs: dict[str, Any] = {}
+    kwargs.update(_parse_report_section(raw.get("report", {})))
+    kwargs.update(_parse_filters_section(raw.get("filters", {})))
+    kwargs.update(_parse_ranking_section(raw.get("ranking", {})))
+    return kwargs
+
+
+def _parse_report_section(report: dict[str, Any]) -> dict[str, Any]:
+    """Parse the [report] section of a Reveille TOML configuration file.
+
+    Args:
+        report: The raw [report] table from the parsed TOML document.
+
+    Returns:
+        A partial kwargs dict for ReportConfig construction.
+
+    Raises:
+        ConfigurationError: If a date field contains an invalid ISO 8601 string.
+    """
+    kwargs: dict[str, Any] = {}
+    if "title" in report:
+        kwargs["title"] = str(report["title"])
+    if "output" in report:
+        kwargs["output_path"] = Path(str(report["output"]))
+    if "branch" in report:
+        kwargs["branch"] = str(report["branch"])
+    for field in ("since", "until"):
+        if field in report:
+            try:
+                kwargs[field] = datetime.date.fromisoformat(str(report[field]))
+            except ValueError as exc:
+                raise ConfigurationError(
+                    f"Invalid '{field}' date in configuration file: "
+                    f"'{report[field]}'. Expected YYYY-MM-DD."
+                ) from exc
+    return kwargs
+
+
+def _parse_filters_section(filters: dict[str, Any]) -> dict[str, Any]:
+    """Parse the [filters] section of a Reveille TOML configuration file.
+
+    Args:
+        filters: The raw [filters] table from the parsed TOML document.
+
+    Returns:
+        A partial kwargs dict for ReportConfig construction.
+    """
+    kwargs: dict[str, Any] = {}
+    if "min_commits" in filters:
+        kwargs["min_commits"] = int(filters["min_commits"])
+    if "exclude_authors" in filters:
+        kwargs["exclude_authors"] = list(filters["exclude_authors"])
+    return kwargs
+
+
+def _parse_ranking_section(ranking: dict[str, Any]) -> dict[str, Any]:
+    """Parse the [ranking] section of a Reveille TOML configuration file.
+
+    Args:
+        ranking: The raw [ranking] table from the parsed TOML document.
+
+    Returns:
+        A partial kwargs dict for ReportConfig construction.
+    """
+    kwargs: dict[str, Any] = {}
+    if "enabled" in ranking:
+        kwargs["ranking_enabled"] = bool(ranking["enabled"])
+    if "weights" in ranking:
+        w = ranking["weights"]
+        kwargs["ranking_weights"] = RankingWeights(
+            commits=float(w.get("commits", 0.30)),
+            lines=float(w.get("lines", 0.25)),
+            consistency=float(w.get("consistency", 0.25)),
+            recency=float(w.get("recency", 0.20)),
+        )
+    return kwargs
