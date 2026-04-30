@@ -53,9 +53,7 @@ class GitReader:
                 "Ensure the path contains a .git directory."
             ) from exc
         except NoSuchPathError as exc:
-            raise RepositoryError(
-                f"'{repo_path}' does not exist."
-            ) from exc
+            raise RepositoryError(f"'{repo_path}' does not exist.") from exc
         self._repo_path = repo_path.resolve()
 
     def read_commits(
@@ -185,9 +183,7 @@ class GitReader:
             if len(contributor_commits) < min_commits:
                 continue
 
-            sorted_by_time = sorted(
-                contributor_commits, key=lambda c: c.timestamp
-            )
+            sorted_by_time = sorted(contributor_commits, key=lambda c: c.timestamp)
             display_name = sorted_by_time[-1].author_name
             active_dates = {c.timestamp.date() for c in contributor_commits}
 

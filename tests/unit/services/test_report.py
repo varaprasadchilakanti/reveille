@@ -28,6 +28,7 @@ from reveille.services.report import generate_report
 # Shared fixtures
 # ------------------------------------------------------------------
 
+
 @pytest.fixture()
 def minimal_config(tmp_path: Path) -> ReportConfig:
     """A minimal ReportConfig pointing at a temp directory."""
@@ -91,15 +92,14 @@ def sample_metadata() -> RepositoryMetadata:
         unique_contributors=1,
         analysis_since=datetime.date(2024, 1, 1),
         analysis_until=datetime.date(2024, 3, 31),
-        generated_at=datetime.datetime(
-            2024, 4, 1, 12, 0, tzinfo=datetime.UTC
-        ),
+        generated_at=datetime.datetime(2024, 4, 1, 12, 0, tzinfo=datetime.UTC),
     )
 
 
 # ------------------------------------------------------------------
 # Tests
 # ------------------------------------------------------------------
+
 
 @pytest.mark.unit
 class TestGenerateReport:
@@ -213,7 +213,11 @@ class TestGenerateReport:
             reader_instance.read_metadata.return_value = sample_metadata
             mock_rank.return_value = [sample_ranked]
 
-            def capture_render(data: ReportData, path: Path) -> Path:
+            def capture_render(
+                data: ReportData,
+                path: Path,
+                heatmap_granularity: str = "monthly",
+            ) -> Path:
                 captured.append(data)
                 return path
 
@@ -270,7 +274,11 @@ class TestGenerateReport:
             reader_instance.read_metadata.return_value = sample_metadata
             mock_rank.return_value = [sample_ranked]
 
-            def capture(data: ReportData, path: Path) -> Path:
+            def capture(
+                data: ReportData,
+                path: Path,
+                heatmap_granularity: str = "monthly",
+            ) -> Path:
                 captured.append(data)
                 return path
 

@@ -1,0 +1,66 @@
+# ==================================================================
+# Reveille -- Pre-commit Hook Configuration
+#
+# Hooks run automatically on git commit against staged files.
+# To run manually against the full codebase:
+#   poetry run pre-commit run --all-files
+#
+# To install hooks into the local repository:
+#   poetry run pre-commit install
+# ==================================================================
+
+repos:
+  # ------------------------------------------------------------------
+  # General file hygiene
+  # ------------------------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      - id: detect-private-key
+
+  # ------------------------------------------------------------------
+  # Ruff — linting and import sorting
+  # Runs before black so that any auto-fixes are subsequently formatted.
+  # ------------------------------------------------------------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.5
+    hooks:
+      - id: ruff
+        args: [--fix]
+
+  # ------------------------------------------------------------------
+  # Black — code formatting
+  # ------------------------------------------------------------------
+  - repo: https://github.com/psf/black
+    rev: 25.1.0
+    hooks:
+      - id: black
+
+  # ------------------------------------------------------------------
+  # Mypy — static type checking
+  #
+  # additional_dependencies supplies the typed packages that mypy
+  # needs to resolve imports inside the pre-commit isolated environment.
+  # Versions are kept intentionally unpinned here; the poetry.lock file
+  # governs exact versions for reproducible installs.
+  # ------------------------------------------------------------------
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.15.0
+    hooks:
+      - id: mypy
+        args: [--ignore-missing-imports]
+        additional_dependencies:
+          - pydantic>=2.0
+          - pydantic-settings>=2.0
+          - gitpython>=3.1.40
+          - jinja2>=3.1.0
+          - plotly>=5.20.0
+          - typer>=0.12.0
+          - click>=8.0.0,<8.3.0
+          - python-dateutil>=2.9.0
+          - types-python-dateutil>=2.9.0

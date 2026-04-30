@@ -1,253 +1,461 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ data.metadata.name }} -- Reveille Report</title>
+    <title>{{ data.metadata.name }} — Reveille Report</title>
     <style>
+        /* ============================================================
+           Custom Properties — Light Theme (default)
+           ============================================================ */
         :root {
-            --color-primary:        #1e40af;
-            --color-primary-light:  #dbeafe;
-            --color-surface:        #f8fafc;
-            --color-border:         #e2e8f0;
-            --color-text-primary:   #0f172a;
-            --color-text-secondary: #475569;
-            --color-positive:       #059669;
-            --color-negative:       #dc2626;
-            --color-tier-7:         #0f172a;
-            --color-tier-6:         #1e3a8a;
-            --color-tier-5:         #1d4ed8;
-            --color-tier-4:         #0891b2;
-            --color-tier-3:         #059669;
-            --color-tier-2:         #d97706;
-            --color-tier-1:         #64748b;
+            --color-bg:              #ffffff;
+            --color-surface:         #f6f8fa;
+            --color-surface-raised:  #ffffff;
+            --color-border:          #d1d9e0;
+            --color-border-subtle:   #eaeef2;
+            --color-text-primary:    #1c2128;
+            --color-text-secondary:  #57606a;
+            --color-text-muted:      #8c959f;
+            --color-primary:         #1e40af;
+            --color-primary-dim:     #dbeafe;
+            --color-accent:          #2563eb;
+            --color-positive:        #1a7f37;
+            --color-negative:        #cf222e;
+
+            --color-tier-7: #24292f;
+            --color-tier-6: #1e3a8a;
+            --color-tier-5: #1d4ed8;
+            --color-tier-4: #0e7490;
+            --color-tier-3: #15803d;
+            --color-tier-2: #b45309;
+            --color-tier-1: #57606a;
         }
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        /* ============================================================
+           Custom Properties — Dark Theme
+           ============================================================ */
+        [data-theme="dark"] {
+            --color-bg:              #0d1117;
+            --color-surface:         #161b22;
+            --color-surface-raised:  #21262d;
+            --color-border:          #30363d;
+            --color-border-subtle:   #21262d;
+            --color-text-primary:    #e6edf3;
+            --color-text-secondary:  #8b949e;
+            --color-text-muted:      #6e7681;
+            --color-primary:         #58a6ff;
+            --color-primary-dim:     #1f3458;
+            --color-accent:          #79c0ff;
+            --color-positive:        #3fb950;
+            --color-negative:        #f85149;
+
+            --color-tier-7: #484f58;
+            --color-tier-6: #1e40af;
+            --color-tier-5: #2563eb;
+            --color-tier-4: #0891b2;
+            --color-tier-3: #16a34a;
+            --color-tier-2: #d97706;
+            --color-tier-1: #57606a;
+        }
+
+        /* ============================================================
+           Reset and Base
+           ============================================================ */
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-                         'Helvetica Neue', Arial, sans-serif;
+            font-family:
+                -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+                'Helvetica Neue', Arial, sans-serif;
             font-size: 14px;
             line-height: 1.6;
             color: var(--color-text-primary);
-            background: #ffffff;
+            background: var(--color-bg);
+            transition: background-color 0.2s ease, color 0.2s ease;
         }
+
         .page {
-            max-width: 1200px;
+            max-width: 1280px;
             margin: 0 auto;
-            padding: 40px 32px 64px;
+            padding: 40px 40px 80px;
         }
-        /* ---- Header ---- */
+
+        /* ============================================================
+           Header
+           ============================================================ */
         .report-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 24px;
             border-bottom: 2px solid var(--color-primary);
             padding-bottom: 24px;
-            margin-bottom: 32px;
+            margin-bottom: 36px;
         }
-        .report-header h1 {
-            font-size: 26px;
+
+        .report-header-copy h1 {
+            font-size: 22px;
             font-weight: 700;
+            letter-spacing: -0.4px;
+            line-height: 1.2;
             color: var(--color-text-primary);
-            letter-spacing: -0.3px;
         }
+
         .report-subtitle {
-            font-size: 13px;
-            color: var(--color-text-secondary);
-            margin-top: 2px;
+            margin-top: 4px;
+            font-size: 11px;
+            font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 0.6px;
-            font-weight: 500;
+            letter-spacing: 0.9px;
+            color: var(--color-text-muted);
         }
+
         .report-meta {
             display: flex;
             flex-wrap: wrap;
-            gap: 24px;
-            margin-top: 14px;
-            font-size: 13px;
+            gap: 20px;
+            margin-top: 12px;
+            font-size: 12px;
             color: var(--color-text-secondary);
         }
+
         .report-meta span strong {
-            color: var(--color-text-primary);
             font-weight: 600;
+            color: var(--color-text-primary);
         }
-        /* ---- Section headings ---- */
-        .section {
-            margin-bottom: 40px;
-        }
-        .section-title {
-            font-size: 13px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.8px;
+
+        /* ============================================================
+           Theme Toggle
+           ============================================================ */
+        .theme-toggle {
+            flex-shrink: 0;
+            margin-top: 2px;
+            padding: 6px 14px;
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: 4px;
             color: var(--color-text-secondary);
-            border-bottom: 1px solid var(--color-border);
-            padding-bottom: 8px;
-            margin-bottom: 20px;
+            font-family: inherit;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.6px;
+            text-transform: uppercase;
+            cursor: pointer;
+            white-space: nowrap;
+            transition:
+                background-color 0.15s ease,
+                color 0.15s ease,
+                border-color 0.15s ease;
         }
-        /* ---- Summary cards ---- */
+
+        .theme-toggle:hover {
+            background: var(--color-primary-dim);
+            border-color: var(--color-primary);
+            color: var(--color-primary);
+        }
+
+        /* ============================================================
+           Summary Cards
+           ============================================================ */
         .summary-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-            gap: 16px;
-            margin-bottom: 40px;
+            grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+            gap: 12px;
+            margin-bottom: 44px;
         }
+
         .summary-card {
+            padding: 16px 18px 18px;
             background: var(--color-surface);
             border: 1px solid var(--color-border);
             border-radius: 6px;
-            padding: 18px 20px;
         }
+
         .summary-card .value {
-            font-size: 28px;
+            font-size: 26px;
             font-weight: 700;
-            color: var(--color-primary);
             line-height: 1.1;
+            letter-spacing: -0.5px;
+            color: var(--color-primary);
+            font-variant-numeric: tabular-nums;
         }
+
         .summary-card .label {
-            font-size: 12px;
-            color: var(--color-text-secondary);
+            margin-top: 6px;
+            font-size: 10px;
+            font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-top: 4px;
-            font-weight: 500;
+            letter-spacing: 0.7px;
+            color: var(--color-text-muted);
         }
-        /* ---- Chart containers ---- */
+
+        /* ============================================================
+           Sections
+           ============================================================ */
+        .section {
+            margin-bottom: 48px;
+        }
+
+        .section-title {
+            display: flex;
+            align-items: baseline;
+            gap: 10px;
+            padding-bottom: 8px;
+            margin-bottom: 20px;
+            border-bottom: 1px solid var(--color-border);
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--color-text-secondary);
+        }
+
+        .section-title-qualifier {
+            font-size: 11px;
+            font-weight: 400;
+            text-transform: none;
+            letter-spacing: 0;
+            color: var(--color-text-muted);
+        }
+
+        /* ============================================================
+           Chart Containers
+           ============================================================ */
         .chart-container {
-            background: #ffffff;
+            padding: 16px 16px 8px;
+            background: var(--color-surface-raised);
             border: 1px solid var(--color-border);
             border-radius: 6px;
-            padding: 16px 16px 8px;
-            margin-bottom: 20px;
         }
+
+        .chart-label {
+            margin-bottom: 10px;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.7px;
+            color: var(--color-text-muted);
+        }
+
         .chart-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 20px;
+            gap: 16px;
         }
+
+        .chart-row + .chart-row {
+            margin-top: 16px;
+        }
+
         .chart-empty {
-            color: var(--color-text-secondary);
-            font-style: italic;
-            padding: 20px;
+            padding: 40px;
             text-align: center;
+            font-size: 13px;
+            font-style: italic;
+            color: var(--color-text-muted);
         }
-        /* ---- Ranking table ---- */
+
+        /* ============================================================
+           Ranking Table
+           ============================================================ */
+        .table-wrapper {
+            border: 1px solid var(--color-border);
+            border-radius: 6px;
+            overflow-x: auto;
+        }
+
         .ranking-table {
             width: 100%;
             border-collapse: collapse;
             font-size: 13px;
+            font-variant-numeric: tabular-nums;
         }
+
         .ranking-table thead tr {
             background: var(--color-surface);
-            border-bottom: 2px solid var(--color-border);
         }
+
         .ranking-table th {
             padding: 10px 14px;
-            text-align: left;
-            font-weight: 600;
-            font-size: 11px;
+            border-bottom: 2px solid var(--color-border);
+            font-size: 10px;
+            font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 0.6px;
-            color: var(--color-text-secondary);
+            letter-spacing: 0.8px;
+            color: var(--color-text-muted);
             white-space: nowrap;
+            text-align: left;
         }
+
         .ranking-table td {
-            padding: 10px 14px;
-            border-bottom: 1px solid var(--color-border);
+            padding: 11px 14px;
+            border-bottom: 1px solid var(--color-border-subtle);
             vertical-align: middle;
         }
+
         .ranking-table tbody tr:last-child td {
             border-bottom: none;
         }
+
         .ranking-table tbody tr:hover td {
             background: var(--color-surface);
         }
+
         .rank-number {
-            font-weight: 700;
-            color: var(--color-text-secondary);
             font-size: 12px;
+            font-weight: 700;
+            color: var(--color-text-muted);
         }
+
         .contributor-name {
-            font-weight: 600;
-        }
-        .contributor-email {
-            font-size: 11px;
-            color: var(--color-text-secondary);
             display: block;
-        }
-        .tier-badge {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 3px;
-            font-size: 11px;
             font-weight: 600;
+            color: var(--color-text-primary);
+        }
+
+        .contributor-email {
+            display: block;
+            margin-top: 2px;
+            font-size: 11px;
+            color: var(--color-text-muted);
+        }
+
+        /* ---- Tier Badges ---- */
+        .tier-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 10px;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 0.4px;
-            color: #ffffff;
+            letter-spacing: 0.6px;
+            line-height: 1.4;
             white-space: nowrap;
         }
-        .tier-7 { background: var(--color-tier-7); }
-        .tier-6 { background: var(--color-tier-6); }
-        .tier-5 { background: var(--color-tier-5); }
-        .tier-4 { background: var(--color-tier-4); }
-        .tier-3 { background: var(--color-tier-3); }
-        .tier-2 { background: var(--color-tier-2); }
-        .tier-1 { background: var(--color-tier-1); }
-        .tier-0 { background: var(--color-tier-1); }
-        .num-positive { color: var(--color-positive); font-weight: 500; }
-        .num-negative { color: var(--color-negative); font-weight: 500; }
-        .score-bar-container {
-            width: 80px;
-            background: var(--color-border);
-            border-radius: 2px;
-            height: 6px;
-            display: inline-block;
-            vertical-align: middle;
+
+        /* Tiers 3–7: solid filled */
+        .tier-7 { background: var(--color-tier-7); color: #f0f6fc; }
+        .tier-6 { background: var(--color-tier-6); color: #ffffff; }
+        .tier-5 { background: var(--color-tier-5); color: #ffffff; }
+        .tier-4 { background: var(--color-tier-4); color: #ffffff; }
+        .tier-3 { background: var(--color-tier-3); color: #ffffff; }
+
+        /* Tiers 1–2: outlined — subdued to enforce visual hierarchy */
+        .tier-2 {
+            color: var(--color-tier-2);
+            border: 1.5px solid var(--color-tier-2);
         }
+
+        .tier-1 {
+            color: var(--color-tier-1);
+            border: 1.5px solid var(--color-tier-1);
+        }
+
+        /* ---- Numeric cells ---- */
+        .num-positive { color: var(--color-positive); font-weight: 600; }
+        .num-negative { color: var(--color-negative); font-weight: 600; }
+        .num-neutral   { color: var(--color-text-secondary); }
+
+        /* ---- Score bar ---- */
+        .score-cell {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+        }
+
+        .score-bar-track {
+            width: 120px;
+            height: 8px;
+            flex-shrink: 0;
+            background: var(--color-border);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
         .score-bar-fill {
             height: 100%;
-            background: var(--color-primary);
-            border-radius: 2px;
+            border-radius: 4px;
+            background: linear-gradient(
+                to right,
+                var(--color-primary),
+                var(--color-accent)
+            );
         }
-        /* ---- Footer ---- */
+
+        .score-text {
+            font-size: 11px;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            color: var(--color-text-secondary);
+        }
+
+        /* ============================================================
+           Footer
+           ============================================================ */
         .report-footer {
-            margin-top: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 56px;
             padding-top: 16px;
             border-top: 1px solid var(--color-border);
             font-size: 11px;
-            color: var(--color-text-secondary);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+            letter-spacing: 0.2px;
+            color: var(--color-text-muted);
         }
-        @media (max-width: 768px) {
+
+        /* ============================================================
+           Responsive
+           ============================================================ */
+        @media (max-width: 900px) {
             .chart-row { grid-template-columns: 1fr; }
-            .report-meta { gap: 12px; }
+            .page { padding: 24px 20px 60px; }
+            .report-header { flex-direction: column; gap: 12px; }
+        }
+
+        @media (max-width: 600px) {
+            .summary-grid { grid-template-columns: repeat(2, 1fr); }
+            .report-meta  { gap: 10px; }
         }
     </style>
-    <script>{{ plotly_js | safe }}</script>
 </head>
 <body>
 <div class="page">
 
-    <!-- ============================================================ -->
-    <!-- Header                                                       -->
-    <!-- ============================================================ -->
+    <!-- ============================================================
+         Header
+         ============================================================ -->
     <header class="report-header">
-        <h1>{{ data.metadata.name }}</h1>
-        <p class="report-subtitle">Repository Performance Report</p>
-        <div class="report-meta">
-            {% if data.metadata.remote_url %}
-            <span><strong>Remote:</strong> {{ data.metadata.remote_url }}</span>
-            {% endif %}
-            <span><strong>Branch:</strong> {{ data.metadata.default_branch }}</span>
-            <span><strong>Period:</strong>
-                {{ data.metadata.analysis_since }} to {{ data.metadata.analysis_until }}
-            </span>
-            <span><strong>Generated:</strong> {{ generated_at }}</span>
+        <div class="report-header-copy">
+            <h1>{{ data.metadata.name }}</h1>
+            <p class="report-subtitle">Repository Performance Report</p>
+            <div class="report-meta">
+                {% if data.metadata.remote_url %}
+                <span><strong>Remote:</strong> {{ data.metadata.remote_url }}</span>
+                {% endif %}
+                <span><strong>Branch:</strong> {{ data.metadata.default_branch }}</span>
+                <span>
+                    <strong>Period:</strong>
+                    {{ data.metadata.analysis_since }} to {{ data.metadata.analysis_until }}
+                </span>
+                <span><strong>Generated:</strong> {{ generated_at }}</span>
+            </div>
         </div>
+        <button id="theme-toggle" class="theme-toggle" type="button">
+            Dark Mode
+        </button>
     </header>
 
-    <!-- ============================================================ -->
-    <!-- Summary Cards                                                -->
-    <!-- ============================================================ -->
+    <!-- ============================================================
+         Summary Cards
+         ============================================================ -->
     <div class="summary-grid">
         <div class="summary-card">
             <div class="value">{{ data.metadata.total_commits }}</div>
@@ -277,93 +485,116 @@
         </div>
     </div>
 
-    <!-- ============================================================ -->
-    <!-- Activity Heatmap                                             -->
-    <!-- ============================================================ -->
+    <!-- ============================================================
+         Activity Heatmap
+         ============================================================ -->
     <div class="section">
-        <h2 class="section-title">Commit Activity Heatmap</h2>
+        <h2 class="section-title">
+            Commit Activity Heatmap
+            <span class="section-title-qualifier">
+                {{ heatmap_granularity | capitalize }} View
+            </span>
+        </h2>
         <div class="chart-container">
-            {{ charts.heatmap | safe }}
+            <div id="chart-heatmap"></div>
         </div>
     </div>
 
-    <!-- ============================================================ -->
-    <!-- Commit Timeline                                              -->
-    <!-- ============================================================ -->
+    <!-- ============================================================
+         Commit Timeline
+         ============================================================ -->
     <div class="section">
         <h2 class="section-title">Weekly Commit Timeline</h2>
         <div class="chart-container">
-            {{ charts.timeline | safe }}
+            <div id="chart-timeline"></div>
         </div>
     </div>
 
-    <!-- ============================================================ -->
-    <!-- Contributor Rankings                                         -->
-    <!-- ============================================================ -->
+    <!-- ============================================================
+         Contributor Rankings
+         ============================================================ -->
+    {% if data.ranked_contributors %}
     <div class="section">
         <h2 class="section-title">Contributor Rankings</h2>
-        <div style="overflow-x: auto;">
+        <div class="table-wrapper">
             <table class="ranking-table">
                 <thead>
                     <tr>
-                        <th>Rank</th>
-                        <th>Contributor</th>
-                        <th>Tier</th>
+                        <th style="text-align:center; width:44px">#</th>
+                        <th style="min-width:160px">Contributor</th>
+                        <th style="min-width:140px">Designation</th>
                         <th style="text-align:right">Commits</th>
                         <th style="text-align:right">Lines Added</th>
                         <th style="text-align:right">Lines Deleted</th>
                         <th style="text-align:right">Net Lines</th>
                         <th style="text-align:right">Active Days</th>
-                        <th>Last Commit</th>
-                        <th>Score</th>
+                        <th style="white-space:nowrap">Last Commit</th>
+                        <th style="min-width:180px">Score</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for contributor in data.ranked_contributors %}
                     <tr>
-                        <td class="rank-number">{{ loop.index }}</td>
+                        <td class="rank-number" style="text-align:center">
+                            {{ loop.index }}
+                        </td>
                         <td>
-                            <span class="contributor-name">{{ contributor.stats.name }}</span>
-                            <span class="contributor-email">{{ contributor.stats.email }}</span>
+                            <span class="contributor-name">
+                                {{ contributor.stats.name }}
+                            </span>
+                            <span class="contributor-email">
+                                {{ contributor.stats.email }}
+                            </span>
                         </td>
                         <td>
                             <span class="tier-badge tier-{{ contributor.tier }}">
                                 {% if contributor.tier > 0 %}
                                     {{ contributor.tier_designation }}
                                 {% else %}
-                                    --
+                                    —
                                 {% endif %}
                             </span>
                         </td>
-                        <td style="text-align:right">{{ contributor.stats.commit_count }}</td>
+                        <td style="text-align:right">
+                            {{ "{:,}".format(contributor.stats.commit_count) }}
+                        </td>
                         <td style="text-align:right" class="num-positive">
-                            +{{ contributor.stats.lines_added | int }}
+                            +{{ "{:,}".format(contributor.stats.lines_added) }}
                         </td>
                         <td style="text-align:right" class="num-negative">
-                            -{{ contributor.stats.lines_deleted | int }}
+                            &#8722;{{ "{:,}".format(contributor.stats.lines_deleted) }}
                         </td>
                         <td style="text-align:right">
                             {% if contributor.stats.net_lines >= 0 %}
-                                <span class="num-positive">+{{ contributor.stats.net_lines }}</span>
+                                <span class="num-positive">
+                                    +{{ "{:,}".format(contributor.stats.net_lines) }}
+                                </span>
                             {% else %}
-                                <span class="num-negative">{{ contributor.stats.net_lines }}</span>
+                                <span class="num-negative">
+                                    {{ "{:,}".format(contributor.stats.net_lines) }}
+                                </span>
                             {% endif %}
                         </td>
-                        <td style="text-align:right">{{ contributor.stats.active_days }}</td>
-                        <td>{{ contributor.stats.last_commit_date }}</td>
+                        <td style="text-align:right" class="num-neutral">
+                            {{ contributor.stats.active_days }}
+                        </td>
+                        <td style="color:var(--color-text-secondary)">
+                            {{ contributor.stats.last_commit_date }}
+                        </td>
                         <td>
                             {% if contributor.tier > 0 %}
-                            <div class="score-bar-container">
-                                <div class="score-bar-fill"
-                                     style="width: {{ (contributor.composite_score * 100) | int }}%">
+                            <div class="score-cell">
+                                <div class="score-bar-track">
+                                    <div class="score-bar-fill"
+                                         style="width:{{ (contributor.composite_score * 100) | int }}%">
+                                    </div>
                                 </div>
+                                <span class="score-text">
+                                    {{ "%.3f" | format(contributor.composite_score) }}
+                                </span>
                             </div>
-                            <span style="font-size:11px; color: var(--color-text-secondary);
-                                         margin-left: 6px;">
-                                {{ "%.2f" | format(contributor.composite_score) }}
-                            </span>
                             {% else %}
-                            <span style="color: var(--color-text-secondary);">--</span>
+                                <span style="color:var(--color-text-muted)">—</span>
                             {% endif %}
                         </td>
                     </tr>
@@ -372,38 +603,243 @@
             </table>
         </div>
     </div>
+    {% endif %}
 
-    <!-- ============================================================ -->
-    <!-- Lines Changed and Commit Volume Charts                       -->
-    <!-- ============================================================ -->
+    <!-- ============================================================
+         Contribution Breakdown
+         ============================================================ -->
     <div class="section">
         <h2 class="section-title">Contribution Breakdown</h2>
+
         <div class="chart-row">
             <div class="chart-container">
-                <p style="font-size:12px; font-weight:600; color: var(--color-text-secondary);
-                           text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">
-                    Commits by Contributor
-                </p>
-                {{ charts.contributor_commits | safe }}
+                <p class="chart-label">Commits by Contributor</p>
+                <div id="chart-contributor_commits"></div>
             </div>
             <div class="chart-container">
-                <p style="font-size:12px; font-weight:600; color: var(--color-text-secondary);
-                           text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">
-                    Lines Changed by Contributor
-                </p>
-                {{ charts.contributor_lines | safe }}
+                <p class="chart-label">Lines Changed by Contributor</p>
+                <div id="chart-contributor_lines"></div>
+            </div>
+        </div>
+
+        <div class="chart-row">
+            <div class="chart-container">
+                <p class="chart-label">Commit Share</p>
+                <div id="chart-pie_commits"></div>
+            </div>
+            <div class="chart-container">
+                <p class="chart-label">Lines Changed Share</p>
+                <div id="chart-pie_lines"></div>
             </div>
         </div>
     </div>
 
-    <!-- ============================================================ -->
-    <!-- Footer                                                       -->
-    <!-- ============================================================ -->
+    <!-- ============================================================
+         Footer
+         ============================================================ -->
     <footer class="report-footer">
         <span>Generated by Reveille</span>
-        <span>{{ data.metadata.analysis_since }} -- {{ data.metadata.analysis_until }}</span>
+        <span>
+            {{ data.metadata.analysis_since }} &#8212; {{ data.metadata.analysis_until }}
+        </span>
     </footer>
 
 </div>
+
+<!-- ================================================================
+     Plotly JS bundle — self-contained, no CDN
+     ================================================================ -->
+<script>{{ plotly_js | safe }}</script>
+
+<!-- ================================================================
+     Chart specifications — Plotly JSON, rendered client-side.
+     Each block is a serialised Plotly figure (data + layout).
+     The value 'null' indicates insufficient data for that chart.
+     ================================================================ -->
+<script type="application/json" id="spec-timeline">
+{{ charts.timeline | safe }}
+</script>
+<script type="application/json" id="spec-heatmap">
+{{ charts.heatmap | safe }}
+</script>
+<script type="application/json" id="spec-contributor_commits">
+{{ charts.contributor_commits | safe }}
+</script>
+<script type="application/json" id="spec-contributor_lines">
+{{ charts.contributor_lines | safe }}
+</script>
+<script type="application/json" id="spec-pie_commits">
+{{ charts.pie_commits | safe }}
+</script>
+<script type="application/json" id="spec-pie_lines">
+{{ charts.pie_lines | safe }}
+</script>
+
+<!-- ================================================================
+     Theme manager and chart initialisation
+     ================================================================ -->
+<script>
+(function () {
+    'use strict';
+
+    var THEME_KEY = 'reveille-theme';
+
+    var CHART_IDS = [
+        'timeline',
+        'heatmap',
+        'contributor_commits',
+        'contributor_lines',
+        'pie_commits',
+        'pie_lines'
+    ];
+
+    // Plotly display config applied to every chart uniformly.
+    var PLOTLY_CONFIG = {
+        responsive: true,
+        displayModeBar: true,
+        displaylogo: false,
+        modeBarButtonsToRemove: ['sendDataToCloud', 'editInChartStudio']
+    };
+
+    // Plotly layout properties that vary between themes.
+    // All other layout properties are carried from the embedded JSON spec.
+    var THEME_LAYOUTS = {
+        light: {
+            paper_bgcolor: '#ffffff',
+            plot_bgcolor:  '#f6f8fa',
+            'font.color':  '#1c2128',
+            'xaxis.gridcolor': '#e2e8f0',
+            'xaxis.linecolor': '#d1d9e0',
+            'yaxis.gridcolor': '#e2e8f0',
+            'yaxis.linecolor': '#d1d9e0'
+        },
+        dark: {
+            paper_bgcolor: '#21262d',
+            plot_bgcolor:  '#161b22',
+            'font.color':  '#e6edf3',
+            'xaxis.gridcolor': '#30363d',
+            'xaxis.linecolor': '#30363d',
+            'yaxis.gridcolor': '#30363d',
+            'yaxis.linecolor': '#30363d'
+        }
+    };
+
+    // ------------------------------------------------------------------
+    // Theme persistence
+    // ------------------------------------------------------------------
+
+    function readTheme() {
+        try {
+            return localStorage.getItem(THEME_KEY) || 'light';
+        } catch (e) {
+            return 'light';
+        }
+    }
+
+    function writeTheme(theme) {
+        try {
+            localStorage.setItem(THEME_KEY, theme);
+        } catch (e) {
+            // localStorage unavailable (strict private browsing). Non-fatal.
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Document theme application
+    // ------------------------------------------------------------------
+
+    function applyThemeToDocument(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        var btn = document.getElementById('theme-toggle');
+        if (btn) {
+            btn.textContent = theme === 'dark' ? 'Light Mode' : 'Dark Mode';
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Chart initialisation
+    // ------------------------------------------------------------------
+
+    function initChart(id, theme) {
+        var specEl = document.getElementById('spec-' + id);
+        var divEl  = document.getElementById('chart-' + id);
+        if (!specEl || !divEl) return;
+
+        var raw = specEl.textContent.trim();
+        if (!raw || raw === 'null') {
+            divEl.innerHTML =
+                '<p class="chart-empty">Insufficient data for this view.</p>';
+            return;
+        }
+
+        var spec;
+        try {
+            spec = JSON.parse(raw);
+        } catch (e) {
+            divEl.innerHTML =
+                '<p class="chart-empty">Chart specification could not be parsed.</p>';
+            return;
+        }
+
+        if (!spec || !spec.data || spec.data.length === 0) {
+            divEl.innerHTML =
+                '<p class="chart-empty">Insufficient data for this view.</p>';
+            return;
+        }
+
+        var layout = Object.assign({}, spec.layout || {}, THEME_LAYOUTS[theme]);
+        Plotly.newPlot(divEl, spec.data, layout, PLOTLY_CONFIG);
+    }
+
+    function initAllCharts(theme) {
+        CHART_IDS.forEach(function (id) { initChart(id, theme); });
+    }
+
+    // ------------------------------------------------------------------
+    // Theme update for already-rendered charts
+    // ------------------------------------------------------------------
+
+    function applyThemeToCharts(theme) {
+        var overrides = THEME_LAYOUTS[theme];
+        CHART_IDS.forEach(function (id) {
+            var divEl = document.getElementById('chart-' + id);
+            // _fullLayout is set by Plotly after a successful newPlot call.
+            if (!divEl || !divEl._fullLayout) return;
+            Plotly.relayout(divEl, overrides);
+        });
+    }
+
+    // ------------------------------------------------------------------
+    // Toggle handler
+    // ------------------------------------------------------------------
+
+    function toggleTheme() {
+        var next = readTheme() === 'dark' ? 'light' : 'dark';
+        applyThemeToDocument(next);
+        writeTheme(next);
+        applyThemeToCharts(next);
+    }
+
+    // ------------------------------------------------------------------
+    // Initialisation
+    // ------------------------------------------------------------------
+
+    // Apply theme to document immediately (before DOMContentLoaded) to
+    // prevent flash of unstyled content when a dark theme is stored.
+    var initialTheme = readTheme();
+    applyThemeToDocument(initialTheme);
+
+    document.addEventListener('DOMContentLoaded', function () {
+        initAllCharts(initialTheme);
+
+        var btn = document.getElementById('theme-toggle');
+        if (btn) {
+            btn.addEventListener('click', toggleTheme);
+        }
+    });
+
+}());
+</script>
+
 </body>
 </html>
