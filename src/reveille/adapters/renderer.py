@@ -243,8 +243,15 @@ def _build_timeline_chart(commits: list[Commit]) -> str:
             hovertemplate="Week of %{x}<br>Commits: %{y}<extra></extra>",
         )
     )
+    layout = _base_layout()
+    layout["xaxis"] = {
+        "type": "category",
+        "gridcolor": "#e2e8f0",
+        "linecolor": "#d1d9e0",
+        "tickangle": -45,
+    }
     fig.update_layout(
-        **_base_layout(),
+        **layout,
         xaxis_title="Week",
         yaxis_title="Commits",
         height=280,
