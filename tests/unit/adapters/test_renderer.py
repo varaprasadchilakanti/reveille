@@ -311,6 +311,30 @@ class TestBuildHeatmapChart:
         commits = [_make_commit(datetime.date(2024, 1, 8))]
         assert _is_valid_chart_json(_build_heatmap_chart(commits, "yearly"))
 
+    def test_weekly_xaxis_type_is_category(self) -> None:
+        commits = [
+            _make_commit(datetime.date(2024, 1, 8)),
+            _make_commit(datetime.date(2024, 1, 15)),
+        ]
+        result = json.loads(_build_heatmap_chart(commits, "weekly"))
+        assert result["layout"]["xaxis"]["type"] == "category"
+
+    def test_monthly_xaxis_type_is_category(self) -> None:
+        commits = [
+            _make_commit(datetime.date(2024, 1, 8)),
+            _make_commit(datetime.date(2024, 2, 5)),
+        ]
+        result = json.loads(_build_heatmap_chart(commits, "monthly"))
+        assert result["layout"]["xaxis"]["type"] == "category"
+
+    def test_yearly_xaxis_type_is_category(self) -> None:
+        commits = [
+            _make_commit(datetime.date(2023, 6, 1)),
+            _make_commit(datetime.date(2024, 3, 15)),
+        ]
+        result = json.loads(_build_heatmap_chart(commits, "yearly"))
+        assert result["layout"]["xaxis"]["type"] == "category"
+
 
 # ------------------------------------------------------------------
 # _build_contributor_commits_chart

@@ -306,7 +306,8 @@ def _build_heatmap_weekly(commits: list[Commit]) -> str:
     num_weeks = max(week_indices) + 1
     z = [[cell.get((w, day), 0) for w in range(num_weeks)] for day in range(7)]
     week_labels = [
-        (base_week + datetime.timedelta(weeks=w)).isoformat() for w in range(num_weeks)
+        (base_week + datetime.timedelta(weeks=w)).strftime("%b %d")
+        for w in range(num_weeks)
     ]
     day_labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
@@ -321,7 +322,17 @@ def _build_heatmap_weekly(commits: list[Commit]) -> str:
         )
     )
     layout = _base_layout()
-    layout["yaxis"] = {"autorange": "reversed", "gridcolor": "#30363d"}
+    layout["xaxis"] = {
+        "type": "category",
+        "gridcolor": "#30363d",
+        "linecolor": "#30363d",
+    }
+    layout["yaxis"] = {
+        "autorange": "reversed",
+        "gridcolor": "#30363d",
+        "scaleanchor": "x",
+        "constrain": "domain",
+    }
     fig.update_layout(**layout, height=260)
     return _to_json(fig)
 
@@ -365,7 +376,17 @@ def _build_heatmap_monthly(commits: list[Commit]) -> str:
         )
     )
     layout = _base_layout()
-    layout["yaxis"] = {"autorange": "reversed", "gridcolor": "#30363d"}
+    layout["xaxis"] = {
+        "type": "category",
+        "gridcolor": "#30363d",
+        "linecolor": "#30363d",
+    }
+    layout["yaxis"] = {
+        "autorange": "reversed",
+        "gridcolor": "#30363d",
+        "scaleanchor": "x",
+        "constrain": "domain",
+    }
     fig.update_layout(**layout, height=260)
     return _to_json(fig)
 
@@ -422,7 +443,17 @@ def _build_heatmap_yearly(commits: list[Commit]) -> str:
         )
     )
     layout = _base_layout()
-    layout["yaxis"] = {"autorange": "reversed", "gridcolor": "#30363d"}
+    layout["xaxis"] = {
+        "type": "category",
+        "gridcolor": "#30363d",
+        "linecolor": "#30363d",
+    }
+    layout["yaxis"] = {
+        "autorange": "reversed",
+        "gridcolor": "#30363d",
+        "scaleanchor": "x",
+        "constrain": "domain",
+    }
     fig.update_layout(**layout, height=340)
     return _to_json(fig)
 
