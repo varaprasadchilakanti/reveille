@@ -45,8 +45,8 @@ typecheck:  ## Run mypy in strict mode
 # Testing
 # ------------------------------------------------------------------
 
-test:  ## Run the full test suite
-	poetry run pytest
+test:  ## Run the full test suite (parallel, no coverage instrumentation)
+    poetry run pytest -n auto
 
 test-unit:  ## Run unit tests only
 	poetry run pytest tests/unit -m unit
@@ -58,8 +58,8 @@ test-e2e:  ## Run end-to-end tests only
 	poetry run pytest tests/e2e -m e2e
 
 coverage:  ## Generate HTML and terminal coverage report
-	poetry run pytest --cov=reveille --cov-report=term-missing --cov-report=html
-	@echo "HTML coverage report: htmlcov/index.html"
+    poetry run pytest -n auto --cov=reveille --cov-report=term-missing --cov-report=html
+    @echo "HTML coverage report: htmlcov/index.html"
 
 # ------------------------------------------------------------------
 # CI

@@ -86,6 +86,7 @@ optional = false
 pytest = "^8.0.0"
 pytest-cov = "^5.0.0"
 pytest-xdist = "^3.5.0"
+pytest-timeout = "^2.3.0"
 
 # Type Checking
 mypy = "^1.8.0"
@@ -222,14 +223,8 @@ addopts = [
     "--verbose",
     "--strict-markers",
     "--strict-config",
-    "-n",
-    "auto",
-    "--cov=reveille",
-    "--cov-report=term-missing",
-    "--cov-report=html",
-    "--cov-report=xml",
-    "--no-cov-on-fail",
 ]
+timeout = 120
 markers = [
     "unit: Unit tests -- no I/O, no filesystem, no subprocess",
     "integration: Integration tests -- real Git repositories via fixtures",
@@ -252,7 +247,7 @@ filterwarnings = [
 source = ["src/reveille"]
 branch = true
 parallel = true
-data_file = ".coverage_data/.coverage"
+data_file = ".coverage"
 omit = [
     "*/tests/*",
     "*/__init__.py",
