@@ -15,6 +15,7 @@ Reveille reads your repository's Git history and produces a single portable `.ht
 - [Output Description](#output-description)
 - [Contributor Ranking System](#contributor-ranking-system)
 - [Configuration](#configuration)
+- [Documentation](#documentation)
 - [Development Setup](#development-setup)
 - [Running Tests](#running-tests)
 - [Contributing](#contributing)
@@ -208,6 +209,16 @@ weights = { commits = 0.30, lines = 0.25, consistency = 0.25, recency = 0.20 }
 ```
 
 CLI flags always take precedence over configuration file values. The configuration file is entirely optional — all values have defaults.
+
+---
+
+## Documentation
+
+A full operational reference is available at [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
+It covers every CLI flag and its interaction effects, every TOML key with
+annotated examples, the ranking algorithm in plain language, how to interpret
+each section of the generated report, and practical patterns for common use
+cases.
 
 ---
 
