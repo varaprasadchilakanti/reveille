@@ -45,8 +45,8 @@ class RenderError(RevelleError):
 
 
 class OutputPathError(RenderError):
-    """Raised when the specified output path cannot be written to.
+    """Raised when the specified output path cannot be written.
 
-    Caused either by the parent directory not existing or by
-    insufficient filesystem permissions.
+    Caused by the parent directory not existing or by insufficient
+    filesystem permissions.
     """
