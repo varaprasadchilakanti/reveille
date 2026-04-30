@@ -228,6 +228,14 @@ class TestBuildTimelineChart:
         assert "paper_bgcolor" not in layout
         assert "plot_bgcolor" not in layout
 
+    def test_xaxis_type_is_category(self) -> None:
+        commits = [
+            _make_commit(datetime.date(2024, 1, 8)),
+            _make_commit(datetime.date(2024, 1, 15)),
+        ]
+        result = json.loads(_build_timeline_chart(commits))
+        assert result["layout"]["xaxis"]["type"] == "category"
+
 
 # ------------------------------------------------------------------
 # _build_heatmap_chart — dispatch and granularity variants
