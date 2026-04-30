@@ -209,8 +209,16 @@ class TestGenerateCommand:
     def test_output_file_has_no_external_script_tags(
         self, default_report_content: str
     ) -> None:
-        assert 'src="http' not in default_report_content
-        assert "src='http" not in default_report_content
+        import re
+
+        external_tags = re.findall(
+            r'<script[^>]+src=["\']https?://',
+            default_report_content,
+        )
+        assert external_tags == [], (
+            f"Report contains {len(external_tags)} external script reference(s): "
+            f"{external_tags}"
+        )
 
     # -- Distinct invocations (different flags, cannot share) --
 
