@@ -28,9 +28,9 @@ repos:
   # Runs before black so that any auto-fixes are subsequently formatted.
   # ------------------------------------------------------------------
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.5
+    rev: v0.15.7
     hooks:
-      - id: ruff
+      - id: ruff-check
         args: [--fix]
 
   # ------------------------------------------------------------------
