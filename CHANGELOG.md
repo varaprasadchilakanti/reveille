@@ -68,6 +68,9 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
   to under two minutes.
 - Pre-commit ruff hook revision updated from `v0.14.5` to `v0.15.7`.
   Hook identifier updated from the legacy `ruff` alias to `ruff-check`.
+- Weekly commit timeline x-axis coercion fixed: `xaxis.type` set to
+  `"category"` and `tickangle` to `-45`, eliminating timestamp-format
+  tick labels produced by Plotly's implicit date coercion.
 
 [Unreleased]: https://github.com/varaprasadchilakanti/reveille/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.1.0
