@@ -6,6 +6,15 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-04-30
+
+### Fixed
+
+- Documentation link in README now points to the absolute GitHub URL for
+  `docs/USER_GUIDE.md`, resolving a broken relative path on the PyPI project page.
+- Makefile recipe indentation corrected from spaces to tabs, resolving
+  `missing separator` errors on strict Make implementations (PR #16).
+
 ## [0.1.0] — 2026-04-30
 
 ### Added

@@ -214,7 +214,7 @@ CLI flags always take precedence over configuration file values. The configurati
 
 ## Documentation
 
-A full operational reference is available at [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
+A full operational reference is available at [docs/USER_GUIDE.md](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md).
 It covers every CLI flag and its interaction effects, every TOML key with
 annotated examples, the ranking algorithm in plain language, how to interpret
 each section of the generated report, and practical patterns for common use
