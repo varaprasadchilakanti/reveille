@@ -5,8 +5,8 @@
 .DEFAULT_GOAL := help
 
 .PHONY: help install lint format fix typecheck test test-unit \
-        test-integration test-e2e coverage ci build publish-test \
-        publish clean
+	    test-integration test-e2e coverage ci build publish-test \
+	    publish clean
 
 # ------------------------------------------------------------------
 # Help
@@ -46,7 +46,7 @@ typecheck:  ## Run mypy in strict mode
 # ------------------------------------------------------------------
 
 test:  ## Run the full test suite (parallel, no coverage instrumentation)
-    poetry run pytest -n auto
+	poetry run pytest -n auto
 
 test-unit:  ## Run unit tests only
 	poetry run pytest tests/unit -m unit
@@ -58,8 +58,8 @@ test-e2e:  ## Run end-to-end tests only
 	poetry run pytest tests/e2e -m e2e
 
 coverage:  ## Generate HTML and terminal coverage report
-    poetry run pytest -n auto --cov=reveille --cov-report=term-missing --cov-report=html
-    @echo "HTML coverage report: htmlcov/index.html"
+	poetry run pytest -n auto --cov=reveille --cov-report=term-missing --cov-report=html
+	@echo "HTML coverage report: htmlcov/index.html"
 
 # ------------------------------------------------------------------
 # CI
