@@ -169,12 +169,12 @@ The composite score maps to the following tier designations, applied relative to
 
 | Tier | Designation | Composite Score Percentile |
 |---|---|---|
-| I | Recruit | 0 – 20th |
-| II | Operative | 21st – 40th |
-| III | Specialist | 41st – 60th |
-| IV | Senior Specialist | 61st – 75th |
-| V | Lead | 76th – 88th |
-| VI | Principal | 89th – 95th |
+| I | Private | 0 – 20th |
+| II | Corporal | 21st – 40th |
+| III | Sergeant | 41st – 60th |
+| IV | Lieutenant | 61st – 75th |
+| V | Captain | 76th – 88th |
+| VI | Major | 89th – 95th |
 | VII | Commander | 96th – 100th |
 
 Tier boundaries and weights are documented defaults and are fully reproducible from the source. Changing the weights changes the scores but not the tier logic. Tiers are always relative to the contributor population within the analysis window, not absolute thresholds.

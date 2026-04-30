@@ -19,13 +19,13 @@ activity over historical volume while remaining fully reproducible from
 the raw commit timestamps.
 
 Tier designations applied by percentile rank:
-    I    Recruit            0th  -- 20th
-    II   Operative          21st -- 40th
-    III  Specialist         41st -- 60th
-    IV   Senior Specialist  61st -- 75th
-    V    Lead               76th -- 88th
-    VI   Principal          89th -- 95th
-    VII  Commander          96th -- 100th
+    I    Private     0th  -- 20th
+    II   Corporal    21st -- 40th
+    III  Sergeant    41st -- 60th
+    IV   Lieutenant  61st -- 75th
+    V    Captain     76th -- 88th
+    VI   Major       89th -- 95th
+    VII  Commander   96th -- 100th
 
 Default metric weights (must sum to 1.0):
     commit_volume    0.30
@@ -50,12 +50,12 @@ _RECENCY_DECAY: float = 0.85
 # Format: (exclusive lower bound, tier number, designation)
 _TIER_BOUNDARIES: list[tuple[float, int, str]] = [
     (95.0, 7, "Commander"),
-    (88.0, 6, "Principal"),
-    (75.0, 5, "Lead"),
-    (60.0, 4, "Senior Specialist"),
-    (40.0, 3, "Specialist"),
-    (20.0, 2, "Operative"),
-    (-1.0, 1, "Recruit"),
+    (88.0, 6, "Major"),
+    (75.0, 5, "Captain"),
+    (60.0, 4, "Lieutenant"),
+    (40.0, 3, "Sergeant"),
+    (20.0, 2, "Corporal"),
+    (-1.0, 1, "Private"),
 ]
 
 

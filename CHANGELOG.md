@@ -28,3 +28,9 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 - MIT licence.
 
 [Unreleased]: https://github.com/varaprasadchilakanti/reveille/compare/HEAD
+
+### Changed
+- Tier designation strings updated to a consistent NATO-aligned military
+  rank progression: Private, Corporal, Sergeant, Lieutenant, Captain,
+  Major, Commander. The previous set mixed military and professional
+  title conventions inconsistently. Commander is retained at tier VII.
