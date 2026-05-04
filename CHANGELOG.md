@@ -6,6 +6,14 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ## [Unreleased]
 
+
+### Fixed
+
+- CHANGELOG link in README now points to the absolute GitHub URL, resolving
+  a broken relative path on the PyPI project page.
+- MIT Licence link in README now points to the absolute GitHub URL, resolving
+  a broken relative path on the PyPI project page.
+
 ## [0.1.1] — 2026-04-30
 
 ### Fixed
