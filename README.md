@@ -292,4 +292,4 @@ See [CHANGELOG.md](https://github.com/varaprasadchilakanti/reveille/blob/main/CH
 
 ## Licence
 
-Reveille is released under the [MIT Licence](LICENSE).
+Reveille is released under the [MIT Licence](https://github.com/varaprasadchilakanti/reveille/blob/main/LICENSE).
