@@ -286,7 +286,7 @@ Contributions are welcome. Before opening a pull request, please read the follow
 
 ## Changelog
 
-See [CHANGELOG.md](CHANGELOG.md) for the full release history. Reveille follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format and [Semantic Versioning 2.0](https://semver.org/).
+See [CHANGELOG.md](https://github.com/varaprasadchilakanti/reveille/blob/main/CHANGELOG.md) for the full release history. Reveille follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format and [Semantic Versioning 2.0](https://semver.org/).
 
 ---
 
