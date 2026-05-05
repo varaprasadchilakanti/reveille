@@ -9,6 +9,11 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ### Added
 
+- Daily heatmap granularity. `_build_heatmap_daily` produces a GitHub-style
+  52-column layout with one cell per calendar day. The rolling window defaults
+  to 365 days back from the analysis window end to prevent excessive chart
+  width. Added as a fourth granularity toggle button alongside weekly, monthly,
+  and yearly.
 - Client-side heatmap granularity toggle. All three heatmap specs (weekly,
   monthly, yearly) are now embedded in the HTML output. Three toggle buttons
   allow switching between granularities via Plotly.react() without a page

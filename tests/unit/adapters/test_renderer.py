@@ -22,6 +22,7 @@ from reveille.adapters.renderer import (
     _build_contributor_commits_chart,
     _build_contributor_lines_chart,
     _build_heatmap_chart,
+    _build_heatmap_daily,
     _build_heatmap_monthly,
     _build_heatmap_weekly,
     _build_heatmap_yearly,
@@ -247,6 +248,7 @@ class TestBuildHeatmapChart:
     """Tests for the heatmap chart builder and its granularity variants."""
 
     def test_empty_commits_returns_null_sentinel(self) -> None:
+        assert _build_heatmap_chart([], "daily") == "null"
         assert _build_heatmap_chart([], "weekly") == "null"
         assert _build_heatmap_chart([], "monthly") == "null"
         assert _build_heatmap_chart([], "yearly") == "null"
@@ -342,6 +344,91 @@ class TestBuildHeatmapChart:
         ]
         result = json.loads(_build_heatmap_chart(commits, "yearly"))
         assert result["layout"]["xaxis"]["type"] == "category"
+
+
+# ------------------------------------------------------------------
+# _build_heatmap_daily
+# ------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestBuildHeatmapDaily:
+    """Tests for the GitHub-style daily heatmap builder."""
+
+    def test_empty_commits_returns_null_sentinel(self) -> None:
+        assert _build_heatmap_daily([], datetime.date(2024, 3, 31)) == "null"
+
+    def test_returns_valid_chart_json(self) -> None:
+        commits = [_make_commit(datetime.date(2024, 1, 8))]
+        assert _is_valid_chart_json(
+            _build_heatmap_daily(commits, datetime.date(2024, 1, 31))
+        )
+
+    def test_z_matrix_has_seven_rows(self) -> None:
+        """Seven rows correspond to the seven days of the week."""
+        commits = [_make_commit(datetime.date(2024, 1, d)) for d in (1, 8, 15)]
+        parsed = json.loads(_build_heatmap_daily(commits, datetime.date(2024, 1, 31)))
+        assert len(parsed["data"][0]["z"]) == 7
+
+    def test_rolling_window_excludes_commits_before_cutoff(self) -> None:
+        """Commits older than max_days before window_end produce null."""
+        old_commit = _make_commit(datetime.date(2023, 1, 1))
+        window_end = datetime.date(2024, 3, 31)
+        # max_days=90 places rolling_start at 2024-01-02; old commit is excluded.
+        result = _build_heatmap_daily([old_commit], window_end, max_days=90)
+        assert result == "null"
+
+    def test_recent_commit_within_rolling_window_is_included(self) -> None:
+        """A commit within max_days of window_end produces a valid chart."""
+        recent = _make_commit(datetime.date(2024, 3, 1))
+        window_end = datetime.date(2024, 3, 31)
+        assert _is_valid_chart_json(
+            _build_heatmap_daily([recent], window_end, max_days=90)
+        )
+
+    def test_column_count_matches_weeks_in_rolling_window(self) -> None:
+        """Column count equals the number of calendar weeks in the window.
+
+        window_end = 2024-01-28 (Sunday), max_days = 28.
+        rolling_start = 2024-01-01 (Monday).
+        Weeks: Jan 01, Jan 08, Jan 15, Jan 22 -> 4 columns.
+        """
+        commits = [_make_commit(datetime.date(2024, 1, 15))]
+        parsed = json.loads(
+            _build_heatmap_daily(commits, datetime.date(2024, 1, 28), max_days=28)
+        )
+        assert len(parsed["data"][0]["x"]) == 4
+
+    def test_xaxis_type_is_category(self) -> None:
+        commits = [_make_commit(datetime.date(2024, 1, 8))]
+        result = json.loads(_build_heatmap_daily(commits, datetime.date(2024, 1, 31)))
+        assert result["layout"]["xaxis"]["type"] == "category"
+
+    def test_customdata_shape_matches_z_shape(self) -> None:
+        """customdata must have the same dimensions as z for hover to work."""
+        commits = [_make_commit(datetime.date(2024, 1, 8))]
+        parsed = json.loads(_build_heatmap_daily(commits, datetime.date(2024, 1, 31)))
+        z = parsed["data"][0]["z"]
+        cd = parsed["data"][0]["customdata"]
+        assert len(cd) == len(z)
+        assert all(len(cd[i]) == len(z[i]) for i in range(len(z)))
+
+    def test_dispatch_daily_via_build_heatmap_chart(self) -> None:
+        commits = [_make_commit(datetime.date(2024, 1, 8))]
+        result = _build_heatmap_chart(
+            commits, "daily", window_end=datetime.date(2024, 1, 31)
+        )
+        assert _is_valid_chart_json(result)
+
+    def test_dispatch_daily_without_window_end_defaults_to_max_commit_date(
+        self,
+    ) -> None:
+        commits = [
+            _make_commit(datetime.date(2024, 1, 8)),
+            _make_commit(datetime.date(2024, 1, 20)),
+        ]
+        result = _build_heatmap_chart(commits, "daily")
+        assert _is_valid_chart_json(result)
 
 
 # ------------------------------------------------------------------
