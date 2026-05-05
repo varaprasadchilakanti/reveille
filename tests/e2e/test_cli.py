@@ -436,3 +436,58 @@ class TestGenerateCommand:
             ],
         )
         assert result.exit_code == 1
+
+
+# ------------------------------------------------------------------
+# Init command
+# ------------------------------------------------------------------
+
+
+@pytest.mark.e2e
+class TestInitCommand:
+    """End-to-end tests for `reveille init`."""
+
+    def test_creates_reveille_toml_at_output_path(
+        self, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
+        """Default invocation writes reveille.toml to the specified path."""
+        dest = tmp_path_factory.mktemp("init_create") / "reveille.toml"
+        result = runner.invoke(app, ["init", "--output", str(dest)])
+        assert result.exit_code == 0
+        assert dest.exists()
+
+    def test_output_confirms_written_path(
+        self, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
+        """The success message includes the written path."""
+        dest = tmp_path_factory.mktemp("init_confirm") / "reveille.toml"
+        result = runner.invoke(app, ["init", "--output", str(dest)])
+        assert "Configuration file written to" in result.output
+
+    def test_exits_nonzero_when_file_exists_without_force(
+        self, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
+        """Non-zero exit when target exists and --force is absent."""
+        dest = tmp_path_factory.mktemp("init_conflict") / "reveille.toml"
+        dest.write_text("existing", encoding="utf-8")
+        result = runner.invoke(app, ["init", "--output", str(dest)])
+        assert result.exit_code != 0
+
+    def test_force_flag_overwrites_existing_file(
+        self, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
+        """--force succeeds and replaces the existing file."""
+        dest = tmp_path_factory.mktemp("init_force") / "reveille.toml"
+        dest.write_text("stale", encoding="utf-8")
+        result = runner.invoke(app, ["init", "--output", str(dest), "--force"])
+        assert result.exit_code == 0
+        assert dest.read_text(encoding="utf-8") != "stale"
+
+    def test_exits_nonzero_when_parent_directory_missing(
+        self, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
+        """Non-zero exit when the parent directory does not exist."""
+        base = tmp_path_factory.mktemp("init_missing_parent")
+        dest = base / "nonexistent_dir" / "reveille.toml"
+        result = runner.invoke(app, ["init", "--output", str(dest)])
+        assert result.exit_code != 0

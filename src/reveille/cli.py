@@ -254,6 +254,40 @@ def validate(
     typer.echo(f"Repository at {resolved} is valid.")
 
 
+@app.command()
+def init(
+    output: Annotated[
+        Path,
+        typer.Option(
+            "--output",
+            "-o",
+            help="Destination path for the generated configuration file.",
+        ),
+    ] = Path("reveille.toml"),
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            help="Overwrite an existing configuration file without prompting.",
+        ),
+    ] = False,
+) -> None:
+    """Scaffold an annotated reveille.toml configuration file.
+
+    Writes a fully commented configuration file to the current directory
+    (or the path specified by --output) with all keys present and set to
+    their defaults. Uncomment and edit only the keys you want to override.
+    """
+    from reveille.init import write_init_config
+
+    try:
+        written_path = write_init_config(output, force=force)
+        typer.echo(f"Configuration file written to: {written_path}")
+    except RevelleError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+
 def _parse_date(value: str, flag_name: str) -> datetime.date:
     """Parse a YYYY-MM-DD string into a date object.
 

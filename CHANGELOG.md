@@ -7,11 +7,22 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 ## [Unreleased]
 
 
+### Added
+
+- `reveille init` command that writes a fully annotated `reveille.toml`
+  to the current directory with all configuration keys present, documented
+  inline, and set to their defaults. Eliminates the need to consult
+  documentation when beginning to customise the tool.
+- `--force` flag for `reveille init` to overwrite an existing configuration
+  file without prompting.
+- `--output` flag for `reveille init` to write the configuration file to
+  a non-default path.
+
 ### Fixed
 
-- CHANGELOG link in README now points to the absolute GitHub URL, resolving
+- CHANGELOG link in README replaced with absolute GitHub URL, resolving
   a broken relative path on the PyPI project page.
-- MIT Licence link in README now points to the absolute GitHub URL, resolving
+- MIT Licence link in README replaced with absolute GitHub URL, resolving
   a broken relative path on the PyPI project page.
 
 ## [0.1.1] — 2026-04-30
