@@ -33,7 +33,7 @@ from jinja2 import Environment, PackageLoader, select_autoescape
 from reveille.domain.models import Commit, RankedContributor, ReportData
 from reveille.exceptions import OutputPathError, RenderError
 
-HeatmapGranularity: TypeAlias = Literal["weekly", "monthly", "yearly"]
+HeatmapGranularity: TypeAlias = Literal["weekly", "monthly", "yearly", "daily"]
 
 # Maximum individual slices in a pie chart. Contributors beyond this
 # threshold are aggregated into a single "Other Contributors" slice
@@ -188,12 +188,15 @@ class Renderer:
 
         Returns:
             A dict mapping chart identifier to Plotly JSON specification string.
-            The heatmap is provided as three separate keys (heatmap_weekly,
-            heatmap_monthly, heatmap_yearly) to support client-side granularity
-            toggling without a page reload.
+            The heatmap is provided as four separate keys (heatmap_daily,
+            heatmap_weekly, heatmap_monthly, heatmap_yearly) to support
+            client-side granularity toggling without a page reload.
         """
         return {
             "timeline": _build_timeline_chart(data.commits),
+            "heatmap_daily": _build_heatmap_daily(
+                data.commits, data.metadata.analysis_until
+            ),
             "heatmap_weekly": _build_heatmap_chart(data.commits, "weekly"),
             "heatmap_monthly": _build_heatmap_chart(data.commits, "monthly"),
             "heatmap_yearly": _build_heatmap_chart(data.commits, "yearly"),
@@ -265,6 +268,7 @@ def _build_timeline_chart(commits: list[Commit]) -> str:
 def _build_heatmap_chart(
     commits: list[Commit],
     granularity: HeatmapGranularity,
+    window_end: datetime.date | None = None,
 ) -> str:
     """Build a commit activity heatmap at the specified granularity.
 
@@ -274,13 +278,23 @@ def _build_heatmap_chart(
 
     Args:
         commits: All commits in the analysis window.
-        granularity: One of 'weekly', 'monthly', or 'yearly'.
+        granularity: One of 'daily', 'weekly', 'monthly', or 'yearly'.
+        window_end: End date of the analysis window. Required for the daily
+            granularity to anchor the rolling window cap. When None and
+            granularity is 'daily', the maximum commit date is used.
 
     Returns:
         A Plotly figure JSON string, or 'null' if commits is empty.
     """
     if not commits:
         return "null"
+    if granularity == "daily":
+        effective_end = (
+            window_end
+            if window_end is not None
+            else max(c.timestamp.date() for c in commits)
+        )
+        return _build_heatmap_daily(commits, effective_end)
     if granularity == "weekly":
         return _build_heatmap_weekly(commits)
     if granularity == "monthly":
@@ -465,6 +479,99 @@ def _build_heatmap_yearly(commits: list[Commit]) -> str:
         "constrain": "domain",
     }
     fig.update_layout(**layout, height=340)
+    return _to_json(fig)
+
+
+def _build_heatmap_daily(
+    commits: list[Commit],
+    window_end: datetime.date,
+    max_days: int = 365,
+) -> str:
+    """Build a GitHub-style daily commit activity heatmap.
+
+    Rows represent days of the week (Monday to Sunday). Columns represent
+    calendar weeks within the rolling window. Each cell contains the exact
+    commit count for that specific calendar day — no aggregation occurs
+    within a week, unlike the weekly granularity builder.
+
+    The rolling window is capped at max_days before window_end to prevent
+    excessive chart width for repositories with multi-year histories.
+
+    Args:
+        commits: All commits in the analysis window.
+        window_end: End date of the analysis window. Used as the anchor for
+            the rolling window cap.
+        max_days: Maximum calendar days to display counting back from
+            window_end. Defaults to 365 (one rolling year).
+
+    Returns:
+        A Plotly figure JSON string, or 'null' if no commits fall within
+        the rolling window.
+    """
+    if not commits:
+        return "null"
+
+    rolling_start = window_end - datetime.timedelta(days=max_days - 1)
+    filtered = [c for c in commits if c.timestamp.date() >= rolling_start]
+    if not filtered:
+        return "null"
+
+    date_counts: dict[datetime.date, int] = defaultdict(int)
+    for commit in filtered:
+        date_counts[commit.timestamp.date()] += 1
+
+    # Align the grid to the Monday of the week containing rolling_start.
+    base_monday = rolling_start - datetime.timedelta(days=rolling_start.weekday())
+    last_monday = window_end - datetime.timedelta(days=window_end.weekday())
+    num_weeks = (last_monday - base_monday).days // 7 + 1
+
+    z: list[list[int]] = []
+    customdata: list[list[str]] = []
+    for day in range(7):
+        row_z: list[int] = []
+        row_dates: list[str] = []
+        for week in range(num_weeks):
+            date = base_monday + datetime.timedelta(weeks=week, days=day)
+            if rolling_start <= date <= window_end:
+                row_z.append(date_counts.get(date, 0))
+                row_dates.append(date.strftime("%Y-%m-%d"))
+            else:
+                row_z.append(0)
+                row_dates.append("")
+        z.append(row_z)
+        customdata.append(row_dates)
+
+    week_labels = [
+        (base_monday + datetime.timedelta(weeks=w)).strftime("%b %d")
+        for w in range(num_weeks)
+    ]
+    day_labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+    fig = go.Figure(
+        go.Heatmap(
+            z=z,
+            x=week_labels,
+            y=day_labels,
+            customdata=customdata,
+            colorscale=_heatmap_colorscale(),
+            showscale=True,
+            hovertemplate="%{customdata}<br>Commits: %{z}<extra></extra>",
+        )
+    )
+    layout = _base_layout()
+    layout["xaxis"] = {
+        "type": "category",
+        "gridcolor": "#30363d",
+        "linecolor": "#30363d",
+        "tickangle": -45,
+    }
+    layout["yaxis"] = {
+        "autorange": "reversed",
+        "gridcolor": "#30363d",
+        "scaleanchor": "x",
+        "constrain": "domain",
+    }
+    fig.update_layout(**layout, height=260)
     return _to_json(fig)
 
 

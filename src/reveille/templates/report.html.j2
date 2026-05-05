@@ -530,6 +530,9 @@
     <div class="section">
         <h2 class="section-title">Commit Activity Heatmap</h2>
         <div class="heatmap-toolbar">
+            <button id="heatmap-toggle-daily"
+                    class="heatmap-toggle-btn{% if heatmap_granularity == 'daily' %} heatmap-toggle-active{% endif %}"
+                    type="button">Daily</button>
             <button id="heatmap-toggle-weekly"
                     class="heatmap-toggle-btn{% if heatmap_granularity == 'weekly' %} heatmap-toggle-active{% endif %}"
                     type="button">Weekly</button>
@@ -713,6 +716,9 @@
 <script type="application/json" id="spec-heatmap-yearly">
 {{ charts.heatmap_yearly | safe }}
 </script>
+<script type="application/json" id="spec-heatmap-daily">
+{{ charts.heatmap_daily | safe }}
+</script>
 <script type="application/json" id="spec-contributor_commits">
 {{ charts.contributor_commits | safe }}
 </script>
@@ -745,7 +751,7 @@
         'pie_lines'
     ];
 
-    var HEATMAP_GRANULARITIES = ['weekly', 'monthly', 'yearly'];
+    var HEATMAP_GRANULARITIES = ['daily', 'weekly', 'monthly', 'yearly'];
 
     // Tracks the currently rendered heatmap granularity.
     // Initialised from the value set by --heatmap-granularity at report
