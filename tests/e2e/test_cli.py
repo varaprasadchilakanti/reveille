@@ -437,6 +437,14 @@ class TestGenerateCommand:
         )
         assert result.exit_code == 1
 
+    def test_output_embeds_all_three_heatmap_specs(
+        self, default_report_content: str
+    ) -> None:
+        """All three heatmap granularity specs are present in the output."""
+        assert 'id="spec-heatmap-weekly"' in default_report_content
+        assert 'id="spec-heatmap-monthly"' in default_report_content
+        assert 'id="spec-heatmap-yearly"' in default_report_content
+
 
 # ------------------------------------------------------------------
 # Init command
