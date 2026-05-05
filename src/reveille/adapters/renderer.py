@@ -120,7 +120,7 @@ class Renderer:
             )
 
         try:
-            charts = self._build_charts(data, heatmap_granularity)
+            charts = self._build_charts(data)
             derived = self._compute_derived_stats(data)
             plotly_js = _PLOTLY_JS_BUNDLE
             generated_at = data.metadata.generated_at.strftime("%Y-%m-%d %H:%M UTC")
@@ -175,7 +175,6 @@ class Renderer:
     def _build_charts(
         self,
         data: ReportData,
-        heatmap_granularity: HeatmapGranularity,
     ) -> dict[str, str]:
         """Build all chart JSON specifications for the report.
 
@@ -186,14 +185,18 @@ class Renderer:
 
         Args:
             data: The complete report dataset.
-            heatmap_granularity: Resolution for the activity heatmap.
 
         Returns:
             A dict mapping chart identifier to Plotly JSON specification string.
+            The heatmap is provided as three separate keys (heatmap_weekly,
+            heatmap_monthly, heatmap_yearly) to support client-side granularity
+            toggling without a page reload.
         """
         return {
             "timeline": _build_timeline_chart(data.commits),
-            "heatmap": _build_heatmap_chart(data.commits, heatmap_granularity),
+            "heatmap_weekly": _build_heatmap_chart(data.commits, "weekly"),
+            "heatmap_monthly": _build_heatmap_chart(data.commits, "monthly"),
+            "heatmap_yearly": _build_heatmap_chart(data.commits, "yearly"),
             "contributor_commits": _build_contributor_commits_chart(
                 data.ranked_contributors
             ),

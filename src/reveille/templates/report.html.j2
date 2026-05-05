@@ -424,6 +424,45 @@
             .summary-grid { grid-template-columns: repeat(2, 1fr); }
             .report-meta  { gap: 10px; }
         }
+
+        /* ============================================================
+           Heatmap Granularity Toolbar
+           ============================================================ */
+        .heatmap-toolbar {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 12px;
+        }
+
+        .heatmap-toggle-btn {
+            padding: 4px 12px;
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: 4px;
+            color: var(--color-text-secondary);
+            font-family: inherit;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.6px;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition:
+                background-color 0.15s ease,
+                color 0.15s ease,
+                border-color 0.15s ease;
+        }
+
+        .heatmap-toggle-btn:hover {
+            background: var(--color-primary-dim);
+            border-color: var(--color-primary);
+            color: var(--color-primary);
+        }
+
+        .heatmap-toggle-btn.heatmap-toggle-active {
+            background: var(--color-primary-dim);
+            border-color: var(--color-primary);
+            color: var(--color-primary);
+        }
     </style>
 </head>
 <body>
@@ -489,12 +528,18 @@
          Activity Heatmap
          ============================================================ -->
     <div class="section">
-        <h2 class="section-title">
-            Commit Activity Heatmap
-            <span class="section-title-qualifier">
-                {{ heatmap_granularity | capitalize }} View
-            </span>
-        </h2>
+        <h2 class="section-title">Commit Activity Heatmap</h2>
+        <div class="heatmap-toolbar">
+            <button id="heatmap-toggle-weekly"
+                    class="heatmap-toggle-btn{% if heatmap_granularity == 'weekly' %} heatmap-toggle-active{% endif %}"
+                    type="button">Weekly</button>
+            <button id="heatmap-toggle-monthly"
+                    class="heatmap-toggle-btn{% if heatmap_granularity == 'monthly' %} heatmap-toggle-active{% endif %}"
+                    type="button">Monthly</button>
+            <button id="heatmap-toggle-yearly"
+                    class="heatmap-toggle-btn{% if heatmap_granularity == 'yearly' %} heatmap-toggle-active{% endif %}"
+                    type="button">Yearly</button>
+        </div>
         <div class="chart-container">
             <div id="chart-heatmap"></div>
         </div>
@@ -659,8 +704,14 @@
 <script type="application/json" id="spec-timeline">
 {{ charts.timeline | safe }}
 </script>
-<script type="application/json" id="spec-heatmap">
-{{ charts.heatmap | safe }}
+<script type="application/json" id="spec-heatmap-weekly">
+{{ charts.heatmap_weekly | safe }}
+</script>
+<script type="application/json" id="spec-heatmap-monthly">
+{{ charts.heatmap_monthly | safe }}
+</script>
+<script type="application/json" id="spec-heatmap-yearly">
+{{ charts.heatmap_yearly | safe }}
 </script>
 <script type="application/json" id="spec-contributor_commits">
 {{ charts.contributor_commits | safe }}
@@ -684,16 +735,23 @@
 
     var THEME_KEY = 'reveille-theme';
 
+    // Non-heatmap charts only. The heatmap is managed separately
+    // to support client-side granularity switching.
     var CHART_IDS = [
         'timeline',
-        'heatmap',
         'contributor_commits',
         'contributor_lines',
         'pie_commits',
         'pie_lines'
     ];
 
-    // Plotly display config applied to every chart uniformly.
+    var HEATMAP_GRANULARITIES = ['weekly', 'monthly', 'yearly'];
+
+    // Tracks the currently rendered heatmap granularity.
+    // Initialised from the value set by --heatmap-granularity at report
+    // generation time, which controls the default view on open.
+    var currentHeatmapGranularity = '{{ heatmap_granularity }}';
+
     var PLOTLY_CONFIG = {
         responsive: true,
         displayModeBar: true,
@@ -701,8 +759,6 @@
         modeBarButtonsToRemove: ['sendDataToCloud', 'editInChartStudio']
     };
 
-    // Plotly layout properties that vary between themes.
-    // All other layout properties are carried from the embedded JSON spec.
     var THEME_LAYOUTS = {
         light: {
             paper_bgcolor: '#ffffff',
@@ -757,7 +813,7 @@
     }
 
     // ------------------------------------------------------------------
-    // Chart initialisation
+    // Non-heatmap chart initialisation
     // ------------------------------------------------------------------
 
     function initChart(id, theme) {
@@ -793,6 +849,78 @@
 
     function initAllCharts(theme) {
         CHART_IDS.forEach(function (id) { initChart(id, theme); });
+        initHeatmap(currentHeatmapGranularity, theme);
+    }
+
+    // ------------------------------------------------------------------
+    // Heatmap initialisation and granularity toggle
+    // ------------------------------------------------------------------
+
+    function _loadHeatmapSpec(granularity) {
+        var specEl = document.getElementById('spec-heatmap-' + granularity);
+        if (!specEl) return null;
+        var raw = specEl.textContent.trim();
+        if (!raw || raw === 'null') return null;
+        try {
+            return JSON.parse(raw);
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function initHeatmap(granularity, theme) {
+        var divEl = document.getElementById('chart-heatmap');
+        if (!divEl) return;
+
+        var spec = _loadHeatmapSpec(granularity);
+        if (!spec || !spec.data || spec.data.length === 0) {
+            divEl.innerHTML =
+                '<p class="chart-empty">Insufficient data for this view.</p>';
+            return;
+        }
+
+        var layout = Object.assign({}, spec.layout || {}, THEME_LAYOUTS[theme]);
+        Plotly.newPlot(divEl, spec.data, layout, PLOTLY_CONFIG);
+    }
+
+    function switchHeatmap(granularity) {
+        if (granularity === currentHeatmapGranularity) return;
+
+        var divEl = document.getElementById('chart-heatmap');
+        if (!divEl) return;
+
+        var spec = _loadHeatmapSpec(granularity);
+        if (!spec || !spec.data || spec.data.length === 0) {
+            divEl.innerHTML =
+                '<p class="chart-empty">Insufficient data for this view.</p>';
+            currentHeatmapGranularity = granularity;
+            _updateHeatmapButtons(granularity);
+            return;
+        }
+
+        var theme = readTheme();
+        var layout = Object.assign({}, spec.layout || {}, THEME_LAYOUTS[theme]);
+
+        if (divEl._fullLayout) {
+            Plotly.react(divEl, spec.data, layout, PLOTLY_CONFIG);
+        } else {
+            Plotly.newPlot(divEl, spec.data, layout, PLOTLY_CONFIG);
+        }
+
+        currentHeatmapGranularity = granularity;
+        _updateHeatmapButtons(granularity);
+    }
+
+    function _updateHeatmapButtons(granularity) {
+        HEATMAP_GRANULARITIES.forEach(function (g) {
+            var btn = document.getElementById('heatmap-toggle-' + g);
+            if (!btn) return;
+            if (g === granularity) {
+                btn.classList.add('heatmap-toggle-active');
+            } else {
+                btn.classList.remove('heatmap-toggle-active');
+            }
+        });
     }
 
     // ------------------------------------------------------------------
@@ -803,10 +931,13 @@
         var overrides = THEME_LAYOUTS[theme];
         CHART_IDS.forEach(function (id) {
             var divEl = document.getElementById('chart-' + id);
-            // _fullLayout is set by Plotly after a successful newPlot call.
             if (!divEl || !divEl._fullLayout) return;
             Plotly.relayout(divEl, overrides);
         });
+        var heatmapEl = document.getElementById('chart-heatmap');
+        if (heatmapEl && heatmapEl._fullLayout) {
+            Plotly.relayout(heatmapEl, overrides);
+        }
     }
 
     // ------------------------------------------------------------------
@@ -824,18 +955,22 @@
     // Initialisation
     // ------------------------------------------------------------------
 
-    // Apply theme to document immediately (before DOMContentLoaded) to
-    // prevent flash of unstyled content when a dark theme is stored.
     var initialTheme = readTheme();
     applyThemeToDocument(initialTheme);
 
     document.addEventListener('DOMContentLoaded', function () {
         initAllCharts(initialTheme);
 
-        var btn = document.getElementById('theme-toggle');
-        if (btn) {
-            btn.addEventListener('click', toggleTheme);
+        var themeBtn = document.getElementById('theme-toggle');
+        if (themeBtn) {
+            themeBtn.addEventListener('click', toggleTheme);
         }
+
+        HEATMAP_GRANULARITIES.forEach(function (g) {
+            var btn = document.getElementById('heatmap-toggle-' + g);
+            if (!btn) return;
+            btn.addEventListener('click', function () { switchHeatmap(g); });
+        });
     });
 
 }());

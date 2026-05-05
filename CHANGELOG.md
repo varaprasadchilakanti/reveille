@@ -9,6 +9,10 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ### Added
 
+- Client-side heatmap granularity toggle. All three heatmap specs (weekly,
+  monthly, yearly) are now embedded in the HTML output. Three toggle buttons
+  allow switching between granularities via Plotly.react() without a page
+  reload. The --heatmap-granularity flag controls the default view on open.
 - `reveille init` command that writes a fully annotated `reveille.toml`
   to the current directory with all configuration keys present, documented
   inline, and set to their defaults. Eliminates the need to consult
