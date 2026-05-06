@@ -30,11 +30,11 @@ Reveille is designed for developers, engineering managers, and technical leads w
 
 **What it produces:**
 
-- Contribution heatmaps showing commit activity by day and hour
-- Commit frequency histograms and rolling activity timelines
+- Contribution heatmaps showing commit activity across four granularity levels: per calendar day, per calendar week, per calendar month, and per calendar year — switchable in the rendered report without regeneration
+- Commit frequency timelines and rolling activity charts
 - Per-contributor breakdowns covering commits, lines added and removed, and active day counts
 - A structured ranking table assigning each contributor a tier designation based on weighted activity metrics
-- Repository health indicators including bus factor, activity recency, and consistency scores
+- Repository health indicators including bus factor, longest inactive streak, and consistency scores
 
 **Design constraints that are non-negotiable:**
 
@@ -80,6 +80,14 @@ reveille generate
 
 Reveille reads the local Git history and writes a report to the current directory. The output file is named `reveille-report.html` by default. Open it in any browser.
 
+**Scaffold a configuration file before your first run:**
+
+```bash
+reveille init
+```
+
+This writes an annotated `reveille.toml` to the current directory with every available configuration key present and commented out. Edit only the keys you need, then pass the file with `--config` on subsequent invocations.
+
 **Generate a report for a specific date range:**
 
 ```bash
@@ -117,7 +125,17 @@ Generates the HTML performance report for the target repository.
 | `--min-commits` | | `INT` | `1` | Exclude contributors with fewer than this many commits in the analysis window. |
 | `--title` | | `TEXT` | Repository name | Override the report title displayed in the HTML output. |
 | `--no-ranking` | | Flag | Off | Omit the contributor ranking table from the output. |
+| `--heatmap-granularity` | | `TEXT` | `monthly` | Default heatmap view on open. Accepted values: `daily`, `weekly`, `monthly`, `yearly`. All four views are available via toggle buttons in the rendered report regardless of this setting. |
 | `--config` | `-c` | `PATH` | None | Path to a TOML configuration file. CLI flags take precedence over config file values. |
+
+### `reveille init`
+
+Scaffolds a fully annotated `reveille.toml` configuration file in the current directory. Every available key is present, commented out, and documented inline. Run this once before your first `reveille generate` invocation to produce a starting point you can edit rather than constructing the file from scratch.
+
+| Flag | Short | Type | Default | Description |
+|---|---|---|---|---|
+| `--output` | `-o` | `PATH` | `./reveille.toml` | Destination path for the generated configuration file. |
+| `--force` | | Flag | Off | Overwrite an existing file at the target path without prompting. |
 
 ### `reveille version`
 
@@ -139,15 +157,15 @@ The generated HTML file is structured as a formal report with the following sect
 
 **Repository Summary** — Name, remote URL if present, default branch, total commits in the analysis window, unique contributors, date range, and report generation timestamp.
 
-**Activity Heatmap** — A calendar-style matrix showing commit frequency by day across the analysis window. Modelled on GitHub's contribution graph but scoped to the repository and time range specified.
+**Activity Heatmap** — A calendar-style matrix showing commit frequency across the analysis window. Four granularity views are available via toggle buttons in the rendered report: `daily` shows one cell per calendar day in a GitHub-style grid capped at a rolling 365-day window; `weekly` and `monthly` aggregate by day-of-week across each week or month; `yearly` aggregates by month across each calendar year. The `--heatmap-granularity` flag controls which view is active on first open.
 
-**Commit Timeline** — A rolling line chart showing commit volume per week over the analysis window. Highlights periods of high and low activity.
+**Commit Timeline** — A rolling area chart showing commit volume per calendar week over the analysis window. Highlights periods of high and low activity.
 
 **Contributor Summary Table** — A ranked table listing each contributor with their commit count, lines added, lines removed, net line delta, active days, most recent commit date, and assigned tier designation.
 
-**Per-Contributor Activity Charts** — Commit frequency histograms for each contributor showing their distribution of activity across the analysis window.
+**Contribution Breakdown Charts** — Horizontal bar charts of commits and lines changed per contributor, and two donut charts showing each contributor's proportional share of total commits and total lines changed.
 
-**Repository Health Indicators** — Bus factor estimate (minimum number of contributors accounting for 50% of commits), longest inactive streak, activity recency score, and contributor retention across the window.
+**Repository Health Indicators** — Bus factor estimate (minimum number of contributors accounting for 50% of commits) and longest inactive streak within the analysis window.
 
 All charts are rendered with Plotly and are fully interactive — hover states, zoom, pan, and legend toggling are available without any external dependencies.
 
@@ -184,9 +202,7 @@ Tier boundaries and weights are documented defaults and are fully reproducible f
 
 ## Configuration
 
-Reveille accepts a TOML configuration file for parameters that are cumbersome to pass on the command line on every invocation.
-
-Create a file named `reveille.toml` at the repository root or pass the path explicitly with `--config`.
+Reveille accepts a TOML configuration file for parameters that are cumbersome to pass on the command line on every invocation. Run `reveille init` to generate an annotated starting point, or create `reveille.toml` manually at the repository root and pass its path with `--config`.
 
 ```toml
 [report]
@@ -195,6 +211,8 @@ output = "./reports/q4-2024.html"
 branch = "main"
 since = "2024-10-01"
 until = "2024-12-31"
+# Accepted values: "daily", "weekly", "monthly", "yearly"
+heatmap_granularity = "monthly"
 
 [filters]
 min_commits = 2
