@@ -153,8 +153,6 @@ class GitReader:
         self,
         commits: list[Commit],
         min_commits: int,
-        window_start: datetime.date,
-        window_end: datetime.date,
     ) -> list[ContributorStats]:
         """Aggregate raw commits into per-contributor statistics.
 
@@ -166,9 +164,6 @@ class GitReader:
             commits: Raw commit list returned by read_commits.
             min_commits: Exclude contributors with fewer than this many
                 commits in the analysis window.
-            window_start: Start of the analysis window. Stored on the
-                returned stats for use by the ranking engine.
-            window_end: End of the analysis window.
 
         Returns:
             A list of ContributorStats sorted by commit count descending.

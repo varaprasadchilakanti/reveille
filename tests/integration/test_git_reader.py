@@ -276,8 +276,6 @@ class TestAggregateContributorStats:
         stats = reader.aggregate_contributor_stats(
             commits=commits,
             min_commits=1,
-            window_start=datetime.date(2024, 3, 1),
-            window_end=datetime.date(2024, 4, 30),
         )
         assert len(stats) == 2
 
@@ -289,8 +287,6 @@ class TestAggregateContributorStats:
         stats = reader.aggregate_contributor_stats(
             commits=commits,
             min_commits=1,
-            window_start=datetime.date(2024, 3, 1),
-            window_end=datetime.date(2024, 4, 30),
         )
         alice = next(s for s in stats if s.email == "alice@example.com")
         assert alice.commit_count == 3
@@ -303,8 +299,6 @@ class TestAggregateContributorStats:
         stats = reader.aggregate_contributor_stats(
             commits=commits,
             min_commits=1,
-            window_start=datetime.date(2024, 3, 1),
-            window_end=datetime.date(2024, 4, 30),
         )
         counts = [s.commit_count for s in stats]
         assert counts == sorted(counts, reverse=True)
@@ -320,8 +314,6 @@ class TestAggregateContributorStats:
         stats = reader.aggregate_contributor_stats(
             commits=commits,
             min_commits=3,
-            window_start=datetime.date(2024, 3, 1),
-            window_end=datetime.date(2024, 4, 30),
         )
         assert len(stats) == 1
         assert stats[0].email == "alice@example.com"
@@ -336,8 +328,6 @@ class TestAggregateContributorStats:
         stats = reader.aggregate_contributor_stats(
             commits=commits,
             min_commits=1,
-            window_start=datetime.date(2024, 3, 1),
-            window_end=datetime.date(2024, 4, 30),
         )
         alice = next(s for s in stats if s.email == "alice@example.com")
         # Alice committed on 3 distinct calendar dates.
