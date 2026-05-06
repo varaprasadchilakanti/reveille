@@ -28,7 +28,13 @@ from typing import Any, Literal, TypeAlias
 
 import plotly.graph_objects as go
 import plotly.offline
-from jinja2 import Environment, PackageLoader, select_autoescape
+from jinja2 import (
+    Environment,
+    PackageLoader,
+    TemplateNotFound,
+    TemplatesNotFound,
+    select_autoescape,
+)
 
 from reveille.domain.models import Commit, RankedContributor, ReportData
 from reveille.exceptions import OutputPathError, RenderError
@@ -79,7 +85,7 @@ class Renderer:
                 autoescape=select_autoescape(["html", "j2"]),
             )
             self._template = self._env.get_template("report.html.j2")
-        except Exception as exc:
+        except (TemplateNotFound, TemplatesNotFound, OSError) as exc:
             raise RenderError(
                 "Failed to load the report template. "
                 "Verify the package was installed correctly and that "
@@ -194,8 +200,8 @@ class Renderer:
         """
         return {
             "timeline": _build_timeline_chart(data.commits),
-            "heatmap_daily": _build_heatmap_daily(
-                data.commits, data.metadata.analysis_until
+            "heatmap_daily": _build_heatmap_chart(
+                data.commits, "daily", window_end=data.metadata.analysis_until
             ),
             "heatmap_weekly": _build_heatmap_chart(data.commits, "weekly"),
             "heatmap_monthly": _build_heatmap_chart(data.commits, "monthly"),
