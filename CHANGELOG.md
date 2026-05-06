@@ -29,6 +29,9 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ### Fixed
 
+- `reveille init` template corrected to include `"daily"` as an accepted
+  `heatmap_granularity` value with inline usage guidance, consistent with
+  the other three granularity options.
 - CHANGELOG link in README replaced with absolute GitHub URL, resolving
   a broken relative path on the PyPI project page.
 - MIT Licence link in README replaced with absolute GitHub URL, resolving
