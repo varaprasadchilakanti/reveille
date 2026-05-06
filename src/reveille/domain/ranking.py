@@ -36,6 +36,7 @@ Default metric weights (must sum to 1.0):
 
 from __future__ import annotations
 
+import bisect
 import datetime
 from collections import defaultdict
 
@@ -55,7 +56,11 @@ _TIER_BOUNDARIES: list[tuple[float, int, str]] = [
     (60.0, 4, "Lieutenant"),
     (40.0, 3, "Sergeant"),
     (20.0, 2, "Corporal"),
-    (-1.0, 1, "Private"),
+    (
+        -1.0,
+        1,
+        "Private",
+    ),  # Exhaustive fallback. Matches all percentiles in [0.0, 100.0].
 ]
 
 
@@ -135,7 +140,11 @@ def assign_tier(percentile: float) -> tuple[int, str]:
     for threshold, tier, designation in _TIER_BOUNDARIES:
         if percentile > threshold:
             return tier, designation
-    return 1, "Recruit"
+    raise AssertionError(
+        f"No tier boundary matched percentile {percentile}. "
+        "_TIER_BOUNDARIES must contain an exhaustive fallback entry with a "
+        "threshold strictly below 0.0."
+    )
 
 
 # ------------------------------------------------------------------
@@ -292,9 +301,12 @@ def _compute_composite(
 def _compute_percentiles(composite: dict[str, float]) -> dict[str, float]:
     """Assign a percentile rank to each contributor based on composite score.
 
-    Uses a standard percentile rank formula. Contributors with identical
-    composite scores receive the same percentile. For a population of one,
-    the single contributor receives the 100th percentile.
+    Uses a lower-bound percentile rank formula. For each contributor,
+    the rank is the number of other contributors with a strictly lower
+    composite score (bisect_left on the sorted score list). Contributors
+    with identical composite scores receive the same lower-bound percentile.
+    For a population of one, the single contributor receives the 100th
+    percentile.
 
     Args:
         composite: Composite scores keyed by lowercased email.
@@ -310,6 +322,6 @@ def _compute_percentiles(composite: dict[str, float]) -> dict[str, float]:
     sorted_scores = sorted(composite.values())
     percentiles: dict[str, float] = {}
     for email, score in composite.items():
-        rank = sorted_scores.index(score)
+        rank = bisect.bisect_left(sorted_scores, score)
         percentiles[email] = round((rank / (n - 1)) * 100.0, 2)
     return percentiles

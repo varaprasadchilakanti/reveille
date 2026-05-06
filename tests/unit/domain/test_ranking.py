@@ -406,3 +406,20 @@ class TestComputePercentiles:
         result = _compute_percentiles(scores)
         for p in result.values():
             assert 0.0 <= p <= 100.0
+
+    def test_tied_composite_scores_receive_lower_bound_percentile(self) -> None:
+        """All tied contributors receive the lower-bound percentile for their group.
+
+        With two contributors at identical scores, both receive rank 0 and
+        percentile 0.0. This is the documented lower-bound tie-breaking
+        semantics — preferred over list.index() which is semantically
+        ambiguous for non-unique sequences.
+        """
+        result = _compute_percentiles(
+            {
+                "a@x.com": 0.5,
+                "b@x.com": 0.5,
+            }
+        )
+        assert result["a@x.com"] == 0.0
+        assert result["b@x.com"] == 0.0
