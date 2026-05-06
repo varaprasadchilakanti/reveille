@@ -36,6 +36,29 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
   a broken relative path on the PyPI project page.
 - MIT Licence link in README replaced with absolute GitHub URL, resolving
   a broken relative path on the PyPI project page.
+- Contributor ranking now correctly handles tied composite scores. Previously,
+  contributors with identical composite scores all received the lowest percentile
+  in their group, causing equally active contributors in small teams to be
+  assigned the Private designation regardless of their output. Rank computation
+  now uses `bisect.bisect_left`, which applies lower-bound percentile semantics
+  and is O(log n) per lookup rather than O(n).
+- Daily heatmap chart generation unified through the `_build_heatmap_chart`
+  dispatch function. The embedded daily spec and the client-side toggle path
+  previously used different `window_end` anchors when `--until` extended beyond
+  the latest commit date, producing silently divergent charts. Both paths now
+  use `analysis_until` as the anchor.
+- `assign_tier` unreachable fallback removed. The function previously contained
+  a final return of the undocumented designation "Recruit" that could never be
+  reached. An `AssertionError` is now raised in its place to make any future
+  `_TIER_BOUNDARIES` misconfiguration immediately visible.
+- Exception handling in `Renderer.__init__` narrowed from bare `Exception` to
+  `TemplateNotFound`, `TemplatesNotFound`, and `OSError`. Unexpected exceptions
+  now propagate without being wrapped, preserving diagnostic information at the
+  CLI boundary.
+- `GitReader.aggregate_contributor_stats` signature corrected: `window_start`
+  and `window_end` parameters documented as "stored on the returned stats" were
+  never used in the function body. Both parameters have been removed and all
+  call sites updated.
 
 ## [0.1.1] — 2026-04-30
 
