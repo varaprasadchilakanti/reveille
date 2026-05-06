@@ -398,6 +398,42 @@ class TestGenerateCommand:
         assert "CLI Title" in content
         assert "Config Title" not in content
 
+    def test_min_commits_cli_flag_overrides_config_file_value(
+        self,
+        e2e_repo: Path,
+        tmp_path_factory: pytest.TempPathFactory,
+    ) -> None:
+        """--min-commits 1 takes precedence over min_commits = 2 in a config file.
+
+        The e2e fixture contains Bob with one commit. A config file with
+        min_commits = 2 would exclude him. Passing --min-commits 1 on the
+        CLI must override the config value and include him in the output.
+        """
+        base = tmp_path_factory.mktemp("min_commits_override")
+        output = base / "report.html"
+        config_file = base / "reveille.toml"
+        config_file.write_text(
+            "[filters]\nmin_commits = 2\n",
+            encoding="utf-8",
+        )
+        result = runner.invoke(
+            app,
+            [
+                "generate",
+                "--repo",
+                str(e2e_repo),
+                "--output",
+                str(output),
+                "--config",
+                str(config_file),
+                "--min-commits",
+                "1",
+            ],
+        )
+        assert result.exit_code == 0
+        content = output.read_text(encoding="utf-8")
+        assert "Bob" in content
+
     def test_nonexistent_config_file_exits_nonzero(
         self,
         e2e_repo: Path,

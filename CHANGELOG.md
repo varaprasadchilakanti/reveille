@@ -59,6 +59,13 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
   and `window_end` parameters documented as "stored on the returned stats" were
   never used in the function body. Both parameters have been removed and all
   call sites updated.
+- `--min-commits 1` on the CLI now correctly overrides a higher `min_commits`
+  value set in a `reveille.toml` configuration file. Previously, the value
+  `1` was treated as equivalent to "flag not provided," causing the config
+  file value to win silently and violating the documented CLI precedence rule.
+  The parameter now uses `None` as its sentinel, allowing explicit `1` to be
+  distinguished from the absence of the flag.
+
 
 ## [0.1.1] — 2026-04-30
 
@@ -68,6 +75,7 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
   `docs/USER_GUIDE.md`, resolving a broken relative path on the PyPI project page.
 - Makefile recipe indentation corrected from spaces to tabs, resolving
   `missing separator` errors on strict Make implementations (PR #16).
+
 
 ## [0.1.0] — 2026-04-30
 
