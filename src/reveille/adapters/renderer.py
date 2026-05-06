@@ -194,8 +194,8 @@ class Renderer:
         """
         return {
             "timeline": _build_timeline_chart(data.commits),
-            "heatmap_daily": _build_heatmap_daily(
-                data.commits, data.metadata.analysis_until
+            "heatmap_daily": _build_heatmap_chart(
+                data.commits, "daily", window_end=data.metadata.analysis_until
             ),
             "heatmap_weekly": _build_heatmap_chart(data.commits, "weekly"),
             "heatmap_monthly": _build_heatmap_chart(data.commits, "monthly"),
