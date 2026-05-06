@@ -140,7 +140,11 @@ def assign_tier(percentile: float) -> tuple[int, str]:
     for threshold, tier, designation in _TIER_BOUNDARIES:
         if percentile > threshold:
             return tier, designation
-    return 1, "Recruit"
+    raise AssertionError(
+        f"No tier boundary matched percentile {percentile}. "
+        "_TIER_BOUNDARIES must contain an exhaustive fallback entry with a "
+        "threshold strictly below 0.0."
+    )
 
 
 # ------------------------------------------------------------------
