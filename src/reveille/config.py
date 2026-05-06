@@ -11,10 +11,11 @@ from __future__ import annotations
 import datetime
 import tomllib
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, get_args
 
 from pydantic import BaseModel, Field, model_validator
 
+from reveille.domain.models import HeatmapGranularity
 from reveille.exceptions import ConfigurationError
 
 
@@ -41,7 +42,7 @@ class RankingWeights(BaseModel):
             ValueError: If the sum deviates from 1.0 by more than 1e-9.
         """
         total = self.commits + self.lines + self.consistency + self.recency
-        if abs(total - 1.0) > 1e-9:
+        if abs(total - 1.0) > 1e-6:
             raise ValueError(
                 f"Ranking weights must sum to 1.0, got {total:.6f}. "
                 "Adjust weights so that commits + lines + consistency + recency = 1.0."
@@ -70,7 +71,7 @@ class ReportConfig(BaseModel):
     min_commits: int = Field(default=1, ge=1)
     ranking_enabled: bool = Field(default=True)
     ranking_weights: RankingWeights = Field(default_factory=RankingWeights)
-    heatmap_granularity: Literal["weekly", "monthly", "yearly", "daily"] = Field(
+    heatmap_granularity: HeatmapGranularity = Field(
         default="monthly",
         description=(
             "Resolution of the commit activity heatmap. "
@@ -166,10 +167,10 @@ def _parse_report_section(report: dict[str, Any]) -> dict[str, Any]:
                 ) from exc
     if "heatmap_granularity" in report:
         val = str(report["heatmap_granularity"])
-        if val not in ("weekly", "monthly", "yearly", "daily"):
+        if val not in get_args(HeatmapGranularity):
             raise ConfigurationError(
                 f"Invalid heatmap_granularity '{val}' in configuration file. "
-                "Must be one of: daily, weekly, monthly, yearly."
+                f"Must be one of: {', '.join(get_args(HeatmapGranularity))}."
             )
         kwargs["heatmap_granularity"] = val
     return kwargs

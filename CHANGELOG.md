@@ -65,6 +65,16 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
   file value to win silently and violating the documented CLI precedence rule.
   The parameter now uses `None` as its sentinel, allowing explicit `1` to be
   distinguished from the absence of the flag.
+- `HeatmapGranularity` type alias consolidated to `reveille.domain.models`,
+  eliminating a triplicate definition across `config.py`, `renderer.py`, and
+  the TOML validation block. Both layers now import the canonical definition
+  from the domain; the validation tuple is derived via `get_args` so it
+  stays in sync automatically. The error message for invalid TOML values now
+  lists accepted options derived from the type.
+- `RankingWeights` sum validation tolerance relaxed from `1e-9` to `1e-6`.
+  The previous threshold was unnecessarily strict for user-supplied decimal
+  weights, where IEEE 754 rounding could plausibly produce deviations
+  approaching `1e-9` despite representing an exact decimal sum of `1.0`.
 
 
 ## [0.1.1] — 2026-04-30

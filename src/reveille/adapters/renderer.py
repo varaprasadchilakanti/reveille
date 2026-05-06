@@ -24,7 +24,7 @@ import datetime
 import json
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Literal, TypeAlias
+from typing import Any
 
 import plotly.graph_objects as go
 import plotly.offline
@@ -36,10 +36,13 @@ from jinja2 import (
     select_autoescape,
 )
 
-from reveille.domain.models import Commit, RankedContributor, ReportData
+from reveille.domain.models import (
+    Commit,
+    HeatmapGranularity,
+    RankedContributor,
+    ReportData,
+)
 from reveille.exceptions import OutputPathError, RenderError
-
-HeatmapGranularity: TypeAlias = Literal["weekly", "monthly", "yearly", "daily"]
 
 # Maximum individual slices in a pie chart. Contributors beyond this
 # threshold are aggregated into a single "Other Contributors" slice
