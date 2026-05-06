@@ -80,7 +80,7 @@ def _merge_cli_flags(
     branch: str | None,
     title: str | None,
     exclude_author: list[str] | None,
-    min_commits: int,
+    min_commits: int | None,
     no_ranking: bool,
     heatmap_granularity: str | None,
 ) -> dict[str, object]:
@@ -123,7 +123,7 @@ def _merge_cli_flags(
         merged["title"] = title
     if exclude_author:
         merged["exclude_authors"] = exclude_author
-    if min_commits != 1:
+    if min_commits is not None:
         merged["min_commits"] = min_commits
     if no_ranking:
         merged["ranking_enabled"] = False
@@ -169,11 +169,11 @@ def generate(
         ),
     ] = None,
     min_commits: Annotated[
-        int,
+        int | None,
         typer.Option(
             "--min-commits", help="Exclude contributors below this commit threshold."
         ),
-    ] = 1,
+    ] = None,
     title: Annotated[
         str | None,
         typer.Option("--title", help="Override the report title in the HTML output."),
