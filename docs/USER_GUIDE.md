@@ -11,6 +11,7 @@ the [README](../README.md).
 
 - [How Reveille Works](#how-reveille-works)
 - [CLI Flags in Depth](#cli-flags-in-depth)
+- [The reveille init Command](#the-reveille-init-command)
 - [TOML Configuration Reference](#toml-configuration-reference)
 - [Understanding the Report](#understanding-the-report)
 - [The Ranking Algorithm](#the-ranking-algorithm)
@@ -154,13 +155,20 @@ reveille generate --no-ranking
 
 ### `--heatmap-granularity`
 
-Controls the time resolution of the commit activity heatmap. Three
-values are accepted.
+Controls the time resolution of the commit activity heatmap and sets the
+default view when the report is first opened. Four values are accepted.
 
-`weekly` produces one column per calendar week with rows for each day
-of the week. This is the most granular view and is best suited to
-repositories with fewer than six months of history in the analysis
-window. At longer ranges, the chart becomes too wide to read comfortably.
+`daily` produces a GitHub-style grid with one cell per calendar day. Rows
+represent days of the week and columns represent calendar weeks. The view
+is capped at a rolling 365-day window ending at the analysis window's end
+date, preventing excessive chart width for repositories with multi-year
+histories. This view is best for active repositories where per-day
+granularity is meaningful.
+
+`weekly` produces one column per calendar week with rows for each day of
+the week. This is the most granular aggregated view and is best suited to
+repositories with fewer than six months of history in the analysis window.
+At longer ranges, the chart becomes too wide to read comfortably.
 
 `monthly` is the default. It produces one column per calendar month with
 rows for each day of the week. Each cell contains the total commit count
@@ -169,12 +177,17 @@ balances detail and readability for most repository histories.
 
 `yearly` produces one column per calendar year with rows for each month.
 This view is appropriate for repositories with more than three years of
-history, where weekly or monthly resolution would produce an
-unreadably wide chart.
+history, where weekly or monthly resolution would produce an unreadably
+wide chart.
 
 ```bash
-reveille generate --heatmap-granularity weekly
+reveille generate --heatmap-granularity daily
 ```
+
+The generated HTML report embeds all four granularity specifications and
+provides toggle buttons to switch between them without regenerating the
+file. The `--heatmap-granularity` flag controls only which view is active
+on first open.
 
 ### `--config` / `-c`
 
@@ -188,12 +201,53 @@ reveille generate --config ./reveille.toml
 
 ---
 
+## The `reveille init` Command
+
+`reveille init` scaffolds a fully annotated `reveille.toml` configuration
+file in the current directory. Every available configuration key is
+present, commented out, and accompanied by an inline description of its
+purpose and accepted values. Run it once at the root of a repository
+before your first `reveille generate` invocation to produce a starting
+point you can edit rather than constructing the file from scratch.
+
+```bash
+reveille init
+```
+
+The generated file is identical in structure to the [TOML Configuration Reference](#toml-configuration-reference)
+below. All keys are commented out by default, so the file has no effect
+until you uncomment and edit the keys you need. CLI flags always take
+precedence over values in the file, so you can override any setting on a
+per-invocation basis without modifying it.
+
+### `--output` / `-o`
+
+Writes the configuration file to the specified path rather than
+`reveille.toml` in the current directory. The parent directory must
+exist.
+
+```bash
+reveille init --output /path/to/project/reveille.toml
+```
+
+### `--force`
+
+Overwrites an existing configuration file at the target path without
+prompting. Without this flag, `reveille init` exits with an error if the
+file already exists, to prevent accidental data loss.
+
+```bash
+reveille init --force
+```
+
+---
+
 ## TOML Configuration Reference
 
 A TOML configuration file is useful when you run Reveille regularly
 against the same repository with the same parameters. Place it at the
 repository root as `reveille.toml` or pass its path explicitly with
-`--config`.
+`--config`. Use `reveille init` to generate an annotated starting point.
 
 The file is divided into three sections. All sections and all keys are
 optional.
@@ -216,7 +270,9 @@ since = "2024-10-01"
 until = "2024-12-31"
 
 # Heatmap resolution. Equivalent to --heatmap-granularity.
-# Accepted values: "weekly", "monthly", "yearly"
+# Accepted values: "daily", "weekly", "monthly", "yearly"
+# Controls the default view on open; all four are accessible via toggle
+# buttons in the rendered report without regenerating the file.
 heatmap_granularity = "monthly"
 
 
@@ -263,12 +319,22 @@ recorded.
 ### Activity Heatmap
 
 The heatmap visualises when commits occurred across the analysis window.
-Darker cells indicate higher commit volumes. Rows represent days of the
-week in the weekly and monthly views, or months of the year in the yearly
-view. Empty cells — rendered as transparent — indicate periods of no
-activity. Persistent gaps may indicate holidays, sprints with no
-deliverables, or periods of reduced team capacity. The granularity of
-this chart is controlled by `--heatmap-granularity`.
+Darker cells indicate higher commit volumes. Empty cells — rendered as
+transparent — indicate periods of no activity. Persistent gaps may
+indicate holidays, sprints with no deliverables, or periods of reduced
+team capacity.
+
+Four granularity views are available and can be switched using the toggle
+buttons above the chart without regenerating the report. The `daily` view
+shows one cell per calendar day in a GitHub-style grid capped at a rolling
+365-day window; rows are days of the week and columns are calendar weeks.
+The `weekly` and `monthly` views aggregate commit counts by weekday within
+each week or month respectively, with rows for days of the week and columns
+for the time period. The `yearly` view aggregates by month, with rows for
+each month of the year and columns for each calendar year; it is best
+suited to repositories with more than three years of history. The
+`--heatmap-granularity` flag controls which view is active when the file
+is first opened.
 
 ### Weekly Commit Timeline
 
@@ -378,6 +444,20 @@ Commander designation by definition, as their percentile is 100.0.
 ---
 
 ## Practical Patterns
+
+### Scaffolding a Configuration File
+
+Before committing to a set of parameters for a regularly-run report,
+generate an annotated configuration file and edit only the keys you need.
+
+```bash
+reveille init
+```
+
+This writes `reveille.toml` to the current directory with every available
+key present and commented out. Uncomment and set the keys relevant to
+your repository, then run `reveille generate --config reveille.toml` on
+subsequent invocations.
 
 ### Filtering Bot Authors
 
