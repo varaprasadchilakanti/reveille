@@ -6,51 +6,50 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ## [Unreleased]
 
-
 ### Added
 
-- Daily heatmap granularity. `_build_heatmap_daily` produces a GitHub-style
-  52-column layout with one cell per calendar day. The rolling window defaults
-  to 365 days back from the analysis window end to prevent excessive chart
-  width. Added as a fourth granularity toggle button alongside weekly, monthly,
-  and yearly.
-- Client-side heatmap granularity toggle. All three heatmap specs (weekly,
-  monthly, yearly) are now embedded in the HTML output. Three toggle buttons
-  allow switching between granularities via Plotly.react() without a page
-  reload. The --heatmap-granularity flag controls the default view on open.
 - `reveille init` command that writes a fully annotated `reveille.toml`
   to the current directory with all configuration keys present, documented
   inline, and set to their defaults. Eliminates the need to consult
   documentation when beginning to customise the tool.
-- `--force` flag for `reveille init` to overwrite an existing configuration
-  file without prompting.
 - `--output` flag for `reveille init` to write the configuration file to
   a non-default path.
+- `--force` flag for `reveille init` to overwrite an existing configuration
+  file without prompting.
+- Client-side heatmap granularity toggle. All four heatmap specs (daily,
+  weekly, monthly, yearly) are embedded in the HTML output. Toggle buttons
+  allow switching between granularities via `Plotly.react()` without a page
+  reload. The `--heatmap-granularity` flag controls the default view on open.
+- Daily heatmap granularity. `_build_heatmap_daily` produces a GitHub-style
+  layout with one cell per calendar day. The rolling window defaults to 365
+  days back from the analysis window end to prevent excessive chart width.
+  Available as the fourth granularity option alongside weekly, monthly,
+  and yearly.
 
 ### Fixed
 
-- `reveille init` template corrected to include `"daily"` as an accepted
-  `heatmap_granularity` value with inline usage guidance, consistent with
-  the other three granularity options.
 - CHANGELOG link in README replaced with absolute GitHub URL, resolving
   a broken relative path on the PyPI project page.
 - MIT Licence link in README replaced with absolute GitHub URL, resolving
   a broken relative path on the PyPI project page.
+- `reveille init` template corrected to include `"daily"` as an accepted
+  `heatmap_granularity` value with inline usage guidance, consistent with
+  the other three granularity options.
 - Contributor ranking now correctly handles tied composite scores. Previously,
   contributors with identical composite scores all received the lowest percentile
   in their group, causing equally active contributors in small teams to be
   assigned the Private designation regardless of their output. Rank computation
   now uses `bisect.bisect_left`, which applies lower-bound percentile semantics
   and is O(log n) per lookup rather than O(n).
+- `assign_tier` unreachable fallback removed. The function previously contained
+  a final return of the undocumented designation "Recruit" that could never be
+  reached. An `AssertionError` is now raised in its place to make any future
+  `_TIER_BOUNDARIES` misconfiguration immediately visible.
 - Daily heatmap chart generation unified through the `_build_heatmap_chart`
   dispatch function. The embedded daily spec and the client-side toggle path
   previously used different `window_end` anchors when `--until` extended beyond
   the latest commit date, producing silently divergent charts. Both paths now
   use `analysis_until` as the anchor.
-- `assign_tier` unreachable fallback removed. The function previously contained
-  a final return of the undocumented designation "Recruit" that could never be
-  reached. An `AssertionError` is now raised in its place to make any future
-  `_TIER_BOUNDARIES` misconfiguration immediately visible.
 - Exception handling in `Renderer.__init__` narrowed from bare `Exception` to
   `TemplateNotFound`, `TemplatesNotFound`, and `OSError`. Unexpected exceptions
   now propagate without being wrapped, preserving diagnostic information at the
@@ -68,9 +67,9 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 - `HeatmapGranularity` type alias consolidated to `reveille.domain.models`,
   eliminating a triplicate definition across `config.py`, `renderer.py`, and
   the TOML validation block. Both layers now import the canonical definition
-  from the domain; the validation tuple is derived via `get_args` so it
-  stays in sync automatically. The error message for invalid TOML values now
-  lists accepted options derived from the type.
+  from the domain; the validation tuple is derived via `get_args` so it stays
+  in sync automatically. The error message for invalid TOML values now lists
+  accepted options derived from the type.
 - `RankingWeights` sum validation tolerance relaxed from `1e-9` to `1e-6`.
   The previous threshold was unnecessarily strict for user-supplied decimal
   weights, where IEEE 754 rounding could plausibly produce deviations
