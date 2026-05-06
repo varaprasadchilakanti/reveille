@@ -6,6 +6,9 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ## [Unreleased]
 
+
+## [0.2.0] — 2026-05-06
+
 ### Added
 
 - `reveille init` command that writes a fully annotated `reveille.toml`
@@ -152,6 +155,8 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
   `"category"` and `tickangle` to `-45`, eliminating timestamp-format
   tick labels produced by Plotly's implicit date coercion.
 
-[Unreleased]: https://github.com/varaprasadchilakanti/reveille/compare/v0.1.1...HEAD
+
+[Unreleased]: https://github.com/varaprasadchilakanti/reveille/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.2.0
 [0.1.1]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.1.1
 [0.1.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.1.0
