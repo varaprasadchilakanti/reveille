@@ -42,7 +42,7 @@ class RankingWeights(BaseModel):
             ValueError: If the sum deviates from 1.0 by more than 1e-9.
         """
         total = self.commits + self.lines + self.consistency + self.recency
-        if abs(total - 1.0) > 1e-9:
+        if abs(total - 1.0) > 1e-6:
             raise ValueError(
                 f"Ranking weights must sum to 1.0, got {total:.6f}. "
                 "Adjust weights so that commits + lines + consistency + recency = 1.0."

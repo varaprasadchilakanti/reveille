@@ -71,6 +71,10 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
   from the domain; the validation tuple is derived via `get_args` so it
   stays in sync automatically. The error message for invalid TOML values now
   lists accepted options derived from the type.
+- `RankingWeights` sum validation tolerance relaxed from `1e-9` to `1e-6`.
+  The previous threshold was unnecessarily strict for user-supplied decimal
+  weights, where IEEE 754 rounding could plausibly produce deviations
+  approaching `1e-9` despite representing an exact decimal sum of `1.0`.
 
 
 ## [0.1.1] — 2026-04-30
