@@ -250,7 +250,7 @@ class TestGenerateReport:
 
             generate_report(minimal_config)
 
-        call_kwargs = reader_instance.aggregate_contributor_stats.call_args
+        call_kwargs = mock_rank.call_args
         assert call_kwargs.kwargs["window_start"] == datetime.date(2024, 1, 1)
 
     def test_renderer_receives_commits_in_report_data(

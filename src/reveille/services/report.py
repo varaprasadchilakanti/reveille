@@ -61,8 +61,6 @@ def generate_report(config: ReportConfig) -> Path:
     contributor_stats = reader.aggregate_contributor_stats(
         commits=commits,
         min_commits=config.min_commits,
-        window_start=window_start,
-        window_end=window_end,
     )
 
     ranked_contributors: list[RankedContributor]
