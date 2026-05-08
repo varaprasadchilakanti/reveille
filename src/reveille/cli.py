@@ -12,8 +12,12 @@ Entry point registered in pyproject.toml:
 from __future__ import annotations
 
 import datetime
+import itertools
+import sys
+import threading
+from collections.abc import Callable
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, ClassVar
 
 import typer
 
@@ -27,6 +31,78 @@ app = typer.Typer(
     add_completion=False,
     no_args_is_help=True,
 )
+
+
+class _StageSpinner:
+    """Per-stage progress indicator for the generate pipeline.
+
+    Writes animated stage labels to stderr. Each stage begins with
+    begin() and resolves to a static completion line on complete().
+    Writes to stderr so stdout remains clean for scripting.
+
+    complete() is safe to call before begin() has ever been invoked.
+    """
+
+    _FRAMES: ClassVar[list[str]] = [".  ", ".. ", "..."]
+
+    def __init__(self) -> None:
+        self._active: bool = False
+        self._stop_event: threading.Event = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._label: str = ""
+
+    def begin(self, label: str) -> None:
+        """Start the animated indicator for a new pipeline stage.
+
+        Args:
+            label: Human-readable stage name written to stderr.
+        """
+        self._label = label
+        self._stop_event.clear()
+        self._active = True
+        self._thread = threading.Thread(target=self._run, args=(label,), daemon=True)
+        self._thread.start()
+
+    def complete(self) -> None:
+        """Stop the current animation and write the completion line.
+
+        No-op if begin() has not been called or if already completed.
+        """
+        if not self._active:
+            return
+        self._stop_event.set()
+        if self._thread is not None:
+            self._thread.join()
+        self._active = False
+
+    def _run(self, label: str) -> None:
+        for frame in itertools.cycle(self._FRAMES):
+            sys.stderr.write(f"\r  {label} {frame}")
+            sys.stderr.flush()
+            if self._stop_event.wait(0.2):
+                break
+        sys.stderr.write(f"\r  {label} ...   done\n")
+        sys.stderr.flush()
+
+
+def _make_progress_callback(spinner: _StageSpinner) -> Callable[[str], None]:
+    """Return a progress callback that drives the given spinner.
+
+    On each invocation, completes the previous stage animation and
+    starts a new one for the incoming label.
+
+    Args:
+        spinner: The _StageSpinner instance to drive.
+
+    Returns:
+        A callable suitable for passing as on_progress to generate_report.
+    """
+
+    def _callback(label: str) -> None:
+        spinner.complete()
+        spinner.begin(label)
+
+    return _callback
 
 
 def _version_callback(value: bool) -> None:
@@ -222,12 +298,19 @@ def generate(
         typer.echo(f"Configuration error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
+    spinner = _StageSpinner()
     try:
-        written_path = generate_report(report_config)
-        typer.echo(f"Report written to: {written_path}")
+        written_path = generate_report(
+            report_config,
+            on_progress=_make_progress_callback(spinner),
+        )
     except RevelleError as exc:
+        spinner.complete()
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
+    else:
+        spinner.complete()
+        typer.echo(f"Report written to: {written_path}")
 
 
 @app.command()

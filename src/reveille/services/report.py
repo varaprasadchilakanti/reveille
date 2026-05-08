@@ -17,6 +17,7 @@ or Typer. All external concerns are delegated to adapters.
 from __future__ import annotations
 
 import datetime
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
@@ -27,11 +28,17 @@ from reveille.domain.models import RankedContributor, ReportData
 from reveille.domain.ranking import rank_contributors
 
 
-def generate_report(config: ReportConfig) -> Path:
+def generate_report(
+    config: ReportConfig,
+    on_progress: Callable[[str], None] | None = None,
+) -> Path:
     """Generate a self-contained HTML performance report.
 
     Args:
         config: Validated report configuration produced by the CLI layer.
+        on_progress: Optional callable invoked with a stage label string
+            at the start of each pipeline stage. Intended for CLI progress
+            display. Has no effect on the output when omitted.
 
     Returns:
         The absolute path of the written HTML file.
@@ -44,6 +51,8 @@ def generate_report(config: ReportConfig) -> Path:
     """
     reader = GitReader(config.repo_path)
 
+    if on_progress is not None:
+        on_progress("Reading commit history")
     commits = reader.read_commits(
         branch=config.branch,
         since=config.since,
@@ -56,6 +65,8 @@ def generate_report(config: ReportConfig) -> Path:
     )
     window_end = config.until or datetime.date.today()
 
+    if on_progress is not None:
+        on_progress("Aggregating contributor statistics")
     contributor_stats = reader.aggregate_contributor_stats(
         commits=commits,
         min_commits=config.min_commits,
@@ -63,6 +74,8 @@ def generate_report(config: ReportConfig) -> Path:
 
     ranked_contributors: list[RankedContributor]
     if config.ranking_enabled and contributor_stats:
+        if on_progress is not None:
+            on_progress("Ranking contributors")
         ranked_contributors = rank_contributors(
             contributors=contributor_stats,
             commits=commits,
@@ -88,7 +101,6 @@ def generate_report(config: ReportConfig) -> Path:
         analysis_since=window_start,
         analysis_until=window_end,
     )
-
     if config.title:
         metadata = replace(metadata, name=config.title)
 
@@ -98,5 +110,7 @@ def generate_report(config: ReportConfig) -> Path:
         commits=commits,
     )
 
+    if on_progress is not None:
+        on_progress("Rendering report")
     renderer = Renderer()
     return renderer.render(report_data, config.output_path, config.heatmap_granularity)
