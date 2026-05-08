@@ -8,6 +8,16 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Progress indicator for `reveille generate`. Stage-level status lines
+  are emitted to stderr as the pipeline advances through reading commit
+  history, aggregating contributor statistics, ranking contributors, and
+  rendering the report. Each stage animates until complete, then resolves
+  to a static completion line. Stderr is used so stdout remains clean for
+  scripting. Implemented via an optional `on_progress` callback on
+  `generate_report`; the service layer remains unaware of the CLI.
+
 ### Changed
 
 - Black removed as a development dependency. `ruff format` is now the
