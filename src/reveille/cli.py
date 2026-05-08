@@ -352,6 +352,15 @@ def init(
     (or the path specified by --output) with all keys present and set to
     their defaults. Uncomment and edit only the keys you want to override.
     """
+    cwd = Path(".").resolve()
+    if not (cwd / ".git").exists():
+        typer.echo(
+            f"Error: '{cwd}' is not a Git repository root. "
+            "Run reveille init from within a repository root.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
     from reveille.init import write_init_config
 
     try:

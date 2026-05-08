@@ -525,3 +525,20 @@ class TestInitCommand:
         dest = base / "nonexistent_dir" / "reveille.toml"
         result = runner.invoke(app, ["init", "--output", str(dest)])
         assert result.exit_code != 0
+
+    def test_exits_nonzero_outside_git_repository(
+        self, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
+        """Non-zero exit and no file written when CWD is not a Git repository."""
+        import os
+
+        non_git = tmp_path_factory.mktemp("non_git_cwd")
+        dest = non_git / "reveille.toml"
+        original = Path(os.getcwd())
+        try:
+            os.chdir(non_git)
+            result = runner.invoke(app, ["init", "--output", str(dest)])
+        finally:
+            os.chdir(original)
+        assert result.exit_code != 0
+        assert not dest.exists()
