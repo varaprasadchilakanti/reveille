@@ -33,6 +33,28 @@ app = typer.Typer(
 )
 
 
+# Conventional configuration file name. Resolved against the current
+# working directory at invocation time. Users are not required to pass
+# --config when this file is present at the repository root.
+_CONVENTIONAL_CONFIG: str = "reveille.toml"
+
+
+def _discover_config() -> Path | None:
+    """Return the path to the conventional configuration file if present.
+
+    Looks for reveille.toml in the current working directory. This
+    implements the convention-over-configuration lookup: users who run
+    reveille generate from their repository root do not need to pass
+    --config explicitly when the canonical file name is used.
+
+    Returns:
+        The Path to reveille.toml if it exists in the current directory,
+        or None if no conventional configuration file is present.
+    """
+    candidate = Path(_CONVENTIONAL_CONFIG)
+    return candidate if candidate.exists() else None
+
+
 class _StageSpinner:
     """Per-stage progress indicator for the generate pipeline.
 
@@ -271,11 +293,22 @@ def generate(
     from reveille.services.report import generate_report
 
     config_kwargs: dict[str, object] = {}
-    if config is not None:
+    _auto_discovered = config is None
+    _config_path = config if config is not None else _discover_config()
+    if _config_path is not None:
         try:
-            config_kwargs = load_config_from_toml(config)
+            config_kwargs = load_config_from_toml(_config_path)
         except ConfigurationError as exc:
-            typer.echo(f"Configuration error: {exc}", err=True)
+            if _auto_discovered:
+                typer.echo(
+                    f"Configuration error: auto-discovered {_CONVENTIONAL_CONFIG} "
+                    f"contains invalid TOML.\nDetail: {exc}\n"
+                    f"Correct the syntax or regenerate the file with: "
+                    f"reveille init --force",
+                    err=True,
+                )
+            else:
+                typer.echo(f"Configuration error: {exc}", err=True)
             raise typer.Exit(code=1) from exc
 
     merged = _merge_cli_flags(

@@ -61,6 +61,24 @@ pip install reveille
 pipx install reveille
 ```
 
+**Install with Poetry (within a Poetry-managed project):**
+
+```bash
+poetry add reveille
+```
+
+**Install with uv:**
+
+```bash
+uv tool install reveille
+```
+
+**Run without a permanent install (uv):**
+
+```bash
+uvx reveille generate --repo /path/to/repository
+```
+
 **Verify the installation:**
 
 ```bash
@@ -86,7 +104,7 @@ Reveille reads the local Git history and writes a report to the current director
 reveille init
 ```
 
-This writes an annotated `reveille.toml` to the current directory with every available configuration key present and commented out. Edit only the keys you need, then pass the file with `--config` on subsequent invocations.
+This writes an annotated `reveille.toml` to the current directory with every available configuration key present and commented out. Edit only the keys you need. On all subsequent invocations, `reveille generate` will detect and load `reveille.toml` automatically — no `--config` flag required.
 
 **Generate a report for a specific date range:**
 
@@ -126,7 +144,7 @@ Generates the HTML performance report for the target repository.
 | `--title` | | `TEXT` | Repository name | Override the report title displayed in the HTML output. |
 | `--no-ranking` | | Flag | Off | Omit the contributor ranking table from the output. |
 | `--heatmap-granularity` | | `TEXT` | `monthly` | Default heatmap view on open. Accepted values: `daily`, `weekly`, `monthly`, `yearly`. All four views are available via toggle buttons in the rendered report regardless of this setting. |
-| `--config` | `-c` | `PATH` | None | Path to a TOML configuration file. CLI flags take precedence over config file values. |
+| `--config` | `-c` | `PATH` | None | Path to a TOML configuration file. If omitted, `reveille.toml` in the current working directory is loaded automatically when present. Use this flag for non-standard file names or paths outside the repository root. CLI flags always take precedence over configuration file values. |
 
 ### `reveille init`
 
@@ -202,7 +220,13 @@ Tier boundaries and weights are documented defaults and are fully reproducible f
 
 ## Configuration
 
-Reveille accepts a TOML configuration file for parameters that are cumbersome to pass on the command line on every invocation. Run `reveille init` to generate an annotated starting point, or create `reveille.toml` manually at the repository root and pass its path with `--config`.
+Reveille accepts a TOML configuration file for parameters that are cumbersome to pass on the command line on every invocation.
+
+**Canonical workflow.** Run `reveille init` from your repository root to generate an annotated `reveille.toml`. Edit only the keys relevant to your analysis. From that point, `reveille generate` detects and loads `reveille.toml` automatically on every invocation — no flag required.
+
+**Non-standard paths.** If the configuration file is named differently or stored outside the repository root, pass its path explicitly with `--config`. This is also the appropriate path for automation scripts that maintain multiple named configuration files for different analysis windows.
+
+A fully commented `reveille.toml` is equivalent to no configuration file: all built-in defaults apply. A partially configured file applies only the keys present; absent keys fall back to defaults. A malformed file causes `reveille generate` to exit with a non-zero status, a parse error detail, and a remediation hint.
 
 ```toml
 [report]
