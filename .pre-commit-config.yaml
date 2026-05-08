@@ -25,21 +25,13 @@ repos:
 
   # ------------------------------------------------------------------
   # Ruff — linting and import sorting
-  # Runs before black so that any auto-fixes are subsequently formatted.
   # ------------------------------------------------------------------
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.7
     hooks:
       - id: ruff-check
         args: [--fix]
-
-  # ------------------------------------------------------------------
-  # Black — code formatting
-  # ------------------------------------------------------------------
-  - repo: https://github.com/psf/black
-    rev: 25.1.0
-    hooks:
-      - id: black
+      - id: ruff-format
 
   # ------------------------------------------------------------------
   # Mypy — static type checking

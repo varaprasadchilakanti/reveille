@@ -52,9 +52,7 @@ def generate_report(config: ReportConfig) -> Path:
     )
 
     window_start = (
-        config.since
-        if config.since is not None
-        else min(c.timestamp.date() for c in commits)
+        config.since if config.since is not None else min(c.timestamp.date() for c in commits)
     )
     window_end = config.until or datetime.date.today()
 

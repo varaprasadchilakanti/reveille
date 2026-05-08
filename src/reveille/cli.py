@@ -111,7 +111,8 @@ def _merge_cli_flags(
 
     if output != Path("reveille-report.html") or "output_path" not in merged:
         merged["output_path"] = _resolve_output_path(
-            output, merged["repo_path"]  # type: ignore[arg-type]
+            output,
+            merged["repo_path"],  # type: ignore[arg-type]
         )
     if since is not None:
         merged["since"] = _parse_date(since, "--since")
@@ -145,21 +146,15 @@ def generate(
     ] = Path("reveille-report.html"),
     since: Annotated[
         str | None,
-        typer.Option(
-            "--since", help="Include commits on or after this date (YYYY-MM-DD)."
-        ),
+        typer.Option("--since", help="Include commits on or after this date (YYYY-MM-DD)."),
     ] = None,
     until: Annotated[
         str | None,
-        typer.Option(
-            "--until", help="Include commits on or before this date (YYYY-MM-DD)."
-        ),
+        typer.Option("--until", help="Include commits on or before this date (YYYY-MM-DD)."),
     ] = None,
     branch: Annotated[
         str | None,
-        typer.Option(
-            "--branch", "-b", help="Analyse commits reachable from this branch only."
-        ),
+        typer.Option("--branch", "-b", help="Analyse commits reachable from this branch only."),
     ] = None,
     exclude_author: Annotated[
         list[str] | None,
@@ -170,9 +165,7 @@ def generate(
     ] = None,
     min_commits: Annotated[
         int | None,
-        typer.Option(
-            "--min-commits", help="Exclude contributors below this commit threshold."
-        ),
+        typer.Option("--min-commits", help="Exclude contributors below this commit threshold."),
     ] = None,
     title: Annotated[
         str | None,
@@ -180,9 +173,7 @@ def generate(
     ] = None,
     no_ranking: Annotated[
         bool,
-        typer.Option(
-            "--no-ranking", help="Omit the contributor ranking table from the output."
-        ),
+        typer.Option("--no-ranking", help="Omit the contributor ranking table from the output."),
     ] = False,
     heatmap_granularity: Annotated[
         str | None,

@@ -4,8 +4,18 @@ All notable changes to Reveille are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
+---
+
 ## [Unreleased]
 
+### Changed
+
+- Black removed as a development dependency. `ruff format` is now the
+  sole formatter. `ruff format` has been Black-compatible since Ruff v0.2.0;
+  running both was redundant. The `ruff-format` pre-commit hook replaces
+  the `psf/black` hook at the same `ruff-pre-commit` revision.
+
+---
 
 ## [0.2.0] — 2026-05-06
 
@@ -78,6 +88,7 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
   weights, where IEEE 754 rounding could plausibly produce deviations
   approaching `1e-9` despite representing an exact decimal sum of `1.0`.
 
+---
 
 ## [0.1.1] — 2026-04-30
 
@@ -88,6 +99,7 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 - Makefile recipe indentation corrected from spaces to tabs, resolving
   `missing separator` errors on strict Make implementations (PR #16).
 
+---
 
 ## [0.1.0] — 2026-04-30
 
@@ -155,6 +167,7 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
   `"category"` and `tickangle` to `-45`, eliminating timestamp-format
   tick labels produced by Plotly's implicit date coercion.
 
+---
 
 [Unreleased]: https://github.com/varaprasadchilakanti/reveille/compare/v0.2.0...HEAD
 [0.2.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.2.0

@@ -120,10 +120,7 @@ class GitReader:
             author_name: str = raw.author.name or ""
             author_email: str = raw.author.email or ""
 
-            if (
-                author_name.lower() in exclude_set
-                or author_email.lower() in exclude_set
-            ):
+            if author_name.lower() in exclude_set or author_email.lower() in exclude_set:
                 continue
 
             stats = raw.stats.total

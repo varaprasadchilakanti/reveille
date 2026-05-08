@@ -149,9 +149,7 @@ class Renderer:
         try:
             resolved.write_text(html, encoding="utf-8")
         except OSError as exc:
-            raise OutputPathError(
-                f"Failed to write report to '{resolved}': {exc}"
-            ) from exc
+            raise OutputPathError(f"Failed to write report to '{resolved}': {exc}") from exc
 
         return resolved
 
@@ -209,12 +207,8 @@ class Renderer:
             "heatmap_weekly": _build_heatmap_chart(data.commits, "weekly"),
             "heatmap_monthly": _build_heatmap_chart(data.commits, "monthly"),
             "heatmap_yearly": _build_heatmap_chart(data.commits, "yearly"),
-            "contributor_commits": _build_contributor_commits_chart(
-                data.ranked_contributors
-            ),
-            "contributor_lines": _build_contributor_lines_chart(
-                data.ranked_contributors
-            ),
+            "contributor_commits": _build_contributor_commits_chart(data.ranked_contributors),
+            "contributor_lines": _build_contributor_lines_chart(data.ranked_contributors),
             "pie_commits": _build_commit_share_pie(data.ranked_contributors),
             "pie_lines": _build_lines_share_pie(data.ranked_contributors),
         }
@@ -299,9 +293,7 @@ def _build_heatmap_chart(
         return "null"
     if granularity == "daily":
         effective_end = (
-            window_end
-            if window_end is not None
-            else max(c.timestamp.date() for c in commits)
+            window_end if window_end is not None else max(c.timestamp.date() for c in commits)
         )
         return _build_heatmap_daily(commits, effective_end)
     if granularity == "weekly":
@@ -339,8 +331,7 @@ def _build_heatmap_weekly(commits: list[Commit]) -> str:
     num_weeks = max(week_indices) + 1
     z = [[cell.get((w, day), 0) for w in range(num_weeks)] for day in range(7)]
     week_labels = [
-        (base_week + datetime.timedelta(weeks=w)).strftime("%b %d")
-        for w in range(num_weeks)
+        (base_week + datetime.timedelta(weeks=w)).strftime("%b %d") for w in range(num_weeks)
     ]
     day_labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
@@ -461,9 +452,7 @@ def _build_heatmap_yearly(commits: list[Commit]) -> str:
         "Nov",
         "Dec",
     ]
-    z = [
-        [cell.get((year, month + 1), 0) for year in sorted_years] for month in range(12)
-    ]
+    z = [[cell.get((year, month + 1), 0) for year in sorted_years] for month in range(12)]
 
     fig = go.Figure(
         go.Heatmap(
@@ -551,8 +540,7 @@ def _build_heatmap_daily(
         customdata.append(row_dates)
 
     week_labels = [
-        (base_monday + datetime.timedelta(weeks=w)).strftime("%b %d")
-        for w in range(num_weeks)
+        (base_monday + datetime.timedelta(weeks=w)).strftime("%b %d") for w in range(num_weeks)
     ]
     day_labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
@@ -687,9 +675,7 @@ def _build_commit_share_pie(ranked: list[RankedContributor]) -> str:
         return "null"
 
     sorted_r = sorted(ranked, key=lambda r: r.stats.commit_count, reverse=True)
-    labels, values = _aggregate_pie_data(
-        [(r.stats.name, r.stats.commit_count) for r in sorted_r]
-    )
+    labels, values = _aggregate_pie_data([(r.stats.name, r.stats.commit_count) for r in sorted_r])
 
     fig = go.Figure(
         go.Pie(
@@ -728,9 +714,7 @@ def _build_lines_share_pie(ranked: list[RankedContributor]) -> str:
         return "null"
 
     sorted_r = sorted(ranked, key=lambda r: r.stats.lines_changed, reverse=True)
-    labels, values = _aggregate_pie_data(
-        [(r.stats.name, r.stats.lines_changed) for r in sorted_r]
-    )
+    labels, values = _aggregate_pie_data([(r.stats.name, r.stats.lines_changed) for r in sorted_r])
 
     fig = go.Figure(
         go.Pie(
