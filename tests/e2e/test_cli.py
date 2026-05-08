@@ -473,6 +473,54 @@ class TestGenerateCommand:
         assert 'id="spec-heatmap-yearly"' in default_report_content
         assert 'id="spec-heatmap-daily"' in default_report_content
 
+    def test_auto_discovers_reveille_toml_in_cwd(
+        self,
+        e2e_repo: Path,
+        tmp_path_factory: pytest.TempPathFactory,
+    ) -> None:
+        """reveille.toml at CWD is loaded without --config when present."""
+        work_dir = tmp_path_factory.mktemp("auto_discover_cwd")
+        output = work_dir / "report.html"
+        (work_dir / "reveille.toml").write_text(
+            '[report]\ntitle = "Auto Discovered Title"\n',
+            encoding="utf-8",
+        )
+        original = Path(os.getcwd())
+        try:
+            os.chdir(work_dir)
+            result = runner.invoke(
+                app,
+                ["generate", "--repo", str(e2e_repo), "--output", str(output)],
+            )
+        finally:
+            os.chdir(original)
+        assert result.exit_code == 0
+        assert "Auto Discovered Title" in output.read_text(encoding="utf-8")
+
+    def test_malformed_auto_discovered_config_exits_with_remediation_hint(
+        self,
+        e2e_repo: Path,
+        tmp_path_factory: pytest.TempPathFactory,
+    ) -> None:
+        """Malformed auto-discovered reveille.toml exits nonzero with remediation guidance."""
+        work_dir = tmp_path_factory.mktemp("malformed_auto_discover")
+        output = work_dir / "report.html"
+        (work_dir / "reveille.toml").write_text(
+            "[report]\ntitle = missing quotes\n",
+            encoding="utf-8",
+        )
+        original = Path(os.getcwd())
+        try:
+            os.chdir(work_dir)
+            result = runner.invoke(
+                app,
+                ["generate", "--repo", str(e2e_repo), "--output", str(output)],
+            )
+        finally:
+            os.chdir(original)
+        assert result.exit_code == 1
+        assert "reveille init --force" in result.output
+
 
 # ------------------------------------------------------------------
 # Init command
