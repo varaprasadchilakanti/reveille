@@ -25,6 +25,15 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
   running both was redundant. The `ruff-format` pre-commit hook replaces
   the `psf/black` hook at the same `ruff-pre-commit` revision.
 
+### Fixed
+
+- `reveille init` now validates that the current working directory is a
+  Git repository root before writing the configuration file. Previously
+  the command wrote the file unconditionally, producing a configuration
+  that referenced a non-repository path and could not be used with
+  `reveille generate`. Running `init` outside a repository root now exits
+  with a non-zero status and a diagnostic message.
+
 ---
 
 ## [0.2.0] — 2026-05-06
