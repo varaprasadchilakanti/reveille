@@ -167,9 +167,7 @@ class TestComputeLongestInactiveStreak:
         end = datetime.date(2024, 1, 5)
         commits = [_make_commit(start + datetime.timedelta(days=i)) for i in range(5)]
         assert (
-            _compute_longest_inactive_streak(
-                commits=commits, window_start=start, window_end=end
-            )
+            _compute_longest_inactive_streak(commits=commits, window_start=start, window_end=end)
             == 0
         )
 
@@ -360,9 +358,7 @@ class TestBuildHeatmapDaily:
 
     def test_returns_valid_chart_json(self) -> None:
         commits = [_make_commit(datetime.date(2024, 1, 8))]
-        assert _is_valid_chart_json(
-            _build_heatmap_daily(commits, datetime.date(2024, 1, 31))
-        )
+        assert _is_valid_chart_json(_build_heatmap_daily(commits, datetime.date(2024, 1, 31)))
 
     def test_z_matrix_has_seven_rows(self) -> None:
         """Seven rows correspond to the seven days of the week."""
@@ -382,9 +378,7 @@ class TestBuildHeatmapDaily:
         """A commit within max_days of window_end produces a valid chart."""
         recent = _make_commit(datetime.date(2024, 3, 1))
         window_end = datetime.date(2024, 3, 31)
-        assert _is_valid_chart_json(
-            _build_heatmap_daily([recent], window_end, max_days=90)
-        )
+        assert _is_valid_chart_json(_build_heatmap_daily([recent], window_end, max_days=90))
 
     def test_column_count_matches_weeks_in_rolling_window(self) -> None:
         """Column count equals the number of calendar weeks in the window.
@@ -394,9 +388,7 @@ class TestBuildHeatmapDaily:
         Weeks: Jan 01, Jan 08, Jan 15, Jan 22 -> 4 columns.
         """
         commits = [_make_commit(datetime.date(2024, 1, 15))]
-        parsed = json.loads(
-            _build_heatmap_daily(commits, datetime.date(2024, 1, 28), max_days=28)
-        )
+        parsed = json.loads(_build_heatmap_daily(commits, datetime.date(2024, 1, 28), max_days=28))
         assert len(parsed["data"][0]["x"]) == 4
 
     def test_xaxis_type_is_category(self) -> None:
@@ -415,9 +407,7 @@ class TestBuildHeatmapDaily:
 
     def test_dispatch_daily_via_build_heatmap_chart(self) -> None:
         commits = [_make_commit(datetime.date(2024, 1, 8))]
-        result = _build_heatmap_chart(
-            commits, "daily", window_end=datetime.date(2024, 1, 31)
-        )
+        result = _build_heatmap_chart(commits, "daily", window_end=datetime.date(2024, 1, 31))
         assert _is_valid_chart_json(result)
 
     def test_dispatch_daily_without_window_end_defaults_to_max_commit_date(
@@ -469,9 +459,7 @@ class TestBuildContributorLinesChart:
         assert _build_contributor_lines_chart([]) == "null"
 
     def test_single_contributor_returns_valid_chart_json(self) -> None:
-        ranked = [
-            _make_ranked("Alice", commit_count=10, lines_added=500, lines_deleted=80)
-        ]
+        ranked = [_make_ranked("Alice", commit_count=10, lines_added=500, lines_deleted=80)]
         assert _is_valid_chart_json(_build_contributor_lines_chart(ranked))
 
     def test_multiple_contributors_return_valid_chart_json(self) -> None:

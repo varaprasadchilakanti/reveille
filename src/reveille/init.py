@@ -145,8 +145,6 @@ def write_init_config(output_path: Path, *, force: bool = False) -> Path:
     try:
         resolved.write_text(_DEFAULT_CONFIG_TEMPLATE, encoding="utf-8")
     except OSError as exc:
-        raise OutputPathError(
-            f"Failed to write configuration file to '{resolved}': {exc}"
-        ) from exc
+        raise OutputPathError(f"Failed to write configuration file to '{resolved}': {exc}") from exc
 
     return resolved

@@ -188,9 +188,7 @@ class TestGenerateCommand:
 
     # -- Default output structure (shared fixture, no redundant rendering) --
 
-    def test_generates_html_file_at_default_path(
-        self, default_report_content: str
-    ) -> None:
+    def test_generates_html_file_at_default_path(self, default_report_content: str) -> None:
         assert len(default_report_content) > 0
 
     def test_output_is_valid_html(self, default_report_content: str) -> None:
@@ -200,15 +198,11 @@ class TestGenerateCommand:
     def test_output_contains_plotly_bundle(self, default_report_content: str) -> None:
         assert "plotly" in default_report_content.lower()
 
-    def test_output_contains_contributor_names(
-        self, default_report_content: str
-    ) -> None:
+    def test_output_contains_contributor_names(self, default_report_content: str) -> None:
         assert "Alice" in default_report_content
         assert "Bob" in default_report_content
 
-    def test_output_file_has_no_external_script_tags(
-        self, default_report_content: str
-    ) -> None:
+    def test_output_file_has_no_external_script_tags(self, default_report_content: str) -> None:
         import re
 
         external_tags = re.findall(
@@ -216,8 +210,7 @@ class TestGenerateCommand:
             default_report_content,
         )
         assert external_tags == [], (
-            f"Report contains {len(external_tags)} external script reference(s): "
-            f"{external_tags}"
+            f"Report contains {len(external_tags)} external script reference(s): {external_tags}"
         )
 
     # -- Distinct invocations (different flags, cannot share) --
@@ -473,9 +466,7 @@ class TestGenerateCommand:
         )
         assert result.exit_code == 1
 
-    def test_output_embeds_all_four_heatmap_specs(
-        self, default_report_content: str
-    ) -> None:
+    def test_output_embeds_all_four_heatmap_specs(self, default_report_content: str) -> None:
         """All three heatmap granularity specs are present in the output."""
         assert 'id="spec-heatmap-weekly"' in default_report_content
         assert 'id="spec-heatmap-monthly"' in default_report_content
@@ -501,9 +492,7 @@ class TestInitCommand:
         assert result.exit_code == 0
         assert dest.exists()
 
-    def test_output_confirms_written_path(
-        self, tmp_path_factory: pytest.TempPathFactory
-    ) -> None:
+    def test_output_confirms_written_path(self, tmp_path_factory: pytest.TempPathFactory) -> None:
         """The success message includes the written path."""
         dest = tmp_path_factory.mktemp("init_confirm") / "reveille.toml"
         result = runner.invoke(app, ["init", "--output", str(dest)])

@@ -91,14 +91,8 @@ class ReportConfig(BaseModel):
         Raises:
             ValueError: If since is later than until.
         """
-        if (
-            self.since is not None
-            and self.until is not None
-            and self.since > self.until
-        ):
-            raise ValueError(
-                f"since ({self.since}) must be earlier than until ({self.until})."
-            )
+        if self.since is not None and self.until is not None and self.since > self.until:
+            raise ValueError(f"since ({self.since}) must be earlier than until ({self.until}).")
         return self
 
 
@@ -126,9 +120,7 @@ def load_config_from_toml(path: Path) -> dict[str, Any]:
     except FileNotFoundError as exc:
         raise ConfigurationError(f"Configuration file not found: '{path}'.") from exc
     except tomllib.TOMLDecodeError as exc:
-        raise ConfigurationError(
-            f"Configuration file is not valid TOML: {exc}"
-        ) from exc
+        raise ConfigurationError(f"Configuration file is not valid TOML: {exc}") from exc
 
     kwargs: dict[str, Any] = {}
     kwargs.update(_parse_report_section(raw.get("report", {})))

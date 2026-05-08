@@ -142,9 +142,7 @@ def fixture_repo(tmp_path_factory: pytest.TempPathFactory) -> Path:
 class TestGitReaderInit:
     """Tests for GitReader initialisation and path validation."""
 
-    def test_valid_repository_initialises_without_error(
-        self, fixture_repo: Path
-    ) -> None:
+    def test_valid_repository_initialises_without_error(self, fixture_repo: Path) -> None:
         reader = GitReader(fixture_repo)
         assert reader is not None
 
@@ -170,16 +168,12 @@ class TestReadCommits:
 
     def test_returns_all_commits_without_filters(self, fixture_repo: Path) -> None:
         reader = GitReader(fixture_repo)
-        commits = reader.read_commits(
-            branch=None, since=None, until=None, exclude_authors=[]
-        )
+        commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
         assert len(commits) == 5
 
     def test_commits_are_sorted_most_recent_first(self, fixture_repo: Path) -> None:
         reader = GitReader(fixture_repo)
-        commits = reader.read_commits(
-            branch=None, since=None, until=None, exclude_authors=[]
-        )
+        commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
         timestamps = [c.timestamp for c in commits]
         assert timestamps == sorted(timestamps, reverse=True)
 
@@ -236,9 +230,7 @@ class TestReadCommits:
         )
         assert len(commits) == 3
 
-    def test_empty_window_raises_empty_repository_error(
-        self, fixture_repo: Path
-    ) -> None:
+    def test_empty_window_raises_empty_repository_error(self, fixture_repo: Path) -> None:
         reader = GitReader(fixture_repo)
         with pytest.raises(EmptyRepositoryError):
             reader.read_commits(
@@ -270,9 +262,7 @@ class TestAggregateContributorStats:
 
     def test_returns_one_entry_per_unique_contributor(self, fixture_repo: Path) -> None:
         reader = GitReader(fixture_repo)
-        commits = reader.read_commits(
-            branch=None, since=None, until=None, exclude_authors=[]
-        )
+        commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
         stats = reader.aggregate_contributor_stats(
             commits=commits,
             min_commits=1,
@@ -281,9 +271,7 @@ class TestAggregateContributorStats:
 
     def test_alice_has_three_commits(self, fixture_repo: Path) -> None:
         reader = GitReader(fixture_repo)
-        commits = reader.read_commits(
-            branch=None, since=None, until=None, exclude_authors=[]
-        )
+        commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
         stats = reader.aggregate_contributor_stats(
             commits=commits,
             min_commits=1,
@@ -293,9 +281,7 @@ class TestAggregateContributorStats:
 
     def test_sorted_by_commit_count_descending(self, fixture_repo: Path) -> None:
         reader = GitReader(fixture_repo)
-        commits = reader.read_commits(
-            branch=None, since=None, until=None, exclude_authors=[]
-        )
+        commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
         stats = reader.aggregate_contributor_stats(
             commits=commits,
             min_commits=1,
@@ -303,13 +289,9 @@ class TestAggregateContributorStats:
         counts = [s.commit_count for s in stats]
         assert counts == sorted(counts, reverse=True)
 
-    def test_min_commits_filters_low_activity_contributors(
-        self, fixture_repo: Path
-    ) -> None:
+    def test_min_commits_filters_low_activity_contributors(self, fixture_repo: Path) -> None:
         reader = GitReader(fixture_repo)
-        commits = reader.read_commits(
-            branch=None, since=None, until=None, exclude_authors=[]
-        )
+        commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
         # Bob has 2 commits. min_commits=3 should exclude him.
         stats = reader.aggregate_contributor_stats(
             commits=commits,
@@ -318,13 +300,9 @@ class TestAggregateContributorStats:
         assert len(stats) == 1
         assert stats[0].email == "alice@example.com"
 
-    def test_active_days_counts_distinct_calendar_dates(
-        self, fixture_repo: Path
-    ) -> None:
+    def test_active_days_counts_distinct_calendar_dates(self, fixture_repo: Path) -> None:
         reader = GitReader(fixture_repo)
-        commits = reader.read_commits(
-            branch=None, since=None, until=None, exclude_authors=[]
-        )
+        commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
         stats = reader.aggregate_contributor_stats(
             commits=commits,
             min_commits=1,

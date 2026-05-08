@@ -295,9 +295,7 @@ class TestComputeRecencyScore:
         anchor = datetime.date(2024, 3, 31)
         recent = [_make_commit("a@x.com", datetime.date(2024, 3, 25))]
         older = [_make_commit("a@x.com", datetime.date(2024, 1, 5))]
-        assert _compute_recency_score(recent, anchor) > _compute_recency_score(
-            older, anchor
-        )
+        assert _compute_recency_score(recent, anchor) > _compute_recency_score(older, anchor)
 
     def test_score_is_non_negative(self) -> None:
         anchor = datetime.date(2024, 3, 31)
