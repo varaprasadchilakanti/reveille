@@ -287,3 +287,38 @@ class TestGenerateReport:
             generate_report(minimal_config)
 
         assert captured[0].commits == [sample_commit]
+
+    def test_progress_callback_invoked_at_each_stage_in_order(
+        self,
+        minimal_config: ReportConfig,
+        sample_commit: Commit,
+        sample_stats: ContributorStats,
+        sample_ranked: RankedContributor,
+        sample_metadata: RepositoryMetadata,
+    ) -> None:
+        """on_progress is called once per pipeline stage in execution order."""
+        calls: list[str] = []
+
+        def capture(label: str) -> None:
+            calls.append(label)
+
+        with (
+            patch("reveille.services.report.GitReader") as mock_reader,
+            patch("reveille.services.report.rank_contributors") as mock_rank,
+            patch("reveille.services.report.Renderer") as mock_renderer,
+        ):
+            reader_instance = mock_reader.return_value
+            reader_instance.read_commits.return_value = [sample_commit]
+            reader_instance.aggregate_contributor_stats.return_value = [sample_stats]
+            reader_instance.read_metadata.return_value = sample_metadata
+            mock_rank.return_value = [sample_ranked]
+            mock_renderer.return_value.render.return_value = Path("out.html")
+
+            generate_report(minimal_config, on_progress=capture)
+
+        assert calls == [
+            "Reading commit history",
+            "Aggregating contributor statistics",
+            "Ranking contributors",
+            "Rendering report",
+        ]
