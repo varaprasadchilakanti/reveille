@@ -17,6 +17,14 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
   to a static completion line. Stderr is used so stdout remains clean for
   scripting. Implemented via an optional `on_progress` callback on
   `generate_report`; the service layer remains unaware of the CLI.
+- `reveille generate` auto-discovers `reveille.toml` at the current working
+  directory when `--config` is not provided. A fully commented file applies
+  all built-in defaults. A partially configured file applies only the keys
+  present; absent keys fall back to defaults. A malformed file exits with a
+  non-zero status, a parse error detail, and an explicit remediation hint to
+  correct the syntax or regenerate the file with `reveille init --force`.
+  The `--config` flag remains available for non-standard file names and
+  paths.
 
 ### Changed
 
