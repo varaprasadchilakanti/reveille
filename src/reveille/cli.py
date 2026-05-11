@@ -404,6 +404,15 @@ def init(
         raise typer.Exit(code=1) from exc
 
 
+@app.command()
+def help(ctx: typer.Context) -> None:
+    """Display help information for all available commands."""
+    if ctx.parent is not None:
+        typer.echo(ctx.parent.get_help())
+    else:
+        typer.echo(ctx.get_help())
+
+
 def _parse_date(value: str, flag_name: str) -> datetime.date:
     """Parse a YYYY-MM-DD string into a date object.
 
