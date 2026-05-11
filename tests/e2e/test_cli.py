@@ -149,6 +149,26 @@ class TestVersionCommand:
 
 
 # ------------------------------------------------------------------
+# Help command
+# ------------------------------------------------------------------
+
+
+@pytest.mark.e2e
+class TestHelpCommand:
+    """Tests for the reveille help command."""
+
+    def test_help_command_exits_zero(self) -> None:
+        result = runner.invoke(app, ["help"])
+        assert result.exit_code == 0
+
+    def test_help_command_output_contains_known_subcommands(self) -> None:
+        result = runner.invoke(app, ["help"])
+        assert "generate" in result.output
+        assert "init" in result.output
+        assert "validate" in result.output
+
+
+# ------------------------------------------------------------------
 # Validate command
 # ------------------------------------------------------------------
 
