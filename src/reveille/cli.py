@@ -30,6 +30,7 @@ app = typer.Typer(
     help="Generate self-contained HTML performance reports from local Git repositories.",
     add_completion=False,
     no_args_is_help=True,
+    context_settings={"help_option_names": ["-h", "--help"]},
 )
 
 

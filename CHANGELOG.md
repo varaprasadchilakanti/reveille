@@ -14,6 +14,11 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
   available commands and global options. Supplements the existing
   `reveille --help` flag with a subcommand form that matches the instinctive
   typing pattern for users familiar with Git-style CLIs.
+- `-h` accepted as a short form of `--help` on all commands. `reveille -h`,
+  `reveille generate -h`, `reveille init -h`, and `reveille validate -h` all
+  display the relevant help text. Implemented via Click's `help_option_names`
+  context setting, which propagates the alias to every subcommand without
+  per-command wiring.
 
 ### Fixed
 

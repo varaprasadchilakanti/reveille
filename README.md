@@ -169,7 +169,7 @@ reveille validate --repo /path/to/repository
 
 ### `reveille help`
 
-Displays the top-level help text listing all available commands and global options. Equivalent to `reveille --help`.
+Displays the top-level help text listing all available commands and global options. Equivalent to `reveille --help` and `reveille -h`. The short flag `-h` is available on every subcommand — for example, `reveille generate -h` displays the full flag reference for the generate command.
 
 ```bash
 reveille help
