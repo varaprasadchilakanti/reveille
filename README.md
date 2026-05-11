@@ -167,6 +167,14 @@ Validates that the target path is a readable Git repository and that the analysi
 reveille validate --repo /path/to/repository
 ```
 
+### `reveille help`
+
+Displays the top-level help text listing all available commands and global options. Equivalent to `reveille --help`.
+
+```bash
+reveille help
+```
+
 ---
 
 ## Output Description
