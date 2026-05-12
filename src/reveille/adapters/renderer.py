@@ -10,8 +10,12 @@ script block. Client-side initialisation renders all charts via
 Plotly.newPlot() at page load, applying the active colour theme at
 that time. On theme toggle, Plotly.relayout() updates each chart's
 background, axis, and font properties without re-fetching trace data.
-This strategy supports complete dark mode parity for all charts
-without doubling the embedded payload.
+
+The activity heatmap uses a compact daily-count payload rather than
+a pre-built Plotly spec. The client builds the GitHub-style 7-row
+grid (Mon-Sun rows, calendar-week columns) from the raw counts,
+allowing year and contributor navigation via Plotly.react() without
+re-fetching data from the server.
 
 The string "</script>" is escaped as "<\/script>" in all JSON
 output to prevent premature script block termination when chart
@@ -38,7 +42,6 @@ from jinja2 import (
 
 from reveille.domain.models import (
     Commit,
-    HeatmapGranularity,
     RankedContributor,
     ReportData,
 )
@@ -62,7 +65,6 @@ _PIE_PALETTE: list[str] = [
     "#6366f1",
     "#f97316",
 ]
-
 
 # Module-level cache for the Plotly JS bundle.
 # plotly.offline.get_plotlyjs() reads ~3.5 MB of minified JavaScript from
@@ -99,19 +101,12 @@ class Renderer:
         self,
         data: ReportData,
         output_path: Path,
-        heatmap_granularity: HeatmapGranularity = "monthly",
     ) -> Path:
         """Render the report and write it to the specified output path.
 
         Args:
             data: The complete structured report dataset.
             output_path: Destination path for the HTML file.
-            heatmap_granularity: Resolution of the commit activity heatmap.
-                'weekly' renders one column per calendar week. 'monthly'
-                renders one column per calendar month with weekday rows.
-                'yearly' renders one column per year with month rows.
-                Defaults to 'monthly', which balances detail and readability
-                for repositories with more than six months of history.
 
         Returns:
             The absolute path of the written file.
@@ -139,7 +134,6 @@ class Renderer:
                 derived=derived,
                 plotly_js=plotly_js,
                 generated_at=generated_at,
-                heatmap_granularity=heatmap_granularity,
             )
         except RenderError:
             raise
@@ -187,26 +181,27 @@ class Renderer:
 
         Each returned value is a Plotly figure serialised as a JSON string,
         suitable for embedding in an application/json script block and
-        rendered client-side via Plotly.newPlot(). Returns the JSON
-        string 'null' for any chart that lacks sufficient data.
+        rendered client-side via Plotly.newPlot(). Returns the JSON string
+        'null' for any chart that lacks sufficient data.
+
+        The heatmap key contains a compact daily-count payload rather than
+        a Plotly spec. The client builds the GitHub-style grid from this
+        data, navigating between years and contributors via Plotly.react().
 
         Args:
             data: The complete report dataset.
 
         Returns:
-            A dict mapping chart identifier to Plotly JSON specification string.
-            The heatmap is provided as four separate keys (heatmap_daily,
-            heatmap_weekly, heatmap_monthly, heatmap_yearly) to support
-            client-side granularity toggling without a page reload.
+            A dict mapping chart identifier to JSON string.
         """
         return {
             "timeline": _build_timeline_chart(data.commits),
-            "heatmap_daily": _build_heatmap_chart(
-                data.commits, "daily", window_end=data.metadata.analysis_until
+            "heatmap": _build_heatmap_data(
+                data.commits,
+                data.ranked_contributors,
+                data.metadata.analysis_since,
+                data.metadata.analysis_until,
             ),
-            "heatmap_weekly": _build_heatmap_chart(data.commits, "weekly"),
-            "heatmap_monthly": _build_heatmap_chart(data.commits, "monthly"),
-            "heatmap_yearly": _build_heatmap_chart(data.commits, "yearly"),
             "contributor_commits": _build_contributor_commits_chart(data.ranked_contributors),
             "contributor_lines": _build_contributor_lines_chart(data.ranked_contributors),
             "pie_commits": _build_commit_share_pie(data.ranked_contributors),
@@ -268,308 +263,65 @@ def _build_timeline_chart(commits: list[Commit]) -> str:
     return _to_json(fig)
 
 
-def _build_heatmap_chart(
+def _build_heatmap_data(
     commits: list[Commit],
-    granularity: HeatmapGranularity,
-    window_end: datetime.date | None = None,
+    ranked_contributors: list[RankedContributor],
+    analysis_since: datetime.date,
+    analysis_until: datetime.date,
 ) -> str:
-    """Build a commit activity heatmap at the specified granularity.
+    """Build a compact daily commit-count payload for client-side heatmap rendering.
 
-    Dispatches to the appropriate granularity-specific builder. Each
-    builder produces a heatmap with a different time bucketing strategy
-    suited to the volume of history being visualised.
+    The payload contains three keys:
+    - years: integer list covering analysis_since.year through analysis_until.year
+    - contributors: ordered list of {email, name} dicts; "__aggregated__" is always
+      first, followed by contributors in ranked order
+    - daily_counts: dict keyed by email (including "__aggregated__") mapping
+      ISO 8601 date strings to integer commit counts for that calendar day
+
+    The client builds the GitHub-style grid (7 rows Mon-Sun, calendar-week columns)
+    from this data. Year tabs and a contributor dropdown drive Plotly.react() calls
+    without re-fetching or recomputing server-side data.
 
     Args:
         commits: All commits in the analysis window.
-        granularity: One of 'daily', 'weekly', 'monthly', or 'yearly'.
-        window_end: End date of the analysis window. Required for the daily
-            granularity to anchor the rolling window cap. When None and
-            granularity is 'daily', the maximum commit date is used.
+        ranked_contributors: Contributor list in rank order, used to determine
+            the dropdown ordering and to key per-contributor counts.
+        analysis_since: Start of the analysis window.
+        analysis_until: End of the analysis window.
 
     Returns:
-        A Plotly figure JSON string, or 'null' if commits is empty.
+        A JSON string safe for embedding in an application/json script block.
+        The sentinel sequence "</" is escaped to prevent premature script
+        block termination.
     """
-    if not commits:
-        return "null"
-    if granularity == "daily":
-        effective_end = (
-            window_end if window_end is not None else max(c.timestamp.date() for c in commits)
-        )
-        return _build_heatmap_daily(commits, effective_end)
-    if granularity == "weekly":
-        return _build_heatmap_weekly(commits)
-    if granularity == "monthly":
-        return _build_heatmap_monthly(commits)
-    return _build_heatmap_yearly(commits)
+    years = list(range(analysis_since.year, analysis_until.year + 1))
 
-
-def _build_heatmap_weekly(commits: list[Commit]) -> str:
-    """Build a calendar-style weekly heatmap.
-
-    Rows represent days of the week (Monday to Sunday). Columns represent
-    calendar weeks across the analysis window. Best suited for repositories
-    with fewer than six months of history.
-
-    Args:
-        commits: All commits in the analysis window. Must be non-empty.
-
-    Returns:
-        A Plotly figure JSON string.
-    """
-    earliest = min(c.timestamp.date() for c in commits)
-    base_week = earliest - datetime.timedelta(days=earliest.weekday())
-    cell: dict[tuple[int, int], int] = defaultdict(int)
-    week_indices: set[int] = set()
+    agg_counts: defaultdict[str, int] = defaultdict(int)
+    per_email: dict[str, defaultdict[str, int]] = {}
 
     for commit in commits:
-        d = commit.timestamp.date()
-        week_start = d - datetime.timedelta(days=d.weekday())
-        week_idx = (week_start - base_week).days // 7
-        cell[(week_idx, d.weekday())] += 1
-        week_indices.add(week_idx)
+        date_str = commit.timestamp.date().isoformat()
+        agg_counts[date_str] += 1
+        email_key = commit.author_email.lower()
+        if email_key not in per_email:
+            per_email[email_key] = defaultdict(int)
+        per_email[email_key][date_str] += 1
 
-    num_weeks = max(week_indices) + 1
-    z = [[cell.get((w, day), 0) for w in range(num_weeks)] for day in range(7)]
-    week_labels = [
-        (base_week + datetime.timedelta(weeks=w)).strftime("%b %d") for w in range(num_weeks)
-    ]
-    day_labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    contributors: list[dict[str, str]] = [{"email": "__aggregated__", "name": "All Contributors"}]
+    daily_counts: dict[str, dict[str, int]] = {"__aggregated__": dict(agg_counts)}
 
-    fig = go.Figure(
-        go.Heatmap(
-            z=z,
-            x=week_labels,
-            y=day_labels,
-            colorscale=_heatmap_colorscale(),
-            showscale=True,
-            hovertemplate="Week: %{x}<br>Day: %{y}<br>Commits: %{z}<extra></extra>",
-        )
-    )
-    layout = _base_layout()
-    layout["xaxis"] = {
-        "type": "category",
-        "gridcolor": "#30363d",
-        "linecolor": "#30363d",
+    for r in ranked_contributors:
+        email_key = r.stats.email.lower()
+        if email_key in per_email:
+            contributors.append({"email": email_key, "name": r.stats.name})
+            daily_counts[email_key] = dict(per_email[email_key])
+
+    payload: dict[str, object] = {
+        "years": years,
+        "contributors": contributors,
+        "daily_counts": daily_counts,
     }
-    layout["yaxis"] = {
-        "autorange": "reversed",
-        "gridcolor": "#30363d",
-        "scaleanchor": "x",
-        "constrain": "domain",
-    }
-    fig.update_layout(**layout, height=260)
-    return _to_json(fig)
-
-
-def _build_heatmap_monthly(commits: list[Commit]) -> str:
-    """Build a monthly commit activity heatmap.
-
-    Rows represent days of the week (Monday to Sunday). Columns represent
-    calendar months labelled as YYYY-MM. Each cell contains the total
-    commit count for that weekday across all occurrences within that
-    calendar month. Suitable for repositories with six months to three
-    years of history.
-
-    Args:
-        commits: All commits in the analysis window. Must be non-empty.
-
-    Returns:
-        A Plotly figure JSON string.
-    """
-    cell: dict[tuple[str, int], int] = defaultdict(int)
-    months_set: set[str] = set()
-
-    for commit in commits:
-        d = commit.timestamp.date()
-        month_key = f"{d.year:04d}-{d.month:02d}"
-        cell[(month_key, d.weekday())] += 1
-        months_set.add(month_key)
-
-    sorted_months = sorted(months_set)
-    day_labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-    z = [[cell.get((month, day), 0) for month in sorted_months] for day in range(7)]
-
-    fig = go.Figure(
-        go.Heatmap(
-            z=z,
-            x=sorted_months,
-            y=day_labels,
-            colorscale=_heatmap_colorscale(),
-            showscale=True,
-            hovertemplate="Month: %{x}<br>Day: %{y}<br>Commits: %{z}<extra></extra>",
-        )
-    )
-    layout = _base_layout()
-    layout["xaxis"] = {
-        "type": "category",
-        "gridcolor": "#30363d",
-        "linecolor": "#30363d",
-    }
-    layout["yaxis"] = {
-        "autorange": "reversed",
-        "gridcolor": "#30363d",
-        "scaleanchor": "x",
-        "constrain": "domain",
-    }
-    fig.update_layout(**layout, height=260)
-    return _to_json(fig)
-
-
-def _build_heatmap_yearly(commits: list[Commit]) -> str:
-    """Build a yearly commit activity heatmap.
-
-    Rows represent months of the year (January to December). Columns
-    represent calendar years. Each cell contains the total commit count
-    for that month-year combination. Suitable for repositories with more
-    than three years of history.
-
-    Args:
-        commits: All commits in the analysis window. Must be non-empty.
-
-    Returns:
-        A Plotly figure JSON string.
-    """
-    cell: dict[tuple[int, int], int] = defaultdict(int)
-    years_set: set[int] = set()
-
-    for commit in commits:
-        d = commit.timestamp.date()
-        cell[(d.year, d.month)] += 1
-        years_set.add(d.year)
-
-    sorted_years = sorted(years_set)
-    month_labels = [
-        "Jan",
-        "Feb",
-        "Mar",
-        "Apr",
-        "May",
-        "Jun",
-        "Jul",
-        "Aug",
-        "Sep",
-        "Oct",
-        "Nov",
-        "Dec",
-    ]
-    z = [[cell.get((year, month + 1), 0) for year in sorted_years] for month in range(12)]
-
-    fig = go.Figure(
-        go.Heatmap(
-            z=z,
-            x=[str(y) for y in sorted_years],
-            y=month_labels,
-            colorscale=_heatmap_colorscale(),
-            showscale=True,
-            hovertemplate="Year: %{x}<br>Month: %{y}<br>Commits: %{z}<extra></extra>",
-        )
-    )
-    layout = _base_layout()
-    layout["xaxis"] = {
-        "type": "category",
-        "gridcolor": "#30363d",
-        "linecolor": "#30363d",
-    }
-    layout["yaxis"] = {
-        "autorange": "reversed",
-        "gridcolor": "#30363d",
-        "scaleanchor": "x",
-        "constrain": "domain",
-    }
-    fig.update_layout(**layout, height=340)
-    return _to_json(fig)
-
-
-def _build_heatmap_daily(
-    commits: list[Commit],
-    window_end: datetime.date,
-    max_days: int = 365,
-) -> str:
-    """Build a GitHub-style daily commit activity heatmap.
-
-    Rows represent days of the week (Monday to Sunday). Columns represent
-    calendar weeks within the rolling window. Each cell contains the exact
-    commit count for that specific calendar day — no aggregation occurs
-    within a week, unlike the weekly granularity builder.
-
-    The rolling window is capped at max_days before window_end to prevent
-    excessive chart width for repositories with multi-year histories.
-
-    Args:
-        commits: All commits in the analysis window.
-        window_end: End date of the analysis window. Used as the anchor for
-            the rolling window cap.
-        max_days: Maximum calendar days to display counting back from
-            window_end. Defaults to 365 (one rolling year).
-
-    Returns:
-        A Plotly figure JSON string, or 'null' if no commits fall within
-        the rolling window.
-    """
-    if not commits:
-        return "null"
-
-    rolling_start = window_end - datetime.timedelta(days=max_days - 1)
-    filtered = [c for c in commits if c.timestamp.date() >= rolling_start]
-    if not filtered:
-        return "null"
-
-    date_counts: dict[datetime.date, int] = defaultdict(int)
-    for commit in filtered:
-        date_counts[commit.timestamp.date()] += 1
-
-    # Align the grid to the Monday of the week containing rolling_start.
-    base_monday = rolling_start - datetime.timedelta(days=rolling_start.weekday())
-    last_monday = window_end - datetime.timedelta(days=window_end.weekday())
-    num_weeks = (last_monday - base_monday).days // 7 + 1
-
-    z: list[list[int]] = []
-    customdata: list[list[str]] = []
-    for day in range(7):
-        row_z: list[int] = []
-        row_dates: list[str] = []
-        for week in range(num_weeks):
-            date = base_monday + datetime.timedelta(weeks=week, days=day)
-            if rolling_start <= date <= window_end:
-                row_z.append(date_counts.get(date, 0))
-                row_dates.append(date.strftime("%Y-%m-%d"))
-            else:
-                row_z.append(0)
-                row_dates.append("")
-        z.append(row_z)
-        customdata.append(row_dates)
-
-    week_labels = [
-        (base_monday + datetime.timedelta(weeks=w)).strftime("%b %d") for w in range(num_weeks)
-    ]
-    day_labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-
-    fig = go.Figure(
-        go.Heatmap(
-            z=z,
-            x=week_labels,
-            y=day_labels,
-            customdata=customdata,
-            colorscale=_heatmap_colorscale(),
-            showscale=True,
-            hovertemplate="%{customdata}<br>Commits: %{z}<extra></extra>",
-        )
-    )
-    layout = _base_layout()
-    layout["xaxis"] = {
-        "type": "category",
-        "gridcolor": "#30363d",
-        "linecolor": "#30363d",
-        "tickangle": -45,
-    }
-    layout["yaxis"] = {
-        "autorange": "reversed",
-        "gridcolor": "#30363d",
-        "scaleanchor": "x",
-        "constrain": "domain",
-    }
-    fig.update_layout(**layout, height=260)
-    return _to_json(fig)
+    return json.dumps(payload).replace("</", "<\\/")
 
 
 def _build_contributor_commits_chart(ranked: list[RankedContributor]) -> str:
@@ -843,24 +595,6 @@ def _pie_colors(n: int) -> list[str]:
         A list of n hex colour strings.
     """
     return [_PIE_PALETTE[i % len(_PIE_PALETTE)] for i in range(n)]
-
-
-def _heatmap_colorscale() -> list[list[float | str]]:
-    """Return the Plotly colorscale for all heatmap variants.
-
-    Zero-value cells are fully transparent, which renders as the page
-    background colour in both light and dark modes without requiring
-    a separate theme-specific colorscale.
-
-    Returns:
-        A list of [position, colour] pairs in Plotly colorscale format.
-    """
-    return [
-        [0.0, "rgba(0, 0, 0, 0)"],
-        [0.001, "#bfdbfe"],
-        [0.35, "#3b82f6"],
-        [1.0, "#1e3a8a"],
-    ]
 
 
 # ------------------------------------------------------------------
