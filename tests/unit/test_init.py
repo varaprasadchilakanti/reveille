@@ -54,7 +54,6 @@ class TestWriteInitConfig:
             "branch",
             "since",
             "until",
-            "heatmap_granularity",
             "min_commits",
             "exclude_authors",
             "enabled",
