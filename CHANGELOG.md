@@ -10,6 +10,20 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ---
 
+## [0.4.1] — 2026-05-12
+
+### Fixed
+
+- Activity heatmap no longer renders as a solid blue fill for years in which
+  the selected contributor has no commits. Plotly's default auto-ranging
+  collapsed a flat-zero dataset to an arbitrary scale centred at zero,
+  mapping all cells to a non-transparent colour and producing a negative
+  colour bar axis. Explicit `zmin` and `zmax` anchors in the Plotly trace
+  now ensure zero always resolves to the transparent stop in the colorscale,
+  correctly displaying empty years as a blank grid.
+
+---
+
 ## [0.4.0] — 2026-05-12
 
 ### Added
@@ -253,7 +267,8 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ---
 
-[Unreleased]: https://github.com/varaprasadchilakanti/reveille/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/varaprasadchilakanti/reveille/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.4.1
 [0.4.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.4.0
 [0.3.3]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.3.3
 [0.3.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.3.0
