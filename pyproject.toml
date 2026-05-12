@@ -83,7 +83,7 @@ optional = false
 [tool.poetry.group.dev.dependencies]
 
 # Testing Framework
-pytest = "^8.0.0"
+pytest = ">=8,<10"
 pytest-cov = "^5.0.0"
 pytest-xdist = "^3.5.0"
 pytest-timeout = "^2.3.0"
