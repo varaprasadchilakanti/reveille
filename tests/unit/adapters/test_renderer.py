@@ -21,11 +21,7 @@ from reveille.adapters.renderer import (
     _build_commit_share_pie,
     _build_contributor_commits_chart,
     _build_contributor_lines_chart,
-    _build_heatmap_chart,
-    _build_heatmap_daily,
-    _build_heatmap_monthly,
-    _build_heatmap_weekly,
-    _build_heatmap_yearly,
+    _build_heatmap_data,
     _build_lines_share_pie,
     _build_timeline_chart,
     _compute_bus_factor,
@@ -242,183 +238,89 @@ class TestBuildTimelineChart:
 
 
 @pytest.mark.unit
-class TestBuildHeatmapChart:
-    """Tests for the heatmap chart builder and its granularity variants."""
+class TestBuildHeatmapData:
+    """Tests for the compact heatmap daily-count payload builder."""
 
-    def test_empty_commits_returns_null_sentinel(self) -> None:
-        assert _build_heatmap_chart([], "daily") == "null"
-        assert _build_heatmap_chart([], "weekly") == "null"
-        assert _build_heatmap_chart([], "monthly") == "null"
-        assert _build_heatmap_chart([], "yearly") == "null"
-
-    def test_weekly_returns_valid_chart_json(self) -> None:
-        commits = [
-            _make_commit(datetime.date(2024, 1, 8)),
-            _make_commit(datetime.date(2024, 1, 15)),
-        ]
-        assert _is_valid_chart_json(_build_heatmap_weekly(commits))
-
-    def test_monthly_returns_valid_chart_json(self) -> None:
-        commits = [
-            _make_commit(datetime.date(2024, 1, 8)),
-            _make_commit(datetime.date(2024, 2, 5)),
-            _make_commit(datetime.date(2024, 3, 20)),
-        ]
-        assert _is_valid_chart_json(_build_heatmap_monthly(commits))
-
-    def test_yearly_returns_valid_chart_json(self) -> None:
-        commits = [
-            _make_commit(datetime.date(2023, 6, 1)),
-            _make_commit(datetime.date(2024, 3, 15)),
-        ]
-        assert _is_valid_chart_json(_build_heatmap_yearly(commits))
-
-    def test_monthly_z_matrix_has_seven_rows(self) -> None:
-        """Seven rows correspond to the seven days of the week."""
-        commits = [_make_commit(datetime.date(2024, 1, d)) for d in (1, 8, 15, 22)]
-        parsed = json.loads(_build_heatmap_monthly(commits))
-        z = parsed["data"][0]["z"]
-        assert len(z) == 7
-
-    def test_yearly_z_matrix_has_twelve_rows(self) -> None:
-        """Twelve rows correspond to the twelve months of the year."""
-        commits = [_make_commit(datetime.date(2023, m, 1)) for m in range(1, 13)]
-        parsed = json.loads(_build_heatmap_yearly(commits))
-        z = parsed["data"][0]["z"]
-        assert len(z) == 12
-
-    def test_monthly_column_count_matches_distinct_months(self) -> None:
-        commits = [
-            _make_commit(datetime.date(2024, 1, 5)),
-            _make_commit(datetime.date(2024, 3, 10)),
-        ]
-        parsed = json.loads(_build_heatmap_monthly(commits))
-        # Two distinct months: 2024-01 and 2024-03.
-        x_labels = parsed["data"][0]["x"]
-        assert len(x_labels) == 2
-
-    def test_yearly_column_count_matches_distinct_years(self) -> None:
-        commits = [
-            _make_commit(datetime.date(2022, 6, 1)),
-            _make_commit(datetime.date(2023, 6, 1)),
-            _make_commit(datetime.date(2024, 6, 1)),
-        ]
-        parsed = json.loads(_build_heatmap_yearly(commits))
-        x_labels = parsed["data"][0]["x"]
-        assert len(x_labels) == 3
-
-    def test_dispatch_weekly_via_build_heatmap_chart(self) -> None:
-        commits = [_make_commit(datetime.date(2024, 1, 8))]
-        assert _is_valid_chart_json(_build_heatmap_chart(commits, "weekly"))
-
-    def test_dispatch_monthly_via_build_heatmap_chart(self) -> None:
-        commits = [_make_commit(datetime.date(2024, 1, 8))]
-        assert _is_valid_chart_json(_build_heatmap_chart(commits, "monthly"))
-
-    def test_dispatch_yearly_via_build_heatmap_chart(self) -> None:
-        commits = [_make_commit(datetime.date(2024, 1, 8))]
-        assert _is_valid_chart_json(_build_heatmap_chart(commits, "yearly"))
-
-    def test_weekly_xaxis_type_is_category(self) -> None:
-        commits = [
-            _make_commit(datetime.date(2024, 1, 8)),
-            _make_commit(datetime.date(2024, 1, 15)),
-        ]
-        result = json.loads(_build_heatmap_chart(commits, "weekly"))
-        assert result["layout"]["xaxis"]["type"] == "category"
-
-    def test_monthly_xaxis_type_is_category(self) -> None:
-        commits = [
-            _make_commit(datetime.date(2024, 1, 8)),
-            _make_commit(datetime.date(2024, 2, 5)),
-        ]
-        result = json.loads(_build_heatmap_chart(commits, "monthly"))
-        assert result["layout"]["xaxis"]["type"] == "category"
-
-    def test_yearly_xaxis_type_is_category(self) -> None:
-        commits = [
-            _make_commit(datetime.date(2023, 6, 1)),
-            _make_commit(datetime.date(2024, 3, 15)),
-        ]
-        result = json.loads(_build_heatmap_chart(commits, "yearly"))
-        assert result["layout"]["xaxis"]["type"] == "category"
-
-
-# ------------------------------------------------------------------
-# _build_heatmap_daily
-# ------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestBuildHeatmapDaily:
-    """Tests for the GitHub-style daily heatmap builder."""
-
-    def test_empty_commits_returns_null_sentinel(self) -> None:
-        assert _build_heatmap_daily([], datetime.date(2024, 3, 31)) == "null"
-
-    def test_returns_valid_chart_json(self) -> None:
-        commits = [_make_commit(datetime.date(2024, 1, 8))]
-        assert _is_valid_chart_json(_build_heatmap_daily(commits, datetime.date(2024, 1, 31)))
-
-    def test_z_matrix_has_seven_rows(self) -> None:
-        """Seven rows correspond to the seven days of the week."""
-        commits = [_make_commit(datetime.date(2024, 1, d)) for d in (1, 8, 15)]
-        parsed = json.loads(_build_heatmap_daily(commits, datetime.date(2024, 1, 31)))
-        assert len(parsed["data"][0]["z"]) == 7
-
-    def test_rolling_window_excludes_commits_before_cutoff(self) -> None:
-        """Commits older than max_days before window_end produce null."""
-        old_commit = _make_commit(datetime.date(2023, 1, 1))
-        window_end = datetime.date(2024, 3, 31)
-        # max_days=90 places rolling_start at 2024-01-02; old commit is excluded.
-        result = _build_heatmap_daily([old_commit], window_end, max_days=90)
-        assert result == "null"
-
-    def test_recent_commit_within_rolling_window_is_included(self) -> None:
-        """A commit within max_days of window_end produces a valid chart."""
-        recent = _make_commit(datetime.date(2024, 3, 1))
-        window_end = datetime.date(2024, 3, 31)
-        assert _is_valid_chart_json(_build_heatmap_daily([recent], window_end, max_days=90))
-
-    def test_column_count_matches_weeks_in_rolling_window(self) -> None:
-        """Column count equals the number of calendar weeks in the window.
-
-        window_end = 2024-01-28 (Sunday), max_days = 28.
-        rolling_start = 2024-01-01 (Monday).
-        Weeks: Jan 01, Jan 08, Jan 15, Jan 22 -> 4 columns.
-        """
-        commits = [_make_commit(datetime.date(2024, 1, 15))]
-        parsed = json.loads(_build_heatmap_daily(commits, datetime.date(2024, 1, 28), max_days=28))
-        assert len(parsed["data"][0]["x"]) == 4
-
-    def test_xaxis_type_is_category(self) -> None:
-        commits = [_make_commit(datetime.date(2024, 1, 8))]
-        result = json.loads(_build_heatmap_daily(commits, datetime.date(2024, 1, 31)))
-        assert result["layout"]["xaxis"]["type"] == "category"
-
-    def test_customdata_shape_matches_z_shape(self) -> None:
-        """customdata must have the same dimensions as z for hover to work."""
-        commits = [_make_commit(datetime.date(2024, 1, 8))]
-        parsed = json.loads(_build_heatmap_daily(commits, datetime.date(2024, 1, 31)))
-        z = parsed["data"][0]["z"]
-        cd = parsed["data"][0]["customdata"]
-        assert len(cd) == len(z)
-        assert all(len(cd[i]) == len(z[i]) for i in range(len(z)))
-
-    def test_dispatch_daily_via_build_heatmap_chart(self) -> None:
-        commits = [_make_commit(datetime.date(2024, 1, 8))]
-        result = _build_heatmap_chart(commits, "daily", window_end=datetime.date(2024, 1, 31))
-        assert _is_valid_chart_json(result)
-
-    def test_dispatch_daily_without_window_end_defaults_to_max_commit_date(
+    def test_empty_commits_returns_valid_json_with_empty_aggregated_counts(
         self,
     ) -> None:
+        result = _build_heatmap_data([], [], datetime.date(2024, 1, 1), datetime.date(2024, 12, 31))
+        parsed = json.loads(result)
+        assert parsed["daily_counts"]["__aggregated__"] == {}
+
+    def test_years_span_full_analysis_window(self) -> None:
+        result = _build_heatmap_data([], [], datetime.date(2022, 6, 1), datetime.date(2024, 3, 31))
+        assert json.loads(result)["years"] == [2022, 2023, 2024]
+
+    def test_single_year_window_produces_one_year(self) -> None:
+        result = _build_heatmap_data([], [], datetime.date(2024, 1, 1), datetime.date(2024, 12, 31))
+        assert json.loads(result)["years"] == [2024]
+
+    def test_aggregated_contributor_is_always_first(self) -> None:
+        result = _build_heatmap_data([], [], datetime.date(2024, 1, 1), datetime.date(2024, 12, 31))
+        assert json.loads(result)["contributors"][0]["email"] == "__aggregated__"
+
+    def test_aggregated_counts_sum_all_contributors(self) -> None:
         commits = [
-            _make_commit(datetime.date(2024, 1, 8)),
-            _make_commit(datetime.date(2024, 1, 20)),
+            _make_commit(datetime.date(2024, 3, 15), email="a@example.com"),
+            _make_commit(datetime.date(2024, 3, 15), email="b@example.com"),
+            _make_commit(datetime.date(2024, 3, 20), email="a@example.com"),
         ]
-        result = _build_heatmap_chart(commits, "daily")
-        assert _is_valid_chart_json(result)
+        result = _build_heatmap_data(
+            commits, [], datetime.date(2024, 1, 1), datetime.date(2024, 12, 31)
+        )
+        agg = json.loads(result)["daily_counts"]["__aggregated__"]
+        assert agg["2024-03-15"] == 2
+        assert agg["2024-03-20"] == 1
+
+    def test_per_contributor_counts_keyed_by_lowercased_email(self) -> None:
+        commits = [
+            _make_commit(datetime.date(2024, 3, 15), email="alice@example.com"),
+            _make_commit(datetime.date(2024, 3, 15), email="alice@example.com"),
+            _make_commit(datetime.date(2024, 3, 20), email="bob@example.com"),
+        ]
+        ranked = [
+            _make_ranked("Alice", commit_count=2),
+            _make_ranked("Bob", commit_count=1),
+        ]
+        result = _build_heatmap_data(
+            commits, ranked, datetime.date(2024, 1, 1), datetime.date(2024, 12, 31)
+        )
+        counts = json.loads(result)["daily_counts"]
+        assert counts["alice@example.com"]["2024-03-15"] == 2
+        assert counts["bob@example.com"]["2024-03-20"] == 1
+
+    def test_contributor_list_follows_ranked_order(self) -> None:
+        commits = [
+            _make_commit(datetime.date(2024, 3, 15), email="alice@example.com"),
+            _make_commit(datetime.date(2024, 3, 20), email="bob@example.com"),
+        ]
+        ranked = [
+            _make_ranked("Alice", commit_count=5),
+            _make_ranked("Bob", commit_count=2),
+        ]
+        result = _build_heatmap_data(
+            commits, ranked, datetime.date(2024, 1, 1), datetime.date(2024, 12, 31)
+        )
+        contributors = json.loads(result)["contributors"]
+        assert contributors[0]["email"] == "__aggregated__"
+        assert contributors[1]["email"] == "alice@example.com"
+        assert contributors[2]["email"] == "bob@example.com"
+
+    def test_payload_contains_required_top_level_keys(self) -> None:
+        result = _build_heatmap_data([], [], datetime.date(2024, 1, 1), datetime.date(2024, 12, 31))
+        parsed = json.loads(result)
+        assert "years" in parsed
+        assert "contributors" in parsed
+        assert "daily_counts" in parsed
+
+    def test_script_closing_tag_is_escaped(self) -> None:
+        """</script> in any embedded string must not appear raw in the output."""
+        commits = [_make_commit(datetime.date(2024, 3, 15))]
+        result = _build_heatmap_data(
+            commits, [], datetime.date(2024, 1, 1), datetime.date(2024, 12, 31)
+        )
+        assert "</script>" not in result
 
 
 # ------------------------------------------------------------------

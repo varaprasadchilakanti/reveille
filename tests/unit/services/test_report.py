@@ -216,7 +216,6 @@ class TestGenerateReport:
             def capture_render(
                 data: ReportData,
                 path: Path,
-                heatmap_granularity: str = "monthly",
             ) -> Path:
                 captured.append(data)
                 return path

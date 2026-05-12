@@ -56,17 +56,6 @@ _DEFAULT_CONFIG_TEMPLATE: str = """\
 # Defaults to today.
 # until = "2024-12-31"
 
-# Resolution of the commit activity heatmap.
-# Accepted values: "daily", "weekly", "monthly", "yearly"
-#   daily   -- one cell per calendar day (GitHub-style). Rolling 365-day window.
-#              Best for active repositories where per-day granularity is meaningful.
-#   weekly  -- one column per calendar week.
-#              Best for repositories with fewer than 6 months of history.
-#   monthly -- one column per calendar month. Default. Suits most repositories.
-#   yearly  -- one column per year.
-#              Best for repositories with more than 3 years of history.
-# heatmap_granularity = "monthly"
-
 
 # ------------------------------------------------------------------------------
 # [filters] -- Contributor and commit filtering

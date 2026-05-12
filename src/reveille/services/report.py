@@ -113,4 +113,4 @@ def generate_report(
     if on_progress is not None:
         on_progress("Rendering report")
     renderer = Renderer()
-    return renderer.render(report_data, config.output_path, config.heatmap_granularity)
+    return renderer.render(report_data, config.output_path)
