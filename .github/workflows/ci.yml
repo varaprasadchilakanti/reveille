@@ -73,7 +73,7 @@ jobs:
       - name: Run pytest
         run: poetry run pytest -n auto --timeout=120 --cov=reveille --cov-report=xml
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v6
         if: matrix.python-version == '3.11'
         with:
           files: coverage.xml
