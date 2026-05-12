@@ -30,7 +30,7 @@ Reveille is designed for developers, engineering managers, and technical leads w
 
 **What it produces:**
 
-- Contribution heatmaps showing commit activity across four granularity levels: per calendar day, per calendar week, per calendar month, and per calendar year — switchable in the rendered report without regeneration
+- Contribution heatmap with a GitHub-style year-navigable grid showing per-day commit activity. Year tabs allow switching between calendar years; a contributor dropdown surfaces per-contributor views alongside the aggregated default.
 - Commit frequency timelines and rolling activity charts
 - Per-contributor breakdowns covering commits, lines added and removed, and active day counts
 - A structured ranking table assigning each contributor a tier designation based on weighted activity metrics
@@ -49,35 +49,49 @@ Reveille is designed for developers, engineering managers, and technical leads w
 
 Reveille requires Python 3.11 or later.
 
-**Install from PyPI:**
+<details open>
+<summary><strong>pip</strong></summary>
 
 ```bash
 pip install reveille
 ```
 
-**Install with pipx (recommended for CLI tools):**
+</details>
+
+<details>
+<summary><strong>pipx (recommended for CLI tools)</strong></summary>
 
 ```bash
 pipx install reveille
 ```
 
-**Install with Poetry (within a Poetry-managed project):**
+</details>
 
-```bash
-poetry add reveille
-```
+<details>
+<summary><strong>uv</strong></summary>
 
-**Install with uv:**
+Install permanently as a tool:
 
 ```bash
 uv tool install reveille
 ```
 
-**Run without a permanent install (uv):**
+Run without a permanent install:
 
 ```bash
 uvx reveille generate --repo /path/to/repository
 ```
+
+</details>
+
+<details>
+<summary><strong>Poetry (within a Poetry-managed project)</strong></summary>
+
+```bash
+poetry add reveille
+```
+
+</details>
 
 **Verify the installation:**
 
@@ -143,7 +157,6 @@ Generates the HTML performance report for the target repository.
 | `--min-commits` | | `INT` | `1` | Exclude contributors with fewer than this many commits in the analysis window. |
 | `--title` | | `TEXT` | Repository name | Override the report title displayed in the HTML output. |
 | `--no-ranking` | | Flag | Off | Omit the contributor ranking table from the output. |
-| `--heatmap-granularity` | | `TEXT` | `monthly` | Default heatmap view on open. Accepted values: `daily`, `weekly`, `monthly`, `yearly`. All four views are available via toggle buttons in the rendered report regardless of this setting. |
 | `--config` | `-c` | `PATH` | None | Path to a TOML configuration file. If omitted, `reveille.toml` in the current working directory is loaded automatically when present. Use this flag for non-standard file names or paths outside the repository root. CLI flags always take precedence over configuration file values. |
 
 ### `reveille init`
@@ -183,7 +196,7 @@ The generated HTML file is structured as a formal report with the following sect
 
 **Repository Summary** — Name, remote URL if present, default branch, total commits in the analysis window, unique contributors, date range, and report generation timestamp.
 
-**Activity Heatmap** — A calendar-style matrix showing commit frequency across the analysis window. Four granularity views are available via toggle buttons in the rendered report: `daily` shows one cell per calendar day in a GitHub-style grid capped at a rolling 365-day window; `weekly` and `monthly` aggregate by day-of-week across each week or month; `yearly` aggregates by month across each calendar year. The `--heatmap-granularity` flag controls which view is active on first open.
+**Activity Heatmap** — A GitHub-style year-navigable grid showing commit frequency by calendar day. Rows represent days of the week (Monday–Sunday); columns represent calendar weeks. Year tabs derived from the analysis window allow switching between calendar years without regenerating the report. A contributor dropdown provides per-contributor views alongside the aggregated default; single-contributor repositories hide the dropdown automatically.
 
 **Commit Timeline** — A rolling area chart showing commit volume per calendar week over the analysis window. Highlights periods of high and low activity.
 
@@ -243,8 +256,6 @@ output = "./reports/q4-2024.html"
 branch = "main"
 since = "2024-10-01"
 until = "2024-12-31"
-# Accepted values: "daily", "weekly", "monthly", "yearly"
-heatmap_granularity = "monthly"
 
 [filters]
 min_commits = 2

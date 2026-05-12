@@ -10,6 +10,34 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ---
 
+## [0.4.0] — 2026-05-12
+
+### Added
+
+- Activity heatmap redesigned as a GitHub-style year-navigable grid.
+  Rows represent days of the week (Monday–Sunday); columns represent
+  calendar weeks. Year tabs derived from the analysis window allow
+  switching between calendar years without regenerating the report.
+  A contributor dropdown provides per-contributor views alongside the
+  default aggregated view. Leap years are handled correctly through
+  UTC-based date arithmetic. The four-spec embed (daily/weekly/monthly/
+  yearly) is replaced by a single compact daily-count JSON payload,
+  reducing embedded heatmap data size proportional to the number of
+  years in the analysis window.
+
+### Removed
+
+- `--heatmap-granularity` CLI flag removed. The concept of switching
+  between weekly/monthly/yearly chart structures is superseded by year
+  navigation within a single canonical grid layout.
+- `heatmap_granularity` TOML key removed from `ReportConfig` and the
+  `[report]` section of `reveille.toml`. Existing configuration files
+  containing this key are unaffected — the key is silently ignored by
+  the TOML parser.
+- `HeatmapGranularity` type alias removed from `reveille.domain.models`.
+
+---
+
 ## [0.3.3] — 2026-05-12
 
 ### Added
@@ -23,16 +51,6 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
   display the relevant help text. Implemented via Click's `help_option_names`
   context setting, which propagates the alias to every subcommand without
   per-command wiring.
-- Activity heatmap redesigned as a GitHub-style year-navigable grid.
-  Rows represent days of the week (Monday–Sunday); columns represent
-  calendar weeks. Year tabs derived from the analysis window allow
-  switching between calendar years without regenerating the report.
-  A contributor dropdown provides per-contributor views alongside the
-  default aggregated view. Leap years are handled correctly through
-  UTC-based date arithmetic. The four-spec embed (daily/weekly/monthly/
-  yearly) is replaced by a single compact daily-count JSON payload,
-  reducing embedded heatmap data size proportional to the number of
-  years in the analysis window.
 
 ### Fixed
 
@@ -42,16 +60,6 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
   Reveille attempted to render help output — including on bare `reveille`
   invocations due to `no_args_is_help=True`. Typer 0.18.0 restores full
   Click 8.3.x compatibility.
-
-### Removed
-- `--heatmap-granularity` CLI flag removed. The concept of switching
-  between weekly/monthly/yearly chart structures is superseded by year
-  navigation within a single canonical grid layout.
-- `heatmap_granularity` TOML key removed from `ReportConfig` and the
-  `[report]` section of `reveille.toml`. Existing configuration files
-  containing this key are unaffected — the key is silently ignored by
-  the TOML parser.
-- `HeatmapGranularity` type alias removed from `reveille.domain.models`.
 
 ---
 
@@ -245,7 +253,8 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ---
 
-[Unreleased]: https://github.com/varaprasadchilakanti/reveille/compare/v0.3.3...HEAD
+[Unreleased]: https://github.com/varaprasadchilakanti/reveille/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.4.0
 [0.3.3]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.3.3
 [0.3.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.3.0
 [0.2.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.2.0
