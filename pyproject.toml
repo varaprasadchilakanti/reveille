@@ -63,7 +63,7 @@ gitpython = "^3.1.40"
 jinja2 = "^3.1.0"
 
 # Charts -- self-contained JS bundle embedded in output HTML
-plotly = "^5.20.0"
+plotly = ">=5.20,<7.0"
 
 # Data Validation & Settings
 pydantic = "^2.0"
