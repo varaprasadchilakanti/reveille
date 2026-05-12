@@ -486,12 +486,9 @@ class TestGenerateCommand:
         )
         assert result.exit_code == 1
 
-    def test_output_embeds_all_four_heatmap_specs(self, default_report_content: str) -> None:
-        """All three heatmap granularity specs are present in the output."""
-        assert 'id="spec-heatmap-weekly"' in default_report_content
-        assert 'id="spec-heatmap-monthly"' in default_report_content
-        assert 'id="spec-heatmap-yearly"' in default_report_content
-        assert 'id="spec-heatmap-daily"' in default_report_content
+    def test_output_embeds_heatmap_data_spec(self, default_report_content: str) -> None:
+        """The compact heatmap data payload is embedded in the output."""
+        assert 'id="spec-heatmap"' in default_report_content
 
     def test_auto_discovers_reveille_toml_in_cwd(
         self,
