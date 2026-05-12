@@ -153,41 +153,6 @@ ranking context would be distracting or misinterpreted.
 reveille generate --no-ranking
 ```
 
-### `--heatmap-granularity`
-
-Controls the time resolution of the commit activity heatmap and sets the
-default view when the report is first opened. Four values are accepted.
-
-`daily` produces a GitHub-style grid with one cell per calendar day. Rows
-represent days of the week and columns represent calendar weeks. The view
-is capped at a rolling 365-day window ending at the analysis window's end
-date, preventing excessive chart width for repositories with multi-year
-histories. This view is best for active repositories where per-day
-granularity is meaningful.
-
-`weekly` produces one column per calendar week with rows for each day of
-the week. This is the most granular aggregated view and is best suited to
-repositories with fewer than six months of history in the analysis window.
-At longer ranges, the chart becomes too wide to read comfortably.
-
-`monthly` is the default. It produces one column per calendar month with
-rows for each day of the week. Each cell contains the total commit count
-for that weekday across all occurrences within the month. This view
-balances detail and readability for most repository histories.
-
-`yearly` produces one column per calendar year with rows for each month.
-This view is appropriate for repositories with more than three years of
-history, where weekly or monthly resolution would produce an unreadably
-wide chart.
-
-```bash
-reveille generate --heatmap-granularity daily
-```
-
-The generated HTML report embeds all four granularity specifications and
-provides toggle buttons to switch between them without regenerating the
-file. The `--heatmap-granularity` flag controls only which view is active
-on first open.
 
 ### `--config` / `-c`
 
@@ -269,12 +234,6 @@ since = "2024-10-01"
 # Analysis window end date. Equivalent to --until.
 until = "2024-12-31"
 
-# Heatmap resolution. Equivalent to --heatmap-granularity.
-# Accepted values: "daily", "weekly", "monthly", "yearly"
-# Controls the default view on open; all four are accessible via toggle
-# buttons in the rendered report without regenerating the file.
-heatmap_granularity = "monthly"
-
 
 [filters]
 # Minimum commits to include a contributor. Equivalent to --min-commits.
@@ -318,23 +277,18 @@ recorded.
 
 ### Activity Heatmap
 
-The heatmap visualises when commits occurred across the analysis window.
-Darker cells indicate higher commit volumes. Empty cells — rendered as
-transparent — indicate periods of no activity. Persistent gaps may
-indicate holidays, sprints with no deliverables, or periods of reduced
-team capacity.
+The heatmap visualises when commits occurred across the analysis window as
+a GitHub-style calendar grid. Rows represent days of the week
+(Monday–Sunday); columns represent calendar weeks. Darker cells indicate
+higher commit volumes. Empty cells — rendered as transparent — indicate
+periods of no activity. Persistent gaps may indicate holidays, sprints
+with no deliverables, or periods of reduced team capacity.
 
-Four granularity views are available and can be switched using the toggle
-buttons above the chart without regenerating the report. The `daily` view
-shows one cell per calendar day in a GitHub-style grid capped at a rolling
-365-day window; rows are days of the week and columns are calendar weeks.
-The `weekly` and `monthly` views aggregate commit counts by weekday within
-each week or month respectively, with rows for days of the week and columns
-for the time period. The `yearly` view aggregates by month, with rows for
-each month of the year and columns for each calendar year; it is best
-suited to repositories with more than three years of history. The
-`--heatmap-granularity` flag controls which view is active when the file
-is first opened.
+Year tabs above the chart allow switching between calendar years covered
+by the analysis window without regenerating the report. The most recent
+year is active by default. A contributor dropdown provides per-contributor
+views alongside the aggregated default. In single-contributor repositories,
+the dropdown is hidden automatically.
 
 ### Weekly Commit Timeline
 
