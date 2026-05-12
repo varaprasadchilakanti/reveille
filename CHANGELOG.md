@@ -8,6 +8,10 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ## [Unreleased]
 
+---
+
+## [0.3.3] — 2026-05-12
+
 ### Added
 
 - `reveille help` command that displays the top-level help text listing all
@@ -221,7 +225,8 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ---
 
-[Unreleased]: https://github.com/varaprasadchilakanti/reveille/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/varaprasadchilakanti/reveille/compare/v0.3.3...HEAD
+[0.3.3]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.3.3
 [0.3.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.3.0
 [0.2.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.2.0
 [0.1.1]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.1.1
