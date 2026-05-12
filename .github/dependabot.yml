@@ -1,0 +1,26 @@
+# ==================================================================
+# Reveille -- Dependabot Configuration
+#
+# Weekly automated dependency update PRs for pip packages and
+# GitHub Actions. Five open PRs maximum per ecosystem.
+# ==================================================================
+
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies

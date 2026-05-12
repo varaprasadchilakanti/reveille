@@ -1,0 +1,47 @@
+# ==================================================================
+# Reveille -- PyPI Publish Workflow
+#
+# Triggered on every tag push matching v*. Builds the distribution
+# packages and publishes to PyPI via OIDC trusted publisher,
+# requiring no stored credentials.
+#
+# Prerequisites:
+#   1. A trusted publisher configured on pypi.org pointing at this
+#      workflow file with environment name "pypi".
+#   2. A "pypi" environment created in this repository's Settings.
+# ==================================================================
+
+name: Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    name: Build and publish to PyPI
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/reveille/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: "1.8.2"
+          virtualenvs-in-project: true
+
+      - name: Build distribution packages
+        run: poetry build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
