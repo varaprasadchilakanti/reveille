@@ -8,6 +8,27 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `reveille help` command that displays the top-level help text listing all
+  available commands and global options. Supplements the existing
+  `reveille --help` flag with a subcommand form that matches the instinctive
+  typing pattern for users familiar with Git-style CLIs.
+- `-h` accepted as a short form of `--help` on all commands. `reveille -h`,
+  `reveille generate -h`, `reveille init -h`, and `reveille validate -h` all
+  display the relevant help text. Implemented via Click's `help_option_names`
+  context setting, which propagates the alias to every subcommand without
+  per-command wiring.
+
+### Fixed
+
+- Upgraded Typer from `^0.12.0` to `^0.18.0` and removed the `click <8.3.0`
+  upper bound. Click 8.3.0 (released September 2025) introduced a breaking
+  change to `Parameter.make_metavar()` that caused a `TypeError` whenever
+  Reveille attempted to render help output — including on bare `reveille`
+  invocations due to `no_args_is_help=True`. Typer 0.18.0 restores full
+  Click 8.3.x compatibility.
+
 ---
 
 ## [0.3.0] — 2026-05-08

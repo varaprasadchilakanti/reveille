@@ -51,10 +51,10 @@ packages = [
 python = "^3.11"
 
 # CLI Layer
-# Click 8.3 introduced a breaking change to Parameter.make_metavar() that
-# is incompatible with Typer 0.12.x. Pin to <8.3 until Typer is upgraded.
-typer = { version = "^0.12.0", extras = ["all"] }
-click = ">=8.0.0,<8.3.0"
+# Typer 0.18.0 restored full Click 8.3.x compatibility. The <8.3.0 upper
+# bound introduced in v0.3.0 is no longer required.
+typer = { version = "^0.18.0", extras = ["all"] }
+click = ">=8.0.0"
 
 # Git Data Layer
 gitpython = "^3.1.40"
