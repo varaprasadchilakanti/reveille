@@ -923,12 +923,28 @@
         var counts = heatmapData.daily_counts[email] || {};
         var grid   = buildYearGrid(year, counts);
 
+        // Compute the peak commit count across the current grid.
+        // When a contributor has no activity in the selected year, every z
+        // value is 0. Plotly's zauto collapses a flat-zero dataset to an
+        // arbitrary scale centred at 0, mapping all cells to a non-transparent
+        // colour. Anchoring zmin=0 and zmax=max(peak,1) ensures zero always
+        // resolves to the transparent stop in the colorscale.
+        var zPeak = 1;
+        for (var ri = 0; ri < grid.z.length; ri++) {
+            for (var ci = 0; ci < grid.z[ri].length; ci++) {
+                if (grid.z[ri][ci] > zPeak) zPeak = grid.z[ri][ci];
+            }
+        }
+
         var trace = {
             type: 'heatmap',
             z: grid.z,
             x: grid.x,
             y: grid.y,
             customdata: grid.customdata,
+            zauto: false,
+            zmin: 0,
+            zmax: zPeak,
             colorscale: [
                 [0.0,   'rgba(0,0,0,0)'],
                 [0.001, '#bfdbfe'],
