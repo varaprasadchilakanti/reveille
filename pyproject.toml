@@ -6,7 +6,7 @@
 
 [tool.poetry]
 name = "reveille"
-version = "0.3.3"
+version = "0.4.0"
 description = "A CLI tool that generates self-contained HTML performance reports from local Git repositories."
 authors = ["Varaprasad Chilakanti <varaprasadchilakanti@gmail.com>"]
 license = "MIT"
@@ -256,7 +256,7 @@ omit = [
 precision = 2
 show_missing = true
 
-fail_under = 80
+fail_under = 90
 
 exclude_lines = [
     "pragma: no cover",
