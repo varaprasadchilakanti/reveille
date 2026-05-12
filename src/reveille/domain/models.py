@@ -9,9 +9,6 @@ from __future__ import annotations
 
 import datetime
 from dataclasses import dataclass, field
-from typing import Literal, TypeAlias
-
-HeatmapGranularity: TypeAlias = Literal["daily", "weekly", "monthly", "yearly"]
 
 
 @dataclass(frozen=True)

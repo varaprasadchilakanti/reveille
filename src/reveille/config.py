@@ -11,11 +11,10 @@ from __future__ import annotations
 import datetime
 import tomllib
 from pathlib import Path
-from typing import Any, get_args
+from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
-from reveille.domain.models import HeatmapGranularity
 from reveille.exceptions import ConfigurationError
 
 
@@ -71,15 +70,6 @@ class ReportConfig(BaseModel):
     min_commits: int = Field(default=1, ge=1)
     ranking_enabled: bool = Field(default=True)
     ranking_weights: RankingWeights = Field(default_factory=RankingWeights)
-    heatmap_granularity: HeatmapGranularity = Field(
-        default="monthly",
-        description=(
-            "Resolution of the commit activity heatmap. "
-            "'weekly' suits repositories with fewer than six months of history. "
-            "'monthly' is the default and suits most repositories. "
-            "'yearly' suits repositories with more than three years of history."
-        ),
-    )
 
     @model_validator(mode="after")
     def since_must_precede_until(self) -> ReportConfig:
@@ -157,14 +147,6 @@ def _parse_report_section(report: dict[str, Any]) -> dict[str, Any]:
                     f"Invalid '{field}' date in configuration file: "
                     f"'{report[field]}'. Expected YYYY-MM-DD."
                 ) from exc
-    if "heatmap_granularity" in report:
-        val = str(report["heatmap_granularity"])
-        if val not in get_args(HeatmapGranularity):
-            raise ConfigurationError(
-                f"Invalid heatmap_granularity '{val}' in configuration file. "
-                f"Must be one of: {', '.join(get_args(HeatmapGranularity))}."
-            )
-        kwargs["heatmap_granularity"] = val
     return kwargs
 
 

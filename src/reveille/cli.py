@@ -181,7 +181,6 @@ def _merge_cli_flags(
     exclude_author: list[str] | None,
     min_commits: int | None,
     no_ranking: bool,
-    heatmap_granularity: str | None,
 ) -> dict[str, object]:
     """Merge CLI flag values into the base configuration dict.
 
@@ -227,8 +226,6 @@ def _merge_cli_flags(
         merged["min_commits"] = min_commits
     if no_ranking:
         merged["ranking_enabled"] = False
-    if heatmap_granularity is not None:
-        merged["heatmap_granularity"] = heatmap_granularity
 
     return merged
 
@@ -274,16 +271,6 @@ def generate(
         bool,
         typer.Option("--no-ranking", help="Omit the contributor ranking table from the output."),
     ] = False,
-    heatmap_granularity: Annotated[
-        str | None,
-        typer.Option(
-            "--heatmap-granularity",
-            help=(
-                "Heatmap resolution. 'weekly' suits short histories. "
-                "'monthly' is the default. 'yearly' suits long histories."
-            ),
-        ),
-    ] = None,
     config: Annotated[
         Path | None,
         typer.Option("--config", "-c", help="Path to a TOML configuration file."),
@@ -323,7 +310,6 @@ def generate(
         exclude_author,
         min_commits,
         no_ranking,
-        heatmap_granularity,
     )
 
     try:
