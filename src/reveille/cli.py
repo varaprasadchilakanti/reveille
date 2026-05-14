@@ -17,12 +17,12 @@ import sys
 import threading
 from collections.abc import Callable
 from pathlib import Path
-from typing import Annotated, ClassVar
+from typing import Annotated, Any, ClassVar, cast
 
 import typer
 
 from reveille import __version__
-from reveille.config import ReportConfig
+from reveille.config import ReportConfig, ReportConfigKwargs
 from reveille.exceptions import ConfigurationError, RevelleError
 
 app = typer.Typer(
@@ -171,7 +171,7 @@ def _resolve_output_path(output: Path, repo_path: Path) -> Path:
 
 
 def _merge_cli_flags(
-    config_kwargs: dict[str, object],
+    config_kwargs: ReportConfigKwargs,
     repo: Path,
     output: Path,
     since: str | None,
@@ -181,7 +181,7 @@ def _merge_cli_flags(
     exclude_author: list[str] | None,
     min_commits: int | None,
     no_ranking: bool,
-) -> dict[str, object]:
+) -> ReportConfigKwargs:
     """Merge CLI flag values into the base configuration dict.
 
     CLI flag values always take precedence over configuration file values.
@@ -189,7 +189,7 @@ def _merge_cli_flags(
     default) are only applied when no configuration file provided a value.
 
     Args:
-        config_kwargs: Base kwargs loaded from a TOML file, or empty dict.
+        config_kwargs: Base kwargs loaded from a TOML file, or empty mapping.
         repo: Resolved repository path from --repo flag.
         output: Output path from --output flag.
         since: Raw since date string, or None if not provided.
@@ -197,21 +197,18 @@ def _merge_cli_flags(
         branch: Branch name, or None if not provided.
         title: Report title override, or None if not provided.
         exclude_author: List of authors to exclude, or None.
-        min_commits: Minimum commit threshold.
+        min_commits: Minimum commit threshold, or None if not provided.
         no_ranking: Whether ranking is disabled.
-        heatmap_granularity: Heatmap resolution string, or None if not provided.
 
     Returns:
-        A merged dict ready for ReportConfig construction.
+        A merged ReportConfigKwargs ready for ReportConfig construction.
     """
-    merged = dict(config_kwargs)
-    merged["repo_path"] = repo.resolve()
+    merged: dict[str, Any] = dict(config_kwargs)
+    resolved_repo = repo.resolve()
+    merged["repo_path"] = resolved_repo
 
     if output != Path("reveille-report.html") or "output_path" not in merged:
-        merged["output_path"] = _resolve_output_path(
-            output,
-            merged["repo_path"],  # type: ignore[arg-type]
-        )
+        merged["output_path"] = _resolve_output_path(output, resolved_repo)
     if since is not None:
         merged["since"] = _parse_date(since, "--since")
     if until is not None:
@@ -227,7 +224,7 @@ def _merge_cli_flags(
     if no_ranking:
         merged["ranking_enabled"] = False
 
-    return merged
+    return cast(ReportConfigKwargs, merged)
 
 
 @app.command()
@@ -280,7 +277,7 @@ def generate(
     from reveille.config import load_config_from_toml
     from reveille.services.report import generate_report
 
-    config_kwargs: dict[str, object] = {}
+    config_kwargs: ReportConfigKwargs = cast(ReportConfigKwargs, {})
     _auto_discovered = config is None
     _config_path = config if config is not None else _discover_config()
     if _config_path is not None:
@@ -313,7 +310,7 @@ def generate(
     )
 
     try:
-        report_config = ReportConfig(**merged)  # type: ignore[arg-type]
+        report_config = ReportConfig(**merged)
     except ValueError as exc:
         typer.echo(f"Configuration error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
@@ -341,10 +338,14 @@ def validate(
     ] = Path("."),
 ) -> None:
     """Validate that the target path is a readable Git repository."""
+    from reveille.adapters.git_reader import GitReader
+
     resolved = repo.resolve()
-    if not (resolved / ".git").exists():
-        typer.echo(f"Error: {resolved} does not contain a .git directory.", err=True)
-        raise typer.Exit(code=1)
+    try:
+        GitReader(resolved)
+    except RevelleError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
     typer.echo(f"Repository at {resolved} is valid.")
 
 

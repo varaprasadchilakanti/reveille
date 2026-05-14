@@ -11,7 +11,7 @@ from __future__ import annotations
 import datetime
 import tomllib
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict, cast
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -86,19 +86,44 @@ class ReportConfig(BaseModel):
         return self
 
 
-def load_config_from_toml(path: Path) -> dict[str, Any]:
+class ReportConfigKwargs(TypedDict, total=False):
+    """Typed keyword-argument mapping for ReportConfig construction.
+
+    All keys carry total=False because the dict is assembled incrementally:
+    first from an optional TOML file, then from CLI flag overrides. Absent
+    keys fall back to the ReportConfig field default at construction time.
+
+    since and until are typed as datetime.date (not datetime.date | None)
+    because when present in the mapping, the value is always a concrete
+    date. The Optional annotation on ReportConfig expresses the
+    absence-of-key default, not a stored None.
+    """
+
+    repo_path: Path
+    output_path: Path
+    title: str | None
+    branch: str | None
+    since: datetime.date
+    until: datetime.date
+    exclude_authors: list[str]
+    min_commits: int
+    ranking_enabled: bool
+    ranking_weights: RankingWeights
+
+
+def load_config_from_toml(path: Path) -> ReportConfigKwargs:
     """Load and flatten configuration values from a Reveille TOML file.
 
     Reads the structured TOML format documented in the README and returns
-    a flat dict of keyword arguments suitable for constructing a ReportConfig.
-    Only keys present in the file are included in the returned dict -- absent
-    keys do not override CLI defaults.
+    a typed keyword-argument mapping suitable for constructing a ReportConfig.
+    Only keys present in the file are included — absent keys do not override
+    CLI defaults.
 
     Args:
         path: Path to the TOML configuration file.
 
     Returns:
-        A dict of ReportConfig-compatible keyword arguments.
+        A ReportConfigKwargs mapping of ReportConfig-compatible keyword arguments.
 
     Raises:
         ConfigurationError: If the file does not exist, cannot be read,
@@ -112,11 +137,11 @@ def load_config_from_toml(path: Path) -> dict[str, Any]:
     except tomllib.TOMLDecodeError as exc:
         raise ConfigurationError(f"Configuration file is not valid TOML: {exc}") from exc
 
-    kwargs: dict[str, Any] = {}
-    kwargs.update(_parse_report_section(raw.get("report", {})))
-    kwargs.update(_parse_filters_section(raw.get("filters", {})))
-    kwargs.update(_parse_ranking_section(raw.get("ranking", {})))
-    return kwargs
+    parts: dict[str, Any] = {}
+    parts.update(_parse_report_section(raw.get("report", {})))
+    parts.update(_parse_filters_section(raw.get("filters", {})))
+    parts.update(_parse_ranking_section(raw.get("ranking", {})))
+    return cast(ReportConfigKwargs, parts)
 
 
 def _parse_report_section(report: dict[str, Any]) -> dict[str, Any]:
