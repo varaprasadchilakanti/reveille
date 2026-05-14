@@ -21,6 +21,7 @@ from reveille.adapters.renderer import (
     _build_commit_share_pie,
     _build_contributor_commits_chart,
     _build_contributor_lines_chart,
+    _build_contributor_timeline_chart,
     _build_heatmap_data,
     _build_lines_share_pie,
     _build_timeline_chart,
@@ -230,6 +231,103 @@ class TestBuildTimelineChart:
         ]
         result = json.loads(_build_timeline_chart(commits))
         assert result["layout"]["xaxis"]["type"] == "category"
+
+
+@pytest.mark.unit
+class TestBuildContributorTimelineChart:
+    """Tests for the per-contributor weekly commit frequency chart builder."""
+
+    def test_empty_commits_returns_null_sentinel(self) -> None:
+        ranked = [
+            _make_ranked("Alice", commit_count=10),
+            _make_ranked("Bob", commit_count=5),
+        ]
+        assert _build_contributor_timeline_chart([], ranked) == "null"
+
+    def test_single_contributor_returns_null_sentinel(self) -> None:
+        commits = [_make_commit(datetime.date(2024, 3, 11), email="alice@example.com")]
+        ranked = [_make_ranked("Alice", commit_count=1)]
+        assert _build_contributor_timeline_chart(commits, ranked) == "null"
+
+    def test_two_contributors_return_valid_chart_json(self) -> None:
+        commits = [
+            _make_commit(datetime.date(2024, 3, 11), email="alice@example.com"),
+            _make_commit(datetime.date(2024, 3, 18), email="bob@example.com"),
+        ]
+        ranked = [
+            _make_ranked("Alice", commit_count=1),
+            _make_ranked("Bob", commit_count=1),
+        ]
+        assert _is_valid_chart_json(_build_contributor_timeline_chart(commits, ranked))
+
+    def test_returns_one_trace_per_contributor(self) -> None:
+        commits = [
+            _make_commit(datetime.date(2024, 3, 11), email="alice@example.com"),
+            _make_commit(datetime.date(2024, 3, 18), email="bob@example.com"),
+            _make_commit(datetime.date(2024, 3, 25), email="carol@example.com"),
+        ]
+        ranked = [
+            _make_ranked("Alice", commit_count=1),
+            _make_ranked("Bob", commit_count=1),
+            _make_ranked("Carol", commit_count=1),
+        ]
+        parsed = json.loads(_build_contributor_timeline_chart(commits, ranked))
+        assert len(parsed["data"]) == 3
+
+    def test_xaxis_type_is_category(self) -> None:
+        commits = [
+            _make_commit(datetime.date(2024, 3, 11), email="alice@example.com"),
+            _make_commit(datetime.date(2024, 3, 18), email="bob@example.com"),
+        ]
+        ranked = [
+            _make_ranked("Alice", commit_count=1),
+            _make_ranked("Bob", commit_count=1),
+        ]
+        parsed = json.loads(_build_contributor_timeline_chart(commits, ranked))
+        assert parsed["layout"]["xaxis"]["type"] == "category"
+
+    def test_layout_does_not_contain_bgcolor_keys(self) -> None:
+        commits = [
+            _make_commit(datetime.date(2024, 3, 11), email="alice@example.com"),
+            _make_commit(datetime.date(2024, 3, 18), email="bob@example.com"),
+        ]
+        ranked = [
+            _make_ranked("Alice", commit_count=1),
+            _make_ranked("Bob", commit_count=1),
+        ]
+        parsed = json.loads(_build_contributor_timeline_chart(commits, ranked))
+        layout = parsed["layout"]
+        assert "paper_bgcolor" not in layout
+        assert "plot_bgcolor" not in layout
+
+    def test_script_closing_tag_is_escaped(self) -> None:
+        """A contributor name containing </script> must not appear raw in output."""
+        commits = [
+            _make_commit(datetime.date(2024, 3, 11), email="alice@example.com"),
+            _make_commit(datetime.date(2024, 3, 18), email="bob@example.com"),
+        ]
+        injected_stats = ContributorStats(
+            name="</script><script>alert(1)</script>",
+            email="alice@example.com",
+            commit_count=1,
+            lines_added=10,
+            lines_deleted=2,
+            active_days=1,
+            first_commit_date=datetime.date(2024, 1, 1),
+            last_commit_date=datetime.date(2024, 3, 31),
+        )
+        ranked = [
+            RankedContributor(
+                stats=injected_stats,
+                composite_score=1.0,
+                percentile=100.0,
+                tier=7,
+                tier_designation="Commander",
+            ),
+            _make_ranked("Bob", commit_count=1),
+        ]
+        result = _build_contributor_timeline_chart(commits, ranked)
+        assert "</script>" not in result
 
 
 # ------------------------------------------------------------------

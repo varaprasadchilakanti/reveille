@@ -571,6 +571,16 @@
     </div>
 
     <!-- ============================================================
+         Per-Contributor Commit Frequency
+         ============================================================ -->
+    <div class="section">
+        <h2 class="section-title">Per-Contributor Commit Frequency</h2>
+        <div class="chart-container">
+            <div id="chart-contributor_timeline"></div>
+        </div>
+    </div>
+
+    <!-- ============================================================
          Contributor Rankings
          ============================================================ -->
     {% if data.ranked_contributors %}
@@ -719,6 +729,9 @@
 <script type="application/json" id="spec-timeline">
 {{ charts.timeline | safe }}
 </script>
+<script type="application/json" id="spec-contributor_timeline">
+{{ charts.contributor_timeline | safe }}
+</script>
 <script type="application/json" id="spec-heatmap">
 {{ charts.heatmap | safe }}
 </script>
@@ -746,6 +759,7 @@
 
     var CHART_IDS = [
         'timeline',
+        'contributor_timeline',
         'contributor_commits',
         'contributor_lines',
         'pie_commits',

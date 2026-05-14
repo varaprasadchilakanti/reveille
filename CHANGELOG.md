@@ -8,6 +8,14 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Per-contributor weekly commit frequency chart added as a new report
+  section between the aggregate commit timeline and the contributor
+  rankings table. Each contributor is represented as a separate trace,
+  enabling direct comparison of burst contributors versus sustained
+  low-volume engagement across the analysis window.
+
 ---
 
 ## [0.4.1] — 2026-05-12

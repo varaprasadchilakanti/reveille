@@ -196,6 +196,9 @@ class Renderer:
         """
         return {
             "timeline": _build_timeline_chart(data.commits),
+            "contributor_timeline": _build_contributor_timeline_chart(
+                data.commits, data.ranked_contributors
+            ),
             "heatmap": _build_heatmap_data(
                 data.commits,
                 data.ranked_contributors,
@@ -259,6 +262,77 @@ def _build_timeline_chart(commits: list[Commit]) -> str:
         xaxis_title="Week",
         yaxis_title="Commits",
         height=280,
+    )
+    return _to_json(fig)
+
+
+def _build_contributor_timeline_chart(
+    commits: list[Commit],
+    ranked: list[RankedContributor],
+) -> str:
+    """Build a per-contributor weekly commit frequency line chart.
+
+    Each contributor in the ranked list is represented as a separate
+    Scatter trace. Commits from contributors absent from the ranked list
+    (filtered by min_commits) are excluded. Traces follow the ranked
+    order so the highest-composite-score contributor appears first in
+    the legend.
+
+    Args:
+        commits: All commits in the analysis window.
+        ranked: Ranked contributor list in composite score order.
+
+    Returns:
+        A Plotly figure JSON string, or 'null' if fewer than two
+        contributors are present or no commits fall within the window.
+    """
+    if not commits or len(ranked) < 2:
+        return "null"
+
+    weekly_per_email: dict[str, dict[str, int]] = {r.stats.email.lower(): {} for r in ranked}
+
+    for commit in commits:
+        email = commit.author_email.lower()
+        if email not in weekly_per_email:
+            continue
+        d = commit.timestamp.date()
+        week_start = (d - datetime.timedelta(days=d.weekday())).isoformat()
+        weekly_per_email[email][week_start] = weekly_per_email[email].get(week_start, 0) + 1
+
+    all_weeks = sorted({week for bins in weekly_per_email.values() for week in bins})
+    if not all_weeks:
+        return "null"
+
+    fig = go.Figure()
+    for i, r in enumerate(ranked):
+        email = r.stats.email.lower()
+        bins = weekly_per_email.get(email, {})
+        counts = [bins.get(w, 0) for w in all_weeks]
+        fig.add_trace(
+            go.Scatter(
+                x=all_weeks,
+                y=counts,
+                mode="lines",
+                name=r.stats.name,
+                line={"color": _PIE_PALETTE[i % len(_PIE_PALETTE)], "width": 2},
+                hovertemplate="Week of %{x}<br>Commits: %{y}<extra></extra>",
+            )
+        )
+
+    layout = _base_layout()
+    layout["xaxis"] = {
+        "type": "category",
+        "gridcolor": "#e2e8f0",
+        "linecolor": "#d1d9e0",
+        "tickangle": -45,
+    }
+    layout["showlegend"] = True
+    layout["legend"] = {"orientation": "h", "y": 1.12, "x": 0}
+    fig.update_layout(
+        **layout,
+        xaxis_title="Week",
+        yaxis_title="Commits",
+        height=320,
     )
     return _to_json(fig)
 
