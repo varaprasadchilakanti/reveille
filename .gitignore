@@ -204,6 +204,8 @@ reveille-report.html
 *.reveille.html
 reports/
 
+# Manual staging area for untracked files
+notrack/
 
 # ------------------------------------------------------------------
 # TEMPORARY & BACKUP FILES
