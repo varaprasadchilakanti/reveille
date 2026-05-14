@@ -490,6 +490,12 @@ class TestGenerateCommand:
         """The compact heatmap data payload is embedded in the output."""
         assert 'id="spec-heatmap"' in default_report_content
 
+    def test_output_contains_contributor_timeline_spec_block(
+        self, default_report_content: str
+    ) -> None:
+        """The per-contributor timeline spec block is embedded in the output."""
+        assert 'id="spec-contributor_timeline"' in default_report_content
+
     def test_auto_discovers_reveille_toml_in_cwd(
         self,
         e2e_repo: Path,
