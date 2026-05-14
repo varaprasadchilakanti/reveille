@@ -10,6 +10,12 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ### Added
 
+- `.mailmap` alias resolution applied in `GitReader` before contributor
+  aggregation. Contributors who have committed under multiple email
+  addresses are now correctly unified under their canonical identity
+  as declared in `.mailmap`. Repositories without a `.mailmap` file
+  are unaffected. The four-field `.mailmap` form is not yet supported
+  and is documented as a known limitation.
 - Per-contributor weekly commit frequency chart added as a new report
   section between the aggregate commit timeline and the contributor
   rankings table. Each contributor is represented as a separate trace,
