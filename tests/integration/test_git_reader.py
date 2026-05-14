@@ -133,6 +133,104 @@ def fixture_repo(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return repo_path
 
 
+@pytest.fixture(scope="module")
+def fixture_repo_with_mailmap(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Create a Git repository with a .mailmap file for alias resolution testing.
+
+    Commit history (6 commits):
+        2024-03-01  alice@example.com       feat: initial commit
+        2024-03-15  bob@example.com         feat: add module_b
+        2024-03-20  alice@example.com       fix: correct calculation
+        2024-04-10  alice@example.com       refactor: simplify logic
+        2024-04-15  bob@example.com         chore: update constants
+        2024-04-20  alice-old@example.com   feat: legacy contribution
+
+    .mailmap (untracked) maps alice-old@example.com to alice@example.com.
+    The file also contains two malformed lines to verify silent-skip behaviour.
+    """
+    repo_path = tmp_path_factory.mktemp("fixture_repo_mailmap")
+
+    def run(args: list[str], env_override: dict[str, str] | None = None) -> None:
+        env = {**os.environ, **(env_override or {})}
+        subprocess.run(args, cwd=repo_path, check=True, capture_output=True, env=env)
+
+    alice_env = {
+        "GIT_AUTHOR_NAME": "Alice",
+        "GIT_AUTHOR_EMAIL": "alice@example.com",
+        "GIT_COMMITTER_NAME": "Alice",
+        "GIT_COMMITTER_EMAIL": "alice@example.com",
+    }
+    bob_env = {
+        "GIT_AUTHOR_NAME": "Bob",
+        "GIT_AUTHOR_EMAIL": "bob@example.com",
+        "GIT_COMMITTER_NAME": "Bob",
+        "GIT_COMMITTER_EMAIL": "bob@example.com",
+    }
+    alice_old_env = {
+        "GIT_AUTHOR_NAME": "Alice Old",
+        "GIT_AUTHOR_EMAIL": "alice-old@example.com",
+        "GIT_COMMITTER_NAME": "Alice Old",
+        "GIT_COMMITTER_EMAIL": "alice-old@example.com",
+    }
+
+    run(["git", "init", "-b", "main"])
+    run(["git", "config", "user.email", "alice@example.com"])
+    run(["git", "config", "user.name", "Alice"])
+
+    (repo_path / "module_a.py").write_text("x = 1\ny = 2\nz = 3\n")
+    run(["git", "add", "."])
+    run(
+        ["git", "commit", "-m", "feat: initial commit", "--date=2024-03-01T10:00:00+00:00"],
+        env_override={**alice_env, "GIT_COMMITTER_DATE": "2024-03-01T10:00:00+00:00"},
+    )
+
+    (repo_path / "module_b.py").write_text("a = 10\nb = 20\nc = 30\nd = 40\n")
+    run(["git", "add", "."])
+    run(
+        ["git", "commit", "-m", "feat: add module_b", "--date=2024-03-15T14:00:00+00:00"],
+        env_override={**bob_env, "GIT_COMMITTER_DATE": "2024-03-15T14:00:00+00:00"},
+    )
+
+    (repo_path / "module_a.py").write_text("x = 1\ny = 2\nz = 4\n")
+    run(["git", "add", "."])
+    run(
+        ["git", "commit", "-m", "fix: correct calculation", "--date=2024-03-20T09:00:00+00:00"],
+        env_override={**alice_env, "GIT_COMMITTER_DATE": "2024-03-20T09:00:00+00:00"},
+    )
+
+    (repo_path / "module_a.py").write_text("x = 1\nz = 4\n")
+    run(["git", "add", "."])
+    run(
+        ["git", "commit", "-m", "refactor: simplify logic", "--date=2024-04-10T11:00:00+00:00"],
+        env_override={**alice_env, "GIT_COMMITTER_DATE": "2024-04-10T11:00:00+00:00"},
+    )
+
+    (repo_path / "module_b.py").write_text("a = 10\nb = 20\nc = 30\nd = 50\n")
+    run(["git", "add", "."])
+    run(
+        ["git", "commit", "-m", "chore: update constants", "--date=2024-04-15T16:00:00+00:00"],
+        env_override={**bob_env, "GIT_COMMITTER_DATE": "2024-04-15T16:00:00+00:00"},
+    )
+
+    (repo_path / "module_c.py").write_text("c = 99\n")
+    run(["git", "add", "."])
+    run(
+        ["git", "commit", "-m", "feat: legacy contribution", "--date=2024-04-20T12:00:00+00:00"],
+        env_override={**alice_old_env, "GIT_COMMITTER_DATE": "2024-04-20T12:00:00+00:00"},
+    )
+
+    # .mailmap left untracked — _read_mailmap reads from disk, not git objects.
+    (repo_path / ".mailmap").write_text(
+        "# Canonical identity mappings\n"
+        "Alice <alice@example.com> <alice-old@example.com>\n"
+        "this line is malformed and should be silently skipped\n"
+        "<also malformed>\n",
+        encoding="utf-8",
+    )
+
+    return repo_path
+
+
 # ------------------------------------------------------------------
 # Initialisation tests
 # ------------------------------------------------------------------
@@ -351,3 +449,49 @@ class TestReadMetadata:
             analysis_until=datetime.date(2024, 4, 30),
         )
         assert metadata.generated_at.tzinfo is not None
+
+
+# ------------------------------------------------------------------
+# Mailmap alias resolution tests
+# ------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestMailmapResolution:
+    """Tests for .mailmap canonical identity resolution in GitReader."""
+
+    def test_aliased_email_commits_aggregate_under_canonical_identity(
+        self, fixture_repo_with_mailmap: Path
+    ) -> None:
+        """Commits made under the alias email count toward the canonical contributor."""
+        reader = GitReader(fixture_repo_with_mailmap)
+        commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
+        stats = reader.aggregate_contributor_stats(commits=commits, min_commits=1)
+        alice = next(s for s in stats if s.email == "alice@example.com")
+        assert alice.commit_count == 4
+
+    def test_alias_email_does_not_appear_as_separate_contributor(
+        self, fixture_repo_with_mailmap: Path
+    ) -> None:
+        """The alias email must not produce a separate ContributorStats entry."""
+        reader = GitReader(fixture_repo_with_mailmap)
+        commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
+        stats = reader.aggregate_contributor_stats(commits=commits, min_commits=1)
+        emails = {s.email for s in stats}
+        assert "alice-old@example.com" not in emails
+
+    def test_missing_mailmap_does_not_raise(self, fixture_repo: Path) -> None:
+        """read_commits succeeds on a repository with no .mailmap file."""
+        reader = GitReader(fixture_repo)
+        commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
+        assert len(commits) == 5
+
+    def test_malformed_mailmap_lines_are_silently_skipped(
+        self, fixture_repo_with_mailmap: Path
+    ) -> None:
+        """Malformed lines do not raise; valid mappings surrounding them still apply."""
+        reader = GitReader(fixture_repo_with_mailmap)
+        commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
+        emails = {c.author_email.lower() for c in commits}
+        assert "alice-old@example.com" not in emails
+        assert "alice@example.com" in emails

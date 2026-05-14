@@ -15,6 +15,7 @@ and commit volumes without reflecting individual contributor activity.
 from __future__ import annotations
 
 import datetime
+import re
 from collections import defaultdict
 from pathlib import Path
 
@@ -115,10 +116,16 @@ class GitReader:
                 f"Verify the branch name is correct. Detail: {exc}"
             ) from exc
 
+        mailmap = self._read_mailmap()
+
         commits: list[Commit] = []
         for raw in raw_commits:
             author_name: str = raw.author.name or ""
             author_email: str = raw.author.email or ""
+
+            email_key = author_email.lower()
+            if email_key in mailmap:
+                author_name, author_email = mailmap[email_key]
 
             if author_name.lower() in exclude_set or author_email.lower() in exclude_set:
                 continue
@@ -259,3 +266,49 @@ class GitReader:
             return str(self._repo.remotes["origin"].url)
         except IndexError:
             return str(self._repo.remotes[0].url)
+
+    def _read_mailmap(self) -> dict[str, tuple[str, str]]:
+        """Read and parse the .mailmap file from the repository root.
+
+        Supports the two-field form ("Proper Name <commit@email.xx>") and
+        the three-field form ("Proper Name <canonical@email.xx> <commit@email.xx>").
+        The two-field form updates the author name only; the email is unchanged.
+        The three-field form updates both the author name and the email.
+        # TODO: four-field form — "Proper Name <proper@email.xx> Other Name <commit@email.xx>"
+
+        Returns:
+            A dict mapping lowercased alias email to a
+            (canonical_name, lowercased_canonical_email) tuple. Returns
+            an empty dict if the .mailmap file is absent or unreadable.
+        """
+        mailmap_path = self._repo_path / ".mailmap"
+        if not mailmap_path.exists():
+            return {}
+
+        try:
+            lines = mailmap_path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            return {}
+
+        _three_field = re.compile(r"^(.+?)\s+<([^>]+)>\s+<([^>]+)>\s*$")
+        _two_field = re.compile(r"^(.+?)\s+<([^>]+)>\s*$")
+
+        mapping: dict[str, tuple[str, str]] = {}
+        for line in lines:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            m3 = _three_field.match(stripped)
+            if m3:
+                canonical_name = m3.group(1).strip()
+                canonical_email = m3.group(2).lower()
+                alias_email = m3.group(3).lower()
+                mapping[alias_email] = (canonical_name, canonical_email)
+                continue
+            m2 = _two_field.match(stripped)
+            if m2:
+                canonical_name = m2.group(1).strip()
+                email = m2.group(2).lower()
+                mapping[email] = (canonical_name, email)
+
+        return mapping
