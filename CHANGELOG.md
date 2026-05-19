@@ -8,6 +8,10 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ## [Unreleased]
 
+---
+
+## [0.5.0] — 2026-05-19
+
 ### Added
 
 - `.mailmap` alias resolution applied in `GitReader` before contributor
@@ -299,7 +303,8 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ---
 
-[Unreleased]: https://github.com/varaprasadchilakanti/reveille/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/varaprasadchilakanti/reveille/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.5.0
 [0.4.1]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.4.1
 [0.4.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.4.0
 [0.3.3]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.3.3
