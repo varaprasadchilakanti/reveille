@@ -333,17 +333,7 @@ ruff check src/
 
 ## Contributing
 
-Contributions are welcome. Before opening a pull request, please read the following.
-
-**Reporting issues.** Use GitHub Issues. Include the output of `reveille --version`, the operating system, Python version, and a minimal reproduction case. If the issue involves a specific repository, a sanitised `git log --oneline` covering the relevant range is sufficient — do not include source code.
-
-**Proposing changes.** Open an issue before starting significant work. This avoids duplication and ensures the direction is aligned before effort is invested.
-
-**Submitting pull requests.** All pull requests must target the `main` branch. The CI pipeline runs `ruff`, `mypy`, and `pytest` on every pull request. All three must pass. New public functions require docstrings. New behaviour requires tests. The output contract — single self-contained HTML file, no external calls, formal aesthetic — is non-negotiable and must be preserved in every contribution.
-
-**Code style.** Ruff handles linting and import ordering. Mypy runs in strict mode. Type annotations are required on every function signature. Early returns are preferred over nested conditionals throughout.
-
-**Commit messages.** Follow the Conventional Commits specification: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`. Scope is optional but encouraged, e.g. `feat(ranking): add recency decay weighting`.
+Contributions are welcome. Please read [CONTRIBUTING.md](https://github.com/varaprasadchilakanti/reveille/blob/main/CONTRIBUTING.md) before opening a pull request. It covers the development environment setup, architecture overview, pull request contract, code style requirements, and commit message conventions.
 
 ---
 
