@@ -337,15 +337,29 @@ def validate(
         typer.Option("--repo", "-r", help="Path to the Git repository root."),
     ] = Path("."),
 ) -> None:
-    """Validate that the target path is a readable Git repository."""
+    """Validate that the target path is a readable Git repository with at least one commit."""
     from reveille.adapters.git_reader import GitReader
+    from reveille.exceptions import EmptyRepositoryError
 
     resolved = repo.resolve()
     try:
-        GitReader(resolved)
+        reader = GitReader(resolved)
     except RevelleError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
+
+    try:
+        reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
+    except EmptyRepositoryError:
+        typer.echo(
+            f"Error: repository at '{resolved}' contains no commits.",
+            err=True,
+        )
+        raise typer.Exit(code=1) from None
+    except RevelleError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
     typer.echo(f"Repository at {resolved} is valid.")
 
 
