@@ -36,7 +36,14 @@ contributor's identity is keyed on their author email address, not their
 display name. This means that a contributor who has committed under two
 different names — common after a name change or when work and personal
 accounts are mixed — is correctly treated as a single person, using the
-name from their most recent commit.
+name from their most recent commit. If a `.mailmap` file is present at
+the repository root, email aliases are resolved to their canonical
+identity before aggregation. A contributor who has committed under
+multiple email addresses is unified under the canonical identity declared
+in `.mailmap`, ensuring that ranking and contribution metrics reflect
+actual individual output rather than the number of addresses used. The
+four-field `.mailmap` form is not yet supported and is documented as a
+known limitation.
 
 Third, each contributor is scored using the weighted composite ranking
 algorithm and assigned a tier designation relative to the other

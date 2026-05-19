@@ -31,7 +31,7 @@ Reveille is designed for developers, engineering managers, and technical leads w
 **What it produces:**
 
 - Contribution heatmap with a GitHub-style year-navigable grid showing per-day commit activity. Year tabs allow switching between calendar years; a contributor dropdown surfaces per-contributor views alongside the aggregated default.
-- Commit frequency timelines and rolling activity charts
+- Aggregate weekly commit timeline and per-contributor commit frequency chart, enabling direct comparison of burst contributors versus contributors with sustained low-volume engagement across the analysis window
 - Per-contributor breakdowns covering commits, lines added and removed, and active day counts
 - A structured ranking table assigning each contributor a tier designation based on weighted activity metrics
 - Repository health indicators including bus factor, longest inactive streak, and consistency scores
@@ -199,6 +199,8 @@ The generated HTML file is structured as a formal report with the following sect
 **Activity Heatmap** — A GitHub-style year-navigable grid showing commit frequency by calendar day. Rows represent days of the week (Monday–Sunday); columns represent calendar weeks. Year tabs derived from the analysis window allow switching between calendar years without regenerating the report. A contributor dropdown provides per-contributor views alongside the aggregated default; single-contributor repositories hide the dropdown automatically.
 
 **Commit Timeline** — A rolling area chart showing commit volume per calendar week over the analysis window. Highlights periods of high and low activity.
+
+**Per-Contributor Commit Frequency** — A multi-trace line chart showing weekly commit frequency for each contributor individually across the analysis window. Each contributor is represented as a separate trace, enabling direct comparison of burst contributors versus those with sustained low-volume engagement — a distinction the aggregate timeline cannot convey.
 
 **Contributor Summary Table** — A ranked table listing each contributor with their commit count, lines added, lines removed, net line delta, active days, most recent commit date, and assigned tier designation.
 
