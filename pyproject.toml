@@ -89,7 +89,7 @@ pytest-xdist = "^3.5.0"
 pytest-timeout = "^2.3.0"
 
 # Type Checking
-mypy = "^1.8.0"
+mypy = ">=1.8,<3.0"
 types-python-dateutil = "^2.9.0"
 
 # Linting & Formatting
