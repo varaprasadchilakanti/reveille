@@ -234,6 +234,7 @@ filterwarnings = [
     "error",
     "ignore::DeprecationWarning",
     "ignore::PendingDeprecationWarning",
+    "ignore::ResourceWarning",
     "ignore::coverage.exceptions.CoverageWarning",
 ]
 
