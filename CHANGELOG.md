@@ -22,6 +22,13 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
   enabling direct comparison of burst contributors versus sustained
   low-volume engagement across the analysis window.
 
+### Changed
+
+- Pre-commit hooks for ruff and mypy converted to `repo: local` configuration.
+  Hooks now execute inside the project's Poetry virtualenv, ensuring exact
+  version parity with the CI pipeline and eliminating the `additional_dependencies`
+  maintenance burden in the mirror-based hook configuration.
+
 ---
 
 ## [0.4.1] — 2026-05-12
