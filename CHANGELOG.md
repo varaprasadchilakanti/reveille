@@ -29,6 +29,14 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
   version parity with the CI pipeline and eliminating the `additional_dependencies`
   maintenance burden in the mirror-based hook configuration.
 
+### Fixed
+
+- `validate` command now implements its documented contract in full. In
+  addition to confirming the target path is a readable Git repository, it
+  verifies that at least one commit is reachable on the default branch.
+  Repositories with no commits exit with a non-zero status and a diagnostic
+  message, making the command reliable for CI pre-flight checks.
+
 ---
 
 ## [0.4.1] — 2026-05-12

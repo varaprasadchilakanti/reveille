@@ -196,6 +196,33 @@ class TestValidateCommand:
         result = runner.invoke(app, ["validate", "--repo", str(plain)])
         assert "Error" in result.output
 
+    def test_validate_exits_nonzero_when_repository_has_no_commits(
+        self, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
+        empty_repo = tmp_path_factory.mktemp("validate_empty_repo")
+        env = {**os.environ}
+        subprocess.run(
+            ["git", "init", "-b", "main"],
+            cwd=empty_repo,
+            check=True,
+            capture_output=True,
+            env=env,
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "test@example.com"],
+            cwd=empty_repo,
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Test"],
+            cwd=empty_repo,
+            check=True,
+            capture_output=True,
+        )
+        result = runner.invoke(app, ["validate", "--repo", str(empty_repo)])
+        assert result.exit_code == 1
+
 
 # ------------------------------------------------------------------
 # Generate command
