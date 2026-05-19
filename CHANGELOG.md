@@ -28,6 +28,9 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
   Hooks now execute inside the project's Poetry virtualenv, ensuring exact
   version parity with the CI pipeline and eliminating the `additional_dependencies`
   maintenance burden in the mirror-based hook configuration.
+- PyPI development status classifier updated from `3 - Alpha` to `4 - Beta`.
+  Added `Intended Audience :: Information Technology` and
+  `Topic :: Software Development :: Build Tools` classifiers.
 
 ### Fixed
 
