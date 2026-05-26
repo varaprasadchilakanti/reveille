@@ -10,6 +10,19 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ---
 
+## [0.5.1] — 2026-05-26
+
+### Fixed
+
+- Internal `__version__` constant corrected to `"0.5.1"`. The v0.5.0 release
+  was published with the constant still reading `"0.4.1"`, causing
+  `reveille --version` to report the wrong version despite the correct package
+  metadata being present on PyPI. A `check-version` Makefile target has been
+  added to the `ci` recipe to enforce parity between `pyproject.toml` and
+  `__init__.__version__` on every future pull request.
+
+---
+
 ## [0.5.0] — 2026-05-19
 
 ### Added
@@ -303,7 +316,8 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ---
 
-[Unreleased]: https://github.com/varaprasadchilakanti/reveille/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/varaprasadchilakanti/reveille/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.5.1
 [0.5.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.5.0
 [0.4.1]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.4.1
 [0.4.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.4.0

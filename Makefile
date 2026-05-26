@@ -25,6 +25,14 @@ help:  ## Display available targets
 install:  ## Install all dependencies including dev group
 	poetry install
 
+check-version:  ## Assert pyproject.toml version matches reveille.__version__
+	@TOML_VER=$$(poetry version --short); \
+	CODE_VER=$$(poetry run python -c "import reveille; print(reveille.__version__)"); \
+	if [ "$$TOML_VER" != "$$CODE_VER" ]; then \
+		echo "Version mismatch: pyproject.toml=$$TOML_VER, __init__.py=$$CODE_VER"; \
+		exit 1; \
+	fi
+
 # ------------------------------------------------------------------
 # Code Quality
 # ------------------------------------------------------------------
@@ -66,6 +74,7 @@ coverage:  ## Generate HTML and terminal coverage report
 # ------------------------------------------------------------------
 
 ci:  ## Full CI workflow: lint, typecheck, test
+	$(MAKE) check-version
 	$(MAKE) lint
 	$(MAKE) typecheck
 	$(MAKE) test
