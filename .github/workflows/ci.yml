@@ -33,6 +33,8 @@ jobs:
         run: poetry install --no-interaction
       - name: Run ruff
         run: poetry run ruff check src tests
+      - name: Check version sync
+        run: make check-version
 
   typecheck:
     name: Type Check (mypy)
