@@ -8,6 +8,18 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `reveille init --mailmap` generates an annotated `.mailmap` template at the
+  repository root alongside `reveille.toml` in a single invocation. The template
+  documents the two-field form (name correction), three-field form (email alias
+  to canonical identity), and four-field form (name and email alias, marked as
+  unsupported by Reveille in this release), each with concrete real-world examples
+  covering employer domain changes, GitHub noreply addresses, and name corrections.
+  `--force` applies to both generated files. An existing `.mailmap` is silently
+  skipped without error; `.mailmap` is a Git-native file and its presence is not
+  treated as a conflict.
+
 ---
 
 ## [0.5.1] — 2026-05-26
