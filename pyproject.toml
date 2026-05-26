@@ -6,7 +6,7 @@
 
 [tool.poetry]
 name = "reveille"
-version = "0.5.0"
+version = "0.5.1"
 description = "A CLI tool that generates self-contained HTML performance reports from local Git repositories."
 authors = ["Varaprasad Chilakanti <varaprasadchilakanti@gmail.com>"]
 license = "MIT"
