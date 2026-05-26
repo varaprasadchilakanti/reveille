@@ -380,12 +380,21 @@ def init(
             help="Overwrite an existing configuration file without prompting.",
         ),
     ] = False,
+    mailmap: Annotated[
+        bool,
+        typer.Option(
+            "--mailmap",
+            help="Generate an annotated .mailmap template alongside reveille.toml.",
+        ),
+    ] = False,
 ) -> None:
     """Scaffold an annotated reveille.toml configuration file.
 
     Writes a fully commented configuration file to the current directory
     (or the path specified by --output) with all keys present and set to
     their defaults. Uncomment and edit only the keys you want to override.
+    Pass --mailmap to also generate an annotated .mailmap template at the
+    repository root.
     """
     cwd = Path(".").resolve()
     if not (cwd / ".git").exists():
@@ -396,7 +405,7 @@ def init(
         )
         raise typer.Exit(code=1)
 
-    from reveille.init import write_init_config
+    from reveille.init import write_init_config, write_mailmap_template
 
     try:
         written_path = write_init_config(output, force=force)
@@ -404,6 +413,17 @@ def init(
     except RevelleError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
+
+    if mailmap:
+        try:
+            mailmap_result = write_mailmap_template(cwd / ".mailmap", force=force)
+        except RevelleError as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+        if mailmap_result is not None:
+            typer.echo(f".mailmap template written to: {mailmap_result}")
+        else:
+            typer.echo(".mailmap already exists — skipped.")
 
 
 @app.command()

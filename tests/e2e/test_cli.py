@@ -640,3 +640,79 @@ class TestInitCommand:
             os.chdir(original)
         assert result.exit_code != 0
         assert not dest.exists()
+
+    def test_mailmap_flag_generates_mailmap_file(
+        self,
+        e2e_repo: Path,
+        tmp_path_factory: pytest.TempPathFactory,
+    ) -> None:
+        """--mailmap writes a .mailmap file at the repository root."""
+        dest = tmp_path_factory.mktemp("mailmap_gen") / "reveille.toml"
+        mailmap_path = e2e_repo / ".mailmap"
+        original = Path(os.getcwd())
+        try:
+            os.chdir(e2e_repo)
+            result = runner.invoke(app, ["init", "--output", str(dest), "--mailmap"])
+            mailmap_exists = mailmap_path.exists()
+        finally:
+            os.chdir(original)
+            mailmap_path.unlink(missing_ok=True)
+        assert result.exit_code == 0
+        assert mailmap_exists
+
+    def test_mailmap_skipped_when_file_exists_without_force(
+        self,
+        e2e_repo: Path,
+        tmp_path_factory: pytest.TempPathFactory,
+    ) -> None:
+        """Existing .mailmap is left untouched when --force is absent."""
+        dest = tmp_path_factory.mktemp("mailmap_skip") / "reveille.toml"
+        mailmap_path = e2e_repo / ".mailmap"
+        original_content = "# existing mailmap\n"
+        mailmap_path.write_text(original_content, encoding="utf-8")
+        original = Path(os.getcwd())
+        try:
+            os.chdir(e2e_repo)
+            result = runner.invoke(app, ["init", "--output", str(dest), "--mailmap"])
+            content_after = mailmap_path.read_text(encoding="utf-8")
+        finally:
+            os.chdir(original)
+            mailmap_path.unlink(missing_ok=True)
+        assert result.exit_code == 0
+        assert content_after == original_content
+
+    def test_mailmap_overwritten_with_force(
+        self,
+        e2e_repo: Path,
+        tmp_path_factory: pytest.TempPathFactory,
+    ) -> None:
+        """--force replaces an existing .mailmap with the generated template."""
+        dest = tmp_path_factory.mktemp("mailmap_force") / "reveille.toml"
+        mailmap_path = e2e_repo / ".mailmap"
+        mailmap_path.write_text("# stale content\n", encoding="utf-8")
+        original = Path(os.getcwd())
+        try:
+            os.chdir(e2e_repo)
+            result = runner.invoke(app, ["init", "--output", str(dest), "--mailmap", "--force"])
+            content_after = mailmap_path.read_text(encoding="utf-8")
+        finally:
+            os.chdir(original)
+            mailmap_path.unlink(missing_ok=True)
+        assert result.exit_code == 0
+        assert content_after != "# stale content\n"
+
+    def test_mailmap_flag_absent_does_not_generate_mailmap(
+        self,
+        e2e_repo: Path,
+        tmp_path_factory: pytest.TempPathFactory,
+    ) -> None:
+        """Omitting --mailmap does not create a .mailmap file."""
+        dest = tmp_path_factory.mktemp("mailmap_absent") / "reveille.toml"
+        original = Path(os.getcwd())
+        try:
+            os.chdir(e2e_repo)
+            result = runner.invoke(app, ["init", "--output", str(dest)])
+        finally:
+            os.chdir(original)
+        assert result.exit_code == 0
+        assert not (e2e_repo / ".mailmap").exists()
