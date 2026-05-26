@@ -6,10 +6,17 @@ via --force, conflict guard when force=False, and missing parent directory.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from reveille.exceptions import ConfigurationError, OutputPathError
-from reveille.init import _DEFAULT_CONFIG_TEMPLATE, write_init_config
+from reveille.init import (
+    _DEFAULT_CONFIG_TEMPLATE,
+    _DEFAULT_MAILMAP_TEMPLATE,
+    write_init_config,
+    write_mailmap_template,
+)
 
 
 class TestWriteInitConfig:
@@ -119,3 +126,56 @@ class TestWriteInitConfig:
         write_init_config(dest)
         # read_text with explicit encoding raises on invalid UTF-8
         dest.read_text(encoding="utf-8")
+
+
+class TestWriteMailmapTemplate:
+    """Tests for write_mailmap_template."""
+
+    def test_writes_file_when_absent(self, tmp_path: Path) -> None:
+        """The function writes a file to the specified path when absent."""
+        dest = tmp_path / ".mailmap"
+        result = write_mailmap_template(dest)
+        assert dest.exists()
+        assert result == dest.resolve()
+
+    def test_returns_resolved_absolute_path(self, tmp_path: Path) -> None:
+        """The returned path is absolute regardless of the input form."""
+        dest = tmp_path / ".mailmap"
+        result = write_mailmap_template(dest)
+        assert result is not None
+        assert result.is_absolute()
+
+    def test_written_content_matches_template(self, tmp_path: Path) -> None:
+        """The file content is byte-for-byte the default mailmap template."""
+        dest = tmp_path / ".mailmap"
+        write_mailmap_template(dest)
+        assert dest.read_text(encoding="utf-8") == _DEFAULT_MAILMAP_TEMPLATE
+
+    def test_returns_none_when_file_exists_without_force(self, tmp_path: Path) -> None:
+        """Returns None when the file already exists and force is False."""
+        dest = tmp_path / ".mailmap"
+        dest.write_text("# existing content\n", encoding="utf-8")
+        result = write_mailmap_template(dest, force=False)
+        assert result is None
+
+    def test_existing_file_untouched_when_skipped(self, tmp_path: Path) -> None:
+        """The existing file content is preserved when the write is skipped."""
+        dest = tmp_path / ".mailmap"
+        original = "# existing content\n"
+        dest.write_text(original, encoding="utf-8")
+        write_mailmap_template(dest, force=False)
+        assert dest.read_text(encoding="utf-8") == original
+
+    def test_force_overwrites_existing_file(self, tmp_path: Path) -> None:
+        """force=True replaces the existing file with the default template."""
+        dest = tmp_path / ".mailmap"
+        dest.write_text("# stale content\n", encoding="utf-8")
+        result = write_mailmap_template(dest, force=True)
+        assert result == dest.resolve()
+        assert dest.read_text(encoding="utf-8") == _DEFAULT_MAILMAP_TEMPLATE
+
+    def test_raises_output_path_error_when_parent_missing(self, tmp_path: Path) -> None:
+        """OutputPathError is raised if the parent directory is absent."""
+        dest = tmp_path / "nonexistent_dir" / ".mailmap"
+        with pytest.raises(OutputPathError, match="does not exist"):
+            write_mailmap_template(dest)
