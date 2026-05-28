@@ -20,6 +20,23 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
   skipped without error; `.mailmap` is a Git-native file and its presence is not
   treated as a conflict.
 
+### Changed
+
+- CodeQL security scanning and OpenSSF Scorecard workflows added to the repository.
+  CodeQL scans Python source on every pull request and push to main. Scorecard
+  publishes an automated security health score to the OpenSSF API on every push
+  to main, enabling the Scorecard badge and providing a verifiable third-party
+  security signal for enterprise evaluators.
+
+### Fixed
+
+- `--output` path resolution hardened against upward traversal sequences.
+  Paths containing `..` components are rejected at the CLI boundary with a
+  non-zero exit and an actionable diagnostic. Resolved output paths that fall
+  outside the repository root emit a stderr warning rather than an error,
+  making cross-boundary writes auditable in CI environments without restricting
+  legitimate use cases such as writing reports to a shared output directory.
+
 ---
 
 ## [0.5.1] — 2026-05-26
