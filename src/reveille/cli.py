@@ -15,6 +15,7 @@ import datetime
 import itertools
 import sys
 import threading
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated, Any, ClassVar, cast
@@ -23,6 +24,7 @@ import typer
 
 from reveille import __version__
 from reveille.config import ReportConfig, ReportConfigKwargs
+from reveille.domain.models import ProgressEvent
 from reveille.exceptions import ConfigurationError, RevelleError
 
 app = typer.Typer(
@@ -73,6 +75,9 @@ class _StageSpinner:
         self._stop_event: threading.Event = threading.Event()
         self._thread: threading.Thread | None = None
         self._label: str = ""
+        self._elapsed_seconds: float = 0.0
+        self._items_processed: int | None = None
+        self._start_time: float = 0.0
 
     def begin(self, label: str) -> None:
         """Start the animated indicator for a new pipeline stage.
@@ -81,18 +86,35 @@ class _StageSpinner:
             label: Human-readable stage name written to stderr.
         """
         self._label = label
+        self._elapsed_seconds = 0.0
+        self._items_processed = None
+        self._start_time = time.monotonic()
         self._stop_event.clear()
         self._active = True
         self._thread = threading.Thread(target=self._run, args=(label,), daemon=True)
         self._thread.start()
 
-    def complete(self) -> None:
+    def complete(
+        self,
+        elapsed_seconds: float | None = None,
+        items_processed: int | None = None,
+    ) -> None:
         """Stop the current animation and write the completion line.
 
         No-op if begin() has not been called or if already completed.
+
+        Args:
+            elapsed_seconds: Elapsed time to display. When None, computed
+                from the spinner's own start time.
+            items_processed: Optional item count appended to the completion
+                line (e.g. commit count from the reading stage).
         """
         if not self._active:
             return
+        self._elapsed_seconds = (
+            elapsed_seconds if elapsed_seconds is not None else time.monotonic() - self._start_time
+        )
+        self._items_processed = items_processed
         self._stop_event.set()
         if self._thread is not None:
             self._thread.join()
@@ -104,15 +126,20 @@ class _StageSpinner:
             sys.stderr.flush()
             if self._stop_event.wait(0.2):
                 break
-        sys.stderr.write(f"\r  {label} ...   done\n")
+        elapsed = self._elapsed_seconds
+        if self._items_processed is not None:
+            suffix = f"({elapsed:.1f}s, {self._items_processed:,} commits)"
+        else:
+            suffix = f"({elapsed:.1f}s)"
+        sys.stderr.write(f"\r  {label} ...   done {suffix}\n")
         sys.stderr.flush()
 
 
-def _make_progress_callback(spinner: _StageSpinner) -> Callable[[str], None]:
+def _make_progress_callback(spinner: _StageSpinner) -> Callable[[ProgressEvent], None]:
     """Return a progress callback that drives the given spinner.
 
-    On each invocation, completes the previous stage animation and
-    starts a new one for the incoming label.
+    On each invocation, completes the previous stage animation with timing
+    from the event and starts a new one for the incoming stage label.
 
     Args:
         spinner: The _StageSpinner instance to drive.
@@ -121,9 +148,9 @@ def _make_progress_callback(spinner: _StageSpinner) -> Callable[[str], None]:
         A callable suitable for passing as on_progress to generate_report.
     """
 
-    def _callback(label: str) -> None:
-        spinner.complete()
-        spinner.begin(label)
+    def _callback(event: ProgressEvent) -> None:
+        spinner.complete(event.elapsed_seconds, event.items_processed)
+        spinner.begin(event.stage)
 
     return _callback
 
