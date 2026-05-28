@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -65,6 +66,9 @@ _PIE_PALETTE: list[str] = [
     "#6366f1",
     "#f97316",
 ]
+
+# Pre-compiled pattern for stripping HTML tags from user-controlled strings.
+_HTML_TAG_RE: re.Pattern[str] = re.compile(r"<[^>]+>")
 
 # Module-level cache for the Plotly JS bundle.
 # plotly.offline.get_plotlyjs() reads ~3.5 MB of minified JavaScript from
@@ -313,7 +317,7 @@ def _build_contributor_timeline_chart(
                 x=all_weeks,
                 y=counts,
                 mode="lines",
-                name=r.stats.name,
+                name=_sanitise_chart_label(r.stats.name),
                 line={"color": _PIE_PALETTE[i % len(_PIE_PALETTE)], "width": 2},
                 hovertemplate="Week of %{x}<br>Commits: %{y}<extra></extra>",
             )
@@ -387,7 +391,7 @@ def _build_heatmap_data(
     for r in ranked_contributors:
         email_key = r.stats.email.lower()
         if email_key in per_email:
-            contributors.append({"email": email_key, "name": r.stats.name})
+            contributors.append({"email": email_key, "name": _sanitise_chart_label(r.stats.name)})
             daily_counts[email_key] = dict(per_email[email_key])
 
     payload: dict[str, object] = {
@@ -413,7 +417,7 @@ def _build_contributor_commits_chart(ranked: list[RankedContributor]) -> str:
     if not ranked:
         return "null"
 
-    names = [r.stats.name for r in reversed(ranked)]
+    names = [_sanitise_chart_label(r.stats.name) for r in reversed(ranked)]
     counts = [r.stats.commit_count for r in reversed(ranked)]
     tiers = [r.tier_designation for r in reversed(ranked)]
 
@@ -449,7 +453,7 @@ def _build_contributor_lines_chart(ranked: list[RankedContributor]) -> str:
     if not ranked:
         return "null"
 
-    names = [r.stats.name for r in ranked]
+    names = [_sanitise_chart_label(r.stats.name) for r in ranked]
     added = [r.stats.lines_added for r in ranked]
     deleted = [r.stats.lines_deleted for r in ranked]
 
@@ -501,7 +505,9 @@ def _build_commit_share_pie(ranked: list[RankedContributor]) -> str:
         return "null"
 
     sorted_r = sorted(ranked, key=lambda r: r.stats.commit_count, reverse=True)
-    labels, values = _aggregate_pie_data([(r.stats.name, r.stats.commit_count) for r in sorted_r])
+    labels, values = _aggregate_pie_data(
+        [(_sanitise_chart_label(r.stats.name), r.stats.commit_count) for r in sorted_r]
+    )
 
     fig = go.Figure(
         go.Pie(
@@ -540,7 +546,9 @@ def _build_lines_share_pie(ranked: list[RankedContributor]) -> str:
         return "null"
 
     sorted_r = sorted(ranked, key=lambda r: r.stats.lines_changed, reverse=True)
-    labels, values = _aggregate_pie_data([(r.stats.name, r.stats.lines_changed) for r in sorted_r])
+    labels, values = _aggregate_pie_data(
+        [(_sanitise_chart_label(r.stats.name), r.stats.lines_changed) for r in sorted_r]
+    )
 
     fig = go.Figure(
         go.Pie(
@@ -632,6 +640,29 @@ def _compute_longest_inactive_streak(
 # ------------------------------------------------------------------
 # Chart helper utilities
 # ------------------------------------------------------------------
+
+
+def _sanitise_chart_label(value: str) -> str:
+    """Strip HTML tags, null bytes, and surrounding whitespace from a chart label.
+
+    Contributor names are sourced from Git commit metadata and must not carry
+    HTML tags into Plotly trace fields. _to_json escapes </script> sequences,
+    but raw HTML tags in label text can produce unexpected browser rendering.
+    This function removes them before trace construction.
+
+    Preserves all characters legitimate in contributor names: letters, digits,
+    spaces, hyphens, apostrophes, periods, ampersands, and parentheses.
+
+    Args:
+        value: The raw string to sanitise.
+
+    Returns:
+        The sanitised string with HTML tags stripped, null bytes removed,
+        and surrounding whitespace trimmed.
+    """
+    value = _HTML_TAG_RE.sub("", value)
+    value = value.replace("\x00", "")
+    return value.strip()
 
 
 def _aggregate_pie_data(
