@@ -1,0 +1,43 @@
+# ==================================================================
+# Reveille -- OpenSSF Scorecard
+#
+# Runs on every push to main and weekly on Monday. Scores the
+# repository security posture across branch protection, CI coverage,
+# dependency pinning, vulnerability disclosure, and code review
+# enforcement. Publishes results to the Security tab and to the
+# OpenSSF API, enabling the Scorecard badge.
+# ==================================================================
+
+name: Scorecard
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'
+
+jobs:
+  scorecard:
+    name: OpenSSF Scorecard
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      id-token: write
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Run Scorecard
+        uses: ossf/scorecard-action@v2.4.0
+        with:
+          results_file: scorecard-results.sarif
+          results_format: sarif
+          publish_results: true
+
+      - name: Upload results to Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: scorecard-results.sarif
