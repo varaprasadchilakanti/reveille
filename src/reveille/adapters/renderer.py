@@ -67,7 +67,13 @@ _PIE_PALETTE: list[str] = [
     "#f97316",
 ]
 
-# Pre-compiled pattern for stripping HTML tags from user-controlled strings.
+# Pre-compiled patterns for sanitising user-controlled strings.
+# _SCRIPT_BLOCK_RE removes script elements including their content before
+# _HTML_TAG_RE strips remaining tags, preventing script body text from
+# surviving as raw output after tag removal.
+_SCRIPT_BLOCK_RE: re.Pattern[str] = re.compile(
+    r"<script[^>]*>.*?</script>", re.IGNORECASE | re.DOTALL
+)
 _HTML_TAG_RE: re.Pattern[str] = re.compile(r"<[^>]+>")
 
 # Module-level cache for the Plotly JS bundle.
@@ -660,6 +666,7 @@ def _sanitise_chart_label(value: str) -> str:
         The sanitised string with HTML tags stripped, null bytes removed,
         and surrounding whitespace trimmed.
     """
+    value = _SCRIPT_BLOCK_RE.sub("", value)
     value = _HTML_TAG_RE.sub("", value)
     value = value.replace("\x00", "")
     return value.strip()
