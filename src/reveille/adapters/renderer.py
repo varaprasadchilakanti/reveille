@@ -24,6 +24,7 @@ labels or commit messages contain that sequence.
 
 from __future__ import annotations
 
+import csv
 import datetime
 import json
 import re
@@ -227,6 +228,73 @@ class Renderer:
             resolved.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         except OSError as exc:
             raise OutputPathError(f"Failed to write JSON report to '{resolved}': {exc}") from exc
+
+        return resolved
+
+    def render_csv(self, data: ReportData, output_path: Path) -> Path:
+        """Serialise the ranked contributor table to a UTF-8 CSV file with BOM encoding.
+
+        BOM encoding ensures correct column rendering in Microsoft Excel on
+        Windows without requiring a manual import wizard configuration.
+
+        Args:
+            data: The complete structured report dataset.
+            output_path: Destination path for the CSV file.
+
+        Returns:
+            The absolute path of the written file.
+
+        Raises:
+            OutputPathError: If the parent directory does not exist or
+                the file cannot be written.
+        """
+        resolved = output_path.resolve()
+        if not resolved.parent.exists():
+            raise OutputPathError(
+                f"Output directory '{resolved.parent}' does not exist. "
+                "Create the directory before generating a report."
+            )
+
+        fieldnames = [
+            "rank",
+            "name",
+            "email",
+            "designation",
+            "tier",
+            "commits",
+            "lines_added",
+            "lines_deleted",
+            "net_lines",
+            "active_days",
+            "last_commit_date",
+            "composite_score",
+            "percentile",
+        ]
+
+        try:
+            with resolved.open("w", encoding="utf-8-sig", newline="") as fh:
+                writer = csv.DictWriter(fh, fieldnames=fieldnames)
+                writer.writeheader()
+                for i, r in enumerate(data.ranked_contributors):
+                    writer.writerow(
+                        {
+                            "rank": i + 1,
+                            "name": r.stats.name,
+                            "email": r.stats.email,
+                            "designation": r.tier_designation,
+                            "tier": r.tier,
+                            "commits": r.stats.commit_count,
+                            "lines_added": r.stats.lines_added,
+                            "lines_deleted": r.stats.lines_deleted,
+                            "net_lines": r.stats.net_lines,
+                            "active_days": r.stats.active_days,
+                            "last_commit_date": r.stats.last_commit_date.isoformat(),
+                            "composite_score": r.composite_score,
+                            "percentile": r.percentile,
+                        }
+                    )
+        except OSError as exc:
+            raise OutputPathError(f"Failed to write CSV report to '{resolved}': {exc}") from exc
 
         return resolved
 

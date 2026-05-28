@@ -333,7 +333,7 @@ def generate(
         str,
         typer.Option(
             "--format",
-            help="Output format. Accepted values: html, json, both.",
+            help="Output format. Accepted values: html, json, both, csv.",
         ),
     ] = "html",
     config: Annotated[

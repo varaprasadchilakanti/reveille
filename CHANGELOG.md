@@ -33,6 +33,12 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
   repository metadata, ranked contributor statistics with all scoring fields,
   and derived health metrics. The raw commits list is excluded. Dates are
   serialised as ISO 8601 strings.
+- `--format csv` added as an accepted output format, producing the ranked
+  contributor table as a UTF-8 CSV file with BOM encoding. BOM ensures correct
+  column rendering in Microsoft Excel on Windows without requiring a manual
+  import wizard. Columns: rank, name, email, designation, tier, commits,
+  lines added, lines deleted, net lines, active days, last commit date,
+  composite score, percentile.
 
 ### Changed
 

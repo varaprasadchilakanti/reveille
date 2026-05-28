@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from reveille.exceptions import ConfigurationError
 
-OutputFormat = Literal["html", "json", "both"]
+OutputFormat = Literal["html", "json", "both", "csv"]
 
 
 class RankingWeights(BaseModel):
