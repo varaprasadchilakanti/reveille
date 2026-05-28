@@ -36,6 +36,12 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
   outside the repository root emit a stderr warning rather than an error,
   making cross-boundary writes auditable in CI environments without restricting
   legitimate use cases such as writing reports to a shared output directory.
+- Contributor display names and other user-controlled strings sourced from Git
+  commit metadata are now sanitised before embedding as Plotly trace labels.
+  HTML tags are stripped via a compiled regex, null bytes are removed, and
+  surrounding whitespace is trimmed. Content-safe characters (ampersands,
+  parentheses, hyphens, apostrophes) are preserved. Applied at every trace
+  embedding site across all chart builders and the heatmap payload.
 
 ---
 

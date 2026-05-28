@@ -27,6 +27,7 @@ from reveille.adapters.renderer import (
     _build_timeline_chart,
     _compute_bus_factor,
     _compute_longest_inactive_streak,
+    _sanitise_chart_label,
     _to_json,
 )
 from reveille.domain.models import Commit, ContributorStats, RankedContributor
@@ -193,6 +194,32 @@ class TestComputeLongestInactiveStreak:
 # ------------------------------------------------------------------
 # _build_timeline_chart
 # ------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestSanitiseChartLabel:
+    """Tests for the _sanitise_chart_label helper."""
+
+    def test_plain_string_passes_through_unchanged(self) -> None:
+        assert _sanitise_chart_label("Alice Smith") == "Alice Smith"
+
+    def test_html_tag_stripped(self) -> None:
+        assert _sanitise_chart_label("Alice <b>Smith</b>") == "Alice Smith"
+
+    def test_script_tag_stripped(self) -> None:
+        assert _sanitise_chart_label("<script>alert(1)</script>Alice") == "Alice"
+
+    def test_null_byte_stripped(self) -> None:
+        assert _sanitise_chart_label("Alice\x00Smith") == "AliceSmith"
+
+    def test_surrounding_whitespace_trimmed(self) -> None:
+        assert _sanitise_chart_label("  Alice  ") == "Alice"
+
+    def test_ampersand_preserved(self) -> None:
+        assert _sanitise_chart_label("Alice & Bob") == "Alice & Bob"
+
+    def test_parentheses_preserved(self) -> None:
+        assert _sanitise_chart_label("Alice (Smith)") == "Alice (Smith)"
 
 
 @pytest.mark.unit
@@ -444,6 +471,27 @@ class TestBuildContributorCommitsChart:
             _make_ranked("Carol", commit_count=5),
         ]
         assert _is_valid_chart_json(_build_contributor_commits_chart(ranked))
+
+    @pytest.mark.parametrize(
+        "injected_name,expected_absent",
+        [
+            ("<b>Alice</b>", "<b>"),
+            ("<script>alert(1)</script>Alice", "<script>"),
+            ("Alice\x00Smith", "\x00"),
+        ],
+    )
+    def test_html_injection_stripped_from_labels(
+        self,
+        injected_name: str,
+        expected_absent: str,
+    ) -> None:
+        """User-controlled strings containing HTML must not appear raw in chart output."""
+        ranked = [
+            _make_ranked(injected_name, commit_count=10),
+            _make_ranked("Bob", commit_count=5),
+        ]
+        result = _build_contributor_commits_chart(ranked)
+        assert expected_absent not in result
 
 
 # ------------------------------------------------------------------
