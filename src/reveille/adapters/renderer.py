@@ -72,7 +72,7 @@ _PIE_PALETTE: list[str] = [
 # _HTML_TAG_RE strips remaining tags, preventing script body text from
 # surviving as raw output after tag removal.
 _SCRIPT_BLOCK_RE: re.Pattern[str] = re.compile(
-    r"<script[^>]*>.*?</script>", re.IGNORECASE | re.DOTALL
+    r"<script\b[^>]*>.*?</script\b[^>]*>", re.IGNORECASE | re.DOTALL
 )
 _HTML_TAG_RE: re.Pattern[str] = re.compile(r"<[^>]+>")
 
