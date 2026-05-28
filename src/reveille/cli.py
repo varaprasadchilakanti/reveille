@@ -170,6 +170,37 @@ def _resolve_output_path(output: Path, repo_path: Path) -> Path:
     return output
 
 
+def _validate_output_path(output: Path, repo_path: Path) -> None:
+    """Validate the output path for traversal components and boundary awareness.
+
+    Rejects paths containing upward traversal components before resolution.
+    Emits a stderr warning when the resolved output path falls outside the
+    repository root, making cross-boundary writes auditable in CI without
+    restricting legitimate use.
+
+    Args:
+        output: The output path as provided by the user (pre-resolution).
+        repo_path: The resolved repository root used as the boundary reference.
+
+    Raises:
+        typer.Exit: With code 1 if the path contains upward traversal components.
+    """
+    if ".." in output.parts:
+        typer.echo(
+            f"Error: output path '{output}' contains upward traversal components. "
+            "Provide an absolute path or a path relative to the current directory.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    if not output.resolve().is_relative_to(repo_path):
+        typer.echo(
+            f"Warning: output path resolves outside the repository root "
+            f"'{repo_path}'. Verify this is intentional.",
+            err=True,
+        )
+
+
 def _merge_cli_flags(
     config_kwargs: ReportConfigKwargs,
     repo: Path,
@@ -309,6 +340,8 @@ def generate(
         no_ranking,
     )
 
+    _validate_output_path(output, repo.resolve())
+
     try:
         report_config = ReportConfig(**merged)
     except ValueError as exc:
@@ -404,6 +437,8 @@ def init(
             err=True,
         )
         raise typer.Exit(code=1)
+
+    _validate_output_path(output, cwd)
 
     from reveille.init import write_init_config, write_mailmap_template
 

@@ -571,6 +571,44 @@ class TestGenerateCommand:
         assert result.exit_code == 1
         assert "reveille init --force" in result.output
 
+    def test_output_path_outside_repo_root_emits_warning(
+        self,
+        e2e_repo: Path,
+        tmp_path_factory: pytest.TempPathFactory,
+    ) -> None:
+        """An output path outside the repository root emits a warning but succeeds."""
+        outside_dir = tmp_path_factory.mktemp("outside_output")
+        output = outside_dir / "report.html"
+        result = runner.invoke(
+            app,
+            [
+                "generate",
+                "--repo",
+                str(e2e_repo),
+                "--output",
+                str(output),
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Warning" in result.output
+
+    def test_output_path_with_traversal_in_stem_is_rejected(
+        self,
+        e2e_repo: Path,
+    ) -> None:
+        """An output path containing upward traversal components exits nonzero."""
+        result = runner.invoke(
+            app,
+            [
+                "generate",
+                "--repo",
+                str(e2e_repo),
+                "--output",
+                "../../traversal-report.html",
+            ],
+        )
+        assert result.exit_code == 1
+
 
 # ------------------------------------------------------------------
 # Init command
