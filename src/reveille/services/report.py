@@ -32,7 +32,7 @@ from reveille.domain.ranking import rank_contributors
 def generate_report(
     config: ReportConfig,
     on_progress: Callable[[ProgressEvent], None] | None = None,
-) -> Path:
+) -> list[Path]:
     """Generate a self-contained HTML performance report.
 
     Args:
@@ -130,4 +130,9 @@ def generate_report(
     )
 
     renderer = Renderer()
-    return renderer.render(report_data, config.output_path)
+    paths: list[Path] = []
+    if config.output_format in ("html", "both"):
+        paths.append(renderer.render(report_data, config.output_path))
+    if config.output_format in ("json", "both"):
+        paths.append(renderer.render_json(report_data, config.output_path.with_suffix(".json")))
+    return paths

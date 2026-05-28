@@ -12,11 +12,13 @@ from __future__ import annotations
 
 import datetime
 import json
+from pathlib import Path
 
 import plotly.graph_objects as go
 import pytest
 
 from reveille.adapters.renderer import (
+    Renderer,
     _aggregate_pie_data,
     _build_commit_share_pie,
     _build_contributor_commits_chart,
@@ -30,7 +32,14 @@ from reveille.adapters.renderer import (
     _sanitise_chart_label,
     _to_json,
 )
-from reveille.domain.models import Commit, ContributorStats, RankedContributor
+from reveille.domain.models import (
+    Commit,
+    ContributorStats,
+    RankedContributor,
+    ReportData,
+    RepositoryMetadata,
+)
+from reveille.exceptions import OutputPathError
 
 # ------------------------------------------------------------------
 # Shared factory helpers
@@ -96,6 +105,60 @@ def _is_valid_chart_json(value: str) -> bool:
     except json.JSONDecodeError:
         return False
     return "data" in parsed and "layout" in parsed
+
+
+@pytest.mark.unit
+class TestRenderJson:
+    """Tests for Renderer.render_json."""
+
+    def _renderer(self) -> Renderer:
+        return Renderer()
+
+    def _sample_data(self) -> ReportData:
+        ranked = [_make_ranked("Alice", commit_count=10)]
+        metadata = RepositoryMetadata(
+            name="test-repo",
+            remote_url=None,
+            default_branch="main",
+            total_commits=10,
+            unique_contributors=1,
+            analysis_since=datetime.date(2024, 1, 1),
+            analysis_until=datetime.date(2024, 3, 31),
+            generated_at=datetime.datetime(2024, 4, 1, 12, 0, tzinfo=datetime.UTC),
+        )
+        return ReportData(metadata=metadata, ranked_contributors=ranked, commits=[])
+
+    def test_output_is_valid_json(self, tmp_path: Path) -> None:
+        output = tmp_path / "report.json"
+        self._renderer().render_json(self._sample_data(), output)
+        parsed = json.loads(output.read_text(encoding="utf-8"))
+        assert isinstance(parsed, dict)
+
+    def test_output_contains_expected_top_level_keys(self, tmp_path: Path) -> None:
+        output = tmp_path / "report.json"
+        self._renderer().render_json(self._sample_data(), output)
+        parsed = json.loads(output.read_text(encoding="utf-8"))
+        assert "metadata" in parsed
+        assert "contributors" in parsed
+        assert "derived" in parsed
+
+    def test_dates_serialised_as_iso_strings(self, tmp_path: Path) -> None:
+        output = tmp_path / "report.json"
+        self._renderer().render_json(self._sample_data(), output)
+        metadata = json.loads(output.read_text(encoding="utf-8"))["metadata"]
+        assert metadata["analysis_since"] == "2024-01-01"
+        assert metadata["analysis_until"] == "2024-03-31"
+
+    def test_returns_resolved_absolute_path(self, tmp_path: Path) -> None:
+        output = tmp_path / "report.json"
+        result = self._renderer().render_json(self._sample_data(), output)
+        assert result.is_absolute()
+        assert result == output.resolve()
+
+    def test_raises_output_path_error_on_missing_parent(self, tmp_path: Path) -> None:
+        output = tmp_path / "nonexistent" / "report.json"
+        with pytest.raises(OutputPathError):
+            self._renderer().render_json(self._sample_data(), output)
 
 
 # ------------------------------------------------------------------

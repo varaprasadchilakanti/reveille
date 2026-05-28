@@ -571,6 +571,53 @@ class TestGenerateCommand:
         assert result.exit_code == 1
         assert "reveille init --force" in result.output
 
+    def test_format_json_produces_json_file(
+        self,
+        e2e_repo: Path,
+        tmp_path_factory: pytest.TempPathFactory,
+    ) -> None:
+        """--format json writes a .json file at the output stem path."""
+        base = tmp_path_factory.mktemp("format_json")
+        output = base / "report.html"
+        result = runner.invoke(
+            app,
+            [
+                "generate",
+                "--repo",
+                str(e2e_repo),
+                "--output",
+                str(output),
+                "--format",
+                "json",
+            ],
+        )
+        assert result.exit_code == 0
+        assert (base / "report.json").exists()
+
+    def test_format_both_produces_html_and_json_files(
+        self,
+        e2e_repo: Path,
+        tmp_path_factory: pytest.TempPathFactory,
+    ) -> None:
+        """--format both writes both .html and .json files in a single invocation."""
+        base = tmp_path_factory.mktemp("format_both")
+        output = base / "report.html"
+        result = runner.invoke(
+            app,
+            [
+                "generate",
+                "--repo",
+                str(e2e_repo),
+                "--output",
+                str(output),
+                "--format",
+                "both",
+            ],
+        )
+        assert result.exit_code == 0
+        assert output.exists()
+        assert (base / "report.json").exists()
+
     def test_output_path_outside_repo_root_emits_warning(
         self,
         e2e_repo: Path,

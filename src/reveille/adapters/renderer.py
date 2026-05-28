@@ -157,6 +157,79 @@ class Renderer:
 
         return resolved
 
+    def render_json(self, data: ReportData, output_path: Path) -> Path:
+        """Serialise the report data to a structured JSON file.
+
+        The payload contains repository metadata, ranked contributor statistics
+        with all scoring fields, and derived health metrics. The raw commits
+        list is excluded. Dates are ISO 8601 strings. Suitable for consumption
+        by dashboards, data warehouses, and Jira integrations without parsing
+        HTML.
+
+        Args:
+            data: The complete structured report dataset.
+            output_path: Destination path for the JSON file.
+
+        Returns:
+            The absolute path of the written file.
+
+        Raises:
+            OutputPathError: If the parent directory does not exist or
+                the file cannot be written.
+        """
+        resolved = output_path.resolve()
+        if not resolved.parent.exists():
+            raise OutputPathError(
+                f"Output directory '{resolved.parent}' does not exist. "
+                "Create the directory before generating a report."
+            )
+
+        derived = self._compute_derived_stats(data)
+
+        payload: dict[str, Any] = {
+            "metadata": {
+                "name": data.metadata.name,
+                "remote_url": data.metadata.remote_url,
+                "default_branch": data.metadata.default_branch,
+                "total_commits": data.metadata.total_commits,
+                "unique_contributors": data.metadata.unique_contributors,
+                "analysis_since": data.metadata.analysis_since.isoformat(),
+                "analysis_until": data.metadata.analysis_until.isoformat(),
+                "generated_at": data.metadata.generated_at.isoformat(),
+            },
+            "contributors": [
+                {
+                    "rank": i + 1,
+                    "name": r.stats.name,
+                    "email": r.stats.email,
+                    "tier": r.tier,
+                    "tier_designation": r.tier_designation,
+                    "composite_score": r.composite_score,
+                    "percentile": r.percentile,
+                    "commit_count": r.stats.commit_count,
+                    "lines_added": r.stats.lines_added,
+                    "lines_deleted": r.stats.lines_deleted,
+                    "net_lines": r.stats.net_lines,
+                    "lines_changed": r.stats.lines_changed,
+                    "active_days": r.stats.active_days,
+                    "first_commit_date": r.stats.first_commit_date.isoformat(),
+                    "last_commit_date": r.stats.last_commit_date.isoformat(),
+                }
+                for i, r in enumerate(data.ranked_contributors)
+            ],
+            "derived": {
+                "bus_factor": derived["bus_factor"],
+                "longest_inactive_streak": derived["longest_inactive_streak"],
+            },
+        }
+
+        try:
+            resolved.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        except OSError as exc:
+            raise OutputPathError(f"Failed to write JSON report to '{resolved}': {exc}") from exc
+
+        return resolved
+
     # ------------------------------------------------------------------
     # Derived statistics
     # ------------------------------------------------------------------
