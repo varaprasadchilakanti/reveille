@@ -23,7 +23,7 @@ from typing import Annotated, Any, ClassVar, cast
 import typer
 
 from reveille import __version__
-from reveille.config import ReportConfig, ReportConfigKwargs
+from reveille.config import OutputFormat, ReportConfig, ReportConfigKwargs
 from reveille.domain.models import ProgressEvent
 from reveille.exceptions import ConfigurationError, RevelleError
 
@@ -239,6 +239,7 @@ def _merge_cli_flags(
     exclude_author: list[str] | None,
     min_commits: int | None,
     no_ranking: bool,
+    output_format: str,
 ) -> ReportConfigKwargs:
     """Merge CLI flag values into the base configuration dict.
 
@@ -257,6 +258,7 @@ def _merge_cli_flags(
         exclude_author: List of authors to exclude, or None.
         min_commits: Minimum commit threshold, or None if not provided.
         no_ranking: Whether ranking is disabled.
+        output_format: Output format string. Accepted values: html, json, both.
 
     Returns:
         A merged ReportConfigKwargs ready for ReportConfig construction.
@@ -281,6 +283,7 @@ def _merge_cli_flags(
         merged["min_commits"] = min_commits
     if no_ranking:
         merged["ranking_enabled"] = False
+    merged["output_format"] = cast(OutputFormat, output_format)
 
     return cast(ReportConfigKwargs, merged)
 
@@ -326,6 +329,13 @@ def generate(
         bool,
         typer.Option("--no-ranking", help="Omit the contributor ranking table from the output."),
     ] = False,
+    output_format: Annotated[
+        str,
+        typer.Option(
+            "--format",
+            help="Output format. Accepted values: html, json, both.",
+        ),
+    ] = "html",
     config: Annotated[
         Path | None,
         typer.Option("--config", "-c", help="Path to a TOML configuration file."),
@@ -365,6 +375,7 @@ def generate(
         exclude_author,
         min_commits,
         no_ranking,
+        output_format,
     )
 
     _validate_output_path(output, repo.resolve())
@@ -377,7 +388,7 @@ def generate(
 
     spinner = _StageSpinner()
     try:
-        written_path = generate_report(
+        written_paths = generate_report(
             report_config,
             on_progress=_make_progress_callback(spinner),
         )
@@ -387,7 +398,8 @@ def generate(
         raise typer.Exit(code=1) from exc
     else:
         spinner.complete()
-        typer.echo(f"Report written to: {written_path}")
+        for path in written_paths:
+            typer.echo(f"Report written to: {path}")
 
 
 @app.command()

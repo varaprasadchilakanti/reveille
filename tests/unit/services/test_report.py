@@ -131,7 +131,7 @@ class TestGenerateReport:
 
             result = generate_report(minimal_config)
 
-        assert result == expected_path
+        assert result == [expected_path]
 
     def test_rank_contributors_called_when_ranking_enabled(
         self,
