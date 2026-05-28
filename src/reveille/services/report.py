@@ -135,4 +135,6 @@ def generate_report(
         paths.append(renderer.render(report_data, config.output_path))
     if config.output_format in ("json", "both"):
         paths.append(renderer.render_json(report_data, config.output_path.with_suffix(".json")))
+    if config.output_format == "csv":
+        paths.append(renderer.render_csv(report_data, config.output_path.with_suffix(".csv")))
     return paths

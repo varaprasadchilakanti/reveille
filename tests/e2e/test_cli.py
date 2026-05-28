@@ -618,6 +618,29 @@ class TestGenerateCommand:
         assert output.exists()
         assert (base / "report.json").exists()
 
+    def test_format_csv_produces_csv_file(
+        self,
+        e2e_repo: Path,
+        tmp_path_factory: pytest.TempPathFactory,
+    ) -> None:
+        """--format csv writes a .csv file at the output stem path."""
+        base = tmp_path_factory.mktemp("format_csv")
+        output = base / "report.html"
+        result = runner.invoke(
+            app,
+            [
+                "generate",
+                "--repo",
+                str(e2e_repo),
+                "--output",
+                str(output),
+                "--format",
+                "csv",
+            ],
+        )
+        assert result.exit_code == 0
+        assert (base / "report.csv").exists()
+
     def test_output_path_outside_repo_root_emits_warning(
         self,
         e2e_repo: Path,

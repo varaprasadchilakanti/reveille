@@ -10,9 +10,11 @@ completeness, and the behavioural contract for edge cases.
 
 from __future__ import annotations
 
+import csv
 import datetime
 import json
 from pathlib import Path
+from typing import ClassVar
 
 import plotly.graph_objects as go
 import pytest
@@ -159,6 +161,77 @@ class TestRenderJson:
         output = tmp_path / "nonexistent" / "report.json"
         with pytest.raises(OutputPathError):
             self._renderer().render_json(self._sample_data(), output)
+
+
+@pytest.mark.unit
+class TestRenderCsv:
+    """Tests for Renderer.render_csv."""
+
+    _EXPECTED_FIELDNAMES: ClassVar[list[str]] = [
+        "rank",
+        "name",
+        "email",
+        "designation",
+        "tier",
+        "commits",
+        "lines_added",
+        "lines_deleted",
+        "net_lines",
+        "active_days",
+        "last_commit_date",
+        "composite_score",
+        "percentile",
+    ]
+
+    def _renderer(self) -> Renderer:
+        return Renderer()
+
+    def _sample_data(self) -> ReportData:
+        ranked = [
+            _make_ranked("Alice", commit_count=10),
+            _make_ranked("Bob", commit_count=5),
+        ]
+        metadata = RepositoryMetadata(
+            name="test-repo",
+            remote_url=None,
+            default_branch="main",
+            total_commits=15,
+            unique_contributors=2,
+            analysis_since=datetime.date(2024, 1, 1),
+            analysis_until=datetime.date(2024, 3, 31),
+            generated_at=datetime.datetime(2024, 4, 1, 12, 0, tzinfo=datetime.UTC),
+        )
+        return ReportData(metadata=metadata, ranked_contributors=ranked, commits=[])
+
+    def test_header_row_contains_expected_columns(self, tmp_path: Path) -> None:
+        output = tmp_path / "report.csv"
+        self._renderer().render_csv(self._sample_data(), output)
+        with output.open(encoding="utf-8-sig") as fh:
+            reader = csv.DictReader(fh)
+            assert list(reader.fieldnames or []) == self._EXPECTED_FIELDNAMES
+
+    def test_bom_present_at_file_start(self, tmp_path: Path) -> None:
+        output = tmp_path / "report.csv"
+        self._renderer().render_csv(self._sample_data(), output)
+        assert output.read_bytes()[:3] == b"\xef\xbb\xbf"
+
+    def test_correct_row_count(self, tmp_path: Path) -> None:
+        output = tmp_path / "report.csv"
+        self._renderer().render_csv(self._sample_data(), output)
+        with output.open(encoding="utf-8-sig") as fh:
+            rows = list(csv.reader(fh))
+        assert len(rows) == 3  # 1 header + 2 data rows
+
+    def test_returns_resolved_absolute_path(self, tmp_path: Path) -> None:
+        output = tmp_path / "report.csv"
+        result = self._renderer().render_csv(self._sample_data(), output)
+        assert result.is_absolute()
+        assert result == output.resolve()
+
+    def test_raises_output_path_error_on_missing_parent(self, tmp_path: Path) -> None:
+        output = tmp_path / "nonexistent" / "report.csv"
+        with pytest.raises(OutputPathError):
+            self._renderer().render_csv(self._sample_data(), output)
 
 
 # ------------------------------------------------------------------
