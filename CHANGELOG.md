@@ -19,6 +19,13 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
   `--force` applies to both generated files. An existing `.mailmap` is silently
   skipped without error; `.mailmap` is a Git-native file and its presence is not
   treated as a conflict.
+- `ProgressEvent` frozen dataclass introduced in `reveille.domain.models`.
+  The pipeline progress callback signature changes from `Callable[[str], None]`
+  to `Callable[[ProgressEvent], None]`. Each event carries the incoming stage
+  label, elapsed time of the stage that just completed, and an optional
+  items-processed count (commit count at the reading stage). The CLI stage
+  spinner now displays per-stage elapsed time on completion lines. The service
+  layer remains terminal-agnostic.
 
 ### Changed
 
