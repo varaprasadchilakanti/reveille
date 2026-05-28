@@ -17,6 +17,7 @@ or Typer. All external concerns are delegated to adapters.
 from __future__ import annotations
 
 import datetime
+import time
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
@@ -24,21 +25,22 @@ from pathlib import Path
 from reveille.adapters.git_reader import GitReader
 from reveille.adapters.renderer import Renderer
 from reveille.config import ReportConfig
-from reveille.domain.models import RankedContributor, ReportData
+from reveille.domain.models import ProgressEvent, RankedContributor, ReportData
 from reveille.domain.ranking import rank_contributors
 
 
 def generate_report(
     config: ReportConfig,
-    on_progress: Callable[[str], None] | None = None,
+    on_progress: Callable[[ProgressEvent], None] | None = None,
 ) -> Path:
     """Generate a self-contained HTML performance report.
 
     Args:
         config: Validated report configuration produced by the CLI layer.
-        on_progress: Optional callable invoked with a stage label string
-            at the start of each pipeline stage. Intended for CLI progress
-            display. Has no effect on the output when omitted.
+        on_progress: Optional callable invoked with a ProgressEvent at each
+            pipeline stage boundary. Carries the incoming stage label, elapsed
+            time of the stage that just completed, and an optional item count.
+            Has no effect on the output when omitted.
 
     Returns:
         The absolute path of the written HTML file.
@@ -50,9 +52,10 @@ def generate_report(
         RenderError: If the HTML template fails to render.
     """
     reader = GitReader(config.repo_path)
+    stage_start = time.monotonic()
 
     if on_progress is not None:
-        on_progress("Reading commit history")
+        on_progress(ProgressEvent(stage="Reading commit history", elapsed_seconds=0.0))
     commits = reader.read_commits(
         branch=config.branch,
         since=config.since,
@@ -65,17 +68,29 @@ def generate_report(
     )
     window_end = config.until or datetime.date.today()
 
+    elapsed = time.monotonic() - stage_start
+    stage_start = time.monotonic()
+
     if on_progress is not None:
-        on_progress("Aggregating contributor statistics")
+        on_progress(
+            ProgressEvent(
+                stage="Aggregating contributor statistics",
+                elapsed_seconds=elapsed,
+                items_processed=len(commits),
+            )
+        )
     contributor_stats = reader.aggregate_contributor_stats(
         commits=commits,
         min_commits=config.min_commits,
     )
 
+    elapsed = time.monotonic() - stage_start
+    stage_start = time.monotonic()
+
     ranked_contributors: list[RankedContributor]
     if config.ranking_enabled and contributor_stats:
         if on_progress is not None:
-            on_progress("Ranking contributors")
+            on_progress(ProgressEvent(stage="Ranking contributors", elapsed_seconds=elapsed))
         ranked_contributors = rank_contributors(
             contributors=contributor_stats,
             commits=commits,
@@ -83,6 +98,7 @@ def generate_report(
             window_start=window_start,
             window_end=window_end,
         )
+        elapsed = time.monotonic() - stage_start
     else:
         ranked_contributors = [
             RankedContributor(
@@ -94,6 +110,9 @@ def generate_report(
             )
             for s in contributor_stats
         ]
+
+    if on_progress is not None:
+        on_progress(ProgressEvent(stage="Rendering report", elapsed_seconds=elapsed))
 
     metadata = reader.read_metadata(
         total_commits=len(commits),
@@ -110,7 +129,5 @@ def generate_report(
         commits=commits,
     )
 
-    if on_progress is not None:
-        on_progress("Rendering report")
     renderer = Renderer()
     return renderer.render(report_data, config.output_path)

@@ -18,6 +18,7 @@ from reveille.config import ReportConfig
 from reveille.domain.models import (
     Commit,
     ContributorStats,
+    ProgressEvent,
     RankedContributor,
     ReportData,
     RepositoryMetadata,
@@ -296,10 +297,10 @@ class TestGenerateReport:
         sample_metadata: RepositoryMetadata,
     ) -> None:
         """on_progress is called once per pipeline stage in execution order."""
-        calls: list[str] = []
+        events: list[ProgressEvent] = []
 
-        def capture(label: str) -> None:
-            calls.append(label)
+        def capture(event: ProgressEvent) -> None:
+            events.append(event)
 
         with (
             patch("reveille.services.report.GitReader") as mock_reader,
@@ -315,9 +316,41 @@ class TestGenerateReport:
 
             generate_report(minimal_config, on_progress=capture)
 
-        assert calls == [
+        assert [e.stage for e in events] == [
             "Reading commit history",
             "Aggregating contributor statistics",
             "Ranking contributors",
             "Rendering report",
         ]
+
+    def test_progress_event_carries_elapsed_time(
+        self,
+        minimal_config: ReportConfig,
+        sample_commit: Commit,
+        sample_stats: ContributorStats,
+        sample_ranked: RankedContributor,
+        sample_metadata: RepositoryMetadata,
+    ) -> None:
+        """All events except the first carry non-negative elapsed time."""
+        events: list[ProgressEvent] = []
+
+        def capture(event: ProgressEvent) -> None:
+            events.append(event)
+
+        with (
+            patch("reveille.services.report.GitReader") as mock_reader,
+            patch("reveille.services.report.rank_contributors") as mock_rank,
+            patch("reveille.services.report.Renderer") as mock_renderer,
+        ):
+            reader_instance = mock_reader.return_value
+            reader_instance.read_commits.return_value = [sample_commit]
+            reader_instance.aggregate_contributor_stats.return_value = [sample_stats]
+            reader_instance.read_metadata.return_value = sample_metadata
+            mock_rank.return_value = [sample_ranked]
+            mock_renderer.return_value.render.return_value = Path("out.html")
+
+            generate_report(minimal_config, on_progress=capture)
+
+        assert events[0].elapsed_seconds == pytest.approx(0.0)
+        for event in events[1:]:
+            assert event.elapsed_seconds >= 0.0

@@ -84,6 +84,20 @@ class RepositoryMetadata:
     generated_at: datetime.datetime
 
 
+@dataclass(frozen=True)
+class ProgressEvent:
+    """A pipeline progress notification emitted at each stage boundary.
+
+    Carries the name of the stage that is starting, the elapsed time
+    of the stage that just completed, and an optional item count from
+    the completed stage.
+    """
+
+    stage: str
+    elapsed_seconds: float
+    items_processed: int | None = None
+
+
 @dataclass
 class ReportData:
     """The complete structured dataset for a single report.
