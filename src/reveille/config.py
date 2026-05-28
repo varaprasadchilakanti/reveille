@@ -11,11 +11,13 @@ from __future__ import annotations
 import datetime
 import tomllib
 from pathlib import Path
-from typing import Any, TypedDict, cast
+from typing import Any, Literal, TypedDict, cast
 
 from pydantic import BaseModel, Field, model_validator
 
 from reveille.exceptions import ConfigurationError
+
+OutputFormat = Literal["html", "json", "both"]
 
 
 class RankingWeights(BaseModel):
@@ -70,6 +72,7 @@ class ReportConfig(BaseModel):
     min_commits: int = Field(default=1, ge=1)
     ranking_enabled: bool = Field(default=True)
     ranking_weights: RankingWeights = Field(default_factory=RankingWeights)
+    output_format: OutputFormat = Field(default="html")
 
     @model_validator(mode="after")
     def since_must_precede_until(self) -> ReportConfig:
@@ -109,6 +112,7 @@ class ReportConfigKwargs(TypedDict, total=False):
     min_commits: int
     ranking_enabled: bool
     ranking_weights: RankingWeights
+    output_format: OutputFormat
 
 
 def load_config_from_toml(path: Path) -> ReportConfigKwargs:
@@ -172,6 +176,8 @@ def _parse_report_section(report: dict[str, Any]) -> dict[str, Any]:
                     f"Invalid '{field}' date in configuration file: "
                     f"'{report[field]}'. Expected YYYY-MM-DD."
                 ) from exc
+    if "format" in report:
+        kwargs["output_format"] = cast(OutputFormat, str(report["format"]))
     return kwargs
 
 
