@@ -31,12 +31,11 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
   spinner now displays per-stage elapsed time on completion lines. The service
   layer remains terminal-agnostic.
 - `--format` flag added to `reveille generate`. Accepted values are `html`
-  (default, existing behaviour), `json`, and `both`. `--format json` produces
-  a structured JSON file at the same path stem as the HTML output. `--format
-  both` produces both in a single invocation. The JSON payload contains
-  repository metadata, ranked contributor statistics with all scoring fields,
-  and derived health metrics. The raw commits list is excluded. Dates are
-  serialised as ISO 8601 strings.
+  (default, existing behaviour), `json`, and `csv`. `--format json` produces
+  a structured JSON file at the same path stem as the HTML output. The JSON
+  payload contains repository metadata, ranked contributor statistics with all
+  scoring fields, and derived health metrics. The raw commits list is excluded.
+  Dates are serialised as ISO 8601 strings.
 - `--format csv` added as an accepted output format, producing the ranked
   contributor table as a UTF-8 CSV file with BOM encoding. BOM ensures correct
   column rendering in Microsoft Excel on Windows without requiring a manual

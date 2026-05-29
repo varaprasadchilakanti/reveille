@@ -35,7 +35,7 @@ Reveille is designed for developers, engineering managers, and technical leads w
 - Per-contributor breakdowns covering commits, lines added and removed, and active day counts
 - A structured ranking table assigning each contributor a tier designation based on weighted activity metrics
 - Repository health indicators including bus factor, longest inactive streak, and consistency scores
-- Machine-readable output in JSON (ranked contributor statistics and repository metadata) and CSV (contributor table with BOM encoding for Excel compatibility) via `--format json`, `--format csv`, and `--format both`
+- Machine-readable output in JSON (ranked contributor statistics and repository metadata) and CSV (contributor table with BOM encoding for Excel compatibility) via `--format json`, `--format csv`
 
 **Design constraints that are non-negotiable:**
 
@@ -160,7 +160,7 @@ Generates the HTML performance report for the target repository.
 | `--min-commits` | | `INT` | `1` | Exclude contributors with fewer than this many commits in the analysis window. |
 | `--title` | | `TEXT` | Repository name | Override the report title displayed in the HTML output. |
 | `--no-ranking` | | Flag | Off | Omit the contributor ranking table from the output. |
-| `--format` | | `TEXT` | `html` | Output format. Accepted values: `html`, `json`, `csv`, `both`. `json` and `csv` write files at the same path stem as `--output`. `both` produces HTML and JSON together. |
+| `--format` | | `TEXT` | `html` | Output format. Accepted values: `html`, `json`, `csv`. `json` and `csv` write files at the same path stem as `--output`. |
 | `--config` | `-c` | `PATH` | None | Path to a TOML configuration file. If omitted, `reveille.toml` in the current working directory is loaded automatically when present. Use this flag for non-standard file names or paths outside the repository root. CLI flags always take precedence over configuration file values. |
 
 ### `reveille init`
@@ -213,7 +213,7 @@ The generated HTML file is structured as a formal report with the following sect
 
 **Repository Health Indicators** — Bus factor estimate (minimum number of contributors accounting for 50% of commits) and longest inactive streak within the analysis window.
 
-**JSON export** — When `--format json` or `--format both` is used, a structured JSON file is written at the same path stem as the HTML output. The payload contains repository metadata, ranked contributor statistics with all scoring fields, and derived health metrics. Suitable for dashboards, data warehouses, and CI integrations without parsing HTML.
+**JSON export** — When `--format json` is used, a structured JSON file is written at the same path stem as the HTML output. The payload contains repository metadata, ranked contributor statistics with all scoring fields, and derived health metrics. Suitable for dashboards, data warehouses, and CI integrations without parsing HTML.
 
 **CSV export** — When `--format csv` is used, the ranked contributor table is written as a UTF-8 CSV file with BOM encoding. BOM ensures correct column rendering in Microsoft Excel on Windows without requiring a manual import wizard. Columns: rank, name, email, designation, tier, commits, lines added, lines deleted, net lines, active days, last commit date, composite score, percentile.
 

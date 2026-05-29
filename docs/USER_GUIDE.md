@@ -181,11 +181,8 @@ Controls the output format for `reveille generate`. Accepts four values.
 
 `csv` writes the ranked contributor table as a UTF-8 CSV file with BOM encoding at the same path stem as `--output` with a `.csv` extension. BOM ensures correct column rendering in Microsoft Excel on Windows without requiring a manual import wizard configuration.
 
-`both` produces both the HTML and JSON files in a single invocation.
-
 ```bash
-reveille generate --format json
-reveille generate --format both --output /tmp/reports/q4.html
+reveille generate --format json --output /tmp/reports/q4.html
 reveille generate --format csv --output /tmp/reports/q4.html
 ```
 
@@ -271,7 +268,7 @@ since = "2024-10-01"
 until = "2024-12-31"
 
 # Output format. Equivalent to --format.
-# Accepted values: html (default), json, csv, both.
+# Accepted values: html (default), json, csv.
 # format = "html"
 
 
@@ -527,12 +524,6 @@ startup and exits with an error if the constraint is violated.
 
 ```bash
 reveille generate --format json --output /tmp/reports/q4.html
-```
-
-To produce both the interactive report and the machine-readable payload in a single invocation:
-
-```bash
-reveille generate --format both --output /tmp/reports/q4.html
 ```
 
 The JSON file is written to `/tmp/reports/q4.json`.
