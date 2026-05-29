@@ -171,6 +171,24 @@ for the full schema.
 reveille generate --config ./reveille.toml
 ```
 
+### `--format`
+
+Controls the output format for `reveille generate`. Accepts four values.
+
+`html` is the default and produces the single self-contained HTML file at the path specified by `--output`.
+
+`json` writes a structured JSON file at the same path stem as `--output` with a `.json` extension. The payload contains repository metadata, ranked contributor statistics with all scoring fields, and derived health metrics. The raw commits list is excluded. Suitable for consumption by dashboards and data warehouses without parsing HTML.
+
+`csv` writes the ranked contributor table as a UTF-8 CSV file with BOM encoding at the same path stem as `--output` with a `.csv` extension. BOM ensures correct column rendering in Microsoft Excel on Windows without requiring a manual import wizard configuration.
+
+`both` produces both the HTML and JSON files in a single invocation.
+
+```bash
+reveille generate --format json
+reveille generate --format both --output /tmp/reports/q4.html
+reveille generate --format csv --output /tmp/reports/q4.html
+```
+
 ---
 
 ## The `reveille init` Command
@@ -212,6 +230,17 @@ file already exists, to prevent accidental data loss.
 reveille init --force
 ```
 
+### `--mailmap`
+
+Generates a fully annotated `.mailmap` template at the repository root alongside `reveille.toml`. The template documents the two-field form (name correction), three-field form (email alias to canonical identity), and four-field form (name and email alias, marked as unsupported by Reveille in this release), each with concrete examples covering employer domain changes, GitHub noreply addresses, and name corrections.
+
+`--force` applies to both generated files when `--mailmap` is set. If a `.mailmap` file already exists, it is silently skipped — `.mailmap` is a Git-native file and its presence is not treated as a conflict.
+
+```bash
+reveille init --mailmap
+reveille init --mailmap --force
+```
+
 ---
 
 ## TOML Configuration Reference
@@ -240,6 +269,10 @@ since = "2024-10-01"
 
 # Analysis window end date. Equivalent to --until.
 until = "2024-12-31"
+
+# Output format. Equivalent to --format.
+# Accepted values: html (default), json, csv, both.
+# format = "html"
 
 
 [filters]
@@ -487,6 +520,32 @@ weights = { commits = 0.15, lines = 0.15, consistency = 0.40, recency = 0.30 }
 
 All four weights must sum to exactly 1.0. Reveille validates this at
 startup and exits with an error if the constraint is violated.
+
+### Exporting Machine-Readable Output for Downstream Integration
+
+`--format json` produces a structured JSON file at the same path stem as the HTML output. The payload contains repository metadata, ranked contributor statistics, and derived health metrics — suitable for dashboards, data warehouses, and Jira integrations without parsing HTML.
+
+```bash
+reveille generate --format json --output /tmp/reports/q4.html
+```
+
+To produce both the interactive report and the machine-readable payload in a single invocation:
+
+```bash
+reveille generate --format both --output /tmp/reports/q4.html
+```
+
+The JSON file is written to `/tmp/reports/q4.json`.
+
+### Exporting the Contributor Table to a Spreadsheet
+
+`--format csv` produces the ranked contributor table as a UTF-8 CSV file with BOM encoding, for direct import into Microsoft Excel, Google Sheets, or any spreadsheet application.
+
+```bash
+reveille generate --format csv --output /tmp/reports/q4.html
+```
+
+The CSV file is written to `/tmp/reports/q4.csv`.
 
 ### Embedding in Confluence
 
