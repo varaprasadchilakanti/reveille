@@ -1,6 +1,6 @@
 # Reveille
 
-**A CLI tool that generates self-contained HTML performance reports from local Git repositories.**
+**A CLI tool that generates performance reports from local Git repositories — as self-contained HTML, structured JSON, and CSV.**
 
 Reveille reads your repository's Git history and produces a single portable `.html` file containing interactive visualisations of contributor activity, commit trends, code volume, and repository health — with no server, no external API calls, and no configuration beyond the command itself. Open the output in any browser, share it over email, or drop it into a Confluence page without modification.
 
@@ -267,6 +267,7 @@ output = "./reports/q4-2024.html"
 branch = "main"
 since = "2024-10-01"
 until = "2024-12-31"
+format = "html"
 
 [filters]
 min_commits = 2
