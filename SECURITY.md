@@ -6,8 +6,8 @@ Only the current stable release receives security fixes.
 
 | Version | Supported |
 |---------|-----------|
-| 0.5.x   | ✓         |
-| < 0.5.0 | ✗         |
+| 0.6.x   | ✓         |
+| < 0.6.0 | ✗         |
 
 ## Reporting a Vulnerability
 
