@@ -258,7 +258,7 @@ def _merge_cli_flags(
         exclude_author: List of authors to exclude, or None.
         min_commits: Minimum commit threshold, or None if not provided.
         no_ranking: Whether ranking is disabled.
-        output_format: Output format string. Accepted values: html, json, both.
+        output_format: Output format string. Accepted values: html, json, csv.
 
     Returns:
         A merged ReportConfigKwargs ready for ReportConfig construction.
@@ -333,7 +333,7 @@ def generate(
         str,
         typer.Option(
             "--format",
-            help="Output format. Accepted values: html, json, both, csv.",
+            help="Output format. Accepted values: html, json, csv.",
         ),
     ] = "html",
     config: Annotated[

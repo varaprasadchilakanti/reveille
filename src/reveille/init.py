@@ -54,7 +54,6 @@ _DEFAULT_CONFIG_TEMPLATE: str = """\
 #            and repository metadata, suitable for downstream tooling.
 #   csv   -- The ranked contributor table as a UTF-8 CSV file with BOM
 #            encoding for direct import into Microsoft Excel.
-#   both  -- HTML and JSON files in a single invocation.
 # format = "html"
 
 

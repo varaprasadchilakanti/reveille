@@ -131,9 +131,9 @@ def generate_report(
 
     renderer = Renderer()
     paths: list[Path] = []
-    if config.output_format in ("html", "both"):
+    if config.output_format == "html":
         paths.append(renderer.render(report_data, config.output_path))
-    if config.output_format in ("json", "both"):
+    if config.output_format == "json":
         paths.append(renderer.render_json(report_data, config.output_path.with_suffix(".json")))
     if config.output_format == "csv":
         paths.append(renderer.render_csv(report_data, config.output_path.with_suffix(".csv")))
