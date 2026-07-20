@@ -55,7 +55,7 @@ python = "^3.11"
 # CLI Layer
 # Typer 0.18.0 restored full Click 8.3.x compatibility. The <8.3.0 upper
 # bound introduced in v0.3.0 is no longer required.
-typer = { version = ">=0.18,<0.27", extras = ["all"] }
+typer = { version = ">=0.18,<0.28", extras = ["all"] }
 click = ">=8.0.0"
 
 # Git Data Layer
