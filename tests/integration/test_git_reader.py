@@ -707,3 +707,128 @@ class TestGithubNoreplyIdentity:
             assert "alice@example.com" in emails
         finally:
             mailmap.unlink()
+
+
+# ------------------------------------------------------------------
+# Full .mailmap specification tests
+# ------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def four_field_repo(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Create a repository exercising all four gitmailmap(5) forms.
+
+    Commit history (chronological):
+        Daniel Brown <daniel@oldcorp.com>   four-field target
+        Erica Stone  <daniel@oldcorp.com>   same address, different name
+        Frank Lee    <frank-old@example.com>  email-only target
+        Grace Kim    <grace@example.com>    name-only target
+
+    Erica shares Daniel's old address, which is what the four-field form
+    exists to disambiguate: only Daniel's commits may be rewritten.
+    """
+    repo_path = tmp_path_factory.mktemp("four_field_repo")
+
+    def run(args: list[str], env_override: dict[str, str] | None = None) -> None:
+        env = {**os.environ, **(env_override or {})}
+        subprocess.run(args, cwd=repo_path, check=True, capture_output=True, env=env)
+
+    def identity(name: str, email: str) -> dict[str, str]:
+        return {
+            "GIT_AUTHOR_NAME": name,
+            "GIT_AUTHOR_EMAIL": email,
+            "GIT_COMMITTER_NAME": name,
+            "GIT_COMMITTER_EMAIL": email,
+        }
+
+    run(["git", "init", "-b", "main"])
+    run(["git", "config", "user.email", "seed@example.com"])
+    run(["git", "config", "user.name", "Seed"])
+
+    authors = [
+        ("Daniel Brown", "daniel@oldcorp.com"),
+        ("Erica Stone", "daniel@oldcorp.com"),
+        ("Frank Lee", "frank-old@example.com"),
+        ("Grace Kim", "grace@example.com"),
+    ]
+    for index, (name, email) in enumerate(authors):
+        (repo_path / f"file_{index}.py").write_text(f"value = {index}\n")
+        run(["git", "add", "."])
+        run(["git", "commit", "-m", f"feat: commit {index}"], env_override=identity(name, email))
+
+    (repo_path / ".mailmap").write_text(
+        "# Canonical identities for this repository\n"
+        "\n"
+        "Dan Brown <dan@newcorp.com> Daniel Brown <daniel@oldcorp.com>\n"
+        "<frank@example.com> <frank-old@example.com>\n"
+        "Grace Kim-Watanabe <grace@example.com>  # married name\n"
+    )
+
+    return repo_path
+
+
+@pytest.mark.integration
+class TestMailmapFourFieldForm:
+    """Tests for the four-field form: matched on commit name and email together."""
+
+    def test_four_field_form_maps_old_name_and_email_to_canonical_identity(
+        self, four_field_repo: Path
+    ) -> None:
+        reader = GitReader(four_field_repo)
+        commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
+        daniel = next(c for c in commits if c.author_email == "dan@newcorp.com")
+        assert daniel.author_name == "Dan Brown"
+
+    def test_four_field_form_leaves_a_different_name_on_the_same_address(
+        self, four_field_repo: Path
+    ) -> None:
+        """Erica shares Daniel's address and must not be rewritten as Daniel."""
+        reader = GitReader(four_field_repo)
+        commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
+        erica = next(c for c in commits if c.author_name == "Erica Stone")
+        assert erica.author_email == "daniel@oldcorp.com"
+
+    def test_four_field_and_three_field_coexist_in_same_mailmap(
+        self, four_field_repo: Path
+    ) -> None:
+        """Every form in one file is parsed; none shadows another."""
+        reader = GitReader(four_field_repo)
+        commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
+        identities = {(c.author_name, c.author_email) for c in commits}
+        assert identities == {
+            ("Dan Brown", "dan@newcorp.com"),
+            ("Erica Stone", "daniel@oldcorp.com"),
+            ("Frank Lee", "frank@example.com"),
+            ("Grace Kim-Watanabe", "grace@example.com"),
+        }
+
+
+@pytest.mark.integration
+class TestMailmapEmailOnlyForm:
+    """Tests for the email-only form: `<proper@email> <commit@email>`."""
+
+    def test_email_is_replaced_and_commit_name_preserved(self, four_field_repo: Path) -> None:
+        reader = GitReader(four_field_repo)
+        commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
+        frank = next(c for c in commits if c.author_email == "frank@example.com")
+        assert frank.author_name == "Frank Lee"
+
+    def test_email_only_form_does_not_leak_angle_brackets_into_the_name(
+        self, four_field_repo: Path
+    ) -> None:
+        """Regression: the line was previously parsed as a name-only entry,
+        yielding the literal '<frank@example.com>' as a display name."""
+        reader = GitReader(four_field_repo)
+        commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
+        assert not any("<" in c.author_name for c in commits)
+
+
+@pytest.mark.integration
+class TestMailmapComments:
+    """Tests for Git's comment handling in .mailmap."""
+
+    def test_trailing_comment_is_stripped_from_an_entry(self, four_field_repo: Path) -> None:
+        reader = GitReader(four_field_repo)
+        commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
+        grace = next(c for c in commits if c.author_email == "grace@example.com")
+        assert grace.author_name == "Grace Kim-Watanabe"

@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 
 from reveille.adapters.git_reader import (
+    _Mailmap,
     _normalise_github_noreply,
     _resolve_identity,
     _sum_numstat,
@@ -115,19 +116,21 @@ class TestResolveIdentity:
     """Tests for _resolve_identity, mailmap and noreply resolution combined."""
 
     def test_unmapped_ordinary_address_passes_through(self) -> None:
-        assert _resolve_identity("Alice", "alice@example.com", {}) == (
+        assert _resolve_identity("Alice", "alice@example.com", _Mailmap()) == (
             "Alice",
             "alice@example.com",
         )
 
     def test_unmapped_noreply_address_is_normalised(self) -> None:
-        assert _resolve_identity("Alice", "99+alice@users.noreply.github.com", {}) == (
+        assert _resolve_identity("Alice", "99+alice@users.noreply.github.com", _Mailmap()) == (
             "Alice",
             "alice@users.noreply.github.com",
         )
 
     def test_mailmap_entry_on_raw_address_wins(self) -> None:
-        mailmap = {"99+alice@users.noreply.github.com": ("Alice Real", "alice@example.com")}
+        mailmap = _Mailmap(
+            by_email={"99+alice@users.noreply.github.com": ("Alice Real", "alice@example.com")}
+        )
         assert _resolve_identity("Alice", "99+alice@users.noreply.github.com", mailmap) == (
             "Alice Real",
             "alice@example.com",
@@ -135,24 +138,28 @@ class TestResolveIdentity:
 
     def test_mailmap_entry_on_normalised_address_also_matches(self) -> None:
         # An entry written against the legacy form catches the prefixed form.
-        mailmap = {"alice@users.noreply.github.com": ("Alice Real", "alice@example.com")}
+        mailmap = _Mailmap(
+            by_email={"alice@users.noreply.github.com": ("Alice Real", "alice@example.com")}
+        )
         assert _resolve_identity("Alice", "99+alice@users.noreply.github.com", mailmap) == (
             "Alice Real",
             "alice@example.com",
         )
 
     def test_raw_mailmap_entry_takes_precedence_over_normalised(self) -> None:
-        mailmap = {
-            "99+alice@users.noreply.github.com": ("Raw Match", "raw@example.com"),
-            "alice@users.noreply.github.com": ("Normalised Match", "norm@example.com"),
-        }
+        mailmap = _Mailmap(
+            by_email={
+                "99+alice@users.noreply.github.com": ("Raw Match", "raw@example.com"),
+                "alice@users.noreply.github.com": ("Normalised Match", "norm@example.com"),
+            }
+        )
         assert _resolve_identity("Alice", "99+alice@users.noreply.github.com", mailmap) == (
             "Raw Match",
             "raw@example.com",
         )
 
     def test_mailmap_lookup_is_case_insensitive_on_the_raw_address(self) -> None:
-        mailmap = {"alice@example.com": ("Alice Real", "alice@example.com")}
+        mailmap = _Mailmap(by_email={"alice@example.com": ("Alice Real", "alice@example.com")})
         assert _resolve_identity("Alice", "ALICE@example.com", mailmap) == (
             "Alice Real",
             "alice@example.com",
@@ -160,8 +167,84 @@ class TestResolveIdentity:
 
     def test_mailmap_target_that_is_a_noreply_address_is_left_alone(self) -> None:
         # The mailmap states intent explicitly; it is not second-guessed.
-        mailmap = {"alice@example.com": ("Alice", "7+alice@users.noreply.github.com")}
+        mailmap = _Mailmap(
+            by_email={"alice@example.com": ("Alice", "7+alice@users.noreply.github.com")}
+        )
         assert _resolve_identity("Alice", "alice@example.com", mailmap) == (
             "Alice",
             "7+alice@users.noreply.github.com",
         )
+
+
+@pytest.mark.unit
+class TestResolveIdentityFourFieldForm:
+    """Tests for the four-field form, which matches on name and email together."""
+
+    def test_four_field_entry_matches_when_name_and_email_agree(self) -> None:
+        mailmap = _Mailmap(
+            by_name_and_email={
+                ("daniel brown", "daniel@oldcorp.com"): ("Dan Brown", "dan@newcorp.com")
+            }
+        )
+        assert _resolve_identity("Daniel Brown", "daniel@oldcorp.com", mailmap) == (
+            "Dan Brown",
+            "dan@newcorp.com",
+        )
+
+    def test_four_field_entry_ignored_when_the_name_differs(self) -> None:
+        """The whole point of the form: a shared address, distinguished by name."""
+        mailmap = _Mailmap(
+            by_name_and_email={
+                ("daniel brown", "shared@corp.com"): ("Dan Brown", "dan@newcorp.com")
+            }
+        )
+        assert _resolve_identity("Erica Stone", "shared@corp.com", mailmap) == (
+            "Erica Stone",
+            "shared@corp.com",
+        )
+
+    def test_four_field_matching_is_case_insensitive_on_both_fields(self) -> None:
+        mailmap = _Mailmap(
+            by_name_and_email={
+                ("commit name", "commit@email.xx"): ("Proper Name", "proper@email.xx")
+            }
+        )
+        assert _resolve_identity("CoMmIt NaMe", "CoMmIt@EmAiL.xX", mailmap) == (
+            "Proper Name",
+            "proper@email.xx",
+        )
+
+    def test_four_field_entry_wins_over_an_email_only_entry(self) -> None:
+        """Git prefers the most specific match; name plus email is more specific."""
+        mailmap = _Mailmap(
+            by_email={"shared@corp.com": ("Generic", "generic@corp.com")},
+            by_name_and_email={
+                ("daniel brown", "shared@corp.com"): ("Dan Brown", "dan@newcorp.com")
+            },
+        )
+        assert _resolve_identity("Daniel Brown", "shared@corp.com", mailmap) == (
+            "Dan Brown",
+            "dan@newcorp.com",
+        )
+        # A different contributor on the same address still falls back.
+        assert _resolve_identity("Erica Stone", "shared@corp.com", mailmap) == (
+            "Generic",
+            "generic@corp.com",
+        )
+
+
+@pytest.mark.unit
+class TestResolveIdentityEmailOnlyForm:
+    """Tests for the email-only form, which replaces the address but keeps the name."""
+
+    def test_commit_name_is_preserved(self) -> None:
+        mailmap = _Mailmap(by_email={"commit@example.com": (None, "proper@example.com")})
+        assert _resolve_identity("Alice", "commit@example.com", mailmap) == (
+            "Alice",
+            "proper@example.com",
+        )
+
+    def test_each_commit_keeps_its_own_name(self) -> None:
+        mailmap = _Mailmap(by_email={"shared@example.com": (None, "proper@example.com")})
+        assert _resolve_identity("Alice", "shared@example.com", mailmap)[0] == "Alice"
+        assert _resolve_identity("Bob", "shared@example.com", mailmap)[0] == "Bob"
