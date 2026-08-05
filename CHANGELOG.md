@@ -8,7 +8,29 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Complete `.mailmap` support. All four forms documented in gitmailmap(5) are
+  now parsed, where previously two were. The four-field form
+  (`Proper Name <proper@email> Commit Name <commit@email>`) matches on commit
+  name and email together, which is the only form that can disentangle several
+  people who committed under one shared address — a default `git config` left
+  in place on a build machine, for example. Where more than one entry could
+  apply, the most specific wins, matching Git. A comment now runs to the end of
+  the line rather than requiring its own line, and names and addresses are
+  matched case-insensitively, both as Git does. Verified against
+  `git log --use-mailmap`: identical resolved identities across every form.
+- `reveille init --mailmap` documents the two previously undocumented forms
+  with worked examples, and no longer states that the four-field form is
+  unsupported.
+
 ### Fixed
+
+- The email-only `.mailmap` form (`<proper@email> <commit@email>`) was parsed
+  as a name-only entry, taking the literal text `<proper@email>` — angle
+  brackets included — as the contributor's display name and leaving the address
+  unmapped. It now replaces the address and preserves each commit's own name,
+  which is what Git does.
 
 - GitHub's two private-commit address forms are now folded together. An account
   whose history spans GitHub's 2017 change appears under both
