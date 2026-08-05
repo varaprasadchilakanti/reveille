@@ -8,6 +8,19 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Python 3.13 and 3.14 are now supported and tested. The CI matrix runs the full suite on
+  3.11, 3.12, 3.13, and 3.14, and both new versions appear in the PyPI classifiers.
+  Previously the `^3.11` constraint permitted installation on 3.13 and 3.14 while CI
+  tested only 3.11 and 3.12 and the classifiers advertised only those two — users on newer
+  interpreters were running an untested, unadvertised configuration. `CONTRIBUTING.md`
+  now states the support policy: every non-EOL CPython at or above the 3.11 floor, added
+  to the classifiers only once CI proves it, dropped on upstream EOL, and never
+  upper-capped below 4.0.
+- The CI test matrix sets `fail-fast: false`, so a failure on one interpreter no longer
+  cancels the others.
+
 ### Changed
 
 - The base exception is now spelled `ReveilleError`. It had been `RevelleError` —

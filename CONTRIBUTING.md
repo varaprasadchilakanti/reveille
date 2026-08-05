@@ -38,6 +38,39 @@ poetry run ruff check src/
 poetry run pytest -n auto
 ```
 
+## Supported Python versions
+
+Reveille supports **every non-EOL CPython release at or above 3.11**. As of the 0.7.0
+release that is **3.11, 3.12, 3.13, and 3.14**. Each is exercised by the CI matrix on
+every pull request; each appears in the PyPI classifiers.
+
+**The 3.11 floor is technical, not a preference.** `config.py` imports `tomllib` and
+`git_reader.py` uses `datetime.UTC`, both added in 3.11. Lowering the floor means
+vendoring a TOML parser and reworking timezone handling — not worth it while 3.10 is
+weeks from end of life.
+
+Three rules govern changes to this policy.
+
+**1. A version is added to the classifiers only after CI proves it.** The classifier
+advertises a tested configuration; it is evidence, not intent. Add the version to the
+matrix, let CI run, and add the classifier in the same pull request once it is green.
+If it fails, either fix the incompatibility or state the exclusion and its reason —
+never quietly drop the version.
+
+**2. Versions are dropped on their upstream EOL date**, not on convenience. This follows
+the convention codified by SPEC 0 (successor to NEP 29) and used across the ecosystem.
+Dropping a version is a breaking change for anyone still on it and belongs in a release
+note.
+
+**3. The `python` constraint carries no upper cap below 4.0, and must not gain one.**
+`python = "^3.11"` resolves to `>=3.11,<4.0`. A tighter cap such as `<3.13` asserts that
+Reveille *breaks* on 3.13, which is a much stronger claim than "untested" — and the
+assertion is transitive: every project depending on Reveille inherits an unsatisfiable
+constraint on an interpreter that most likely works, and this project inherits the
+resulting reports. Not having tested a release is a reason to stay silent about it, not
+to forbid it. If a genuine incompatibility is found, express it as a narrow, documented
+exclusion rather than a blanket ceiling.
+
 ## Architecture
 
 Reveille follows Clean Architecture strictly. The dependency rule is
