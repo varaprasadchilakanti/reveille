@@ -29,7 +29,7 @@ from reveille.adapters.renderer import (
     _build_heatmap_data,
     _build_lines_share_pie,
     _build_timeline_chart,
-    _compute_bus_factor,
+    _compute_commit_concentration,
     _compute_longest_inactive_streak,
     _sanitise_chart_label,
     _to_json,
@@ -144,6 +144,18 @@ class TestRenderJson:
         assert "contributors" in parsed
         assert "derived" in parsed
 
+    def test_derived_metrics_use_the_honest_key_names(self, tmp_path: Path) -> None:
+        """The payload reports commit concentration, never 'bus_factor'.
+
+        The old key claimed to measure knowledge concentration while
+        computing commit share. Consumers must not see it again.
+        """
+        output = tmp_path / "report.json"
+        self._renderer().render_json(self._sample_data(), output)
+        derived = json.loads(output.read_text(encoding="utf-8"))["derived"]
+        assert "commit_concentration" in derived
+        assert "bus_factor" not in derived
+
     def test_dates_serialised_as_iso_strings(self, tmp_path: Path) -> None:
         output = tmp_path / "report.json"
         self._renderer().render_json(self._sample_data(), output)
@@ -235,27 +247,27 @@ class TestRenderCsv:
 
 
 # ------------------------------------------------------------------
-# _compute_bus_factor
+# _compute_commit_concentration
 # ------------------------------------------------------------------
 
 
 @pytest.mark.unit
-class TestComputeBusFactor:
-    """Tests for the bus factor derived metric helper."""
+class TestComputeCommitConcentration:
+    """Tests for the commit concentration derived metric helper."""
 
     def test_empty_ranked_returns_zero(self) -> None:
-        assert _compute_bus_factor([]) == 0
+        assert _compute_commit_concentration([]) == 0
 
     def test_single_contributor_returns_one(self) -> None:
         ranked = [_make_ranked("Alice", commit_count=20)]
-        assert _compute_bus_factor(ranked) == 1
+        assert _compute_commit_concentration(ranked) == 1
 
     def test_two_equal_contributors_returns_one(self) -> None:
         ranked = [
             _make_ranked("Alice", commit_count=10),
             _make_ranked("Bob", commit_count=10),
         ]
-        assert _compute_bus_factor(ranked) == 1
+        assert _compute_commit_concentration(ranked) == 1
 
     def test_skewed_distribution_returns_one(self) -> None:
         ranked = [
@@ -263,7 +275,7 @@ class TestComputeBusFactor:
             _make_ranked("Bob", commit_count=5),
             _make_ranked("Carol", commit_count=5),
         ]
-        assert _compute_bus_factor(ranked) == 1
+        assert _compute_commit_concentration(ranked) == 1
 
     def test_even_distribution_across_four_returns_two(self) -> None:
         ranked = [
@@ -272,11 +284,11 @@ class TestComputeBusFactor:
             _make_ranked("Carol", commit_count=25),
             _make_ranked("Dan", commit_count=25),
         ]
-        assert _compute_bus_factor(ranked) == 2
+        assert _compute_commit_concentration(ranked) == 2
 
     def test_zero_total_commits_returns_zero(self) -> None:
         ranked = [_make_ranked("Alice", commit_count=0)]
-        assert _compute_bus_factor(ranked) == 0
+        assert _compute_commit_concentration(ranked) == 0
 
 
 # ------------------------------------------------------------------
