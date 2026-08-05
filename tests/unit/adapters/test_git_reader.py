@@ -9,7 +9,11 @@ from __future__ import annotations
 
 import pytest
 
-from reveille.adapters.git_reader import _sum_numstat
+from reveille.adapters.git_reader import (
+    _normalise_github_noreply,
+    _resolve_identity,
+    _sum_numstat,
+)
 
 
 @pytest.mark.unit
@@ -54,3 +58,110 @@ class TestSumNumstat:
         # git never emits these; isdigit() rejects them rather than
         # letting a malformed value subtract from the total.
         assert _sum_numstat("-4\t-2\tmodule_a.py") == (0, 0)
+
+
+@pytest.mark.unit
+class TestNormaliseGithubNoreply:
+    """Tests for _normalise_github_noreply, the GitHub address folder."""
+
+    def test_prefixed_address_loses_its_numeric_id(self) -> None:
+        assert (
+            _normalise_github_noreply("140685918+alice@users.noreply.github.com")
+            == "alice@users.noreply.github.com"
+        )
+
+    def test_legacy_address_is_unchanged(self) -> None:
+        # Already canonical; normalising must be idempotent.
+        assert (
+            _normalise_github_noreply("alice@users.noreply.github.com")
+            == "alice@users.noreply.github.com"
+        )
+
+    def test_normalisation_is_idempotent(self) -> None:
+        once = _normalise_github_noreply("1+alice@users.noreply.github.com")
+        assert _normalise_github_noreply(once) == once
+
+    def test_ordinary_address_is_unchanged(self) -> None:
+        assert _normalise_github_noreply("alice@example.com") == "alice@example.com"
+
+    def test_bot_username_with_brackets_is_handled(self) -> None:
+        # dependabot commits under 49699333+dependabot[bot]@users.noreply.github.com
+        assert (
+            _normalise_github_noreply("49699333+dependabot[bot]@users.noreply.github.com")
+            == "dependabot[bot]@users.noreply.github.com"
+        )
+
+    def test_domain_match_is_case_insensitive(self) -> None:
+        assert (
+            _normalise_github_noreply("42+Alice@Users.NoReply.GitHub.Com")
+            == "Alice@users.noreply.github.com"
+        )
+
+    def test_other_noreply_domain_is_unchanged(self) -> None:
+        # Only GitHub's domain is folded; a lookalike must pass through.
+        address = "12345+alice@users.noreply.gitlab.com"
+        assert _normalise_github_noreply(address) == address
+
+    def test_prefix_without_digits_is_unchanged(self) -> None:
+        address = "team+alice@users.noreply.github.com"
+        assert _normalise_github_noreply(address) == address
+
+    def test_empty_string_is_unchanged(self) -> None:
+        assert _normalise_github_noreply("") == ""
+
+
+@pytest.mark.unit
+class TestResolveIdentity:
+    """Tests for _resolve_identity, mailmap and noreply resolution combined."""
+
+    def test_unmapped_ordinary_address_passes_through(self) -> None:
+        assert _resolve_identity("Alice", "alice@example.com", {}) == (
+            "Alice",
+            "alice@example.com",
+        )
+
+    def test_unmapped_noreply_address_is_normalised(self) -> None:
+        assert _resolve_identity("Alice", "99+alice@users.noreply.github.com", {}) == (
+            "Alice",
+            "alice@users.noreply.github.com",
+        )
+
+    def test_mailmap_entry_on_raw_address_wins(self) -> None:
+        mailmap = {"99+alice@users.noreply.github.com": ("Alice Real", "alice@example.com")}
+        assert _resolve_identity("Alice", "99+alice@users.noreply.github.com", mailmap) == (
+            "Alice Real",
+            "alice@example.com",
+        )
+
+    def test_mailmap_entry_on_normalised_address_also_matches(self) -> None:
+        # An entry written against the legacy form catches the prefixed form.
+        mailmap = {"alice@users.noreply.github.com": ("Alice Real", "alice@example.com")}
+        assert _resolve_identity("Alice", "99+alice@users.noreply.github.com", mailmap) == (
+            "Alice Real",
+            "alice@example.com",
+        )
+
+    def test_raw_mailmap_entry_takes_precedence_over_normalised(self) -> None:
+        mailmap = {
+            "99+alice@users.noreply.github.com": ("Raw Match", "raw@example.com"),
+            "alice@users.noreply.github.com": ("Normalised Match", "norm@example.com"),
+        }
+        assert _resolve_identity("Alice", "99+alice@users.noreply.github.com", mailmap) == (
+            "Raw Match",
+            "raw@example.com",
+        )
+
+    def test_mailmap_lookup_is_case_insensitive_on_the_raw_address(self) -> None:
+        mailmap = {"alice@example.com": ("Alice Real", "alice@example.com")}
+        assert _resolve_identity("Alice", "ALICE@example.com", mailmap) == (
+            "Alice Real",
+            "alice@example.com",
+        )
+
+    def test_mailmap_target_that_is_a_noreply_address_is_left_alone(self) -> None:
+        # The mailmap states intent explicitly; it is not second-guessed.
+        mailmap = {"alice@example.com": ("Alice", "7+alice@users.noreply.github.com")}
+        assert _resolve_identity("Alice", "alice@example.com", mailmap) == (
+            "Alice",
+            "7+alice@users.noreply.github.com",
+        )

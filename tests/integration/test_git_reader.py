@@ -585,3 +585,125 @@ class TestLineCounts:
         root = next(reversed(commits))
         assert root.lines_added == 2
         assert root.lines_deleted == 0
+
+
+# ------------------------------------------------------------------
+# GitHub noreply identity tests
+# ------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def noreply_repo(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Create a repository where one account uses both GitHub noreply forms.
+
+    Commit history (chronological):
+        Alice  140685918+alice@users.noreply.github.com   prefixed form
+        Alice  alice@users.noreply.github.com             legacy form
+        Bob    bob@example.com                            ordinary address
+
+    Alice is one GitHub account whose commits span the 2017 address change.
+    Without normalisation she aggregates as two separate contributors.
+    """
+    repo_path = tmp_path_factory.mktemp("noreply_repo")
+
+    def run(args: list[str], env_override: dict[str, str] | None = None) -> None:
+        env = {**os.environ, **(env_override or {})}
+        subprocess.run(args, cwd=repo_path, check=True, capture_output=True, env=env)
+
+    def identity(name: str, email: str) -> dict[str, str]:
+        return {
+            "GIT_AUTHOR_NAME": name,
+            "GIT_AUTHOR_EMAIL": email,
+            "GIT_COMMITTER_NAME": name,
+            "GIT_COMMITTER_EMAIL": email,
+        }
+
+    run(["git", "init", "-b", "main"])
+    run(["git", "config", "user.email", "alice@example.com"])
+    run(["git", "config", "user.name", "Alice"])
+
+    (repo_path / "a.py").write_text("x = 1\n")
+    run(["git", "add", "."])
+    run(
+        ["git", "commit", "-m", "feat: prefixed form"],
+        env_override=identity("Alice", "140685918+alice@users.noreply.github.com"),
+    )
+
+    (repo_path / "b.py").write_text("y = 2\n")
+    run(["git", "add", "."])
+    run(
+        ["git", "commit", "-m", "feat: legacy form"],
+        env_override=identity("Alice", "alice@users.noreply.github.com"),
+    )
+
+    (repo_path / "c.py").write_text("z = 3\n")
+    run(["git", "add", "."])
+    run(
+        ["git", "commit", "-m", "feat: ordinary address"],
+        env_override=identity("Bob", "bob@example.com"),
+    )
+
+    return repo_path
+
+
+@pytest.mark.integration
+class TestGithubNoreplyIdentity:
+    """Tests for GitHub noreply address folding in read_commits."""
+
+    def test_github_noreply_prefix_stripped(self, noreply_repo: Path) -> None:
+        reader = GitReader(noreply_repo)
+        commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
+        emails = {c.author_email for c in commits}
+        assert "140685918+alice@users.noreply.github.com" not in emails
+        assert "alice@users.noreply.github.com" in emails
+
+    def test_non_noreply_email_unaffected(self, noreply_repo: Path) -> None:
+        reader = GitReader(noreply_repo)
+        commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
+        assert "bob@example.com" in {c.author_email for c in commits}
+
+    def test_both_noreply_forms_aggregate_as_one_contributor(self, noreply_repo: Path) -> None:
+        """The headline fix: one account must not appear as two contributors."""
+        reader = GitReader(noreply_repo)
+        commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
+        stats = reader.aggregate_contributor_stats(commits=commits, min_commits=1)
+        assert len(stats) == 2
+        alice = next(s for s in stats if s.email == "alice@users.noreply.github.com")
+        assert alice.commit_count == 2
+
+    def test_exclusion_by_raw_prefixed_address_still_works(self, noreply_repo: Path) -> None:
+        """An --exclude-author copied from `git log` matches the raw form."""
+        reader = GitReader(noreply_repo)
+        commits = reader.read_commits(
+            branch=None,
+            since=None,
+            until=None,
+            exclude_authors=["140685918+alice@users.noreply.github.com"],
+        )
+        assert len(commits) == 2
+
+    def test_exclusion_by_normalised_address_matches_both_forms(self, noreply_repo: Path) -> None:
+        """An --exclude-author copied from report output removes the account."""
+        reader = GitReader(noreply_repo)
+        commits = reader.read_commits(
+            branch=None,
+            since=None,
+            until=None,
+            exclude_authors=["alice@users.noreply.github.com"],
+        )
+        assert len(commits) == 1
+        assert commits[0].author_email == "bob@example.com"
+
+    def test_mailmap_entry_overrides_normalisation(self, noreply_repo: Path) -> None:
+        """An explicit .mailmap statement wins over automatic folding."""
+        mailmap = noreply_repo / ".mailmap"
+        mailmap.write_text(
+            "Alice Real <alice@example.com> <140685918+alice@users.noreply.github.com>\n"
+        )
+        try:
+            reader = GitReader(noreply_repo)
+            commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
+            emails = {c.author_email for c in commits}
+            assert "alice@example.com" in emails
+        finally:
+            mailmap.unlink()
