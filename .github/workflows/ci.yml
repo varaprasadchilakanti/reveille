@@ -37,6 +37,8 @@ jobs:
         run: poetry run ruff check src tests
       - name: Check version sync
         run: make check-version
+      - name: Check packaging contract
+        run: make check-packaging
 
   typecheck:
     name: Type Check (mypy)
