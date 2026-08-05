@@ -8,6 +8,22 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking (JSON output):** the derived metric previously reported as
+  `bus_factor` is now `commit_concentration`. The computation is unchanged —
+  the minimum number of contributors whose combined commit volume reaches 50
+  percent of the total — but the old name claimed something the number does
+  not measure. Bus factor is knowledge concentration: how much of the
+  surviving code only one person understands. That is a property of line
+  ownership, answerable only by `git blame` across every file, and commit
+  counts are a weak proxy for it — a contributor making many small commits
+  outranks one who wrote a subsystem in a few large ones, and work since
+  rewritten still counts in full. The HTML summary card is relabelled
+  "Commit Concentration" and the User Guide explains what the number does and
+  does not support. Consumers reading the JSON `derived.bus_factor` key must
+  update to `derived.commit_concentration`.
+
 ### Added
 
 - Complete `.mailmap` support. All four forms documented in gitmailmap(5) are

@@ -52,7 +52,7 @@ a contributor ranked Captain in a ten-person team may rank Sergeant in a
 thirty-person team analysed over a longer window.
 
 Fourth, the Renderer assembles all data, computes derived metrics such as
-bus factor and longest inactive streak, builds Plotly chart specifications,
+commit concentration and longest inactive streak, builds Plotly chart specifications,
 and writes a single self-contained HTML file. All JavaScript and chart
 data are embedded inline. The output file has no external dependencies and
 can be opened in any modern browser without an internet connection.
@@ -304,13 +304,24 @@ configuration file and as a CLI flag, the CLI flag takes precedence.
 
 The summary cards at the top of the report provide four at-a-glance
 metrics. Total commits and unique contributors reflect the analysis
-window after all filters have been applied. Bus factor is the minimum
-number of contributors whose combined commit volume accounts for at least
-50 percent of total commits — a bus factor of 1 means a single person is
-responsible for the majority of the codebase's history, which represents
-a concentration risk. Max inactive days is the longest consecutive
-calendar period within the analysis window on which no commits were
-recorded.
+window after all filters have been applied. Commit concentration is the
+minimum number of contributors whose combined commit volume accounts for
+at least 50 percent of total commits — a value of 1 means a single person
+authored the majority of the history in the analysis window. Max inactive
+days is the longest consecutive calendar period within the analysis window
+on which no commits were recorded.
+
+**Commit concentration is not a bus factor, and should not be read as one.**
+Bus factor asks how much of the surviving code only one person understands.
+That is a property of line ownership — who wrote the code that is still in
+the repository today — and answering it requires `git blame` across every
+file, not commit counts. Commit volume is a weak proxy: a contributor who
+makes many small commits outranks one who wrote an entire subsystem in a
+handful of large ones, and a contributor whose work has since been rewritten
+still counts in full. Treat a low value as a prompt to look at who owns which
+files, not as a measurement of that risk. Reveille reports this metric under
+a name that describes what it actually computes; before v0.7.0 it was
+labelled "bus factor", which overstated it.
 
 ### Activity Heatmap
 

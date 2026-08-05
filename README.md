@@ -34,7 +34,7 @@ Reveille is designed for developers, engineering managers, and technical leads w
 - Aggregate weekly commit timeline and per-contributor commit frequency chart, enabling direct comparison of burst contributors versus contributors with sustained low-volume engagement across the analysis window
 - Per-contributor breakdowns covering commits, lines added and removed, and active day counts
 - A structured ranking table assigning each contributor a tier designation based on weighted activity metrics
-- Repository health indicators including bus factor, longest inactive streak, and consistency scores
+- Repository activity indicators including commit concentration, longest inactive streak, and consistency scores
 - Machine-readable output in JSON (ranked contributor statistics and repository metadata) and CSV (contributor table with BOM encoding for Excel compatibility) via `--format json`, `--format csv`
 
 **Design constraints that are non-negotiable:**
@@ -211,7 +211,7 @@ The generated HTML file is structured as a formal report with the following sect
 
 **Contribution Breakdown Charts** — Horizontal bar charts of commits and lines changed per contributor, and two donut charts showing each contributor's proportional share of total commits and total lines changed.
 
-**Repository Health Indicators** — Bus factor estimate (minimum number of contributors accounting for 50% of commits) and longest inactive streak within the analysis window.
+**Repository Activity Indicators** — Commit concentration (the minimum number of contributors accounting for 50% of commits) and longest inactive streak within the analysis window. Commit concentration is a measure of how concentrated the commit history is, not a bus factor: bus factor is a property of line ownership across the surviving codebase, which commit counts cannot establish. See the [User Guide](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md#repository-summary) for how to read it.
 
 **JSON export** — When `--format json` is used, a structured JSON file is written at the same path stem as the HTML output. The payload contains repository metadata, ranked contributor statistics with all scoring fields, and derived health metrics. Suitable for dashboards, data warehouses, and CI integrations without parsing HTML.
 
