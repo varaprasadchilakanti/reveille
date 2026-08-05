@@ -10,6 +10,23 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ### Added
 
+- **Exit codes now distinguish a negative answer from an inability to run.** Every
+  command returns `0` (success), `1` (Reveille ran and the repository state does not
+  satisfy the request — an empty analysis window, or a repository with no commits), or
+  `2` (Reveille could not run — invalid flag value, malformed configuration, a path that
+  is not a readable Git repository, or an unwritable output location). Previously every
+  failure returned `1`, so a CI job could not tell "this repository has nothing to report
+  yet", which may be acceptable, from "this step is misconfigured", which is not. The
+  codes are documented in the User Guide and are a supported contract. **Anyone currently
+  branching on a non-zero exit should note that configuration and repository-access
+  failures now return `2` rather than `1`.**
+- `--verbose` on `generate` and `validate` writes DEBUG-level diagnostics to stderr: the
+  fully resolved configuration after CLI flags and TOML have been merged, the exact
+  `git log` invocation, the commit count read, and every file written. Normal output is
+  unchanged, so the flag is safe to add to an existing pipeline. Reveille's modules log
+  through the standard `logging` module under the `reveille` logger and install only a
+  `NullHandler`, so importing Reveille as a library remains silent unless the host
+  application configures logging itself.
 - Python 3.13 and 3.14 are now supported and tested. The CI matrix runs the full suite on
   3.11, 3.12, 3.13, and 3.14, and both new versions appear in the PyPI classifiers.
   Previously the `^3.11` constraint permitted installation on 3.13 and 3.14 while CI
@@ -20,6 +37,13 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
   upper-capped below 4.0.
 - The CI test matrix sets `fail-fast: false`, so a failure on one interpreter no longer
   cancels the others.
+
+### Fixed
+
+- A readable repository containing no commits at all now raises `EmptyRepositoryError`
+  rather than `RepositoryError`. It had surfaced as a repository-access failure because
+  `git log` errors on an unborn HEAD, which conflated "this repository is unreadable"
+  with "this repository is empty" — the two states the new exit codes exist to separate.
 
 ### Changed
 

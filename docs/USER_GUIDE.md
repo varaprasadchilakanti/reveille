@@ -11,6 +11,7 @@ the [README](../README.md).
 
 - [How Reveille Works](#how-reveille-works)
 - [CLI Flags in Depth](#cli-flags-in-depth)
+- [Exit Codes](#exit-codes)
 - [The reveille init Command](#the-reveille-init-command)
 - [TOML Configuration Reference](#toml-configuration-reference)
 - [Understanding the Report](#understanding-the-report)
@@ -185,6 +186,54 @@ Controls the output format for `reveille generate`. Accepts four values.
 reveille generate --format json --output /tmp/reports/q4.html
 reveille generate --format csv --output /tmp/reports/q4.html
 ```
+
+---
+
+## Exit Codes
+
+Every command returns one of three codes. They are a supported contract:
+the numbers will not change without a major version bump.
+
+| Code | Meaning | When |
+|---|---|---|
+| `0` | Success | The command ran and its answer is affirmative. |
+| `1` | Negative answer | Reveille ran correctly and the repository state does not satisfy the request. The analysis window contains no commits, or the repository has no commits at all. |
+| `2` | Could not run | Reveille could not perform the request. Invalid flag value, malformed configuration, a path that is not a readable Git repository, or an output location that cannot be written. |
+
+**The distinction between `1` and `2` is the one worth scripting against.** A
+negative answer may be an acceptable state to record — a newly created repository
+legitimately has nothing to report. An inability to run is a broken pipeline step
+and usually means a misconfiguration.
+
+```bash
+reveille validate --repo ./service
+case $? in
+  0) echo "has commits, proceeding" ;;
+  1) echo "no commits in range - skipping report" ;;
+  2) echo "misconfigured, failing the build" >&2; exit 1 ;;
+esac
+```
+
+Diagnostic detail beyond this three-way split is written to stderr, not encoded
+in the exit code. Adding a distinct code per cause does not scale: the range is
+small, and every new cause would break scripts branching on the old numbering.
+
+### Diagnostics
+
+Pass `--verbose` to `generate` or `validate` to write DEBUG-level diagnostics to
+stderr. Normal output is unchanged, so adding the flag is safe in an existing
+pipeline. It reports the fully resolved configuration after CLI flags and the
+TOML file have been merged, the exact `git log` invocation used, how many commits
+were read, and every file written — which is usually enough to explain an
+unexpected report without a debugger.
+
+```bash
+reveille generate --verbose 2> reveille-debug.log
+```
+
+Reveille's modules log through the standard `logging` module under the `reveille`
+logger and install no handler of their own. Importing Reveille as a library is
+therefore silent unless the host application configures logging itself.
 
 ---
 
