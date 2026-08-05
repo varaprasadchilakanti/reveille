@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install lint format fix typecheck test test-unit \
+.PHONY: help install lint format fix typecheck precommit test test-unit \
 	    test-integration test-e2e coverage ci build publish-test \
 	    publish clean
 
@@ -48,6 +48,9 @@ fix:  ## Auto-fix lint issues with ruff
 
 typecheck:  ## Run mypy in strict mode
 	poetry run mypy src
+
+precommit:  ## Run all pre-commit hooks against every tracked file
+	poetry run pre-commit run --all-files
 
 # ------------------------------------------------------------------
 # Testing
