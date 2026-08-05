@@ -8,7 +8,37 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The muted text colour failed WCAG 2.1 AA contrast in both themes.** Light theme
+  measured 3.04:1 against the page background and 2.85:1 against raised surfaces — the
+  latter below even the 3:1 large-text threshold — and dark theme measured 4.12:1 and
+  3.77:1, against a 4.5:1 requirement for normal text. Both tokens are corrected
+  (`#8c959f` → `#69717a` light, `#6e7681` → `#7d8590` dark) and now clear AA on every
+  surface while remaining visibly lighter than secondary text, so the visual hierarchy is
+  unchanged. Contrast is now computed from the template's own CSS custom properties in
+  the test suite rather than checked by eye, so a future palette edit cannot silently
+  reintroduce the regression.
+
 ### Added
+
+- **The HTML report is now navigable with assistive technology.** It previously carried
+  no ARIA attributes, no table header scopes, and no text alternatives, which matters
+  because the report is explicitly built for stakeholder distribution — Confluence
+  embedding and email — the context in which WCAG 2.1 AA and EN 301 549 are asked about.
+  Specifically: every contributor-table column declares `scope="col"` and each rank cell
+  is a `scope="row"` header, so a screen reader announces which column a figure belongs
+  to; the table carries a caption naming the repository and analysis window; each of the
+  seven Plotly charts is exposed as a single labelled image with a described text
+  alternative, since SVG conveys nothing to a screen reader, and the alternatives point
+  at the contributor table that carries the same figures; the heatmap contributor filter
+  and year selector have accessible names, where the filter previously had none at all;
+  the year buttons expose their selected state through `aria-pressed`; summary cards
+  present the label and value as one phrase rather than two orphaned elements; the report
+  body is a `<main>` landmark; and `prefers-reduced-motion` is honoured per WCAG 2.1
+  SC 2.3.3.
+- The offline guarantee is now asserted in the test suite: no `<link>`, `<script>`, or
+  `<img>` in the rendered report may reference a remote host.
 
 - **Exit codes now distinguish a negative answer from an inability to run.** Every
   command returns `0` (success), `1` (Reveille ran and the repository state does not
