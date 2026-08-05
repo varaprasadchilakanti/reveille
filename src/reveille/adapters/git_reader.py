@@ -10,6 +10,11 @@ handles name changes over a repository's lifetime gracefully.
 
 Merge commits are excluded from all analysis. They inflate line counts
 and commit volumes without reflecting individual contributor activity.
+
+Commit history is read in a single `git log --numstat` subprocess.
+Reading per-commit line counts through GitPython's ``Commit.stats``
+instead spawns one `git diff` per commit, which dominates runtime on
+any repository large enough to care about.
 """
 
 from __future__ import annotations
@@ -24,6 +29,43 @@ from git.exc import GitCommandError
 
 from reveille.domain.models import Commit, ContributorStats, RepositoryMetadata
 from reveille.exceptions import EmptyRepositoryError, RepositoryError
+
+# Record and field delimiters for the single-pass `git log` read.
+# ASCII 0x1E (record separator) and 0x1F (unit separator) are control
+# characters that cannot appear in a commit header field, so they parse
+# unambiguously where a printable delimiter would not.
+_RECORD_SEP = "\x1e"
+_FIELD_SEP = "\x1f"
+
+_LOG_FORMAT = f"--format={_RECORD_SEP}%H{_FIELD_SEP}%an{_FIELD_SEP}%ae{_FIELD_SEP}%ct"
+
+
+def _sum_numstat(block: str) -> tuple[int, int]:
+    r"""Total the insertions and deletions in a `git log --numstat` block.
+
+    Each numstat line is `<added>\t<deleted>\t<path>`. Binary files report
+    a literal `-` for both counts and contribute zero, matching the
+    behaviour of the per-commit diff this replaced.
+
+    Args:
+        block: The numstat lines belonging to a single commit. May be
+            empty for a commit that changed no files.
+
+    Returns:
+        A tuple of (lines_added, lines_deleted).
+    """
+    added = 0
+    deleted = 0
+    for line in block.splitlines():
+        fields = line.split("\t")
+        if len(fields) < 3:
+            continue
+        raw_added, raw_deleted = fields[0], fields[1]
+        if raw_added.isdigit():
+            added += int(raw_added)
+        if raw_deleted.isdigit():
+            deleted += int(raw_deleted)
+    return added, deleted
 
 
 class GitReader:
@@ -66,6 +108,9 @@ class GitReader:
     ) -> list[Commit]:
         """Read all commits within the specified analysis window.
 
+        The entire history is read in one `git log --numstat` subprocess,
+        including per-commit line counts.
+
         Merge commits are unconditionally excluded. Author filtering
         matches against both name and email, case-insensitively.
 
@@ -92,24 +137,22 @@ class GitReader:
                 after filtering.
         """
         rev = branch or self._resolve_default_branch()
-        kwargs: dict[str, str | bool] = {"no_merges": True}
 
+        log_args: list[str] = ["--no-merges", "--numstat", _LOG_FORMAT]
         if since is not None:
-            kwargs["after"] = since.isoformat()
+            log_args.append(f"--after={since.isoformat()}")
         if until is not None:
             # Add one day to make the until boundary inclusive.
             inclusive_until = until + datetime.timedelta(days=1)
-            kwargs["before"] = inclusive_until.isoformat()
+            log_args.append(f"--before={inclusive_until.isoformat()}")
+        # The trailing `--` disambiguates the revision from a path of the
+        # same name, which git would otherwise report as ambiguous.
+        log_args.extend([rev, "--"])
 
         exclude_set = {entry.lower() for entry in exclude_authors}
 
         try:
-            raw_commits = list(
-                self._repo.iter_commits(rev, **kwargs)  # type: ignore[arg-type]
-                # GitPython's stub omits **kwargs from the iter_commits signature
-                # despite the runtime implementation accepting them (base.py:iter_commits).
-                # The call is correct at runtime. See mypy overrides for git.* in pyproject.toml.
-            )
+            raw_log = self._repo.git.log(*log_args)
         except GitCommandError as exc:
             raise RepositoryError(
                 f"Failed to read commits from branch '{rev}'. "
@@ -119,9 +162,16 @@ class GitReader:
         mailmap = self._read_mailmap()
 
         commits: list[Commit] = []
-        for raw in raw_commits:
-            author_name: str = raw.author.name or ""
-            author_email: str = raw.author.email or ""
+        for record in raw_log.split(_RECORD_SEP):
+            if not record.strip():
+                continue
+
+            header, _, numstat_block = record.partition("\n")
+            fields = header.split(_FIELD_SEP)
+            if len(fields) != 4:
+                continue
+
+            sha, author_name, author_email, committed_at = fields
 
             email_key = author_email.lower()
             if email_key in mailmap:
@@ -130,18 +180,18 @@ class GitReader:
             if author_name.lower() in exclude_set or author_email.lower() in exclude_set:
                 continue
 
-            stats = raw.stats.total
+            lines_added, lines_deleted = _sum_numstat(numstat_block)
             commits.append(
                 Commit(
-                    sha=raw.hexsha,
+                    sha=sha,
                     author_name=author_name,
                     author_email=author_email,
                     timestamp=datetime.datetime.fromtimestamp(
-                        raw.committed_date,
+                        int(committed_at),
                         tz=datetime.UTC,
                     ),
-                    lines_added=stats.get("insertions", 0),
-                    lines_deleted=stats.get("deletions", 0),
+                    lines_added=lines_added,
+                    lines_deleted=lines_deleted,
                 )
             )
 
