@@ -16,7 +16,7 @@
             --color-border-subtle:   #eaeef2;
             --color-text-primary:    #1c2128;
             --color-text-secondary:  #57606a;
-            --color-text-muted:      #8c959f;
+            --color-text-muted:      #69717a;
             --color-primary:         #1e40af;
             --color-primary-dim:     #dbeafe;
             --color-accent:          #2563eb;
@@ -43,7 +43,7 @@
             --color-border-subtle:   #21262d;
             --color-text-primary:    #e6edf3;
             --color-text-secondary:  #8b949e;
-            --color-text-muted:      #6e7681;
+            --color-text-muted:      #7d8590;
             --color-primary:         #58a6ff;
             --color-primary-dim:     #1f3458;
             --color-accent:          #79c0ff;
@@ -226,6 +226,37 @@
         /* ============================================================
            Chart Containers
            ============================================================ */
+        /* Accessible-but-invisible text: read by screen readers, never
+           painted. Uses the clip-path/1px technique rather than
+           display:none or visibility:hidden, both of which remove the
+           element from the accessibility tree entirely. */
+        .visually-hidden {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            margin: -1px;
+            padding: 0;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            clip-path: inset(50%);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        /* WCAG 2.1 SC 2.3.3. Readers who experience motion sickness or
+           vestibular disorders set this at the OS level; honour it by
+           removing transitions rather than merely shortening them. */
+        @media (prefers-reduced-motion: reduce) {
+            *,
+            *::before,
+            *::after {
+                transition-duration: 0.01ms !important;
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                scroll-behavior: auto !important;
+            }
+        }
+
         .chart-container {
             padding: 16px 16px 8px;
             background: var(--color-surface-raised);
@@ -487,7 +518,7 @@
     </style>
 </head>
 <body>
-<div class="page">
+<main class="page">
 
     <!-- ============================================================
          Header
@@ -518,30 +549,42 @@
          ============================================================ -->
     <div class="summary-grid">
         <div class="summary-card">
-            <div class="value">{{ data.metadata.total_commits }}</div>
-            <div class="label">Total Commits</div>
+            <span class="visually-hidden">Total Commits: {{ data.metadata.total_commits }}</span>
+            <div class="value" aria-hidden="true">{{ data.metadata.total_commits }}</div>
+            <div class="label" aria-hidden="true">Total Commits</div>
         </div>
         <div class="summary-card">
-            <div class="value">{{ data.metadata.unique_contributors }}</div>
-            <div class="label">Contributors</div>
+            <span class="visually-hidden">Contributors: {{ data.metadata.unique_contributors }}</span>
+            <div class="value" aria-hidden="true">{{ data.metadata.unique_contributors }}</div>
+            <div class="label" aria-hidden="true">Contributors</div>
         </div>
         <div class="summary-card">
-            <div class="value">{{ derived.commit_concentration }}</div>
-            <div class="label">Commit Concentration</div>
+            <span class="visually-hidden">Commit Concentration: {{ derived.commit_concentration }}</span>
+            <div class="value" aria-hidden="true">{{ derived.commit_concentration }}</div>
+            <div class="label" aria-hidden="true">Commit Concentration</div>
         </div>
         <div class="summary-card">
-            <div class="value">{{ derived.longest_inactive_streak }}</div>
-            <div class="label">Max Inactive Days</div>
+            <span class="visually-hidden">Max Inactive Days: {{ derived.longest_inactive_streak }}</span>
+            <div class="value" aria-hidden="true">{{ derived.longest_inactive_streak }}</div>
+            <div class="label" aria-hidden="true">Max Inactive Days</div>
         </div>
         <div class="summary-card">
-            <div class="value">
+            <span class="visually-hidden">
+                Top Contributor:
+                {% if data.ranked_contributors %}
+                    {{ data.ranked_contributors[0].stats.name }}
+                {% else %}
+                    none
+                {% endif %}
+            </span>
+            <div class="value" aria-hidden="true">
                 {% if data.ranked_contributors %}
                     {{ data.ranked_contributors[0].stats.name.split()[0] }}
                 {% else %}
                     --
                 {% endif %}
             </div>
-            <div class="label">Top Contributor</div>
+            <div class="label" aria-hidden="true">Top Contributor</div>
         </div>
     </div>
 
@@ -551,12 +594,14 @@
     <div class="section">
         <h2 class="section-title">Commit Activity Heatmap</h2>
         <div class="heatmap-controls">
-            <div id="heatmap-year-tabs" class="heatmap-year-tabs"></div>
+            <div id="heatmap-year-tabs" class="heatmap-year-tabs"
+                 role="group" aria-label="Select calendar year for the heatmap"></div>
             <select id="heatmap-contributor-select"
-                    class="heatmap-contributor-select"></select>
+                    class="heatmap-contributor-select"
+                    aria-label="Filter the activity heatmap by contributor"></select>
         </div>
         <div class="chart-container">
-            <div id="chart-heatmap"></div>
+            <div id="chart-heatmap" role="img" aria-label="Activity heatmap: commit counts per calendar day. The same activity is summarised per contributor in the Contributor Rankings table."></div>
         </div>
     </div>
 
@@ -566,7 +611,7 @@
     <div class="section">
         <h2 class="section-title">Weekly Commit Timeline</h2>
         <div class="chart-container">
-            <div id="chart-timeline"></div>
+            <div id="chart-timeline" role="img" aria-label="Line chart of total commits per calendar week across the analysis window."></div>
         </div>
     </div>
 
@@ -576,7 +621,7 @@
     <div class="section">
         <h2 class="section-title">Per-Contributor Commit Frequency</h2>
         <div class="chart-container">
-            <div id="chart-contributor_timeline"></div>
+            <div id="chart-contributor_timeline" role="img" aria-label="Line chart of commits per calendar week, one line per contributor."></div>
         </div>
     </div>
 
@@ -588,26 +633,32 @@
         <h2 class="section-title">Contributor Rankings</h2>
         <div class="table-wrapper">
             <table class="ranking-table">
+                <caption class="visually-hidden">
+                    Contributor rankings for {{ data.metadata.name }} between
+                    {{ data.metadata.analysis_since }} and {{ data.metadata.analysis_until }}.
+                    One row per contributor, ordered by composite score. This table
+                    carries the same underlying data as the charts on this page.
+                </caption>
                 <thead>
                     <tr>
-                        <th style="text-align:center; width:44px">#</th>
-                        <th style="min-width:160px">Contributor</th>
-                        <th style="min-width:140px">Designation</th>
-                        <th style="text-align:right">Commits</th>
-                        <th style="text-align:right">Lines Added</th>
-                        <th style="text-align:right">Lines Deleted</th>
-                        <th style="text-align:right">Net Lines</th>
-                        <th style="text-align:right">Active Days</th>
-                        <th style="white-space:nowrap">Last Commit</th>
-                        <th style="min-width:180px">Score</th>
+                        <th scope="col" style="text-align:center; width:44px">#</th>
+                        <th scope="col" style="min-width:160px">Contributor</th>
+                        <th scope="col" style="min-width:140px">Designation</th>
+                        <th scope="col" style="text-align:right">Commits</th>
+                        <th scope="col" style="text-align:right">Lines Added</th>
+                        <th scope="col" style="text-align:right">Lines Deleted</th>
+                        <th scope="col" style="text-align:right">Net Lines</th>
+                        <th scope="col" style="text-align:right">Active Days</th>
+                        <th scope="col" style="white-space:nowrap">Last Commit</th>
+                        <th scope="col" style="min-width:180px">Score</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for contributor in data.ranked_contributors %}
                     <tr>
-                        <td class="rank-number" style="text-align:center">
+                        <th scope="row" class="rank-number" style="text-align:center">
                             {{ loop.index }}
-                        </td>
+                        </th>
                         <td>
                             <span class="contributor-name">
                                 {{ contributor.stats.name }}
@@ -684,22 +735,22 @@
         <div class="chart-row">
             <div class="chart-container">
                 <p class="chart-label">Commits by Contributor</p>
-                <div id="chart-contributor_commits"></div>
+                <div id="chart-contributor_commits" role="img" aria-label="Bar chart of total commits per contributor. The same figures appear in the Commits column of the Contributor Rankings table."></div>
             </div>
             <div class="chart-container">
                 <p class="chart-label">Lines Changed by Contributor</p>
-                <div id="chart-contributor_lines"></div>
+                <div id="chart-contributor_lines" role="img" aria-label="Bar chart of lines changed per contributor. The same figures appear in the Lines Added and Lines Deleted columns of the Contributor Rankings table."></div>
             </div>
         </div>
 
         <div class="chart-row">
             <div class="chart-container">
                 <p class="chart-label">Commit Share</p>
-                <div id="chart-pie_commits"></div>
+                <div id="chart-pie_commits" role="img" aria-label="Donut chart of each contributor's share of total commits."></div>
             </div>
             <div class="chart-container">
                 <p class="chart-label">Lines Changed Share</p>
-                <div id="chart-pie_lines"></div>
+                <div id="chart-pie_lines" role="img" aria-label="Donut chart of each contributor's share of total lines changed."></div>
             </div>
         </div>
     </div>
@@ -714,7 +765,7 @@
         </span>
     </footer>
 
-</div>
+</main>
 
 <!-- ================================================================
      Plotly JS bundle — self-contained, no CDN
@@ -1027,14 +1078,16 @@
                 btn.textContent = String(yr);
                 btn.className = 'heatmap-year-btn' +
                     (yr === currentYear ? ' heatmap-year-active' : '');
+                // Communicates the selected year to assistive technology,
+                // which cannot infer it from the active-state class alone.
+                btn.setAttribute('aria-pressed', yr === currentYear ? 'true' : 'false');
                 btn.addEventListener('click', function () {
                     currentYear = yr;
                     tabsEl.querySelectorAll('.heatmap-year-btn')
                         .forEach(function (b) {
-                            b.classList.toggle(
-                                'heatmap-year-active',
-                                b.textContent === String(yr)
-                            );
+                            var selected = b.textContent === String(yr);
+                            b.classList.toggle('heatmap-year-active', selected);
+                            b.setAttribute('aria-pressed', selected ? 'true' : 'false');
                         });
                     renderHeatmap(currentYear, currentContributor, readTheme());
                 });
