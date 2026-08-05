@@ -17,13 +17,14 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
 
 from reveille import __version__
-from reveille.cli import app
+from reveille.cli import ExitCode, app
 
 runner = CliRunner()
 
@@ -187,7 +188,7 @@ class TestValidateCommand:
     ) -> None:
         plain = tmp_path_factory.mktemp("plain_dir")
         result = runner.invoke(app, ["validate", "--repo", str(plain)])
-        assert result.exit_code == 1
+        assert result.exit_code == ExitCode.CANNOT_RUN
 
     def test_non_git_directory_reports_error_in_output(
         self, tmp_path_factory: pytest.TempPathFactory
@@ -221,7 +222,7 @@ class TestValidateCommand:
             capture_output=True,
         )
         result = runner.invoke(app, ["validate", "--repo", str(empty_repo)])
-        assert result.exit_code == 1
+        assert result.exit_code == ExitCode.NEGATIVE
 
 
 # ------------------------------------------------------------------
@@ -357,7 +358,7 @@ class TestGenerateCommand:
                 "not-a-date",
             ],
         )
-        assert result.exit_code == 1
+        assert result.exit_code == ExitCode.CANNOT_RUN
 
     def test_since_after_until_exits_nonzero(
         self,
@@ -379,7 +380,7 @@ class TestGenerateCommand:
                 "2024-01-01",
             ],
         )
-        assert result.exit_code == 1
+        assert result.exit_code == ExitCode.CANNOT_RUN
 
     def test_config_file_title_appears_in_output(
         self,
@@ -492,7 +493,7 @@ class TestGenerateCommand:
                 str(base / "nonexistent.toml"),
             ],
         )
-        assert result.exit_code == 1
+        assert result.exit_code == ExitCode.CANNOT_RUN
 
     def test_invalid_repo_path_exits_nonzero(
         self,
@@ -511,7 +512,7 @@ class TestGenerateCommand:
                 str(base / "report.html"),
             ],
         )
-        assert result.exit_code == 1
+        assert result.exit_code == ExitCode.CANNOT_RUN
 
     def test_output_embeds_heatmap_data_spec(self, default_report_content: str) -> None:
         """The compact heatmap data payload is embedded in the output."""
@@ -568,7 +569,7 @@ class TestGenerateCommand:
             )
         finally:
             os.chdir(original)
-        assert result.exit_code == 1
+        assert result.exit_code == ExitCode.CANNOT_RUN
         assert "reveille init --force" in result.output
 
     def test_format_json_produces_json_file(
@@ -653,7 +654,7 @@ class TestGenerateCommand:
                 "../../traversal-report.html",
             ],
         )
-        assert result.exit_code == 1
+        assert result.exit_code == ExitCode.CANNOT_RUN
 
 
 # ------------------------------------------------------------------
@@ -800,3 +801,174 @@ class TestInitCommand:
             os.chdir(original)
         assert result.exit_code == 0
         assert not (e2e_repo / ".mailmap").exists()
+
+
+# ------------------------------------------------------------------
+# Exit code contract
+# ------------------------------------------------------------------
+
+
+@pytest.mark.e2e
+class TestExitCodeContract:
+    """Tests for the documented exit code contract.
+
+    The distinction that matters to a CI consumer is between a negative
+    answer, which may be an acceptable state to record, and an inability
+    to answer, which is a broken pipeline step.
+    """
+
+    def test_codes_have_their_documented_values(self) -> None:
+        """The numbers are the contract; changing one breaks callers."""
+        assert ExitCode.SUCCESS == 0
+        assert ExitCode.NEGATIVE == 1
+        assert ExitCode.CANNOT_RUN == 2
+
+    def test_validate_succeeds_on_a_repository_with_commits(self, e2e_repo: Path) -> None:
+        result = CliRunner().invoke(app, ["validate", "--repo", str(e2e_repo)])
+        assert result.exit_code == ExitCode.SUCCESS
+
+    def test_validate_returns_negative_for_a_repository_with_no_commits(
+        self, tmp_path: Path
+    ) -> None:
+        """A readable repository with an unborn HEAD is a negative answer.
+
+        Distinct from a path that is not a repository at all, which is an
+        inability to answer. Separating these is the point of the contract.
+        """
+        empty = tmp_path / "empty_repo"
+        empty.mkdir()
+        subprocess.run(["git", "init", "-b", "main"], cwd=empty, check=True, capture_output=True)
+        result = CliRunner().invoke(app, ["validate", "--repo", str(empty)])
+        assert result.exit_code == ExitCode.NEGATIVE
+
+    def test_validate_cannot_run_on_a_path_that_is_not_a_repository(self, tmp_path: Path) -> None:
+        plain = tmp_path / "not_a_repo"
+        plain.mkdir()
+        result = CliRunner().invoke(app, ["validate", "--repo", str(plain)])
+        assert result.exit_code == ExitCode.CANNOT_RUN
+
+    def test_the_two_failure_modes_are_distinguishable(self, tmp_path: Path) -> None:
+        """The finding this contract exists to resolve.
+
+        Before, 'not a repository' and 'repository has no commits' both
+        exited 1 and no CI job could tell them apart.
+        """
+        empty = tmp_path / "empty"
+        empty.mkdir()
+        subprocess.run(["git", "init", "-b", "main"], cwd=empty, check=True, capture_output=True)
+        plain = tmp_path / "plain"
+        plain.mkdir()
+
+        runner = CliRunner()
+        no_commits = runner.invoke(app, ["validate", "--repo", str(empty)]).exit_code
+        not_a_repo = runner.invoke(app, ["validate", "--repo", str(plain)]).exit_code
+        assert no_commits != not_a_repo
+
+    def test_generate_returns_negative_for_an_empty_analysis_window(
+        self, e2e_repo: Path, tmp_path: Path
+    ) -> None:
+        """A window containing no commits is an answer, not a failure."""
+        result = CliRunner().invoke(
+            app,
+            [
+                "generate",
+                "--repo",
+                str(e2e_repo),
+                "--output",
+                str(tmp_path / "report.html"),
+                "--since",
+                "1990-01-01",
+                "--until",
+                "1990-12-31",
+            ],
+        )
+        assert result.exit_code == ExitCode.NEGATIVE
+
+
+@pytest.mark.e2e
+class TestVerboseFlag:
+    """Tests for --verbose, which must be purely additive."""
+
+    def test_verbose_emits_diagnostics_to_stderr(self, e2e_repo: Path, tmp_path: Path) -> None:
+        result = CliRunner().invoke(
+            app,
+            [
+                "generate",
+                "--repo",
+                str(e2e_repo),
+                "--output",
+                str(tmp_path / "r.html"),
+                "--verbose",
+            ],
+        )
+        assert result.exit_code == ExitCode.SUCCESS
+        assert "DEBUG" in result.output
+
+    def test_default_invocation_emits_no_diagnostics(self, e2e_repo: Path, tmp_path: Path) -> None:
+        """Adding the flag must not change output for anyone not using it."""
+        result = CliRunner().invoke(
+            app,
+            ["generate", "--repo", str(e2e_repo), "--output", str(tmp_path / "r.html")],
+        )
+        assert result.exit_code == ExitCode.SUCCESS
+        assert "DEBUG" not in result.output
+
+    def test_importing_reveille_installs_no_log_handler(self) -> None:
+        """A library must not impose logging policy on its host.
+
+        Run in a clean interpreter: a --verbose test elsewhere in this
+        process legitimately attaches a handler, so asserting in-process
+        would test the test suite rather than the import.
+        """
+        probe = (
+            "import logging, reveille; "
+            "print(all(isinstance(h, logging.NullHandler) "
+            "for h in logging.getLogger('reveille').handlers))"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", probe], capture_output=True, text=True, check=True
+        )
+        assert result.stdout.strip() == "True", result.stdout
+
+    def test_repeated_configuration_attaches_one_handler(self) -> None:
+        """Configuring twice must not duplicate every diagnostic line.
+
+        Asserted against the handler set rather than captured output:
+        `StreamHandler` binds `sys.stderr` at construction and CliRunner
+        replaces that stream per invocation, so an output-based assertion
+        would measure the test harness rather than the property.
+        """
+        import logging
+
+        from reveille.cli import _configure_logging
+
+        package_logger = logging.getLogger("reveille")
+        original_handlers = list(package_logger.handlers)
+        original_level = package_logger.level
+        try:
+            package_logger.handlers = [logging.NullHandler()]
+            _configure_logging(verbose=True)
+            _configure_logging(verbose=True)
+            attached = [
+                h
+                for h in package_logger.handlers
+                if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.NullHandler)
+            ]
+            assert len(attached) == 1
+        finally:
+            package_logger.handlers = original_handlers
+            package_logger.setLevel(original_level)
+
+    def test_configuring_without_verbose_attaches_nothing(self) -> None:
+        import logging
+
+        from reveille.cli import _configure_logging
+
+        package_logger = logging.getLogger("reveille")
+        original_handlers = list(package_logger.handlers)
+        try:
+            package_logger.handlers = [logging.NullHandler()]
+            _configure_logging(verbose=False)
+            assert all(isinstance(h, logging.NullHandler) for h in package_logger.handlers)
+        finally:
+            package_logger.handlers = original_handlers
