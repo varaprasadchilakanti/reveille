@@ -8,6 +8,20 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Commit history is now read in a single `git log --numstat` subprocess,
+  including per-commit line counts. The previous implementation obtained line
+  counts through GitPython's `Commit.stats`, which spawns one `git diff` per
+  commit and dominated runtime on any repository large enough to matter.
+  Measured on Reveille's own repository, the read path drops from 7.2 ms to
+  0.77 ms per commit — a 9.4x improvement that takes a 50,000-commit
+  repository from roughly six minutes to under a minute. Output is unchanged:
+  every commit, line count, timestamp, and resolved identity is identical to
+  the previous implementation, including the treatment of binary files (zero
+  lines), commits that changed no files (zero lines), and root commits
+  (diffed against the empty tree). No configuration, flag, or API change.
+
 ---
 
 ## [0.6.0] — 2026-05-29

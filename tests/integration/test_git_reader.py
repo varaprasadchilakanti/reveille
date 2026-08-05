@@ -30,7 +30,7 @@ def fixture_repo(tmp_path_factory: pytest.TempPathFactory) -> Path:
         2024-03-01  Alice   feat: initial commit       +3 -0
         2024-03-15  Bob     feat: add module_b         +4 -0
         2024-03-20  Alice   fix: correct calculation   +1 -1
-        2024-04-10  Alice   refactor: simplify logic   +2 -3
+        2024-04-10  Alice   refactor: simplify logic   +0 -1
         2024-04-15  Bob     chore: update constants    +1 -1
 
     Scope is module-level: the repository is created once and shared
@@ -495,3 +495,93 @@ class TestMailmapResolution:
         emails = {c.author_email.lower() for c in commits}
         assert "alice-old@example.com" not in emails
         assert "alice@example.com" in emails
+
+
+# ------------------------------------------------------------------
+# Line count tests
+# ------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def line_count_edge_repo(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Create a repository exercising the numstat parser's edge cases.
+
+    Commit history (chronological):
+        Alice   feat: add text file      +2 -0
+        Alice   feat: add binary file    binary, reported as +0 -0
+        Alice   chore: empty commit      no files changed, +0 -0
+    """
+    repo_path = tmp_path_factory.mktemp("line_count_edge_repo")
+
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "Alice",
+        "GIT_AUTHOR_EMAIL": "alice@example.com",
+        "GIT_COMMITTER_NAME": "Alice",
+        "GIT_COMMITTER_EMAIL": "alice@example.com",
+    }
+
+    def run(args: list[str]) -> None:
+        subprocess.run(args, cwd=repo_path, check=True, capture_output=True, env=env)
+
+    run(["git", "init", "-b", "main"])
+    run(["git", "config", "user.email", "alice@example.com"])
+    run(["git", "config", "user.name", "Alice"])
+
+    (repo_path / "module_a.py").write_text("x = 1\ny = 2\n")
+    run(["git", "add", "."])
+    run(["git", "commit", "-m", "feat: add text file"])
+
+    # A PNG header followed by a NUL byte: git classifies this as binary
+    # and reports '-' for both counts rather than a line delta.
+    (repo_path / "logo.png").write_bytes(b"\x89PNG\r\n\x1a\n\x00\x01\x02\x03")
+    run(["git", "add", "."])
+    run(["git", "commit", "-m", "feat: add binary file"])
+
+    run(["git", "commit", "--allow-empty", "-m", "chore: empty commit"])
+
+    return repo_path
+
+
+@pytest.mark.integration
+class TestLineCounts:
+    """Tests for per-commit line counts read from `git log --numstat`."""
+
+    def test_line_counts_match_fixture_history(self, fixture_repo: Path) -> None:
+        """Per-commit counts match the history documented on the fixture."""
+        reader = GitReader(fixture_repo)
+        commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
+        # Fixture order is most recent first; the docstring lists it chronologically.
+        counts = [(c.lines_added, c.lines_deleted) for c in reversed(commits)]
+        assert counts == [(3, 0), (4, 0), (1, 1), (0, 1), (1, 1)]
+
+    def test_repository_totals_are_correct(self, fixture_repo: Path) -> None:
+        """Aggregate totals across the whole fixture history."""
+        reader = GitReader(fixture_repo)
+        commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
+        assert sum(c.lines_added for c in commits) == 9
+        assert sum(c.lines_deleted for c in commits) == 3
+
+    def test_binary_file_commit_reports_zero_lines(self, line_count_edge_repo: Path) -> None:
+        """A binary-only commit contributes no lines rather than raising."""
+        reader = GitReader(line_count_edge_repo)
+        commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
+        # Chronological: text (+2), binary (0), empty (0).
+        chronological = list(reversed(commits))
+        assert (chronological[1].lines_added, chronological[1].lines_deleted) == (0, 0)
+
+    def test_empty_commit_reports_zero_lines(self, line_count_edge_repo: Path) -> None:
+        """A commit that changed no files yields zero counts and is still read."""
+        reader = GitReader(line_count_edge_repo)
+        commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
+        assert len(commits) == 3
+        chronological = list(reversed(commits))
+        assert (chronological[2].lines_added, chronological[2].lines_deleted) == (0, 0)
+
+    def test_root_commit_counts_full_tree(self, line_count_edge_repo: Path) -> None:
+        """The root commit has no parent; its diff is against the empty tree."""
+        reader = GitReader(line_count_edge_repo)
+        commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
+        root = next(reversed(commits))
+        assert root.lines_added == 2
+        assert root.lines_deleted == 0
