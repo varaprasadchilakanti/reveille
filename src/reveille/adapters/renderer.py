@@ -219,7 +219,7 @@ class Renderer:
                 for i, r in enumerate(data.ranked_contributors)
             ],
             "derived": {
-                "bus_factor": derived["bus_factor"],
+                "commit_concentration": derived["commit_concentration"],
                 "longest_inactive_streak": derived["longest_inactive_streak"],
             },
         }
@@ -312,7 +312,7 @@ class Renderer:
             A dict of derived metric names to values for template use.
         """
         return {
-            "bus_factor": _compute_bus_factor(data.ranked_contributors),
+            "commit_concentration": _compute_commit_concentration(data.ranked_contributors),
             "longest_inactive_streak": _compute_longest_inactive_streak(
                 data.commits,
                 data.metadata.analysis_since,
@@ -721,12 +721,20 @@ def _build_lines_share_pie(ranked: list[RankedContributor]) -> str:
 # ------------------------------------------------------------------
 
 
-def _compute_bus_factor(ranked: list[RankedContributor]) -> int:
-    """Compute the bus factor for the contributor population.
+def _compute_commit_concentration(ranked: list[RankedContributor]) -> int:
+    """Count the contributors who between them authored half the commits.
 
-    The bus factor is the minimum number of contributors whose combined
-    commit volume accounts for at least 50 percent of total commits.
-    A lower value indicates higher concentration risk.
+    The minimum number of contributors whose combined commit volume
+    accounts for at least 50 percent of total commits. A lower value
+    indicates a more concentrated history.
+
+    This is deliberately not called a bus factor. Bus factor is a measure
+    of knowledge concentration — how much of the surviving code only one
+    person understands — which is a property of line ownership, obtained
+    from `git blame`, not of commit counts. Commit volume is a weak proxy
+    for it: a contributor with many small commits outranks one who wrote
+    a subsystem in a handful of large ones. The honest name is the one
+    that describes what is actually measured.
 
     Args:
         ranked: Ranked contributor list.
