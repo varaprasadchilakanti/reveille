@@ -24,6 +24,7 @@ from __future__ import annotations
 import datetime
 import re
 from collections import defaultdict
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from git import InvalidGitRepositoryError, NoSuchPathError, Repo
@@ -48,6 +49,15 @@ _GITHUB_NOREPLY_RE = re.compile(
     re.IGNORECASE,
 )
 
+# The four .mailmap forms documented in gitmailmap(5). Ordered most
+# specific first: a four-field line also satisfies no other pattern, but
+# an email-only line would otherwise be captured by the name-only form
+# with the literal "<proper@email>" text taken as a display name.
+_MAILMAP_FOUR_FIELD = re.compile(r"^(.+?)\s+<([^>]+)>\s+(.+?)\s+<([^>]+)>$")
+_MAILMAP_THREE_FIELD = re.compile(r"^(.+?)\s+<([^>]+)>\s+<([^>]+)>$")
+_MAILMAP_EMAIL_ONLY = re.compile(r"^<([^>]+)>\s+<([^>]+)>$")
+_MAILMAP_NAME_ONLY = re.compile(r"^(.+?)\s+<([^>]+)>$")
+
 
 def _normalise_github_noreply(email: str) -> str:
     """Strip the numeric account prefix from a GitHub noreply address.
@@ -71,11 +81,47 @@ def _normalise_github_noreply(email: str) -> str:
     return f"{match.group('username')}@users.noreply.github.com"
 
 
-def _resolve_identity(
-    name: str,
-    email: str,
-    mailmap: dict[str, tuple[str, str]],
-) -> tuple[str, str]:
+@dataclass(frozen=True)
+class _Mailmap:
+    """Parsed `.mailmap` lookup tables.
+
+    Git matches a commit against the most specific entry available, so
+    the two forms that carry a commit name are kept apart from those
+    keyed on email alone.
+
+    Attributes:
+        by_email: Keyed on lowercased commit email. Covers the name-only,
+            email-only, and three-field forms. A `None` canonical name
+            means the entry replaces the email only and the commit's own
+            name is kept, which is the email-only form's semantics.
+        by_name_and_email: Keyed on (lowercased commit name, lowercased
+            commit email). Covers the four-field form, which matches only
+            when both fields agree.
+    """
+
+    by_email: dict[str, tuple[str | None, str]] = field(default_factory=dict)
+    by_name_and_email: dict[tuple[str, str], tuple[str | None, str]] = field(default_factory=dict)
+
+    def lookup(self, name: str, email: str) -> tuple[str | None, str] | None:
+        """Find the most specific entry matching a commit identity.
+
+        Both names and emails are matched case-insensitively, as Git does.
+
+        Args:
+            name: Author name as recorded on the commit.
+            email: Author email as recorded on the commit.
+
+        Returns:
+            The matching (canonical_name, canonical_email) entry, or None
+            when no entry applies.
+        """
+        entry = self.by_name_and_email.get((name.lower(), email.lower()))
+        if entry is not None:
+            return entry
+        return self.by_email.get(email.lower())
+
+
+def _resolve_identity(name: str, email: str, mailmap: _Mailmap) -> tuple[str, str]:
     """Resolve a raw author identity to its canonical name and email.
 
     A `.mailmap` entry is an explicit statement of intent by the repository
@@ -86,19 +132,21 @@ def _resolve_identity(
     Args:
         name: Author name as recorded on the commit.
         email: Author email as recorded on the commit.
-        mailmap: Alias mapping from `_read_mailmap`, keyed on lowercased
-            alias email.
+        mailmap: Parsed mappings from `_read_mailmap`.
 
     Returns:
         A tuple of (canonical_name, canonical_email).
     """
     normalised = _normalise_github_noreply(email)
 
-    mapped = mailmap.get(email.lower())
+    mapped = mailmap.lookup(name, email)
     if mapped is None and normalised != email:
-        mapped = mailmap.get(normalised.lower())
+        mapped = mailmap.lookup(name, normalised)
+
     if mapped is not None:
-        return mapped
+        canonical_name, canonical_email = mapped
+        # The email-only form replaces the address but keeps the name.
+        return (name if canonical_name is None else canonical_name), canonical_email
 
     return name, normalised
 
@@ -385,48 +433,62 @@ class GitReader:
         except IndexError:
             return str(self._repo.remotes[0].url)
 
-    def _read_mailmap(self) -> dict[str, tuple[str, str]]:
+    def _read_mailmap(self) -> _Mailmap:
         """Read and parse the .mailmap file from the repository root.
 
-        Supports the two-field form ("Proper Name <commit@email.xx>") and
-        the three-field form ("Proper Name <canonical@email.xx> <commit@email.xx>").
-        The two-field form updates the author name only; the email is unchanged.
-        The three-field form updates both the author name and the email.
-        # TODO: four-field form — "Proper Name <proper@email.xx> Other Name <commit@email.xx>"
+        All four forms documented in gitmailmap(5) are supported. See
+        `_Mailmap` for how the parsed entries are looked up. A comment
+        (`#`) runs to end of line, and blank lines are ignored, matching
+        Git. Malformed lines are skipped silently: a `.mailmap` is
+        frequently hand-edited, and refusing to produce a report over one
+        bad line would be a worse failure than ignoring it.
 
         Returns:
-            A dict mapping lowercased alias email to a
-            (canonical_name, lowercased_canonical_email) tuple. Returns
-            an empty dict if the .mailmap file is absent or unreadable.
+            The parsed lookup tables. Empty if the file is absent or
+            unreadable.
         """
         mailmap_path = self._repo_path / ".mailmap"
         if not mailmap_path.exists():
-            return {}
+            return _Mailmap()
 
         try:
             lines = mailmap_path.read_text(encoding="utf-8").splitlines()
         except OSError:
-            return {}
+            return _Mailmap()
 
-        _three_field = re.compile(r"^(.+?)\s+<([^>]+)>\s+<([^>]+)>\s*$")
-        _two_field = re.compile(r"^(.+?)\s+<([^>]+)>\s*$")
-
-        mapping: dict[str, tuple[str, str]] = {}
+        mailmap = _Mailmap()
         for line in lines:
-            stripped = line.strip()
-            if not stripped or stripped.startswith("#"):
+            # A comment runs to end of line, not just whole-line comments.
+            stripped = line.split("#", 1)[0].strip()
+            if not stripped:
                 continue
-            m3 = _three_field.match(stripped)
-            if m3:
-                canonical_name = m3.group(1).strip()
-                canonical_email = m3.group(2).lower()
-                alias_email = m3.group(3).lower()
-                mapping[alias_email] = (canonical_name, canonical_email)
-                continue
-            m2 = _two_field.match(stripped)
-            if m2:
-                canonical_name = m2.group(1).strip()
-                email = m2.group(2).lower()
-                mapping[email] = (canonical_name, email)
 
-        return mapping
+            m4 = _MAILMAP_FOUR_FIELD.match(stripped)
+            if m4:
+                mailmap.by_name_and_email[(m4.group(3).strip().lower(), m4.group(4).lower())] = (
+                    m4.group(1).strip(),
+                    m4.group(2).lower(),
+                )
+                continue
+
+            m3 = _MAILMAP_THREE_FIELD.match(stripped)
+            if m3:
+                mailmap.by_email[m3.group(3).lower()] = (
+                    m3.group(1).strip(),
+                    m3.group(2).lower(),
+                )
+                continue
+
+            m2 = _MAILMAP_EMAIL_ONLY.match(stripped)
+            if m2:
+                # Only the email is replaced; the commit's name is kept,
+                # which None signals to _resolve_identity.
+                mailmap.by_email[m2.group(2).lower()] = (None, m2.group(1).lower())
+                continue
+
+            m1 = _MAILMAP_NAME_ONLY.match(stripped)
+            if m1:
+                email = m1.group(2).lower()
+                mailmap.by_email[email] = (m1.group(1).strip(), email)
+
+        return mailmap

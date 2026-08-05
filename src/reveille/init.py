@@ -131,6 +131,21 @@ _DEFAULT_MAILMAP_TEMPLATE: str = """\
 #
 #
 # ------------------------------------------------------------------------------
+# EMAIL-ONLY FORM -- address correction, name untouched
+#
+#   <canonical@email.example> <alias@email.example>
+#
+# Maps commits from the alias address to the canonical address while
+# leaving each commit's own display name as recorded. Use this when the
+# address changed but the name is already correct, or varies legitimately.
+#
+# Example:
+#
+#   Address change with no name change:
+#   <helen@newcorp.com> <helen@oldcorp.com>
+#
+#
+# ------------------------------------------------------------------------------
 # THREE-FIELD FORM -- email alias to canonical identity
 #
 #   Canonical Name <canonical@email.example> <alias@email.example>
@@ -158,17 +173,29 @@ _DEFAULT_MAILMAP_TEMPLATE: str = """\
 #   Canonical Name <canonical@email.example> Old Name <old@email.example>
 #
 # Maps commits made under a specific combination of old name and old email
-# to the canonical identity. Required when both the name and email changed
-# simultaneously.
+# to the canonical identity. The entry applies only when both the name and
+# the address match, so it is the form to use when several people have
+# committed under one shared address -- a default `git config` left in
+# place on a build machine, for example. The other forms key on the
+# address alone and would rewrite every contributor using it.
 #
-# NOTE: The four-field form is recognised by Git but is not yet supported
-# by Reveille. Commits matching the old name and email will not be merged
-# into the canonical identity until support is added. Use the three-field
-# form as a partial workaround when the email address is unique. Full
-# support is planned for a future release.
+# Examples:
 #
-# Example:
+#   Both name and address changed at once:
 #   Dan Brown <dan@newcorp.com> Daniel Brown <daniel@oldcorp.com>
+#
+#   Disentangling two people who shared one address:
+#   Dan Brown <dan@corp.com> Dan <build@ci.corp.com>
+#   Erica Stone <erica@corp.com> Erica <build@ci.corp.com>
+#
+#
+# ------------------------------------------------------------------------------
+# MATCHING NOTES
+#
+# Names and addresses are matched case-insensitively. Where more than one
+# entry could apply, the most specific wins: a four-field entry matching
+# both name and address takes precedence over one keyed on address alone.
+# A `#` begins a comment that runs to the end of the line.
 #
 """
 
