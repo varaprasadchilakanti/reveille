@@ -16,6 +16,7 @@ for tests that only inspect default output structure.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -972,3 +973,74 @@ class TestVerboseFlag:
             assert all(isinstance(h, logging.NullHandler) for h in package_logger.handlers)
         finally:
             package_logger.handlers = original_handlers
+
+
+# ------------------------------------------------------------------
+# Report accessibility
+# ------------------------------------------------------------------
+
+
+@pytest.mark.e2e
+class TestReportAccessibility:
+    """Structural accessibility assertions on the rendered report.
+
+    The report is distributed to stakeholders and embedded in Confluence,
+    which is the context where WCAG 2.1 AA and EN 301 549 are asked about.
+    These assert the structures assistive technology depends on survive
+    into the output.
+    """
+
+    def test_document_declares_a_language(self, default_report_content: str) -> None:
+        assert 'lang="en"' in default_report_content
+
+    def test_report_body_is_a_main_landmark(self, default_report_content: str) -> None:
+        """Lets a screen-reader user skip navigation straight to content."""
+        assert "<main" in default_report_content
+
+    def test_table_column_headers_declare_scope(self, default_report_content: str) -> None:
+        """Without scope, a screen reader cannot announce which column a cell belongs to."""
+        assert default_report_content.count('scope="col"') >= 10
+
+    def test_table_row_headers_declare_scope(self, default_report_content: str) -> None:
+        assert 'scope="row"' in default_report_content
+
+    def test_table_has_a_caption(self, default_report_content: str) -> None:
+        """The caption names the table when navigating between tables."""
+        assert "<caption" in default_report_content
+
+    def test_every_chart_has_a_text_alternative(self, default_report_content: str) -> None:
+        """Plotly renders to SVG, which conveys nothing to assistive technology.
+
+        Each chart container is exposed as a single labelled image rather
+        than a tree of meaningless shapes.
+        """
+        assert default_report_content.count('role="img"') >= 7
+
+    def test_heatmap_contributor_filter_is_labelled(self, default_report_content: str) -> None:
+        """A bare select announces only its value, never its purpose."""
+        assert "Filter the activity heatmap by contributor" in default_report_content
+
+    def test_summary_cards_expose_a_coherent_phrase(self, default_report_content: str) -> None:
+        """The value and its label are separate elements visually.
+
+        Read literally, that gives a screen reader an orphaned number
+        followed by an orphaned noun. The visually hidden text restores
+        the association.
+        """
+        assert "visually-hidden" in default_report_content
+        assert "Total Commits:" in default_report_content
+
+    def test_reduced_motion_preference_is_honoured(self, default_report_content: str) -> None:
+        """WCAG 2.1 SC 2.3.3, set at the OS level by affected readers."""
+        assert "prefers-reduced-motion" in default_report_content
+
+    def test_report_still_loads_no_external_resources(self, default_report_content: str) -> None:
+        """The offline guarantee must survive every accessibility change.
+
+        No stylesheet link, script src, or image src may reference a
+        remote host. Attribution URLs inside the vendored Plotly bundle
+        are inert string literals for chart types Reveille never renders.
+        """
+        assert not re.search(r"<link[^>]+href=\"https?://", default_report_content)
+        assert not re.search(r"<script[^>]+src=\"https?://", default_report_content)
+        assert not re.search(r"<img[^>]+src=\"https?://", default_report_content)
