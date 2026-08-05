@@ -6,7 +6,9 @@ receive domain objects and have no knowledge of the underlying library.
 
 Identity resolution uses author email as the canonical contributor key.
 Author name is taken from the contributor's most recent commit, which
-handles name changes over a repository's lifetime gracefully.
+handles name changes over a repository's lifetime gracefully. A `.mailmap`
+is applied first where present, then GitHub's two private-commit address
+forms are folded together so one account does not split across both.
 
 Merge commits are excluded from all analysis. They inflate line counts
 and commit volumes without reflecting individual contributor activity.
@@ -38,6 +40,67 @@ _RECORD_SEP = "\x1e"
 _FIELD_SEP = "\x1f"
 
 _LOG_FORMAT = f"--format={_RECORD_SEP}%H{_FIELD_SEP}%an{_FIELD_SEP}%ae{_FIELD_SEP}%ct"
+
+# GitHub's prefixed private-commit address: 12345678+username@users.noreply.github.com.
+# The username is captured; the numeric account ID is discarded.
+_GITHUB_NOREPLY_RE = re.compile(
+    r"^\d+\+(?P<username>[^@]+)@users\.noreply\.github\.com$",
+    re.IGNORECASE,
+)
+
+
+def _normalise_github_noreply(email: str) -> str:
+    """Strip the numeric account prefix from a GitHub noreply address.
+
+    GitHub issues two forms of private commit address for the same account:
+    the legacy `username@users.noreply.github.com` and, since 2017, the
+    prefixed `12345678+username@users.noreply.github.com`. A contributor
+    whose account spans the change appears under both, and the numeric ID
+    also leaks into report output for no reader benefit.
+
+    Args:
+        email: An author email address, in any form.
+
+    Returns:
+        The address with the numeric prefix removed if it is a prefixed
+        GitHub noreply address, otherwise the address unchanged.
+    """
+    match = _GITHUB_NOREPLY_RE.match(email)
+    if match is None:
+        return email
+    return f"{match.group('username')}@users.noreply.github.com"
+
+
+def _resolve_identity(
+    name: str,
+    email: str,
+    mailmap: dict[str, tuple[str, str]],
+) -> tuple[str, str]:
+    """Resolve a raw author identity to its canonical name and email.
+
+    A `.mailmap` entry is an explicit statement of intent by the repository
+    owner and always wins. Entries written against either GitHub noreply
+    form are honoured, the raw address taking precedence. An address that
+    `.mailmap` does not cover falls back to noreply normalisation.
+
+    Args:
+        name: Author name as recorded on the commit.
+        email: Author email as recorded on the commit.
+        mailmap: Alias mapping from `_read_mailmap`, keyed on lowercased
+            alias email.
+
+    Returns:
+        A tuple of (canonical_name, canonical_email).
+    """
+    normalised = _normalise_github_noreply(email)
+
+    mapped = mailmap.get(email.lower())
+    if mapped is None and normalised != email:
+        mapped = mailmap.get(normalised.lower())
+    if mapped is not None:
+        return mapped
+
+    return name, normalised
 
 
 def _sum_numstat(block: str) -> tuple[int, int]:
@@ -112,7 +175,8 @@ class GitReader:
         including per-commit line counts.
 
         Merge commits are unconditionally excluded. Author filtering
-        matches against both name and email, case-insensitively.
+        matches against name, resolved email, and the raw email as
+        recorded on the commit, case-insensitively.
 
         The until date is inclusive: commits on that calendar day are
         included in the result.
@@ -171,13 +235,17 @@ class GitReader:
             if len(fields) != 4:
                 continue
 
-            sha, author_name, author_email, committed_at = fields
+            sha, raw_name, raw_email, committed_at = fields
 
-            email_key = author_email.lower()
-            if email_key in mailmap:
-                author_name, author_email = mailmap[email_key]
+            author_name, author_email = _resolve_identity(raw_name, raw_email, mailmap)
 
-            if author_name.lower() in exclude_set or author_email.lower() in exclude_set:
+            # The raw address is matched too so that an --exclude-author
+            # value copied from `git log` still works after normalisation.
+            if (
+                author_name.lower() in exclude_set
+                or author_email.lower() in exclude_set
+                or raw_email.lower() in exclude_set
+            ):
                 continue
 
             lines_added, lines_deleted = _sum_numstat(numstat_block)
