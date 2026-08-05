@@ -8,6 +8,26 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- GitHub's two private-commit address forms are now folded together. An account
+  whose history spans GitHub's 2017 change appears under both
+  `username@users.noreply.github.com` and
+  `12345678+username@users.noreply.github.com`, and aggregated as two separate
+  contributors. The numeric account ID is stripped, so both forms resolve to one
+  identity, and the ID no longer leaks into report output. A `.mailmap` entry is
+  an explicit statement of intent and always takes precedence over this
+  automatic folding; entries written against either form are honoured, the
+  address as recorded on the commit taking priority. `--exclude-author` matches
+  the raw address as well as the resolved one, so a value copied from `git log`
+  continues to work.
+- Note the scope of this fix: it merges an account's *noreply* addresses with
+  each other. It cannot merge a noreply address with a personal address, since
+  nothing in the commit data establishes that link. A contributor who commits
+  both locally and through the GitHub web interface still needs a `.mailmap`
+  entry to appear once; `reveille init --mailmap` generates an annotated
+  template covering exactly this case.
+
 ### Changed
 
 - Commit history is now read in a single `git log --numstat` subprocess,
