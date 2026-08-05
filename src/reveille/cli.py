@@ -1,18 +1,23 @@
 """CLI entry point for Reveille.
 
-Defines three public commands: generate, version, validate.
+Defines the public commands: generate, validate, init, version, help.
 Responsible for flag parsing, boundary validation, constructing
 a ReportConfig, and delegating to the application service.
 Contains no business logic.
 
 Entry point registered in pyproject.toml:
     reveille = "reveille.cli:app"
+
+Exit codes are a supported contract — see `ExitCode` below and the
+"Exit Codes" section of docs/USER_GUIDE.md.
 """
 
 from __future__ import annotations
 
 import datetime
+import enum
 import itertools
+import logging
 import sys
 import threading
 import time
@@ -25,7 +30,73 @@ import typer
 from reveille import __version__
 from reveille.config import OutputFormat, ReportConfig, ReportConfigKwargs
 from reveille.domain.models import ProgressEvent
-from reveille.exceptions import ConfigurationError, ReveilleError
+from reveille.exceptions import ConfigurationError, EmptyRepositoryError, ReveilleError
+
+_logger = logging.getLogger("reveille.cli")
+
+
+class ExitCode(enum.IntEnum):
+    """Process exit codes. Part of Reveille's public CLI contract.
+
+    The split follows the convention used by `grep` and `diff`, where the
+    code distinguishes *a negative answer* from *an inability to answer*.
+    That distinction is the one a CI job acts on: a negative answer may be
+    an acceptable state to record, whereas an inability to answer is a
+    broken pipeline step.
+
+    Diagnostic detail beyond this three-way split belongs in the stderr
+    message, not in the exit code. Encoding individual causes as distinct
+    codes does not scale — the range is small, and every new cause becomes
+    a breaking change for anyone branching on the old numbering.
+    """
+
+    SUCCESS = 0
+    """The command ran and its answer is affirmative."""
+
+    NEGATIVE = 1
+    """The command ran correctly and its answer is negative.
+
+    Reveille worked as intended and the repository state does not satisfy
+    the request — currently, an analysis window containing no commits.
+    """
+
+    CANNOT_RUN = 2
+    """The command could not run at all.
+
+    Invalid invocation, invalid configuration, a path that is not a
+    readable Git repository, or an output location that cannot be written.
+    The fault is in the inputs or the environment, not in the answer.
+    """
+
+
+def _configure_logging(verbose: bool) -> None:
+    """Attach a stderr log handler when diagnostics are requested.
+
+    Reveille's library modules log through the standard `logging` module
+    and never install a handler of their own, per the convention for
+    libraries. This is the only place a handler is attached, so importing
+    Reveille as a library stays silent unless the host application opts in.
+
+    Args:
+        verbose: True to emit DEBUG-level diagnostics to stderr.
+    """
+    if not verbose:
+        return
+    package_logger = logging.getLogger("reveille")
+    # Idempotent: a second call in the same process must not duplicate
+    # every diagnostic line. Only the NullHandler installed at import
+    # time is expected to be present here.
+    if any(
+        isinstance(h, logging.StreamHandler) and not isinstance(h, logging.NullHandler)
+        for h in package_logger.handlers
+    ):
+        package_logger.setLevel(logging.DEBUG)
+        return
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
+    package_logger.addHandler(handler)
+    package_logger.setLevel(logging.DEBUG)
+
 
 app = typer.Typer(
     name="reveille",
@@ -210,7 +281,8 @@ def _validate_output_path(output: Path, repo_path: Path) -> None:
         repo_path: The resolved repository root used as the boundary reference.
 
     Raises:
-        typer.Exit: With code 1 if the path contains upward traversal components.
+        typer.Exit: ExitCode.CANNOT_RUN if the path contains upward
+            traversal components.
     """
     if ".." in output.parts:
         typer.echo(
@@ -218,7 +290,7 @@ def _validate_output_path(output: Path, repo_path: Path) -> None:
             "Provide an absolute path or a path relative to the current directory.",
             err=True,
         )
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
     if not output.resolve().is_relative_to(repo_path):
         typer.echo(
@@ -340,10 +412,19 @@ def generate(
         Path | None,
         typer.Option("--config", "-c", help="Path to a TOML configuration file."),
     ] = None,
+    verbose: Annotated[
+        bool,
+        typer.Option(
+            "--verbose",
+            help="Emit diagnostic logging to stderr. Does not change normal output.",
+        ),
+    ] = False,
 ) -> None:
     """Generate an HTML performance report for the target repository."""
     from reveille.config import load_config_from_toml
     from reveille.services.report import generate_report
+
+    _configure_logging(verbose)
 
     config_kwargs: ReportConfigKwargs = cast(ReportConfigKwargs, {})
     _auto_discovered = config is None
@@ -362,7 +443,7 @@ def generate(
                 )
             else:
                 typer.echo(f"Configuration error: {exc}", err=True)
-            raise typer.Exit(code=1) from exc
+            raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
 
     merged = _merge_cli_flags(
         config_kwargs,
@@ -384,7 +465,21 @@ def generate(
         report_config = ReportConfig(**merged)
     except ValueError as exc:
         typer.echo(f"Configuration error: {exc}", err=True)
-        raise typer.Exit(code=1) from exc
+        raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
+
+    _logger.debug(
+        "resolved configuration: repo=%s output=%s branch=%s since=%s until=%s "
+        "min_commits=%s exclude_authors=%s ranking_enabled=%s format=%s",
+        report_config.repo_path,
+        report_config.output_path,
+        report_config.branch,
+        report_config.since,
+        report_config.until,
+        report_config.min_commits,
+        report_config.exclude_authors,
+        report_config.ranking_enabled,
+        report_config.output_format,
+    )
 
     spinner = _StageSpinner()
     try:
@@ -392,10 +487,14 @@ def generate(
             report_config,
             on_progress=_make_progress_callback(spinner),
         )
+    except EmptyRepositoryError as exc:
+        spinner.complete()
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=ExitCode.NEGATIVE) from exc
     except ReveilleError as exc:
         spinner.complete()
         typer.echo(f"Error: {exc}", err=True)
-        raise typer.Exit(code=1) from exc
+        raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
     else:
         spinner.complete()
         for path in written_paths:
@@ -408,17 +507,24 @@ def validate(
         Path,
         typer.Option("--repo", "-r", help="Path to the Git repository root."),
     ] = Path("."),
+    verbose: Annotated[
+        bool,
+        typer.Option(
+            "--verbose",
+            help="Emit diagnostic logging to stderr. Does not change normal output.",
+        ),
+    ] = False,
 ) -> None:
     """Validate that the target path is a readable Git repository with at least one commit."""
     from reveille.adapters.git_reader import GitReader
-    from reveille.exceptions import EmptyRepositoryError
 
+    _configure_logging(verbose)
     resolved = repo.resolve()
     try:
         reader = GitReader(resolved)
     except ReveilleError as exc:
         typer.echo(f"Error: {exc}", err=True)
-        raise typer.Exit(code=1) from exc
+        raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
 
     try:
         reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
@@ -427,10 +533,10 @@ def validate(
             f"Error: repository at '{resolved}' contains no commits.",
             err=True,
         )
-        raise typer.Exit(code=1) from None
+        raise typer.Exit(code=ExitCode.NEGATIVE) from None
     except ReveilleError as exc:
         typer.echo(f"Error: {exc}", err=True)
-        raise typer.Exit(code=1) from exc
+        raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
 
     typer.echo(f"Repository at {resolved} is valid.")
 
@@ -475,7 +581,7 @@ def init(
             "Run reveille init from within a repository root.",
             err=True,
         )
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
     _validate_output_path(output, cwd)
 
@@ -486,14 +592,14 @@ def init(
         typer.echo(f"Configuration file written to: {written_path}")
     except ReveilleError as exc:
         typer.echo(f"Error: {exc}", err=True)
-        raise typer.Exit(code=1) from exc
+        raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
 
     if mailmap:
         try:
             mailmap_result = write_mailmap_template(cwd / ".mailmap", force=force)
         except ReveilleError as exc:
             typer.echo(f"Error: {exc}", err=True)
-            raise typer.Exit(code=1) from exc
+            raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
         if mailmap_result is not None:
             typer.echo(f".mailmap template written to: {mailmap_result}")
         else:
@@ -520,7 +626,7 @@ def _parse_date(value: str, flag_name: str) -> datetime.date:
         A datetime.date instance.
 
     Raises:
-        typer.Exit: With code 1 if the format is invalid.
+        typer.Exit: ExitCode.CANNOT_RUN if the format is invalid.
     """
     try:
         return datetime.date.fromisoformat(value)
@@ -529,4 +635,4 @@ def _parse_date(value: str, flag_name: str) -> datetime.date:
             f"Error: {flag_name} must be in YYYY-MM-DD format, got '{value}'.",
             err=True,
         )
-        raise typer.Exit(code=1) from exc
+        raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
