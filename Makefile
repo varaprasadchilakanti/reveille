@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install lint format fix typecheck precommit test test-unit \
+.PHONY: help install lint format fix typecheck precommit check-packaging test test-unit \
 	    test-integration test-e2e coverage ci build publish-test \
 	    publish clean
 
@@ -24,6 +24,13 @@ help:  ## Display available targets
 
 install:  ## Install all dependencies including dev group
 	poetry install
+
+check-packaging:  ## Assert the PEP 561 py.typed marker ships in the built distributions
+	@rm -rf dist
+	@poetry build -q
+	@poetry run python -c "import glob, sys, tarfile, zipfile; w = sorted(glob.glob('dist/*.whl'))[-1]; s = sorted(glob.glob('dist/*.tar.gz'))[-1]; missing = [k for k, ok in (('wheel', 'reveille/py.typed' in zipfile.ZipFile(w).namelist()), ('sdist', any(n.endswith('reveille/py.typed') for n in tarfile.open(s).getnames()))) if not ok]; sys.exit('py.typed missing from: ' + ', '.join(missing)) if missing else None"
+	@rm -rf dist
+	@echo "py.typed marker present in wheel and sdist"
 
 check-version:  ## Assert pyproject.toml version matches reveille.__version__
 	@TOML_VER=$$(poetry version --short); \
@@ -78,6 +85,7 @@ coverage:  ## Generate HTML and terminal coverage report
 
 ci:  ## Full CI workflow: lint, typecheck, test
 	$(MAKE) check-version
+	$(MAKE) check-packaging
 	$(MAKE) lint
 	$(MAKE) typecheck
 	$(MAKE) test

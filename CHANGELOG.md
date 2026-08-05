@@ -8,6 +8,20 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Reveille now ships the PEP 561 `py.typed` marker. The package has advertised the
+  `Typing :: Typed` classifier since v0.5.0 while the marker was absent from every
+  built distribution, so type checkers in downstream projects reported Reveille as
+  missing library stubs and ignored its annotations entirely — the `mypy --strict`
+  guarantee applied inside the project but delivered nothing to consumers of it.
+  Installing this release makes Reveille's inline types visible to `mypy`, `pyright`,
+  and any other PEP 561-aware checker with no change required on the consumer side.
+- `make check-packaging` asserts the marker survives into both the wheel and the sdist,
+  and runs in CI alongside the existing version-sync check. The defect persisted because
+  nothing verified it; a claim the build does not check is a claim that silently stops
+  being true.
+
 ### Changed
 
 - **Breaking (JSON output):** the derived metric previously reported as
