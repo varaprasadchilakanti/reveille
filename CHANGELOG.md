@@ -8,6 +8,19 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- The base exception is now spelled `ReveilleError`. It had been `RevelleError` —
+  missing the second `i` — since the first release, and as the documented catch-all for
+  library consumers the typo sat directly on the public API surface. **No consumer code
+  needs to change**: `RevelleError` remains importable as a deprecated alias resolving to
+  the same class, so `except RevelleError` continues to catch every Reveille failure.
+  Accessing it emits a `DeprecationWarning` naming the replacement and the removal
+  version. The alias is removed in **v1.0.0**, where the public API becomes stable —
+  correcting it now is the last opportunity to do so at no cost to users.
+- `reveille.exceptions` now declares `__all__`, and its module docstring carries the full
+  exception hierarchy.
+
 ### Fixed
 
 - Reveille now ships the PEP 561 `py.typed` marker. The package has advertised the

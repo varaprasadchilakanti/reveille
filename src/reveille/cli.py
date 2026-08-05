@@ -25,7 +25,7 @@ import typer
 from reveille import __version__
 from reveille.config import OutputFormat, ReportConfig, ReportConfigKwargs
 from reveille.domain.models import ProgressEvent
-from reveille.exceptions import ConfigurationError, RevelleError
+from reveille.exceptions import ConfigurationError, ReveilleError
 
 app = typer.Typer(
     name="reveille",
@@ -392,7 +392,7 @@ def generate(
             report_config,
             on_progress=_make_progress_callback(spinner),
         )
-    except RevelleError as exc:
+    except ReveilleError as exc:
         spinner.complete()
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
@@ -416,7 +416,7 @@ def validate(
     resolved = repo.resolve()
     try:
         reader = GitReader(resolved)
-    except RevelleError as exc:
+    except ReveilleError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
@@ -428,7 +428,7 @@ def validate(
             err=True,
         )
         raise typer.Exit(code=1) from None
-    except RevelleError as exc:
+    except ReveilleError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
@@ -484,14 +484,14 @@ def init(
     try:
         written_path = write_init_config(output, force=force)
         typer.echo(f"Configuration file written to: {written_path}")
-    except RevelleError as exc:
+    except ReveilleError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
     if mailmap:
         try:
             mailmap_result = write_mailmap_template(cwd / ".mailmap", force=force)
-        except RevelleError as exc:
+        except ReveilleError as exc:
             typer.echo(f"Error: {exc}", err=True)
             raise typer.Exit(code=1) from exc
         if mailmap_result is not None:
