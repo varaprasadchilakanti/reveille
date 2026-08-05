@@ -34,6 +34,8 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Version Control :: Git",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Software Development :: Build Tools",
@@ -50,6 +52,10 @@ packages = [
 # ------------------------------------------------------------------
 
 [tool.poetry.dependencies]
+# Floor is a real technical constraint, not a preference: config.py imports
+# tomllib and git_reader.py uses datetime.UTC, both added in 3.11.
+# Deliberately no upper cap below 4.0 — see CONTRIBUTING.md,
+# "Supported Python versions", for why capping is not done here.
 python = "^3.11"
 
 # CLI Layer
