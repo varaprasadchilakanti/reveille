@@ -17,6 +17,7 @@ or Typer. All external concerns are delegated to adapters.
 from __future__ import annotations
 
 import datetime
+import logging
 import time
 from collections.abc import Callable
 from dataclasses import replace
@@ -27,6 +28,8 @@ from reveille.adapters.renderer import Renderer
 from reveille.config import ReportConfig
 from reveille.domain.models import ProgressEvent, RankedContributor, ReportData
 from reveille.domain.ranking import rank_contributors
+
+_logger = logging.getLogger(__name__)
 
 
 def generate_report(
@@ -51,6 +54,7 @@ def generate_report(
         OutputPathError: If the output file cannot be written.
         RenderError: If the HTML template fails to render.
     """
+    _logger.debug("pipeline start: repo=%s", config.repo_path)
     reader = GitReader(config.repo_path)
     stage_start = time.monotonic()
 
@@ -129,6 +133,11 @@ def generate_report(
         commits=commits,
     )
 
+    _logger.debug(
+        "assembled report data: %d commits, %d contributors",
+        len(commits),
+        len(contributor_stats),
+    )
     renderer = Renderer()
     paths: list[Path] = []
     if config.output_format == "html":
@@ -137,4 +146,5 @@ def generate_report(
         paths.append(renderer.render_json(report_data, config.output_path.with_suffix(".json")))
     if config.output_format == "csv":
         paths.append(renderer.render_csv(report_data, config.output_path.with_suffix(".csv")))
+    _logger.debug("wrote %d output file(s): %s", len(paths), [str(p) for p in paths])
     return paths

@@ -22,6 +22,7 @@ any repository large enough to care about.
 from __future__ import annotations
 
 import datetime
+import logging
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -37,6 +38,8 @@ from reveille.exceptions import EmptyRepositoryError, RepositoryError
 # ASCII 0x1E (record separator) and 0x1F (unit separator) are control
 # characters that cannot appear in a commit header field, so they parse
 # unambiguously where a printable delimiter would not.
+_logger = logging.getLogger(__name__)
+
 _RECORD_SEP = "\x1e"
 _FIELD_SEP = "\x1f"
 
@@ -263,6 +266,17 @@ class GitReader:
 
         exclude_set = {entry.lower() for entry in exclude_authors}
 
+        # An unborn HEAD means the repository is readable but has no commits
+        # at all. That is a negative answer, not a failure to read, so it
+        # must surface as EmptyRepositoryError like an empty analysis window
+        # rather than as the RepositoryError that `git log` would produce.
+        if not self._repo.head.is_valid():
+            raise EmptyRepositoryError(
+                f"Repository at '{self._repo_path}' contains no commits. "
+                "Make at least one commit before generating a report."
+            )
+
+        _logger.debug("git log %s", " ".join(log_args))
         try:
             raw_log = self._repo.git.log(*log_args)
         except GitCommandError as exc:
@@ -317,6 +331,12 @@ class GitReader:
                 "Try widening the date range or removing author filters."
             )
 
+        _logger.debug(
+            "read %d commits from %s (%d bytes of git log output)",
+            len(commits),
+            rev,
+            len(raw_log),
+        )
         return sorted(commits, key=lambda c: c.timestamp, reverse=True)
 
     def aggregate_contributor_stats(
