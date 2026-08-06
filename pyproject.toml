@@ -61,7 +61,14 @@ python = "^3.11"
 # CLI Layer
 # Typer 0.18.0 restored full Click 8.3.x compatibility. The <8.3.0 upper
 # bound introduced in v0.3.0 is no longer required.
-typer = { version = ">=0.18,<0.28", extras = ["all"] }
+#
+# Deliberately no `extras = ["all"]`. Typer declares no extras at any
+# version in this range, so pip emitted "typer X does not provide the
+# extra 'all'" on every install. It was never load-bearing: `rich` and
+# `shellingham` -- what the extra used to pull -- are ordinary
+# dependencies of `typer` itself. `typer-slim` is the variant that omits
+# them, and Reveille does not use it.
+typer = ">=0.18,<0.28"
 click = ">=8.0.0"
 
 # Git Data Layer
