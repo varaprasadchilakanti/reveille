@@ -36,7 +36,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install Poetry
-        uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1
+        uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
         with:
           version: "1.8.2"
           virtualenvs-in-project: true
@@ -44,5 +44,81 @@ jobs:
       - name: Build distribution packages
         run: poetry build
 
+      # PEP 740 attestations are produced by default from v1.11.0 onward
+      # and require the `id-token: write` permission granted above. This
+      # pin is v1.14.1, so no `attestations:` input is needed -- adding
+      # one would only be a way to turn them off.
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # release/v1
+        uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # v1.14.1
+
+  # ----------------------------------------------------------------
+  # Software Bill of Materials
+  #
+  # Deliberately independent of `publish` in the job graph. A release
+  # must never be withheld because an SBOM could not be produced, and
+  # making this a dependency -- in either direction -- would allow
+  # exactly that.
+  # ----------------------------------------------------------------
+  sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+
+      # cyclonedx-py reads pyproject.toml and poetry.lock as files, so it
+      # needs neither Poetry nor the project environment. Keeping it out
+      # of the project's own dependency graph means the tool that
+      # describes that graph is not a member of it.
+      - name: Generate CycloneDX SBOM
+        run: |
+          python -m pip install --quiet cyclonedx-bom==7.3.1
+          cyclonedx-py poetry --no-dev --output-reproducible \
+            --of JSON -o "reveille-${GITHUB_REF_NAME#v}-sbom.cdx.json" .
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sbom
+          path: reveille-*-sbom.cdx.json
+          if-no-files-found: error
+
+  # ----------------------------------------------------------------
+  # This is the only job holding a token that can write to the
+  # repository, and it runs no third-party code -- just the SBOM file
+  # produced above. The generator itself never sees a write token.
+  # ----------------------------------------------------------------
+  attach-sbom:
+    name: Attach SBOM to the GitHub Release
+    runs-on: ubuntu-latest
+    needs: sbom
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: sbom
+
+      # The Release is normally drafted by hand after the tag is pushed,
+      # so it usually does not exist yet at this point. That is not a
+      # failure -- the SBOM remains available as a workflow artifact and
+      # the log says how to attach it.
+      - name: Attach to the Release if one already exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" reveille-*-sbom.cdx.json \
+              --repo "$GITHUB_REPOSITORY" --clobber
+            echo "SBOM attached to release $GITHUB_REF_NAME."
+          else
+            echo "No Release exists for $GITHUB_REF_NAME yet."
+            echo "The SBOM is available as the 'sbom' artifact of this run."
+            echo "Attach it when drafting the Release:"
+            echo "  gh release upload $GITHUB_REF_NAME reveille-*-sbom.cdx.json"
+          fi

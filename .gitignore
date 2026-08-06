@@ -22,6 +22,11 @@ cython_debug/
 
 build/
 dist/
+
+# Throwaway venvs for release tooling kept outside the project
+# environment -- see the `sbom` target in the Makefile.
+.tool-venvs/
+
 develop-eggs/
 downloads/
 eggs/
