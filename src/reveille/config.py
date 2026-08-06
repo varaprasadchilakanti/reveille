@@ -23,8 +23,37 @@ OutputFormat = Literal["html", "json", "csv"]
 class RankingWeights(BaseModel):
     """Configurable weights for the contributor ranking composite score.
 
-    All four weights must sum to 1.0. Validation enforces this invariant
-    at construction time.
+    All four weights must sum to 1.0, so the composite score stays
+    bounded to [0.0, 1.0] and remains comparable across runs. Validation
+    enforces this at construction time.
+
+    **The defaults are a judgement call, not an empirically derived
+    model.** No study establishes that these four signals in this
+    proportion measure anything in particular. They are documented here
+    so the judgement can be argued with, and they are configurable so it
+    can be overridden.
+
+    The reasoning behind their relative ordering:
+
+    - `commits` (0.30) is weighted highest because commit count is the
+      most robust of the four. It is insensitive to file type, to
+      generated code, and to how a change happens to be split across
+      lines.
+    - `lines` (0.25) captures volume, but is the easiest to distort:
+      a vendored dependency, a lockfile, or a reformatting pass can
+      dwarf months of considered work.
+    - `consistency` (0.25) is active days over window days. It rewards
+      sustained participation over a single burst, which is the closest
+      any of these gets to a durability signal.
+    - `recency` (0.20) is weighted lowest deliberately. Recency is a
+      property of the analysis window rather than of the person; weight
+      it higher and the same contributor's tier swings on the choice of
+      end date.
+
+    None of this makes the composite a measure of contribution. It
+    measures volume and regularity of commits, which is what Git
+    records. See `reveille.domain.ranking` for the caveat that belongs
+    with any use of it.
     """
 
     commits: float = Field(default=0.30, ge=0.0, le=1.0)
@@ -40,7 +69,7 @@ class RankingWeights(BaseModel):
             The validated RankingWeights instance.
 
         Raises:
-            ValueError: If the sum deviates from 1.0 by more than 1e-9.
+            ValueError: If the sum deviates from 1.0 by more than 1e-6.
         """
         total = self.commits + self.lines + self.consistency + self.recency
         if abs(total - 1.0) > 1e-6:

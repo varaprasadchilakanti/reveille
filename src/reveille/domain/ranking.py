@@ -5,6 +5,28 @@ on configurable weighted metrics. Rankings are relative to the
 contributor population within a single analysis window -- no absolute
 thresholds are applied.
 
+What this measures, and what it does not
+----------------------------------------
+It measures the volume and regularity of commits, because that is what
+Git records. It does not measure contribution, productivity, or value.
+The distance between those two sentences is the whole caveat.
+
+This is not a matter of taste. Both DORA and SPACE -- the two most
+widely cited bodies of research on software delivery measurement --
+state explicitly that their metrics must not be used to assess
+individuals, because activity metrics are trivially gameable and
+systematically misread part-time, review-heavy, mentoring, and
+on-call work as low output.
+
+A contributor who spends a quarter reviewing others' code, unblocking
+people, and deleting a subsystem will rank below one who committed
+generated files. That is not a defect in the implementation; it is what
+commit-derived metrics are. Treat a tier as a description of the *shape
+of participation* in one window, never as a judgement about a person.
+
+Ranking is opt-out via `ranking_enabled=False`, which keeps the plain
+contributor table and drops scores, percentiles, and tiers.
+
 Normalisation is min-max within the population for each metric except
 consistency, which is already bounded to [0.0, 1.0] as a ratio. When
 the population contains only one contributor, all normalised scores
@@ -32,6 +54,10 @@ Default metric weights (must sum to 1.0):
     lines            0.25
     consistency      0.25
     recency          0.20
+
+These are a documented judgement, not a derived model. See
+`reveille.config.RankingWeights` for the reasoning behind their relative
+ordering and for how to override them.
 """
 
 from __future__ import annotations

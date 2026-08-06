@@ -8,7 +8,54 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The User Guide claimed the four-field `.mailmap` form was unsupported.** It has been
+  supported since the mailmap work landed earlier in this release, so the guide was
+  telling users a capability they had did not exist. The claim appeared in two places —
+  the identity-resolution walkthrough and the `reveille init --mailmap` reference, where
+  the form was described as "marked as unsupported by Reveille in this release". Both now
+  describe all four `gitmailmap(5)` forms, the most-specific-match precedence Reveille
+  follows, case-insensitive matching, and the automatic folding of GitHub noreply
+  addresses.
+
+- **`CONTRIBUTING.md` claimed CI runs across Python 3.11 and 3.12.** The matrix has
+  covered 3.11 through 3.14 since the support-policy change earlier in this release. It
+  now refers to the support policy rather than restating a version list that will drift
+  again.
+
+- **A `RankingWeights` docstring contradicted its own code**, documenting a `1e-9`
+  tolerance where the validator uses `1e-6`.
+
 ### Added
+
+- **The ranking weights are now justified rather than merely stated.** The defaults
+  (30/25/25/20) appeared in the README, the User Guide, and two docstrings with no
+  recorded reasoning anywhere in the codebase — the one part of Reveille most likely to be
+  questioned was the one part that could not answer. They are now documented as a
+  judgement rather than a derived model, with the reasoning for their relative ordering:
+  commits weighted highest for robustness, lines lower because a lockfile or reformatting
+  pass distorts them, recency lowest because recency is a property of the analysis window
+  rather than of the person.
+
+- **Documentation of what the ranking does not measure.** The README, the User Guide, and
+  `domain/ranking.py` now state plainly that the ranking measures volume and regularity of
+  commits — not contribution, productivity, or value — and that it must not be used to
+  assess individuals, which is the explicit position of both DORA and SPACE. The military
+  tier designations are described as a visual device, not a rank, and `--no-ranking` is
+  documented as the way to drop scores while keeping every other section of the report.
+
+- **`llms.txt`** — a short index pointing a coding assistant at the right document, plus
+  the handful of facts about Reveille that are easy to get wrong: that it never writes to
+  a repository, that merge commits are excluded so its counts are lower than `git log`,
+  that commit concentration is not a bus factor, and that the ranking must not be used to
+  assess individuals. It is a proposed convention, not a standard, and nothing depends
+  on it.
+
+- **The link test now checks absolute self-referential URLs.** The README and `llms.txt`
+  link to their own repository by full URL so they render correctly on PyPI, which the
+  relative-path check could not see; 17 such links are now verified to point at files that
+  exist.
 
 - **`docs/ARCHITECTURE.md` documents how Reveille is built.** The architecture record
   previously existed only in a gitignored working file, so a contributor cloning the
@@ -69,6 +116,15 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
   seam in the release path.
 
 ### Changed
+
+- **The User Guide documents the single-pass history read.** The pipeline walkthrough now
+  states the measured cost (~0.8 ms per commit, so a 50,000-commit history reads in under
+  a minute) and states explicitly that Reveille never writes to the repository — no
+  commits, no branches, no configuration changes, no mutating Git command.
+
+- **Two module docstrings predated JSON and CSV export.** `services/report.py` described
+  step 7 as rendering HTML, and `adapters/renderer.py` called itself the "HTML report
+  renderer". Both now describe the three-format dispatch.
 
 - **`CONTRIBUTING.md` no longer claims the domain layer has no framework imports.** It
   does have one: `domain/ranking.py` imports `RankingWeights` from `config.py`, which is a

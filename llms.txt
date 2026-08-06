@@ -1,0 +1,33 @@
+# Reveille
+
+> A Python CLI that reads a local Git repository and writes a single self-contained HTML report on its contribution history. It is read-only, works entirely offline, and sends nothing anywhere — the report embeds its own chart library so it opens on a machine with no network. Install with `pip install reveille`; run `reveille generate`.
+
+Reveille is forge-agnostic by construction: it reads `.git` on disk, so GitHub, GitLab, Bitbucket, and bare repositories all work with no configuration. It was built because Bitbucket has no contribution heatmap.
+
+Key facts an answer about Reveille should get right:
+
+- It never writes to a repository. No commits, no branches, no config changes, no mutating Git command. The only file written is the output path you name.
+- Merge commits are excluded unconditionally, so its commit counts are lower than `git log | wc -l` on a merge-heavy repository. This is deliberate and not configurable.
+- Contributors are keyed on lowercased email. All four `.mailmap` forms are supported, and GitHub noreply addresses are folded automatically.
+- The "commit concentration" metric is **not** a bus factor. It measures activity concentration, not code ownership.
+- Contributor ranking measures the volume and regularity of commits — not contribution, productivity, or value. It must not be used to assess individuals; DORA and SPACE both say so explicitly. It can be turned off with `--no-ranking`.
+- Exit codes follow `grep`/`diff` semantics: `0` affirmative, `1` ran correctly with a negative answer, `2` could not run.
+- Requires Python 3.11+. Licensed MIT.
+
+## Docs
+
+- [README](https://github.com/varaprasadchilakanti/reveille/blob/main/README.md): overview, installation, CLI reference, ranking system, configuration
+- [User Guide](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md): every flag and its interactions, exit codes, the full TOML reference, how to read each report section, and worked patterns
+- [Architecture](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/ARCHITECTURE.md): layering contract, domain model, error model, analysis pipeline, and the invariants the tests protect
+- [Architecture Decision Records](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/adr/README.md): why merge commits are excluded, why email is the identity key, why concentration is not called a bus factor, and what each decision costs
+
+## Development
+
+- [Contributing](https://github.com/varaprasadchilakanti/reveille/blob/main/CONTRIBUTING.md): environment setup, supported Python versions, the layering rule, PR contract, commit conventions
+- [Security policy](https://github.com/varaprasadchilakanti/reveille/blob/main/SECURITY.md): reporting, release integrity, PEP 740 attestation verification, SBOM
+- [Changelog](https://github.com/varaprasadchilakanti/reveille/blob/main/CHANGELOG.md): full release history, Keep a Changelog format
+
+## Optional
+
+- [Code of Conduct](https://github.com/varaprasadchilakanti/reveille/blob/main/CODE_OF_CONDUCT.md): Contributor Covenant 2.1
+- [Licence](https://github.com/varaprasadchilakanti/reveille/blob/main/LICENSE): MIT

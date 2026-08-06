@@ -7,11 +7,17 @@ Orchestrates the full report generation pipeline:
     4. Aggregate contributor statistics.
     5. Rank contributors using the ranking engine.
     6. Assemble the ReportData object.
-    7. Render the HTML output via the Renderer adapter.
+    7. Render to the configured format via the Renderer adapter --
+       HTML, JSON, or CSV, dispatched on `config.output_format`.
     8. Return the absolute path of the written file.
 
 This layer has no direct knowledge of GitPython, Jinja2, Plotly,
 or Typer. All external concerns are delegated to adapters.
+
+Progress is reported by emitting `ProgressEvent` objects to an optional
+callback, not by writing to a terminal. Whether those events become an
+animated spinner, log lines, or nothing at all is the CLI's decision;
+the service holds no opinion about output devices.
 """
 
 from __future__ import annotations

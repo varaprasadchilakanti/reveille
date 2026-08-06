@@ -32,6 +32,14 @@ unconditionally excluded at this stage because they inflate both commit
 counts and line change volumes without reflecting individual contributor
 activity.
 
+This is a single `git log --numstat` pass over the requested range,
+which is why the read scales to large repositories: it costs roughly
+0.8 milliseconds per commit, so a 50,000-commit history is read in
+under a minute rather than the several minutes a per-commit diff would
+take. Reveille never writes to the repository — no commits, no
+branches, no configuration changes, no mutating Git command at any
+point. The only file it writes is the output file you name.
+
 Second, raw commits are aggregated into per-contributor statistics. A
 contributor's identity is keyed on their author email address, not their
 display name. This means that a contributor who has committed under two
@@ -42,9 +50,21 @@ the repository root, email aliases are resolved to their canonical
 identity before aggregation. A contributor who has committed under
 multiple email addresses is unified under the canonical identity declared
 in `.mailmap`, ensuring that ranking and contribution metrics reflect
-actual individual output rather than the number of addresses used. The
-four-field `.mailmap` form is not yet supported and is documented as a
-known limitation.
+actual individual output rather than the number of addresses used.
+
+All four `.mailmap` forms defined by `gitmailmap(5)` are supported, and
+matching follows Git's own precedence: the most specific rule wins.
+A rule naming both a name and an email is tried first, then one naming
+an email alone, then one naming a name alone. Matching is
+case-insensitive, and malformed lines are skipped silently — again
+matching Git's behaviour, so a `.mailmap` that works with `git shortlog`
+works here.
+
+GitHub noreply addresses are folded automatically, with no `.mailmap`
+entry required. The legacy `username@users.noreply.github.com` and the
+post-2017 `12345678+username@users.noreply.github.com` forms both exist,
+and the same person frequently appears under both; the numeric prefix is
+stripped so the two collapse into one contributor.
 
 Third, each contributor is scored using the weighted composite ranking
 algorithm and assigned a tier designation relative to the other
@@ -278,7 +298,7 @@ reveille init --force
 
 ### `--mailmap`
 
-Generates a fully annotated `.mailmap` template at the repository root alongside `reveille.toml`. The template documents the two-field form (name correction), three-field form (email alias to canonical identity), and four-field form (name and email alias, marked as unsupported by Reveille in this release), each with concrete examples covering employer domain changes, GitHub noreply addresses, and name corrections.
+Generates a fully annotated `.mailmap` template at the repository root alongside `reveille.toml`. The template documents all four forms defined by `gitmailmap(5)` — name correction, email alias to canonical identity, email-only remapping, and the four-field form that disentangles several people sharing one address — each with concrete examples covering employer domain changes, GitHub noreply addresses, name corrections, and shared build-machine accounts. It also documents the matching precedence, so a rule that does not fire can be diagnosed from the template itself.
 
 `--force` applies to both generated files when `--mailmap` is set. If a `.mailmap` file already exists, it is silently skipped — `.mailmap` is a Git-native file and its presence is not treated as a conflict.
 
@@ -475,6 +495,22 @@ summed to produce the composite score. The default weights are commit
 volume at 30 percent, lines contributed at 25 percent, consistency at 25
 percent, and recency at 20 percent.
 
+**Why those numbers.** They are a documented judgement, not a derived
+model — no study establishes that these four signals in this proportion
+measure anything in particular. Commit volume is highest because it is
+the most robust of the four: insensitive to file type, to generated
+code, and to how a change happens to be split across lines. Lines are
+lower because they are the easiest to distort — a vendored dependency, a
+lockfile, or a reformatting pass can dwarf months of considered work.
+Consistency rewards sustained participation over a single burst. Recency
+is lowest deliberately, because recency is a property of the analysis
+window rather than of the person; weight it higher and the same
+contributor's tier swings on the choice of end date.
+
+They are configurable precisely because they are a judgement. If the
+defaults do not describe what you are trying to see, change them — see
+[Adjusting Weights for a Maintenance Quarter](#adjusting-weights-for-a-maintenance-quarter).
+
 Each contributor's composite score is then converted to a percentile
 rank within the population. The percentile determines the tier designation
 according to the following table.
@@ -489,8 +525,36 @@ according to the following table.
 | VI | Major | 89th – 95th |
 | VII | Commander | 96th – 100th |
 
+Tied composite scores receive identical percentiles, and therefore
+identical tiers. Percentile is a lower-bound rank, so a tied group sits
+at the bottom of its band rather than being ordered arbitrarily.
+
 In a repository with a single contributor, that contributor receives the
 Commander designation by definition, as their percentile is 100.0.
+
+### What the ranking does not measure
+
+The ranking measures the volume and regularity of commits, because that
+is what Git records. It does not measure contribution, productivity, or
+value, and it should not be used to assess an individual.
+
+This is the stated position of the research rather than a disclaimer.
+Both DORA and SPACE — the two most widely cited bodies of work on
+software delivery measurement — say explicitly that their metrics must
+not be applied to individuals. Activity metrics are easy to game and
+systematically misread review-heavy, mentoring, part-time, and on-call
+work as low output. A contributor who spends a quarter unblocking
+colleagues and deleting a subsystem will rank below one who committed
+generated files.
+
+Read a tier as a description of the shape of participation in one
+window. It is not a statement about a person, and the military
+designations are a visual device, not a rank.
+
+If that framing does not fit your use, turn ranking off entirely with
+`--no-ranking` or `ranking.enabled = false`. The contributor table,
+heatmap, timelines, and breakdown charts all remain; only the scores,
+percentiles, and tiers are dropped.
 
 ---
 
