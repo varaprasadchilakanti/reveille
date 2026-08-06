@@ -105,8 +105,10 @@ none.
 ## Submitting Pull Requests
 
 All pull requests must target the `main` branch. The CI pipeline runs
-`ruff`, `mypy`, and `pytest` across Python 3.11 and 3.12. All three
-must pass. A pull request will not be merged if any check fails.
+`ruff`, `mypy`, and `pytest` across every supported Python version — see
+[Supported Python versions](#supported-python-versions) — plus a
+packaging check and a version-consistency check. All must pass. A pull
+request will not be merged if any check fails.
 
 The output contract is non-negotiable and must be preserved in every
 contribution: the generated file is always a single self-contained
