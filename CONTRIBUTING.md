@@ -73,21 +73,34 @@ exclusion rather than a blanket ceiling.
 
 ## Architecture
 
-Reveille follows Clean Architecture strictly. The dependency rule is
-absolute: outer layers depend on inner layers, never the reverse.
+**Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) before your first
+change.** It describes the layering contract, the domain model, the
+pipeline, and the invariants that tests exist to protect. Individual
+decisions and their reasoning live in [docs/adr/](docs/adr/).
 
-- `src/reveille/domain/` — pure Python dataclasses and the ranking
-  engine. No framework imports, no I/O.
-- `src/reveille/adapters/` — `GitReader` (the only layer that imports
-  GitPython) and `Renderer` (the only layer that imports Jinja2 and
+In short: dependencies point inward, and outer layers never appear in
+inner ones.
+
+- `src/reveille/domain/` — frozen dataclasses and the ranking engine.
+  Performs no I/O and no rendering. It does import `RankingWeights` from
+  `config.py`, which is a Pydantic model; that is a deliberate,
+  documented exception rather than a leak.
+- `src/reveille/adapters/` — `GitReader` (the only module that imports
+  GitPython) and `Renderer` (the only module that imports Jinja2 and
   Plotly).
-- `src/reveille/services/` — the `generate_report` orchestrator.
-  No knowledge of infrastructure libraries.
-- `src/reveille/cli.py` — argument parsing and progress display only.
-  No business logic.
+- `src/reveille/services/` — the `generate_report` orchestrator. Emits
+  `ProgressEvent`; knows nothing about terminals.
+- `src/reveille/cli.py` — the only module that imports Typer. Argument
+  parsing, exit codes, and progress display. No business logic.
 
 New behaviour belongs in the layer that owns its concern. Domain logic
-that acquires a framework import is a layering violation.
+that acquires an I/O or presentation import is a layering violation, and
+`tests/unit/test_layering.py` will fail rather than leave it to review.
+
+If a change makes a statement in `ARCHITECTURE.md` untrue, update the
+document in the same pull request. An architecture document that
+describes an intended design rather than the built one is worse than
+none.
 
 ## Submitting Pull Requests
 

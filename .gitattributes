@@ -1,0 +1,77 @@
+# ==================================================================
+# Reveille -- Git attributes
+#
+# The entry with real teeth is the first one. Without it, a checkout on
+# Windows and a checkout on Linux produce different bytes for the same
+# commit, and every cross-platform contributor generates whole-file
+# diffs that bury the actual change.
+# ==================================================================
+
+# Normalise all text to LF in the repository, regardless of platform.
+# Git detects which files are text; the explicit entries below override
+# that detection where guessing wrong would be costly.
+* text=auto eol=lf
+
+# ------------------------------------------------------------------
+# Explicitly text
+# ------------------------------------------------------------------
+
+*.py        text diff=python
+*.pyi       text diff=python
+*.j2        text
+*.md        text diff=markdown
+*.toml      text
+*.yml       text
+*.yaml      text
+*.json      text
+*.cfg       text
+*.ini       text
+*.txt       text
+*.html      text diff=html
+*.css       text diff=css
+*.js        text
+.gitignore  text
+.gitattributes text
+.editorconfig  text
+Makefile    text
+
+# Shell scripts must keep LF even if a tool is configured otherwise --
+# CRLF makes them unexecutable.
+*.sh        text eol=lf
+
+# ------------------------------------------------------------------
+# Explicitly binary -- never normalise, never diff
+# ------------------------------------------------------------------
+
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.pdf       binary
+*.woff      binary
+*.woff2     binary
+*.gz        binary
+*.zip       binary
+*.whl       binary
+
+# ------------------------------------------------------------------
+# Language statistics
+#
+# The repository is Python. Without these, the vendored Plotly bundle in
+# generated reports and the report template's inline CSS/JS would have
+# GitHub reporting this as a JavaScript project.
+# ------------------------------------------------------------------
+
+*.j2                    linguist-language=HTML
+docs/**                 linguist-documentation
+tests/**                linguist-language=Python
+
+# ------------------------------------------------------------------
+# Excluded from source archives (`git archive`)
+# ------------------------------------------------------------------
+
+.github/        export-ignore
+.gitattributes  export-ignore
+.gitignore      export-ignore
+tests/          export-ignore

@@ -293,6 +293,13 @@ annotated examples, the ranking algorithm in plain language, how to interpret
 each section of the generated report, and practical patterns for common use
 cases.
 
+For how Reveille is built rather than how it is used, see
+[docs/ARCHITECTURE.md](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/ARCHITECTURE.md)
+— the layering contract, the domain model, the analysis pipeline, and the
+invariants the test suite protects. Individual design decisions and the
+reasoning behind them are recorded in
+[docs/adr/](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/adr/).
+
 ---
 
 ## Development Setup
@@ -344,6 +351,8 @@ ruff check src/
 ## Contributing
 
 Contributions are welcome. Please read [CONTRIBUTING.md](https://github.com/varaprasadchilakanti/reveille/blob/main/CONTRIBUTING.md) before opening a pull request. It covers the development environment setup, architecture overview, pull request contract, code style requirements, and commit message conventions.
+
+Participation is governed by the [Code of Conduct](https://github.com/varaprasadchilakanti/reveille/blob/main/CODE_OF_CONDUCT.md).
 
 ---
 

@@ -1,0 +1,35 @@
+# ==================================================================
+# Reveille -- code owners
+#
+# Every pull request requests review from the owner of each path it
+# touches. Reveille currently has a single maintainer, so the catch-all
+# covers everything; the explicit entries below exist to make the
+# high-consequence paths visible rather than to route them elsewhere.
+#
+# Syntax: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+# ==================================================================
+
+# Default owner for everything in the repository.
+*                       @varaprasadchilakanti
+
+# ------------------------------------------------------------------
+# Release and supply chain
+#
+# These paths decide what gets published and under whose identity. A
+# change here is a change to the trust boundary, not to a feature.
+# ------------------------------------------------------------------
+
+/.github/workflows/     @varaprasadchilakanti
+/SECURITY.md            @varaprasadchilakanti
+/pyproject.toml         @varaprasadchilakanti
+/poetry.lock            @varaprasadchilakanti
+
+# ------------------------------------------------------------------
+# Architectural contracts
+#
+# The layering rules and the decisions that justify them. Changing these
+# documents without changing the code -- or the reverse -- is drift.
+# ------------------------------------------------------------------
+
+/docs/ARCHITECTURE.md   @varaprasadchilakanti
+/docs/adr/              @varaprasadchilakanti

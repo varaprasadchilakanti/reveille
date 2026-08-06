@@ -10,6 +10,38 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ### Added
 
+- **`docs/ARCHITECTURE.md` documents how Reveille is built.** The architecture record
+  previously existed only in a gitignored working file, so a contributor cloning the
+  repository could not read the layering contract they were expected to honour. It covers
+  the dependency rule and framework ownership, the domain model, the error model and exit
+  codes, the analysis pipeline, identity resolution, ranking, and the invariants the test
+  suite exists to protect. It was rewritten against the source rather than copied: the
+  prior record was pinned at v0.5.0 and predated the exception rename, JSON and CSV
+  export, `ProgressEvent`, exit codes, the single-pass history read, and the commit
+  concentration rename.
+
+- **`docs/adr/` records six decisions with their reasoning** — unconditional merge-commit
+  exclusion, email as the identity key, lower-bound percentile ranking, the single-pass
+  `--numstat` read, commit concentration over "bus factor", and the offline single-file
+  report. Each states what the decision costs and what it rules out, so a future reversal
+  argues with the original reasoning rather than reconstructing it.
+
+- **A layering test enforces the dependency rule.** `tests/unit/test_layering.py` imports
+  each layer in a clean interpreter and asserts which frameworks reach `sys.modules`. A
+  contract that lives only in a document erodes one convenient import at a time with
+  nothing failing; this one fails the suite.
+
+- **A documentation link test** asserts that every relative link between repository
+  documents resolves, and that no ADR is missing from its index. Cross-references rot
+  silently — a renamed file leaves a link that still reads correctly and 404s.
+
+- **`.gitattributes`, `.editorconfig`, `.github/CODEOWNERS`, and `CODE_OF_CONDUCT.md`.**
+  The consequential one is `* text=auto eol=lf`: without it, checkouts on different
+  platforms produce different bytes for the same commit and cross-platform contributors
+  generate whole-file diffs that bury the actual change. No tracked file currently
+  contains CRLF, so adding it produces no renormalisation diff. `.editorconfig` is
+  deliberately narrow and defers all formatting to ruff rather than restating it.
+
 - **Every tagged release now generates a CycloneDX 1.6 SBOM.** The bill of materials
   covers the runtime dependency graph resolved from `poetry.lock`; development and test
   dependencies are excluded, because they describe how Reveille is built rather than what
@@ -37,6 +69,14 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
   seam in the release path.
 
 ### Changed
+
+- **`CONTRIBUTING.md` no longer claims the domain layer has no framework imports.** It
+  does have one: `domain/ranking.py` imports `RankingWeights` from `config.py`, which is a
+  Pydantic model. This is a deliberate trade — the alternative is two definitions of the
+  same four weights that can drift — but the document stated the stronger claim, and a
+  contributor checking it against the source would have found the document wrong. The rule
+  is now stated as what it actually protects: the domain performs no I/O and no rendering.
+  `tests/unit/test_layering.py` enforces that version.
 
 - **Action pin comments now name exact versions.** Four pins were labelled with moving
   aliases — `# release/v1` on `pypa/gh-action-pypi-publish`, `# v1` on
