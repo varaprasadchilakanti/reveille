@@ -10,6 +10,22 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ### Fixed
 
+- **`pip install reveille` printed a warning on every install.** The Typer dependency was
+  declared as `typer[all]`, and Typer declares no extras at any version in the supported
+  range, so pip emitted `WARNING: typer 0.27.1 does not provide the extra 'all'` — the
+  first thing a new user saw. The extra was never load-bearing: `rich` and `shellingham`,
+  what it used to pull, are ordinary dependencies of `typer` itself, and `typer-slim` is
+  the variant that omits them. Verified at both ends of the range (0.18.0 and 0.27.1):
+  neither declares an extra, and both install `rich` and `shellingham` regardless. The
+  resolved dependency set is byte-identical — only the lock file's content hash changed.
+
+- **The README documented a `reveille version` command that does not exist.** The version
+  string is exposed as a global `--version` / `-v` flag; there is no `version` subcommand,
+  so anyone copying the invocation out of the CLI reference got
+  `No such command 'version'`. Found by running it rather than by reading it — every
+  documentation guard in this release compares text to text, which is why it survived them
+  all.
+
 - **The User Guide claimed the four-field `.mailmap` form was unsupported.** It has been
   supported since the mailmap work landed earlier in this release, so the guide was
   telling users a capability they had did not exist. The claim appeared in two places —
@@ -114,6 +130,14 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
   trailing comment names a precise version. An action referenced by a mutable tag executes
   whatever that tag points at on the day the workflow runs, which is an arbitrary-code
   seam in the release path.
+
+- **Two tests hold the CLI reference to the CLI.** One asserts `reveille version` fails.
+  The other compares the commands named in the README's CLI Reference against the commands
+  Typer actually registered, in both directions — a documented command that does not
+  exist, and a real command the README omits. The commands are read from the Typer group
+  rather than parsed out of `--help` text: a first attempt did parse the help output and
+  passed while the README documented a nonexistent command, because the name matched
+  inside an option's description sentence.
 
 ### Changed
 
