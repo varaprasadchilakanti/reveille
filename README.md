@@ -173,9 +173,14 @@ Scaffolds a fully annotated `reveille.toml` configuration file in the current di
 | `--force` | | Flag | Off | Overwrite an existing file at the target path without prompting. |
 | `--mailmap` | | Flag | Off | Generate an annotated `.mailmap` template at the repository root alongside `reveille.toml`. Documents two-field, three-field, and four-field format variants with real-world examples. An existing `.mailmap` is silently skipped. |
 
-### `reveille version`
+### `reveille --version` / `-v`
 
-Prints the installed version string and exits.
+Prints the installed version string and exits. This is a global flag rather than
+a subcommand — `reveille version` is not a valid invocation.
+
+```bash
+reveille --version
+```
 
 ### `reveille validate`
 
