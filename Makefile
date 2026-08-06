@@ -5,7 +5,7 @@
 .DEFAULT_GOAL := help
 
 .PHONY: help install lint format fix typecheck precommit check-packaging test test-unit \
-	    test-integration test-e2e coverage ci build publish-test \
+	    test-integration test-e2e coverage ci build sbom publish-test \
 	    publish clean
 
 # ------------------------------------------------------------------
@@ -96,6 +96,26 @@ ci:  ## Full CI workflow: lint, typecheck, test
 
 build:  ## Build the distribution packages
 	poetry build
+
+# The SBOM generator is deliberately not a project dependency. It reads
+# pyproject.toml and poetry.lock as files, so it needs no access to the
+# project environment -- and keeping it out means the tool that describes
+# our dependency graph is not itself a member of it. It lives in a
+# throwaway venv instead, pinned to the same version CI uses.
+SBOM_TOOL_VERSION := 7.3.1
+SBOM_VENV := .tool-venvs/sbom
+
+$(SBOM_VENV):
+	@python3 -m venv $(SBOM_VENV)
+	@$(SBOM_VENV)/bin/pip install --quiet --disable-pip-version-check \
+		cyclonedx-bom==$(SBOM_TOOL_VERSION)
+
+sbom: $(SBOM_VENV)  ## Generate a CycloneDX SBOM of the runtime dependency graph
+	@mkdir -p dist
+	@VER=$$(poetry version --short); \
+	$(SBOM_VENV)/bin/cyclonedx-py poetry --no-dev --output-reproducible \
+		--of JSON -o "dist/reveille-$$VER-sbom.cdx.json" . && \
+	echo "SBOM written to dist/reveille-$$VER-sbom.cdx.json"
 
 publish-test:  ## Publish to TestPyPI
 	poetry publish --repository testpypi
