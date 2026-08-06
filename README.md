@@ -234,6 +234,28 @@ Reveille assigns each contributor a tier designation based on a weighted composi
 
 Weights are configurable. See [Configuration](#configuration).
 
+**These defaults are a documented judgement, not a derived model.** No study
+establishes that these four signals in this proportion measure anything in
+particular. Commit volume is weighted highest because it is the most robust of
+the four — insensitive to file type and to how a change is split across lines.
+Lines are weighted lower because a lockfile or a reformatting pass can dwarf
+months of considered work. Recency is weighted lowest deliberately: recency is a
+property of the analysis window rather than of the person, so weighting it higher
+makes the same contributor's tier swing on the choice of end date.
+
+**What this measures is the volume and regularity of commits — not
+contribution, productivity, or value.** Both DORA and SPACE, the two most widely
+cited bodies of research on software delivery measurement, state explicitly that
+their metrics must not be used to assess individuals. Activity metrics are easy
+to game and systematically misread review-heavy, mentoring, part-time, and
+on-call work as low output. A contributor who spends a quarter unblocking others
+and deleting a subsystem will rank below one who committed generated files.
+
+Read a tier as a description of the shape of participation in one window, never
+as a judgement about a person. If that framing does not fit your use, turn
+ranking off with `--no-ranking` or `ranking.enabled = false`; the plain
+contributor table remains.
+
 The composite score maps to the following tier designations, applied relative to the contributor population in the analysis window.
 
 | Tier | Designation | Composite Score Percentile |
@@ -299,6 +321,12 @@ For how Reveille is built rather than how it is used, see
 invariants the test suite protects. Individual design decisions and the
 reasoning behind them are recorded in
 [docs/adr/](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/adr/).
+
+The repository also carries an
+[llms.txt](https://github.com/varaprasadchilakanti/reveille/blob/main/llms.txt)
+index, which points a coding assistant at the right document and states the
+handful of facts about Reveille that are easy to get wrong. `llms.txt` is a
+proposed convention rather than a standard, and nothing depends on it.
 
 ---
 

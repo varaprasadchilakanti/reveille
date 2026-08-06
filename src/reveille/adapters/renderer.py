@@ -1,8 +1,15 @@
-r"""HTML report renderer adapter.
+r"""Report renderer adapter.
 
-Combines Jinja2 templating with Plotly chart generation to produce
-a single self-contained HTML file. All JavaScript, CSS, and chart
-data are embedded inline. The output requires no internet connection.
+Renders `ReportData` to one of three formats. `render` produces the
+HTML report; `render_json` and `render_csv` produce machine-readable
+output for downstream tooling. This is the only layer in Reveille that
+imports Jinja2 or Plotly.
+
+The HTML path combines Jinja2 templating with Plotly chart generation
+to produce a single self-contained file. All JavaScript, CSS, and chart
+data are embedded inline. The output makes no network requests, which
+is what makes it safe to forward to someone who will open it on an
+unknown machine.
 
 Chart rendering strategy: each chart is serialised as a Plotly JSON
 specification and embedded in the document as an application/json
