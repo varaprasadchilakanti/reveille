@@ -22,6 +22,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import typer.main
 from typer.testing import CliRunner
 
 from reveille import __version__
@@ -148,6 +149,59 @@ class TestVersionCommand:
         result = runner.invoke(app, ["-v"])
         assert result.exit_code == 0
         assert __version__ in result.stdout
+
+    def test_version_is_not_a_subcommand(self) -> None:
+        """`reveille version` must fail, because the README once said it worked.
+
+        The version string is exposed as a global flag. The README
+        documented a `reveille version` subcommand through v0.6.x; it
+        never existed, and anyone who copied it from the CLI reference
+        got 'No such command'.
+        """
+        result = runner.invoke(app, ["version"])
+        assert result.exit_code != 0
+
+
+@pytest.mark.e2e
+class TestDocumentedCommandsExist:
+    """Every command in the README's CLI Reference must be real.
+
+    A CLI reference is a promise. Documenting a command that does not
+    exist is worse than omitting it, because a reader who copies it gets
+    an error and no way to tell whether the tool or the documentation is
+    wrong.
+    """
+
+    def _documented_commands(self) -> set[str]:
+        readme = (Path(__file__).resolve().parents[2] / "README.md").read_text(encoding="utf-8")
+        # CLI Reference subsections read `### \`reveille <name>\``.
+        # Flags are documented as `--flag`, so requiring a leading
+        # lowercase letter excludes them from the command set.
+        return set(re.findall(r"^### `reveille ([a-z][a-z-]*)`", readme, re.MULTILINE))
+
+    def _registered_commands(self) -> set[str]:
+        """Read the commands Typer actually registered.
+
+        Deliberately not parsed out of `--help` text. An earlier version
+        of this test did exactly that and passed while the README
+        documented a command that did not exist -- the name matched
+        inside an option's description sentence rather than the command
+        list. Interrogating the group is exact.
+        """
+        return set(typer.main.get_command(app).commands)
+
+    def test_registered_commands_are_discoverable(self) -> None:
+        """Guard the guard: both checks are vacuous if either set is empty."""
+        assert self._registered_commands()
+        assert self._documented_commands()
+
+    def test_readme_documents_commands_that_exist(self) -> None:
+        missing = sorted(self._documented_commands() - self._registered_commands())
+        assert not missing, f"README documents commands the CLI does not provide: {missing}"
+
+    def test_every_real_command_is_documented(self) -> None:
+        undocumented = sorted(self._registered_commands() - self._documented_commands())
+        assert not undocumented, f"CLI provides commands the README omits: {undocumented}"
 
 
 # ------------------------------------------------------------------
