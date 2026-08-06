@@ -8,6 +8,43 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Every tagged release now generates a CycloneDX 1.6 SBOM.** The bill of materials
+  covers the runtime dependency graph resolved from `poetry.lock`; development and test
+  dependencies are excluded, because they describe how Reveille is built rather than what
+  an installation of it contains. It is uploaded as the `sbom` workflow artifact and
+  attached to the GitHub Release. Generation runs in a job that is independent of
+  publishing in both directions, so a failure to produce an SBOM cannot withhold a
+  release. The same file can be regenerated from any checkout with `make sbom`, and the
+  output is byte-reproducible for a given lock file, so a regenerated SBOM can be compared
+  directly against a published one. The generator is deliberately not a project
+  dependency — it reads `pyproject.toml` and `poetry.lock` as files, so the tool that
+  describes the dependency graph is not a member of it.
+
+- **`SECURITY.md` now documents how to verify a downloaded distribution.** Reveille has
+  been publishing [PEP 740](https://peps.python.org/pep-0740/) attestations since the
+  release workflow was written — `pypa/gh-action-pypi-publish` produces them by default
+  from v1.11.0 onward, this repository pins v1.14.1, and the required `id-token: write`
+  permission was already granted — but nothing said so, and an unstated guarantee is not
+  one a consumer can act on. The policy now records the trusted-publisher setup, the exact
+  `pypi-attestations verify pypi` invocation, and the caveat that the CLI describes itself
+  as experimental even though the attestation format is a standard.
+
+- **A test asserts every GitHub Action is pinned to an immutable commit SHA** and that its
+  trailing comment names a precise version. An action referenced by a mutable tag executes
+  whatever that tag points at on the day the workflow runs, which is an arbitrary-code
+  seam in the release path.
+
+### Changed
+
+- **Action pin comments now name exact versions.** Four pins were labelled with moving
+  aliases — `# release/v1` on `pypa/gh-action-pypi-publish`, `# v1` on
+  `snok/install-poetry`, `# v6` on `codecov/codecov-action`, and `# v4` on
+  `github/codeql-action` — which told a reviewer nothing about whether the pin was
+  current. They now read `# v1.14.1`, `# v1.4.2`, `# v6.0.2`, and `# v4.37.3`. The pinned
+  SHAs themselves are unchanged; only the comments were wrong.
+
 ### Fixed
 
 - **The muted text colour failed WCAG 2.1 AA contrast in both themes.** Light theme
