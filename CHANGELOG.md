@@ -8,40 +8,11 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ## [Unreleased]
 
-### Fixed
+Nothing yet.
 
-- **`pip install reveille` printed a warning on every install.** The Typer dependency was
-  declared as `typer[all]`, and Typer declares no extras at any version in the supported
-  range, so pip emitted `WARNING: typer 0.27.1 does not provide the extra 'all'` — the
-  first thing a new user saw. The extra was never load-bearing: `rich` and `shellingham`,
-  what it used to pull, are ordinary dependencies of `typer` itself, and `typer-slim` is
-  the variant that omits them. Verified at both ends of the range (0.18.0 and 0.27.1):
-  neither declares an extra, and both install `rich` and `shellingham` regardless. The
-  resolved dependency set is byte-identical — only the lock file's content hash changed.
+---
 
-- **The README documented a `reveille version` command that does not exist.** The version
-  string is exposed as a global `--version` / `-v` flag; there is no `version` subcommand,
-  so anyone copying the invocation out of the CLI reference got
-  `No such command 'version'`. Found by running it rather than by reading it — every
-  documentation guard in this release compares text to text, which is why it survived them
-  all.
-
-- **The User Guide claimed the four-field `.mailmap` form was unsupported.** It has been
-  supported since the mailmap work landed earlier in this release, so the guide was
-  telling users a capability they had did not exist. The claim appeared in two places —
-  the identity-resolution walkthrough and the `reveille init --mailmap` reference, where
-  the form was described as "marked as unsupported by Reveille in this release". Both now
-  describe all four `gitmailmap(5)` forms, the most-specific-match precedence Reveille
-  follows, case-insensitive matching, and the automatic folding of GitHub noreply
-  addresses.
-
-- **`CONTRIBUTING.md` claimed CI runs across Python 3.11 and 3.12.** The matrix has
-  covered 3.11 through 3.14 since the support-policy change earlier in this release. It
-  now refers to the support policy rather than restating a version list that will drift
-  again.
-
-- **A `RankingWeights` docstring contradicted its own code**, documenting a `1e-9`
-  tolerance where the validator uses `1e-6`.
+## [0.7.0] — 2026-08-06
 
 ### Added
 
@@ -139,6 +110,71 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
   passed while the README documented a nonexistent command, because the name matched
   inside an option's description sentence.
 
+- **The HTML report is now navigable with assistive technology.** It previously carried
+  no ARIA attributes, no table header scopes, and no text alternatives, which matters
+  because the report is explicitly built for stakeholder distribution — Confluence
+  embedding and email — the context in which WCAG 2.1 AA and EN 301 549 are asked about.
+  Specifically: every contributor-table column declares `scope="col"` and each rank cell
+  is a `scope="row"` header, so a screen reader announces which column a figure belongs
+  to; the table carries a caption naming the repository and analysis window; each of the
+  seven Plotly charts is exposed as a single labelled image with a described text
+  alternative, since SVG conveys nothing to a screen reader, and the alternatives point
+  at the contributor table that carries the same figures; the heatmap contributor filter
+  and year selector have accessible names, where the filter previously had none at all;
+  the year buttons expose their selected state through `aria-pressed`; summary cards
+  present the label and value as one phrase rather than two orphaned elements; the report
+  body is a `<main>` landmark; and `prefers-reduced-motion` is honoured per WCAG 2.1
+  SC 2.3.3.
+
+- The offline guarantee is now asserted in the test suite: no `<link>`, `<script>`, or
+  `<img>` in the rendered report may reference a remote host.
+
+- **Exit codes now distinguish a negative answer from an inability to run.** Every
+  command returns `0` (success), `1` (Reveille ran and the repository state does not
+  satisfy the request — an empty analysis window, or a repository with no commits), or
+  `2` (Reveille could not run — invalid flag value, malformed configuration, a path that
+  is not a readable Git repository, or an unwritable output location). Previously every
+  failure returned `1`, so a CI job could not tell "this repository has nothing to report
+  yet", which may be acceptable, from "this step is misconfigured", which is not. The
+  codes are documented in the User Guide and are a supported contract. **Anyone currently
+  branching on a non-zero exit should note that configuration and repository-access
+  failures now return `2` rather than `1`.**
+
+- `--verbose` on `generate` and `validate` writes DEBUG-level diagnostics to stderr: the
+  fully resolved configuration after CLI flags and TOML have been merged, the exact
+  `git log` invocation, the commit count read, and every file written. Normal output is
+  unchanged, so the flag is safe to add to an existing pipeline. Reveille's modules log
+  through the standard `logging` module under the `reveille` logger and install only a
+  `NullHandler`, so importing Reveille as a library remains silent unless the host
+  application configures logging itself.
+
+- Python 3.13 and 3.14 are now supported and tested. The CI matrix runs the full suite on
+  3.11, 3.12, 3.13, and 3.14, and both new versions appear in the PyPI classifiers.
+  Previously the `^3.11` constraint permitted installation on 3.13 and 3.14 while CI
+  tested only 3.11 and 3.12 and the classifiers advertised only those two — users on newer
+  interpreters were running an untested, unadvertised configuration. `CONTRIBUTING.md`
+  now states the support policy: every non-EOL CPython at or above the 3.11 floor, added
+  to the classifiers only once CI proves it, dropped on upstream EOL, and never
+  upper-capped below 4.0.
+
+- The CI test matrix sets `fail-fast: false`, so a failure on one interpreter no longer
+  cancels the others.
+
+- Complete `.mailmap` support. All four forms documented in gitmailmap(5) are
+  now parsed, where previously two were. The four-field form
+  (`Proper Name <proper@email> Commit Name <commit@email>`) matches on commit
+  name and email together, which is the only form that can disentangle several
+  people who committed under one shared address — a default `git config` left
+  in place on a build machine, for example. Where more than one entry could
+  apply, the most specific wins, matching Git. A comment now runs to the end of
+  the line rather than requiring its own line, and names and addresses are
+  matched case-insensitively, both as Git does. Verified against
+  `git log --use-mailmap`: identical resolved identities across every form.
+
+- `reveille init --mailmap` documents the two previously undocumented forms
+  with worked examples, and no longer states that the four-field form is
+  unsupported.
+
 ### Changed
 
 - **The User Guide documents the single-pass history read.** The pipeline walkthrough now
@@ -165,75 +201,6 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
   current. They now read `# v1.14.1`, `# v1.4.2`, `# v6.0.2`, and `# v4.37.3`. The pinned
   SHAs themselves are unchanged; only the comments were wrong.
 
-### Fixed
-
-- **The muted text colour failed WCAG 2.1 AA contrast in both themes.** Light theme
-  measured 3.04:1 against the page background and 2.85:1 against raised surfaces — the
-  latter below even the 3:1 large-text threshold — and dark theme measured 4.12:1 and
-  3.77:1, against a 4.5:1 requirement for normal text. Both tokens are corrected
-  (`#8c959f` → `#69717a` light, `#6e7681` → `#7d8590` dark) and now clear AA on every
-  surface while remaining visibly lighter than secondary text, so the visual hierarchy is
-  unchanged. Contrast is now computed from the template's own CSS custom properties in
-  the test suite rather than checked by eye, so a future palette edit cannot silently
-  reintroduce the regression.
-
-### Added
-
-- **The HTML report is now navigable with assistive technology.** It previously carried
-  no ARIA attributes, no table header scopes, and no text alternatives, which matters
-  because the report is explicitly built for stakeholder distribution — Confluence
-  embedding and email — the context in which WCAG 2.1 AA and EN 301 549 are asked about.
-  Specifically: every contributor-table column declares `scope="col"` and each rank cell
-  is a `scope="row"` header, so a screen reader announces which column a figure belongs
-  to; the table carries a caption naming the repository and analysis window; each of the
-  seven Plotly charts is exposed as a single labelled image with a described text
-  alternative, since SVG conveys nothing to a screen reader, and the alternatives point
-  at the contributor table that carries the same figures; the heatmap contributor filter
-  and year selector have accessible names, where the filter previously had none at all;
-  the year buttons expose their selected state through `aria-pressed`; summary cards
-  present the label and value as one phrase rather than two orphaned elements; the report
-  body is a `<main>` landmark; and `prefers-reduced-motion` is honoured per WCAG 2.1
-  SC 2.3.3.
-- The offline guarantee is now asserted in the test suite: no `<link>`, `<script>`, or
-  `<img>` in the rendered report may reference a remote host.
-
-- **Exit codes now distinguish a negative answer from an inability to run.** Every
-  command returns `0` (success), `1` (Reveille ran and the repository state does not
-  satisfy the request — an empty analysis window, or a repository with no commits), or
-  `2` (Reveille could not run — invalid flag value, malformed configuration, a path that
-  is not a readable Git repository, or an unwritable output location). Previously every
-  failure returned `1`, so a CI job could not tell "this repository has nothing to report
-  yet", which may be acceptable, from "this step is misconfigured", which is not. The
-  codes are documented in the User Guide and are a supported contract. **Anyone currently
-  branching on a non-zero exit should note that configuration and repository-access
-  failures now return `2` rather than `1`.**
-- `--verbose` on `generate` and `validate` writes DEBUG-level diagnostics to stderr: the
-  fully resolved configuration after CLI flags and TOML have been merged, the exact
-  `git log` invocation, the commit count read, and every file written. Normal output is
-  unchanged, so the flag is safe to add to an existing pipeline. Reveille's modules log
-  through the standard `logging` module under the `reveille` logger and install only a
-  `NullHandler`, so importing Reveille as a library remains silent unless the host
-  application configures logging itself.
-- Python 3.13 and 3.14 are now supported and tested. The CI matrix runs the full suite on
-  3.11, 3.12, 3.13, and 3.14, and both new versions appear in the PyPI classifiers.
-  Previously the `^3.11` constraint permitted installation on 3.13 and 3.14 while CI
-  tested only 3.11 and 3.12 and the classifiers advertised only those two — users on newer
-  interpreters were running an untested, unadvertised configuration. `CONTRIBUTING.md`
-  now states the support policy: every non-EOL CPython at or above the 3.11 floor, added
-  to the classifiers only once CI proves it, dropped on upstream EOL, and never
-  upper-capped below 4.0.
-- The CI test matrix sets `fail-fast: false`, so a failure on one interpreter no longer
-  cancels the others.
-
-### Fixed
-
-- A readable repository containing no commits at all now raises `EmptyRepositoryError`
-  rather than `RepositoryError`. It had surfaced as a repository-access failure because
-  `git log` errors on an unborn HEAD, which conflated "this repository is unreadable"
-  with "this repository is empty" — the two states the new exit codes exist to separate.
-
-### Changed
-
 - The base exception is now spelled `ReveilleError`. It had been `RevelleError` —
   missing the second `i` — since the first release, and as the documented catch-all for
   library consumers the typo sat directly on the public API surface. **No consumer code
@@ -242,24 +209,9 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
   Accessing it emits a `DeprecationWarning` naming the replacement and the removal
   version. The alias is removed in **v1.0.0**, where the public API becomes stable —
   correcting it now is the last opportunity to do so at no cost to users.
+
 - `reveille.exceptions` now declares `__all__`, and its module docstring carries the full
   exception hierarchy.
-
-### Fixed
-
-- Reveille now ships the PEP 561 `py.typed` marker. The package has advertised the
-  `Typing :: Typed` classifier since v0.5.0 while the marker was absent from every
-  built distribution, so type checkers in downstream projects reported Reveille as
-  missing library stubs and ignored its annotations entirely — the `mypy --strict`
-  guarantee applied inside the project but delivered nothing to consumers of it.
-  Installing this release makes Reveille's inline types visible to `mypy`, `pyright`,
-  and any other PEP 561-aware checker with no change required on the consumer side.
-- `make check-packaging` asserts the marker survives into both the wheel and the sdist,
-  and runs in CI alongside the existing version-sync check. The defect persisted because
-  nothing verified it; a claim the build does not check is a claim that silently stops
-  being true.
-
-### Changed
 
 - **Breaking (JSON output):** the derived metric previously reported as
   `bus_factor` is now `commit_concentration`. The computation is unchanged —
@@ -275,23 +227,80 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
   does not support. Consumers reading the JSON `derived.bus_factor` key must
   update to `derived.commit_concentration`.
 
-### Added
-
-- Complete `.mailmap` support. All four forms documented in gitmailmap(5) are
-  now parsed, where previously two were. The four-field form
-  (`Proper Name <proper@email> Commit Name <commit@email>`) matches on commit
-  name and email together, which is the only form that can disentangle several
-  people who committed under one shared address — a default `git config` left
-  in place on a build machine, for example. Where more than one entry could
-  apply, the most specific wins, matching Git. A comment now runs to the end of
-  the line rather than requiring its own line, and names and addresses are
-  matched case-insensitively, both as Git does. Verified against
-  `git log --use-mailmap`: identical resolved identities across every form.
-- `reveille init --mailmap` documents the two previously undocumented forms
-  with worked examples, and no longer states that the four-field form is
-  unsupported.
+- Commit history is now read in a single `git log --numstat` subprocess,
+  including per-commit line counts. The previous implementation obtained line
+  counts through GitPython's `Commit.stats`, which spawns one `git diff` per
+  commit and dominated runtime on any repository large enough to matter.
+  Measured on Reveille's own repository, the read path drops from 7.2 ms to
+  0.77 ms per commit — a 9.4x improvement that takes a 50,000-commit
+  repository from roughly six minutes to under a minute. Output is unchanged:
+  every commit, line count, timestamp, and resolved identity is identical to
+  the previous implementation, including the treatment of binary files (zero
+  lines), commits that changed no files (zero lines), and root commits
+  (diffed against the empty tree). No configuration, flag, or API change.
 
 ### Fixed
+
+- **`pip install reveille` printed a warning on every install.** The Typer dependency was
+  declared as `typer[all]`, and Typer declares no extras at any version in the supported
+  range, so pip emitted `WARNING: typer 0.27.1 does not provide the extra 'all'` — the
+  first thing a new user saw. The extra was never load-bearing: `rich` and `shellingham`,
+  what it used to pull, are ordinary dependencies of `typer` itself, and `typer-slim` is
+  the variant that omits them. Verified at both ends of the range (0.18.0 and 0.27.1):
+  neither declares an extra, and both install `rich` and `shellingham` regardless. The
+  resolved dependency set is byte-identical — only the lock file's content hash changed.
+
+- **The README documented a `reveille version` command that does not exist.** The version
+  string is exposed as a global `--version` / `-v` flag; there is no `version` subcommand,
+  so anyone copying the invocation out of the CLI reference got
+  `No such command 'version'`. Found by running it rather than by reading it — every
+  documentation guard in this release compares text to text, which is why it survived them
+  all.
+
+- **The User Guide claimed the four-field `.mailmap` form was unsupported.** It has been
+  supported since the mailmap work landed earlier in this release, so the guide was
+  telling users a capability they had did not exist. The claim appeared in two places —
+  the identity-resolution walkthrough and the `reveille init --mailmap` reference, where
+  the form was described as "marked as unsupported by Reveille in this release". Both now
+  describe all four `gitmailmap(5)` forms, the most-specific-match precedence Reveille
+  follows, case-insensitive matching, and the automatic folding of GitHub noreply
+  addresses.
+
+- **`CONTRIBUTING.md` claimed CI runs across Python 3.11 and 3.12.** The matrix has
+  covered 3.11 through 3.14 since the support-policy change earlier in this release. It
+  now refers to the support policy rather than restating a version list that will drift
+  again.
+
+- **A `RankingWeights` docstring contradicted its own code**, documenting a `1e-9`
+  tolerance where the validator uses `1e-6`.
+
+- **The muted text colour failed WCAG 2.1 AA contrast in both themes.** Light theme
+  measured 3.04:1 against the page background and 2.85:1 against raised surfaces — the
+  latter below even the 3:1 large-text threshold — and dark theme measured 4.12:1 and
+  3.77:1, against a 4.5:1 requirement for normal text. Both tokens are corrected
+  (`#8c959f` → `#69717a` light, `#6e7681` → `#7d8590` dark) and now clear AA on every
+  surface while remaining visibly lighter than secondary text, so the visual hierarchy is
+  unchanged. Contrast is now computed from the template's own CSS custom properties in
+  the test suite rather than checked by eye, so a future palette edit cannot silently
+  reintroduce the regression.
+
+- A readable repository containing no commits at all now raises `EmptyRepositoryError`
+  rather than `RepositoryError`. It had surfaced as a repository-access failure because
+  `git log` errors on an unborn HEAD, which conflated "this repository is unreadable"
+  with "this repository is empty" — the two states the new exit codes exist to separate.
+
+- Reveille now ships the PEP 561 `py.typed` marker. The package has advertised the
+  `Typing :: Typed` classifier since v0.5.0 while the marker was absent from every
+  built distribution, so type checkers in downstream projects reported Reveille as
+  missing library stubs and ignored its annotations entirely — the `mypy --strict`
+  guarantee applied inside the project but delivered nothing to consumers of it.
+  Installing this release makes Reveille's inline types visible to `mypy`, `pyright`,
+  and any other PEP 561-aware checker with no change required on the consumer side.
+
+- `make check-packaging` asserts the marker survives into both the wheel and the sdist,
+  and runs in CI alongside the existing version-sync check. The defect persisted because
+  nothing verified it; a claim the build does not check is a claim that silently stops
+  being true.
 
 - The email-only `.mailmap` form (`<proper@email> <commit@email>`) was parsed
   as a name-only entry, taking the literal text `<proper@email>` — angle
@@ -310,6 +319,7 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
   address as recorded on the commit taking priority. `--exclude-author` matches
   the raw address as well as the resolved one, so a value copied from `git log`
   continues to work.
+
 - Note the scope of this fix: it merges an account's *noreply* addresses with
   each other. It cannot merge a noreply address with a personal address, since
   nothing in the commit data establishes that link. A contributor who commits
@@ -317,22 +327,7 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
   entry to appear once; `reveille init --mailmap` generates an annotated
   template covering exactly this case.
 
-### Changed
-
-- Commit history is now read in a single `git log --numstat` subprocess,
-  including per-commit line counts. The previous implementation obtained line
-  counts through GitPython's `Commit.stats`, which spawns one `git diff` per
-  commit and dominated runtime on any repository large enough to matter.
-  Measured on Reveille's own repository, the read path drops from 7.2 ms to
-  0.77 ms per commit — a 9.4x improvement that takes a 50,000-commit
-  repository from roughly six minutes to under a minute. Output is unchanged:
-  every commit, line count, timestamp, and resolved identity is identical to
-  the previous implementation, including the treatment of binary files (zero
-  lines), commits that changed no files (zero lines), and root commits
-  (diffed against the empty tree). No configuration, flag, or API change.
-
 ---
-
 ## [0.6.0] — 2026-05-29
 
 ### Added
@@ -697,7 +692,8 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ---
 
-[Unreleased]: https://github.com/varaprasadchilakanti/reveille/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/varaprasadchilakanti/reveille/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.7.0
 [0.6.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.6.0
 [0.5.1]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.5.1
 [0.5.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.5.0
