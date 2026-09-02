@@ -26,6 +26,19 @@ repos:
       - id: detect-private-key
 
 # ------------------------------------------------------------------
+# Workflow correctness
+#
+# Complements rather than duplicates the zizmor workflow: zizmor analyses
+# security posture, actionlint analyses correctness -- unknown contexts,
+# malformed matrices, expression type errors, and shellcheck over `run:`
+# blocks. Different failure domains, so both earn their place.
+# ------------------------------------------------------------------
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.7
+    hooks:
+      - id: actionlint
+
+# ------------------------------------------------------------------
 # Local hooks -- delegate to Poetry virtualenv for version parity
 # with the CI pipeline.
 # ------------------------------------------------------------------

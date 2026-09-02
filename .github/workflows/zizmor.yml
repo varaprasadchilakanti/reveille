@@ -1,0 +1,45 @@
+# ==================================================================
+# Reveille -- Workflow security analysis
+#
+# Pinning every action to a commit SHA stops a mutable tag being
+# repointed at malicious code. It does nothing about the other half of
+# the problem: what our own workflow files do with untrusted input.
+# Template injection of `${{ github.event.* }}` into a `run:` block, an
+# over-broad GITHUB_TOKEN, a `pull_request_target` that checks out a
+# fork's code -- none of those involve a third-party action at all.
+#
+# zizmor is a static analyser for exactly that class. It is run here on
+# its own schedule rather than inside CI so that a finding lands in the
+# Security tab alongside CodeQL and Scorecard, where security findings
+# belong, rather than as a red tick on an unrelated pull request.
+# ==================================================================
+
+name: Zizmor
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyse workflows (zizmor)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run zizmor
+        uses: zizmorcore/zizmor-action@70fb788f84895a7701f5643d103d587e460b5c99 # v0.6.3

@@ -16,6 +16,45 @@ Nothing yet.
 
 ### Added
 
+- **Supply-chain and workflow hardening: four additions, each closing a distinct
+  gap.**
+
+  **`zizmor`** analyses the workflows themselves. Pinning every action to a SHA
+  stops a mutable tag being repointed at malicious code; it does nothing about
+  what our own workflows do with untrusted input — template injection into a
+  `run:` block, an over-broad token, a `pull_request_target` checking out fork
+  code. None of those involve a third-party action at all.
+
+  **`actionlint`**, as a pre-commit hook, covers correctness where zizmor covers
+  security: unknown contexts, malformed matrices, expression type errors.
+  Verified discriminating — an undefined context is reported with an exact line
+  and column.
+
+  **`osv-scanner`** gates both CI and the release. Not redundant with Dependabot,
+  for a structural reason rather than a data one: Dependabot alerts are an
+  asynchronous platform service, not a workflow step, so they cannot block
+  anything. The release-time scan catches an advisory published between the merge
+  and the tag. `pip-audit` was rejected because it cannot read `poetry.lock` —
+  upstream closed that as not planned — so it would scan an exported file rather
+  than the lock that ships.
+
+  **The SBOM is now attested.** A plain attached file has no cryptographic
+  binding to the run that produced it and can be swapped; this binds it to the
+  workflow identity using the same Sigstore model the distributions already rely
+  on through PEP 740.
+
+- **Build reproducibility is now verified in CI** — two builds of the same commit
+  must produce identical bytes.
+
+  Deliberately *without* setting `SOURCE_DATE_EPOCH`, which is the documented
+  lever and is **inert on the pinned Poetry 1.8.2**: measured, wheel entries pin
+  to `(1980, 1, 1)` whatever the variable is set to, and two builds are already
+  byte-identical because of that hardcoded fallback. Setting it would look
+  meaningful and do nothing. The job asserts the property instead of presuming
+  the mechanism, so if the toolchain later moves to a Poetry that honours the
+  variable — losing the fallback with it — the job fails and the variable gets
+  set at the moment it would first be true.
+
 - **Architectural fitness functions** — `tests/unit/test_architecture.py`. Tests
   whose subject is a *structural property* rather than a behaviour, so the build
   fails when the shape stops holding rather than when a feature breaks. The term
