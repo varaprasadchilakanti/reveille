@@ -27,7 +27,7 @@ import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Annotated, Any, ClassVar, cast
+from typing import Annotated, Any, ClassVar, TextIO, cast
 
 import typer
 
@@ -73,6 +73,27 @@ class ExitCode(enum.IntEnum):
     """
 
 
+class _StderrHandler(logging.StreamHandler):  # type: ignore[type-arg]
+    """A stderr handler that resolves the stream at emit time.
+
+    `logging.StreamHandler` captures `sys.stderr` when it is constructed. A
+    handler now outlives a single invocation -- it is attached on every run, not
+    only under `--verbose` -- so a captured stream can be closed or replaced
+    beneath it, which raises `ValueError: I/O operation on closed file` from
+    inside the logging machinery. Looking the stream up on each write costs an
+    attribute access and removes the failure mode.
+    """
+
+    @property
+    def stream(self) -> TextIO:
+        """The current `sys.stderr`, resolved on every access."""
+        return sys.stderr
+
+    @stream.setter
+    def stream(self, _value: object) -> None:
+        """Ignore assignment; the stream is always the current `sys.stderr`."""
+
+
 def _configure_logging(verbose: bool) -> None:
     """Attach a stderr log handler when diagnostics are requested.
 
@@ -81,25 +102,27 @@ def _configure_logging(verbose: bool) -> None:
     libraries. This is the only place a handler is attached, so importing
     Reveille as a library stays silent unless the host application opts in.
 
+    A handler is always attached; `verbose` chooses the level. Warnings are
+    not diagnostics -- `--exclude-author` matching nobody is the case this
+    matters for, and it was previously visible only with `--verbose`, so a
+    filter that silently did nothing looked exactly like one that worked. That
+    is the wrong thing to hide for the one flag whose purpose is privacy.
+
     Args:
-        verbose: True to emit DEBUG-level diagnostics to stderr.
+        verbose: True to emit DEBUG-level diagnostics as well as warnings.
     """
-    if not verbose:
-        return
+    level = logging.DEBUG if verbose else logging.WARNING
     package_logger = logging.getLogger("reveille")
     # Idempotent: a second call in the same process must not duplicate
     # every diagnostic line. Only the NullHandler installed at import
     # time is expected to be present here.
-    if any(
-        isinstance(h, logging.StreamHandler) and not isinstance(h, logging.NullHandler)
-        for h in package_logger.handlers
-    ):
-        package_logger.setLevel(logging.DEBUG)
+    if any(isinstance(h, _StderrHandler) for h in package_logger.handlers):
+        package_logger.setLevel(level)
         return
-    handler = logging.StreamHandler(sys.stderr)
+    handler = _StderrHandler()
     handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
     package_logger.addHandler(handler)
-    package_logger.setLevel(logging.DEBUG)
+    package_logger.setLevel(level)
 
 
 app = typer.Typer(
@@ -556,7 +579,16 @@ def generate(
     # repository somebody else controls -- and validating the CLI argument left
     # that path unchecked, so a config file could write outside the repository
     # with no traversal warning at all.
-    _output_from_config = "output_path" in config_kwargs and output == Path("reveille-report.html")
+    # Only an AUTO-DISCOVERED config is untrusted. `--config /path/to.toml` is a
+    # path the user typed, exactly like `--output`, so it earns the same
+    # latitude: a warning rather than a refusal. Treating both alike blocked a
+    # deliberate choice and told the user their file had been "discovered
+    # automatically", which was not true.
+    _output_from_config = (
+        _auto_discovered
+        and "output_path" in config_kwargs
+        and output == Path("reveille-report.html")
+    )
     _validate_output_path(
         Path(merged.get("output_path", output)),
         repo.resolve(),

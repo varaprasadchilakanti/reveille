@@ -74,7 +74,7 @@ jobs:
 
       # PEP 740 attestations are produced by default from v1.11.0 onward
       # and require the `id-token: write` permission granted above. This
-      # pin is v1.14.1, so no `attestations:` input is needed -- adding
+      # pin is v1.14.2, so no `attestations:` input is needed -- adding
       # one would only be a way to turn them off.
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2

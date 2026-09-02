@@ -1014,19 +1014,54 @@ class TestVerboseFlag:
             package_logger.handlers = original_handlers
             package_logger.setLevel(original_level)
 
-    def test_configuring_without_verbose_attaches_nothing(self) -> None:
+    def test_without_verbose_a_handler_is_attached_at_warning_level(self) -> None:
+        """Warnings are not diagnostics and must not need a flag.
+
+        This asserted the opposite until v0.8.0: no handler at all without
+        `--verbose`, which meant `--exclude-author` matching nobody was
+        completely silent. A privacy filter that silently did nothing looked
+        exactly like one that worked.
+        """
         import logging
 
         from reveille.cli import _configure_logging
 
         package_logger = logging.getLogger("reveille")
         original_handlers = list(package_logger.handlers)
+        original_level = package_logger.level
         try:
             package_logger.handlers = [logging.NullHandler()]
             _configure_logging(verbose=False)
-            assert all(isinstance(h, logging.NullHandler) for h in package_logger.handlers)
+
+            streams = [
+                h
+                for h in package_logger.handlers
+                if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.NullHandler)
+            ]
+            assert len(streams) == 1
+            assert package_logger.level == logging.WARNING
         finally:
             package_logger.handlers = original_handlers
+            package_logger.setLevel(original_level)
+
+    def test_a_warning_reaches_stderr_without_verbose(self, e2e_repo: Path, tmp_path: Path) -> None:
+        """The case this exists for: an exclusion that matched nothing."""
+        result = CliRunner().invoke(
+            app,
+            [
+                "generate",
+                "--repo",
+                str(e2e_repo),
+                "--output",
+                str(tmp_path / "r.html"),
+                "--exclude-author",
+                "nobody@nowhere.example",
+            ],
+        )
+
+        assert result.exit_code == ExitCode.SUCCESS
+        assert "matched no commits" in result.output
+        assert "DEBUG" not in result.output
 
 
 # ------------------------------------------------------------------

@@ -288,10 +288,22 @@ def _parse_ranking_section(ranking: dict[str, Any]) -> dict[str, Any]:
             raise ConfigurationError(
                 f"[ranking] weights must be a table of named weights, not {w!r}."
             )
-        kwargs["ranking_weights"] = RankingWeights(
-            commits=float(w.get("commits", 0.30)),
-            lines=float(w.get("lines", 0.25)),
-            consistency=float(w.get("consistency", 0.25)),
-            recency=float(w.get("recency", 0.20)),
-        )
+        # Both arms matter. `float()` raises ValueError on a non-numeric
+        # value, and RankingWeights raises pydantic's ValidationError when a
+        # weight is out of range or the four do not sum to one. Neither was
+        # caught, so a mistyped weight printed a raw traceback and exited 1 --
+        # which on this project's published contract means "ran correctly,
+        # negative answer" rather than "could not run".
+        try:
+            kwargs["ranking_weights"] = RankingWeights(
+                commits=float(w.get("commits", 0.30)),
+                lines=float(w.get("lines", 0.25)),
+                consistency=float(w.get("consistency", 0.25)),
+                recency=float(w.get("recency", 0.20)),
+            )
+        except (TypeError, ValueError) as exc:
+            raise ConfigurationError(
+                f"[ranking] weights is not valid: {exc}. Each weight must be a "
+                "number between 0 and 1, and the four must sum to 1.0."
+            ) from exc
     return kwargs

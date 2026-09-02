@@ -60,6 +60,21 @@ _SHA_RE = re.compile(r"[0-9a-f]{40}")
 # them belongs in an author name, and all three break downstream formats.
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 
+# Upper bounds on an identity field. Git imposes none, and the field is
+# attacker-controlled in the threat model this reader is written against: a
+# repository somebody else authored. Measured before capping, a single commit
+# with a 100,000-character author name turned a four-commit repository into a
+# 6.5 MB report, because the name is repeated in the table, two bar charts,
+# every tooltip, the heatmap contributor list, and the JSON and CSV. A
+# 1,000,000-character name reached 1.5 GB of resident memory.
+#
+# 256 is far past any real display name; 320 is the RFC 5321 maximum for an
+# address. Truncation is marked so a reader can see it happened rather than
+# wondering why a name looks wrong.
+_MAX_NAME_LENGTH = 256
+_MAX_EMAIL_LENGTH = 320
+_TRUNCATION_MARKER = "\u2026"
+
 # GitHub's prefixed private-commit address: 12345678+username@users.noreply.github.com.
 # The username is captured; the numeric account ID is discarded.
 _GITHUB_NOREPLY_RE = re.compile(
@@ -284,9 +299,17 @@ class GitReader:
                 "a branch. If a ref really has this name, rename it."
             )
 
-        log_args, rev_list_args = _build_log_args(rev, since, until)
+        log_args, rev_list_args = _build_log_args(
+            rev, since, until, self._supports_since_as_filter()
+        )
 
-        exclude_set = {entry.lower() for entry in exclude_authors}
+        # The mailmap is read first, because an exclusion has to be expanded
+        # through it: --exclude-author names a person, and a person with a
+        # mailmap has more than one identity.
+        mailmap = self._read_mailmap()
+        self._mailmap_applied = bool(mailmap.by_email or mailmap.by_name_and_email)
+
+        exclude_set = _expand_exclusions(exclude_authors, mailmap)
 
         # An unborn HEAD means the repository is readable but has no commits
         # at all. That is a negative answer, not a failure to read, so it
@@ -329,9 +352,6 @@ class GitReader:
                 f"Failed to read commits from branch '{rev}'. "
                 f"Verify the branch name is correct. Detail: {exc}"
             ) from exc
-
-        mailmap = self._read_mailmap()
-        self._mailmap_applied = bool(mailmap.by_email or mailmap.by_name_and_email)
 
         commits: list[Commit] = []
         matched: set[str] = set()
@@ -500,6 +520,26 @@ class GitReader:
         """
         return self._mailmap_applied
 
+    def _supports_since_as_filter(self) -> bool:
+        """Whether the installed git understands `--since-as-filter`.
+
+        Added in git 2.37 (2022). Probed rather than assumed, because falling
+        back is better than failing: on an older git the window may
+        under-report over non-chronological history, which is the behaviour
+        every previous release had.
+
+        Returns:
+            True when git is 2.37 or newer.
+        """
+        try:
+            raw = str(self._repo.git.version())
+        except Exception:
+            return False
+        match = re.search(r"(\d+)\.(\d+)", raw)
+        if not match:
+            return False
+        return (int(match.group(1)), int(match.group(2))) >= (2, 37)
+
     def _resolve_remote_url(self) -> str | None:
         """Return the URL of the origin remote, or the first available remote.
 
@@ -574,6 +614,21 @@ class GitReader:
         return mailmap
 
 
+def _truncate(value: str, limit: int) -> str:
+    """Bound an identity field's length, marking the cut.
+
+    Args:
+        value: The scrubbed field.
+        limit: Maximum characters to keep.
+
+    Returns:
+        The value, or its first `limit` characters followed by an ellipsis.
+    """
+    if len(value) <= limit:
+        return value
+    return value[:limit] + _TRUNCATION_MARKER
+
+
 def _strip_control_chars(value: str) -> str:
     """Remove C0 control characters from a git identity field.
 
@@ -639,8 +694,8 @@ def _parse_log_record(
     # An author field carrying our own separators can split one commit into
     # several fabricated contributors -- and the ranking then promotes an
     # invented name into a tier. Scrub before trusting.
-    raw_name = _strip_control_chars(raw_name)
-    raw_email = _strip_control_chars(raw_email)
+    raw_name = _truncate(_strip_control_chars(raw_name), _MAX_NAME_LENGTH)
+    raw_email = _truncate(_strip_control_chars(raw_email), _MAX_EMAIL_LENGTH)
 
     author_name, author_email = _resolve_identity(raw_name, raw_email, mailmap)
 
@@ -684,6 +739,7 @@ def _build_log_args(
     rev: str,
     since: datetime.date | None,
     until: datetime.date | None,
+    supports_since_as_filter: bool = True,
 ) -> tuple[list[str], list[str]]:
     """Build the argument lists for the numstat read and the SHA allowlist.
 
@@ -697,6 +753,10 @@ def _build_log_args(
         rev: The revision to walk. Already checked not to begin with `-`.
         since: Inclusive start of the analysis window, if any.
         until: Inclusive end of the analysis window, if any.
+        supports_since_as_filter: Whether the installed git understands
+            `--since-as-filter` (added in git 2.37). When it does not, the
+            greedy `--after` is used and a narrow window over non-chronological
+            history may under-report.
 
     Returns:
         A `(log_args, rev_list_args)` pair.
@@ -715,8 +775,23 @@ def _build_log_args(
     # what `--deterministic` needs in order to mean anything.
     if since is not None:
         boundary = f"{since.isoformat()}T00:00:00+00:00"
-        log_args.append(f"--after={boundary}")
-        rev_list_args.append(f"--after={boundary}")
+        # `--since-as-filter`, not `--since`/`--after`. Git's `--since` is
+        # *greedy*: the walk stops at the first commit older than the boundary
+        # and does not resume, so anything reachable further down the parent
+        # chain is never examined -- even when it is squarely inside the
+        # window. Rebases, cherry-picks, merged old branches and ordinary clock
+        # skew between contributors all produce that shape.
+        #
+        # Measured on a three-commit chain dated 01-15, 01-01, 01-20 with
+        # `--since 2024-01-08`: `--after` returned one commit, silently losing
+        # the 01-20 one; `--since-as-filter` returned both. A silently short
+        # answer is the worst kind for a reporting tool.
+        #
+        # `--before`/`--until` needs no equivalent: the walk starts at the
+        # newest end, so a too-new commit does not terminate it.
+        flag = "--since-as-filter" if supports_since_as_filter else "--after"
+        log_args.append(f"{flag}={boundary}")
+        rev_list_args.append(f"{flag}={boundary}")
     if until is not None:
         # One day past the boundary, so `--until` is inclusive of its own date.
         inclusive_until = (until + datetime.timedelta(days=1)).isoformat()
@@ -730,3 +805,43 @@ def _build_log_args(
         args.extend(["--end-of-options", rev, "--"])
 
     return log_args, rev_list_args
+
+
+def _expand_exclusions(exclude_authors: list[str], mailmap: _Mailmap) -> set[str]:
+    """Expand each exclusion to every identity the `.mailmap` ties it to.
+
+    `--exclude-author` is documented as removing a *person*, and a person with
+    a `.mailmap` has more than one identity. Matching only the literal value
+    dropped the commits authored under the address the user named and left
+    every other alias in place -- so excluding somebody's old address removed
+    one commit and left them in the report under the new one, exit 0, no
+    diagnostic. For the one flag whose stated purpose is privacy, being
+    approximate in that direction is the wrong way round.
+
+    Args:
+        exclude_authors: Raw values as supplied, by name or by address.
+        mailmap: The parsed `.mailmap` for this repository.
+
+    Returns:
+        A lowercased set containing each supplied value plus, for any value the
+        mailmap recognises, the canonical name and address it maps to.
+    """
+    expanded = {entry.lower() for entry in exclude_authors}
+
+    for entry in list(expanded):
+        canonical = mailmap.by_email.get(entry)
+        if canonical is not None:
+            canonical_name, canonical_email = canonical
+            if canonical_name:
+                expanded.add(canonical_name.lower())
+            expanded.add(canonical_email.lower())
+
+        # The four-field form is keyed on (commit name, commit address), so a
+        # value naming either half expands to that entry's canonical identity.
+        for (commit_name, commit_email), (name, email) in mailmap.by_name_and_email.items():
+            if entry in (commit_name, commit_email):
+                if name:
+                    expanded.add(name.lower())
+                expanded.add(email.lower())
+
+    return expanded

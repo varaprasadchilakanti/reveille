@@ -485,3 +485,123 @@ class TestExclusionActuallyExcludes:
         )
 
         assert reader.unmatched_exclusions == ("nobody at all",)
+
+
+@pytest.mark.integration
+class TestExclusionCoversEveryAlias:
+    """`--exclude-author` names a person, and a person can have aliases."""
+
+    def test_excluding_any_alias_removes_the_person(self, tmp_path: Path) -> None:
+        """Matching the literal value alone left the person in the report.
+
+        With a `.mailmap` folding an old address onto a new one, excluding the
+        old address dropped only the commit authored under it — the person
+        remained under their canonical identity, exit 0, no diagnostic. For the
+        one flag whose stated purpose is privacy, that is the wrong direction
+        to be approximate in.
+        """
+        repo = _init_repo(tmp_path / "repo", author="Alice New", email="alice@new.com")
+        (repo / ".mailmap").write_text(
+            "Alice New <alice@new.com> <alice.old@old.com>\n", encoding="utf-8"
+        )
+        _run(["git", "add", "-A"], repo)
+        _run(
+            ["git", "commit", "-qm", "old identity"],
+            repo,
+            {
+                "GIT_AUTHOR_NAME": "Alice Old",
+                "GIT_AUTHOR_EMAIL": "alice.old@old.com",
+                "GIT_COMMITTER_NAME": "Alice Old",
+                "GIT_COMMITTER_EMAIL": "alice.old@old.com",
+            },
+        )
+
+        # A second contributor, so excluding Alice leaves a report to inspect.
+        # Without one, excluding her empties the window and the reader raises
+        # EmptyRepositoryError -- correct behaviour, but it proves nothing
+        # about which identities were matched.
+        (repo / "b.txt").write_text("b\n", encoding="utf-8")
+        _run(["git", "add", "-A"], repo)
+        _run(
+            ["git", "commit", "-qm", "bob"],
+            repo,
+            {
+                "GIT_AUTHOR_NAME": "Bob",
+                "GIT_AUTHOR_EMAIL": "bob@example.com",
+                "GIT_COMMITTER_NAME": "Bob",
+                "GIT_COMMITTER_EMAIL": "bob@example.com",
+            },
+        )
+
+        for value in ("alice.old@old.com", "alice@new.com", "Alice New"):
+            commits = GitReader(repo).read_commits(
+                branch="main", since=None, until=None, exclude_authors=[value]
+            )
+            remaining = {c.author_email.lower() for c in commits}
+
+            assert "alice@new.com" not in remaining, f"{value!r} left the person present"
+            assert remaining == {"bob@example.com"}, f"{value!r} removed the wrong people"
+
+
+@pytest.mark.integration
+class TestIdentityFieldsAreBounded:
+    """Git imposes no length limit; the threat model requires one."""
+
+    def test_a_vast_author_name_does_not_inflate_the_report(self, tmp_path: Path) -> None:
+        """One field turned a four-commit repository into a 6.5 MB report.
+
+        The name is repeated in the contributor table, two bar charts, every
+        tooltip, the heatmap contributor list, and the JSON and CSV, so its
+        cost is multiplied several times over. A 1,000,000-character name
+        reached 1.5 GB of resident memory before this cap.
+        """
+        repo = _init_repo(tmp_path / "repo")
+        _run(
+            ["git", "commit", "-qm", "long", "--allow-empty"],
+            repo,
+            {
+                "GIT_AUTHOR_NAME": "A" * 100_000,
+                "GIT_AUTHOR_EMAIL": "long@example.com",
+                "GIT_COMMITTER_NAME": "A" * 100_000,
+                "GIT_COMMITTER_EMAIL": "long@example.com",
+            },
+        )
+
+        commits = GitReader(repo).read_commits(
+            branch="main", since=None, until=None, exclude_authors=[]
+        )
+        longest = max(len(c.author_name) for c in commits)
+
+        assert longest <= 257, f"author name not bounded: {longest} characters"
+
+    def test_a_vast_address_is_bounded_too(self, tmp_path: Path) -> None:
+        """RFC 5321 caps an address at 320 characters; git does not enforce it."""
+        repo = _init_repo(tmp_path / "repo")
+        _run(
+            ["git", "commit", "-qm", "long", "--allow-empty"],
+            repo,
+            {
+                "GIT_AUTHOR_NAME": "Long",
+                "GIT_AUTHOR_EMAIL": "b" * 50_000 + "@example.com",
+                "GIT_COMMITTER_NAME": "Long",
+                "GIT_COMMITTER_EMAIL": "b" * 50_000 + "@example.com",
+            },
+        )
+
+        commits = GitReader(repo).read_commits(
+            branch="main", since=None, until=None, exclude_authors=[]
+        )
+        longest = max(len(c.author_email) for c in commits)
+
+        assert longest <= 321, f"address not bounded: {longest} characters"
+
+    def test_an_ordinary_name_is_untouched(self, tmp_path: Path) -> None:
+        """The cap must not disturb real data."""
+        repo = _init_repo(tmp_path / "repo", author="Ada Lovelace", email="ada@example.com")
+
+        commits = GitReader(repo).read_commits(
+            branch="main", since=None, until=None, exclude_authors=[]
+        )
+
+        assert commits[0].author_name == "Ada Lovelace"
+        assert commits[0].author_email == "ada@example.com"

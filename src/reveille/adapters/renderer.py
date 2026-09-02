@@ -119,6 +119,13 @@ _LINES_DELETED_COLOUR: str = "#e66767"
 # Contrast: 3.89:1 on the light plot surface, 4.17:1 on the dark one.
 _OTHER_SLICE_COLOUR: str = "#7d7d76"
 
+# Ceiling on a per-contributor bar chart. The height grew with the contributor
+# count and nothing bounded it: 5,000 contributors produced a chart 220,080
+# pixels tall, which no browser renders usefully. The bars compress past this
+# point, which is a worse chart -- but a worse chart is not the same kind of
+# problem as an unusable document.
+_MAX_CHART_HEIGHT: int = 2400
+
 # The Lorenz chart's reference diagonal. A reference line is not a series, so
 # it takes the same neutral as the residual slice rather than a categorical hue
 # -- it must read as scaffolding, not as a third contributor.
@@ -698,7 +705,7 @@ def _build_contributor_commits_chart(ranked: list[RankedContributor]) -> str:
     fig.update_layout(
         **_base_layout(),
         xaxis_title="Commits",
-        height=max(280, len(ranked) * 44 + 80),
+        height=max(280, min(len(ranked) * 44 + 80, _MAX_CHART_HEIGHT)),
     )
     return _to_json(fig)
 

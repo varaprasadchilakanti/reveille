@@ -28,11 +28,13 @@ import pytest
 
 from reveille.adapters.renderer import (
     _CATEGORICAL_PALETTE,
+    _MAX_CHART_HEIGHT,
     _MAX_SERIES,
     _OTHER_LABEL,
     _OTHER_SLICE_COLOUR,
     _PIE_MAX_SLICES,
     _build_commit_share_pie,
+    _build_contributor_commits_chart,
     _build_contributor_timeline_chart,
     _pie_colors,
 )
@@ -180,3 +182,21 @@ class TestHeatmapRamps:
         body = template[start : template.index("function toggleTheme")]
 
         assert "renderHeatmap(" in body
+
+
+@pytest.mark.unit
+class TestChartHeightIsBounded:
+    """A chart taller than any browser will render is an unusable artefact."""
+
+    def test_height_is_capped_for_a_large_contributor_count(self) -> None:
+        """5,000 contributors produced a chart 220,080 pixels tall."""
+        spec = json.loads(_build_contributor_commits_chart(_ranked(5000)))
+
+        assert spec["layout"]["height"] <= _MAX_CHART_HEIGHT
+
+    def test_height_still_grows_for_ordinary_repositories(self) -> None:
+        """The cap must not flatten every chart to one size."""
+        small = json.loads(_build_contributor_commits_chart(_ranked(3)))
+        larger = json.loads(_build_contributor_commits_chart(_ranked(12)))
+
+        assert small["layout"]["height"] < larger["layout"]["height"] <= _MAX_CHART_HEIGHT

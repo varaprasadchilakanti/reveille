@@ -263,7 +263,7 @@ Nothing yet.
 - **`.github/PULL_REQUEST_TEMPLATE.md`**, whose "Verified" section asks what was run
   and what it showed, and reminds the author to break any new guard and watch it fail.
 
-- **107 new tests**: four on lock integrity, six on licence declarations, twelve on
+- **114 new tests**: four on lock integrity, six on licence declarations, twelve on
   provenance, schema version and determinism, twelve on chart colour assignment, thirteen security regression tests, fifteen on the capability document, fourteen on the Lorenz curve and Gini coefficient checked against values the definitions fix, four on the ranking default, seven architectural fitness functions, and two on README structure. Each was observed failing against the
   defect it guards before being trusted.
 
@@ -360,6 +360,24 @@ Nothing yet.
   agreement and exited 0 — with `__licence__` set to anything at all. Both now fail
   closed and refuse to compare two blanks.
 
+- **`--since` silently dropped commits inside the window.** Git's `--since` is
+  *greedy*: the walk stops at the first commit older than the boundary and does
+  not resume, so anything further down the parent chain is never examined — even
+  when it is squarely inside the range. Measured on a three-commit chain dated
+  01-15, 01-01, 01-20 with `--since 2024-01-08`: one commit returned, the 01-20
+  one silently lost. Rebases, cherry-picks, merged old branches and ordinary clock
+  skew all produce that shape. Now uses `--since-as-filter`, probed for support
+  since it needs git 2.37.
+
+- **A malformed `[ranking] weights` printed a traceback and exited 1.** Both
+  `float()` and the `RankingWeights` model could raise past the handler, so
+  weights that were non-numeric or did not sum to one crashed rather than
+  reporting. Exit 1 means "ran correctly, negative answer" on the published
+  contract, so a CI job would have read a crash as a clean result.
+
+- **A per-contributor chart had no height limit.** 5,000 contributors produced a
+  bar chart 220,080 pixels tall, which no browser renders usefully. Capped.
+
 - **`[report] format` in `reveille.toml` was silently ignored.** The CLI assigned
   `output_format` unconditionally, and the flag's default was `"html"` — so the
   default overwrote whatever the config file said. A user automating a JSON export
@@ -407,6 +425,38 @@ Nothing yet.
   `[report] deterministic = true` silently did nothing. Found by the new
   configuration-surface fitness function on its first run, not by review — every
   individual piece worked, which is why nothing else noticed.
+
+- **An author name had no length limit, and one field could exhaust memory.**
+  Git imposes no bound, and the field is attacker-controlled under this project's
+  threat model. Measured: a single commit with a 100,000-character name turned a
+  four-commit repository into a 6.5 MB report; a 1,000,000-character name reached
+  1.5 GB of resident memory. The name is repeated in the contributor table, two
+  bar charts, every tooltip, the heatmap contributor list, and the JSON and CSV,
+  so its cost is multiplied several times over. Names are capped at 256
+  characters and addresses at the RFC 5321 limit of 320, with the truncation
+  marked. The same repository now produces a 4.3 MB report.
+
+- **`--exclude-author` did not remove a person with a `.mailmap`.** It matched
+  only the literal value, so excluding somebody's old address dropped the commits
+  authored under it and left them in the report under their canonical identity —
+  exit 0, no diagnostic. For the one flag whose stated purpose is privacy, that is
+  the wrong direction to be approximate in. An exclusion now expands through the
+  `.mailmap` to every identity it ties the value to. The one case that cannot be
+  resolved is a display *name* that only ever appeared before the mailmap, because
+  a two-field mailmap records the old address and never the old name — the
+  documentation now says exactly that instead of claiming more.
+
+- **A warning that mattered was only visible with `--verbose`.** An exclusion
+  matching nothing is almost always a typo, and silence made it indistinguishable
+  from a filter that worked. A stderr handler is now attached on every run at
+  WARNING level; `--verbose` still lowers it to DEBUG, and importing Reveille as a
+  library still installs no handler at all.
+
+- **An explicit `--config` was treated as untrusted.** The output-path boundary
+  added earlier this release could not tell an auto-discovered `reveille.toml`
+  from one the user named, so `--config /my/file.toml` was refused and told the
+  user their file had been "discovered automatically", which was false. Only
+  auto-discovery is untrusted now.
 
 ### Security
 

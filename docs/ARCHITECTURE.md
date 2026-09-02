@@ -30,7 +30,7 @@ command. Anything that would change repository state is out of scope by
 construction, not by omission.
 
 **It is offline.** Nothing is transmitted anywhere. The generated report
-loads no CDN, no web font, and no remote image — the ~3.5 MB Plotly
+loads no CDN, no web font, and no remote image — the ~4.1 MB Plotly
 bundle is embedded in the file itself. This is what makes the output
 safe to attach to an email or embed in Confluence, and it is enforced by
 a test asserting no `<link>`, `<script>`, or `<img>` in the template
@@ -106,11 +106,15 @@ src/reveille/
     cli.py            Typer app, exit codes, progress display
     config.py         Pydantic config models and TOML loading
     init.py           reveille.toml and .mailmap scaffold generation
+    capabilities.py   the machine-readable self-description; what the tool
+                      can and, more usefully, cannot do
     exceptions.py     the exception hierarchy
     py.typed          PEP 561 marker — this package ships type information
     domain/
         models.py     frozen dataclasses; no behaviour beyond derived properties
-        ranking.py    the scoring and tiering algorithm
+        ranking.py    the scoring and tiering algorithm (opt-in from 0.8.0)
+        concentration.py  Lorenz curve and Gini coefficient; describes the
+                      distribution and names nobody
     adapters/
         git_reader.py GitPython in; domain models out
         renderer.py   domain models in; HTML, JSON, or CSV out
@@ -283,7 +287,7 @@ from the serialised layout. Theme colours are injected client-side via
 without a re-render.
 
 `_PLOTLY_JS_BUNDLE` is read once at module import. `get_plotlyjs()`
-reads ~3.5 MB from disk per call; caching it took the e2e suite from
+reads ~4.1 MB from disk per call; caching it took the e2e suite from
 roughly forty minutes to two.
 
 ---

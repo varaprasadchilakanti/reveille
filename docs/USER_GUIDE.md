@@ -425,7 +425,7 @@ reveille init --force
 
 Generates a fully annotated `.mailmap` template at the repository root alongside `reveille.toml`. The template documents all four forms defined by `gitmailmap(5)` — name correction, email alias to canonical identity, email-only remapping, and the four-field form that disentangles several people sharing one address — each with concrete examples covering employer domain changes, GitHub noreply addresses, name corrections, and shared build-machine accounts. It also documents the matching precedence, so a rule that does not fire can be diagnosed from the template itself.
 
-`--force` applies to both generated files when `--mailmap` is set. If a `.mailmap` file already exists, it is silently skipped — `.mailmap` is a Git-native file and its presence is not treated as a conflict.
+`--force` applies to both generated files when `--mailmap` is set. Without it, an existing `.mailmap` is left alone and a message says so; with it, the existing file is overwritten by the template.
 
 ```bash
 reveille init --mailmap

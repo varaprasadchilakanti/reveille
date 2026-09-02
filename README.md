@@ -175,7 +175,7 @@ Scaffolds a fully annotated `reveille.toml` configuration file in the current di
 |---|---|---|---|---|
 | `--output` | `-o` | `PATH` | `./reveille.toml` | Destination path for the generated configuration file. |
 | `--force` | | Flag | Off | Overwrite an existing file at the target path without prompting. |
-| `--mailmap` | | Flag | Off | Generate an annotated `.mailmap` template at the repository root alongside `reveille.toml`. Documents two-field, three-field, and four-field format variants with real-world examples. An existing `.mailmap` is silently skipped. |
+| `--mailmap` | | Flag | Off | Generate an annotated `.mailmap` template at the repository root alongside `reveille.toml`. Documents two-field, three-field, and four-field format variants with real-world examples. An existing `.mailmap` is skipped with a message unless `--force` is also given, in which case it is overwritten. |
 
 ### `reveille --version` / `-v`
 
@@ -452,8 +452,8 @@ Participation is governed by the [Code of Conduct](https://github.com/varaprasad
 Reveille runs entirely on your machine and sends nothing anywhere. The report it
 writes contains contributor names and email addresses, so circulating it means
 handling personal data — [PRIVACY.md](https://github.com/varaprasadchilakanti/reveille/blob/main/PRIVACY.md) sets out who is responsible
-for what, and `--exclude-author` removes a person entirely, matching both their
-pre- and post-`.mailmap` identity.
+for what, and `--exclude-author` removes a person, matching the value you give plus every
+identity a `.mailmap` ties it to.
 
 [docs/COMPLIANCE.md](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/COMPLIANCE.md) records why GDPR, the EU Cyber
 Resilience Act, the Product Liability Directive, the AI Act, US export control

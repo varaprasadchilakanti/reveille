@@ -48,8 +48,8 @@ obligations fall on the controller.
 **What this means for you, as a user:** the generated report contains contributor
 names and email addresses. If you circulate it, you are handling personal data
 and that is your responsibility, not the tool's. `--exclude-author` removes a
-person entirely, matching both their pre- and post-`.mailmap` identity, and tells
-you if it matched nothing.
+person, matching the value you give plus every identity a `.mailmap` ties it to,
+and warns on stderr if it matched nothing.
 
 ## EU Cyber Resilience Act — Regulation (EU) 2024/2847
 
