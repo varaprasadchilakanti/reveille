@@ -16,6 +16,27 @@ Nothing yet.
 
 ### Added
 
+- **`reveille capabilities`** — a description of what the tool can and cannot do,
+  in plain text or JSON. Written for a program as much as a person: an agent or a
+  script can ask the installed binary directly instead of inferring from a README.
+
+  The document is deliberately split. The version, the output schema version, the
+  commands with their options and the exit-code contract are **read from the
+  running program**, so they cannot drift from it — this project has already
+  shipped a README documenting a subcommand that never existed, and a
+  machine-readable description written by hand would rot the same way. What
+  cannot be derived — what the tool is *for*, what it refuses to claim, and the
+  caveats that change how a number should be read — is stated once and tested for
+  completeness.
+
+  The `cannot` list is the load-bearing half. It says in machine-readable form
+  that Reveille does not measure productivity, performance, contribution value or
+  code quality; that it is not fit for performance review, compensation,
+  promotion, redundancy or hiring decisions; that commit concentration is not a
+  bus factor; that it reads no source code, only commit metadata; and that
+  cross-repository per-person aggregation was cut deliberately rather than left
+  undone. A tool that advertises only its strengths is one an agent will misuse.
+
 - **The JSON output now records its own provenance.** A report stated numbers without
   stating what produced them, so two reports that disagreed could not be reconciled.
   JSON output now carries a `provenance` block: the Reveille version, the analysed
@@ -111,8 +132,8 @@ Nothing yet.
   colour with the top-ranked contributor **inside the same chart**; the residual
   slice now takes a reserved neutral, which is also what it means.
 
-- **47 new tests**: four on lock integrity, six on licence declarations, twelve on
-  provenance, schema version and determinism, twelve on chart colour assignment, and thirteen security regression tests. Each was observed failing against the
+- **62 new tests**: four on lock integrity, six on licence declarations, twelve on
+  provenance, schema version and determinism, twelve on chart colour assignment, thirteen security regression tests, and fifteen on the capability document. Each was observed failing against the
   defect it guards before being trusted.
 
 ### Changed

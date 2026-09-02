@@ -155,7 +155,7 @@ Generates the HTML performance report for the target repository.
 | `--output` | `-o` | `PATH` | `./reveille-report.html` | Path for the generated HTML file. Parent directories must exist. |
 | `--since` | | `DATE` | Repository creation date | Include only commits on or after this date. Accepts `YYYY-MM-DD`. |
 | `--until` | | `DATE` | Today | Include only commits on or before this date. Accepts `YYYY-MM-DD`. |
-| `--branch` | `-b` | `TEXT` | Default branch | Analyse commits reachable from this branch only. |
+| `--branch` | `-b` | `TEXT` | The checked-out branch | Analyse commits reachable from this branch only. Defaults to whichever branch is currently checked out, which is not necessarily the repository's default branch. |
 | `--exclude-author` | | `TEXT` | None | Exclude a contributor by name or email. Repeatable. |
 | `--min-commits` | | `INT` | `1` | Exclude contributors with fewer than this many commits in the analysis window. |
 | `--title` | | `TEXT` | Repository name | Override the report title displayed in the HTML output. |
@@ -194,6 +194,29 @@ reveille validate --repo /path/to/repository
 
 `validate` also accepts `--verbose`, which emits diagnostic logging to stderr
 without changing the exit code or the normal output.
+
+### `reveille capabilities`
+
+Describes what Reveille can and cannot do — including, deliberately, the things
+it refuses to claim. Written for a program as much as for a person: an agent or
+a script can ask the installed binary directly rather than inferring from this
+README.
+
+| Flag | Short | Type | Default | Description |
+|---|---|---|---|---|
+| `--format` | | `TEXT` | `text` | Output format. Accepted values: `text`, `json`. |
+
+```bash
+reveille capabilities
+reveille capabilities --format json
+```
+
+The JSON form carries `capabilities_version`, the tool version, the output
+schema version, the guarantees that hold on every run, a `can` list, a `cannot`
+list with what to use instead, the caveats that change how a number should be
+read, every command with its options, and the exit-code contract. The command
+surface and the exit codes are read from the running program rather than
+restated, so they cannot drift from it.
 
 ### `reveille help`
 

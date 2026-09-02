@@ -20,6 +20,7 @@ from __future__ import annotations
 import datetime
 import enum
 import itertools
+import json
 import logging
 import sys
 import threading
@@ -627,6 +628,33 @@ def init(
             typer.echo(f".mailmap template written to: {mailmap_result}")
         else:
             typer.echo(".mailmap already exists — skipped.")
+
+
+@app.command()
+def capabilities(
+    output_format: Annotated[
+        str,
+        typer.Option(
+            "--format",
+            help="Output format. Accepted values: text, json.",
+        ),
+    ] = "text",
+) -> None:
+    """Describe what Reveille can and cannot do, for a person or a program."""
+    from reveille.capabilities import build_capabilities, render_text
+
+    if output_format not in {"text", "json"}:
+        typer.echo(
+            f"Error: unsupported format '{output_format}'. Accepted values: text, json.",
+            err=True,
+        )
+        raise typer.Exit(code=ExitCode.CANNOT_RUN)
+
+    document = build_capabilities(app, ExitCode)
+    if output_format == "json":
+        typer.echo(json.dumps(document, indent=2))
+    else:
+        typer.echo(render_text(document))
 
 
 @app.command()
