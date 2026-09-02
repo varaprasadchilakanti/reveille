@@ -45,12 +45,15 @@ check-lock:  ## Assert poetry.lock is valid TOML before anything tries to instal
 # finding #20: whether the lock still agrees with pyproject.toml. A lock can be
 # perfectly valid TOML and still describe a dependency set nobody asked for.
 #
-# `poetry lock --check` rather than `poetry check --lock`: the latter also
-# validates Trove classifiers against the list bundled with Poetry 1.8.2, which
-# predates `Programming Language :: Python :: 3.14` and so fails for a reason
-# that has nothing to do with the lock. Revisit when the pinned Poetry moves.
+# `poetry check --lock` is the modern spelling; `poetry lock --check` was
+# removed in Poetry 2.x. The older form was used while the toolchain was pinned
+# to 1.8.2, whose bundled trove-classifiers predates
+# `Programming Language :: Python :: 3.14` and so failed the full check for a
+# reason that had nothing to do with the lock. Poetry 2.4 carries a current
+# list, so the full check now passes and audit finding #20 is closed rather
+# than half-closed.
 check-lock-sync:  ## Assert poetry.lock still agrees with pyproject.toml
-	@poetry lock --check
+	@poetry check --lock
 
 check-licence:  ## Assert LICENSE, pyproject.toml and reveille.__licence__ agree
 	@TOML_LIC=$$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['tool']['poetry']['license'])") \

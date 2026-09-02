@@ -16,6 +16,28 @@ Nothing yet.
 
 ### Added
 
+- **The pinned Poetry moves from 1.8.2 to 2.4.2**, closing a mismatch that
+  contributed to the incident this release opened with. Tested before adopting:
+  all 452 tests pass, and the lock regenerates with **zero package version
+  changes** — 51 packages before and after, a pure format migration.
+
+  Three concrete gains, each of which was blocked on this and nothing else:
+
+  - **`poetry check` runs at all.** Under 1.8.2 it failed on the bundled
+    classifier list predating `Programming Language :: Python :: 3.14`, which is
+    why `make check-lock-sync` had to use the narrower `poetry lock --check`.
+    That command was *removed* in 2.x; the target now uses `poetry check --lock`
+    and audit finding #20 is closed rather than half-closed.
+  - **The lock format now matches what Dependabot writes.** Dependabot
+    regenerated with a modern Poetry and produced `lock-version 2.1`, while local
+    tooling wrote `2.0` — so its pull requests flipped the file between two
+    formats, which is precisely the churn that produced a conflict nobody could
+    resolve correctly. Both sides now write `2.1`.
+  - **`SOURCE_DATE_EPOCH` is honoured**, which 1.8.2 silently ignored.
+
+  **This requires Poetry ≥ 2.2 locally.** `pipx upgrade poetry`, or whichever
+  mechanism installed it. `CONTRIBUTING.md` says so and says why.
+
 - **Supply-chain and workflow hardening: four additions, each closing a distinct
   gap.**
 
@@ -46,14 +68,18 @@ Nothing yet.
 - **Build reproducibility is now verified in CI** — two builds of the same commit
   must produce identical bytes.
 
-  Deliberately *without* setting `SOURCE_DATE_EPOCH`, which is the documented
-  lever and is **inert on the pinned Poetry 1.8.2**: measured, wheel entries pin
-  to `(1980, 1, 1)` whatever the variable is set to, and two builds are already
-  byte-identical because of that hardcoded fallback. Setting it would look
-  meaningful and do nothing. The job asserts the property instead of presuming
-  the mechanism, so if the toolchain later moves to a Poetry that honours the
-  variable — losing the fallback with it — the job fails and the variable gets
-  set at the moment it would first be true.
+  `SOURCE_DATE_EPOCH` is derived from the analysed commit, the same convention
+  the `--deterministic` report flag uses, so a build and a report cut from one
+  commit agree on what "now" means. It is set because it is *measurably*
+  honoured on the pinned Poetry 2.4.2 — wheel entry timestamps track the value
+  exactly. On the previously pinned 1.8.2 it was inert, pinning entries to
+  `(1980, 1, 1)` regardless, and setting it there would have looked meaningful
+  while doing nothing.
+
+  The job still builds twice and compares rather than trusting the mechanism.
+  Poetry falls back to a fixed date when the variable is absent, so a build can
+  be reproducible for the wrong reason; only comparing two builds shows whether
+  the property actually holds.
 
 - **Architectural fitness functions** — `tests/unit/test_architecture.py`. Tests
   whose subject is a *structural property* rather than a behaviour, so the build

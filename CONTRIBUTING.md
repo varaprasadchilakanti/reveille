@@ -5,6 +5,20 @@ before opening a pull request.
 
 ## Reporting Issues
 
+> **Poetry 2.2 or newer is required from v0.8.0.** The lock file is written in
+> `lock-version 2.1`, which Poetry 1.x reads only with a warning, and
+> `make check-lock-sync` uses `poetry check --lock` — a command Poetry 1.x
+> spells differently and cannot complete, because its bundled classifier list
+> predates Python 3.14. Upgrade with `pipx upgrade poetry`, or whichever
+> mechanism you installed it with.
+>
+> The pin moved for three reasons, not one: `poetry check` now runs at all,
+> which closes the last half of a long-standing audit finding; the lock format
+> now matches what Dependabot writes, so its pull requests stop flipping the
+> file back and forth between two formats; and `SOURCE_DATE_EPOCH` is honoured,
+> which the previous version silently ignored.
+
+
 Use [GitHub Issues](https://github.com/varaprasadchilakanti/reveille/issues).
 Include the output of `reveille --version`, your operating system,
 your Python version, and a minimal reproduction case. If the issue

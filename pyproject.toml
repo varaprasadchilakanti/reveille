@@ -28,12 +28,15 @@ classifiers = [
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Intended Audience :: Information Technology",
-    # PEP 639 deprecates licence classifiers in favour of a
-    # `License-Expression` SPDX field, but that needs Poetry >= 2.2 and the
-    # `[project]` table; this project builds with Poetry 1.8.2, which emits
-    # neither. Dropping the classifier now would leave the distribution with
-    # no structured licence metadata at all, so it stays until the toolchain
-    # moves. The SPDX identifier is `Apache-2.0`.
+    # PEP 639 deprecates licence classifiers in favour of a `License-Expression`
+    # SPDX field. The pinned Poetry 2.4.2 supports it and now warns about this
+    # classifier, so the blocker is no longer the toolchain -- it is that the
+    # migration means moving the whole of `[tool.poetry]` to the PEP 621
+    # `[project]` table, which is a packaging change of its own and does not
+    # belong in a release already carrying a relicensing. Dropping the
+    # classifier without adding the expression would leave the distribution
+    # with no structured licence metadata at all. The SPDX identifier is
+    # `Apache-2.0`.
     "License :: OSI Approved :: Apache Software License",
     "Natural Language :: English",
     "Operating System :: OS Independent",

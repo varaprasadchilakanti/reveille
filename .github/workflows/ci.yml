@@ -73,7 +73,7 @@ jobs:
       - name: Install Poetry
         uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
         with:
-          version: "1.8.2"
+          version: "2.4.2"
           virtualenvs-in-project: true
       - name: Install dependencies
         run: poetry install --no-interaction
@@ -105,7 +105,7 @@ jobs:
       - name: Install Poetry
         uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
         with:
-          version: "1.8.2"
+          version: "2.4.2"
           virtualenvs-in-project: true
       - name: Install dependencies
         run: poetry install --no-interaction
@@ -138,7 +138,7 @@ jobs:
       - name: Install Poetry
         uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
         with:
-          version: "1.8.2"
+          version: "2.4.2"
           virtualenvs-in-project: true
       - name: Install dependencies
         run: poetry install --no-interaction
@@ -180,17 +180,21 @@ jobs:
   # ----------------------------------------------------------------
   # Build reproducibility
   #
-  # Asserts the property, and deliberately does not presume the
-  # mechanism. SOURCE_DATE_EPOCH is the documented lever, but it is
-  # inert on the pinned Poetry 1.8.2: measured, wheel entries pin to
-  # (1980, 1, 1) whatever the variable is set to, and two builds are
-  # already byte-identical because of that hardcoded fallback. Setting
-  # the variable here would look meaningful and do nothing.
+  # SOURCE_DATE_EPOCH is set here because, on the pinned Poetry 2.4.2, it
+  # is actually honoured: measured, wheel entry timestamps track the value
+  # exactly. It was deliberately *not* set while the pin was Poetry 1.8.2,
+  # where it is inert -- entries pinned to (1980, 1, 1) whatever the
+  # variable said, and setting it would have looked meaningful while doing
+  # nothing.
   #
-  # So the check simply builds twice and compares. If the toolchain ever
-  # moves to a Poetry that honours SOURCE_DATE_EPOCH, the fallback goes
-  # with it, this job fails, and the variable gets set then -- which is
-  # the right moment to add it, and the only moment it would be true.
+  # The epoch is derived from the analysed commit, the same convention the
+  # `--deterministic` report flag uses, so a build and a report generated
+  # from one commit agree on what "now" means.
+  #
+  # The check still builds twice and compares rather than trusting the
+  # mechanism. Poetry falls back to a fixed date when the variable is
+  # absent, so a build can be reproducible for the wrong reason; only
+  # comparing two builds shows whether the property actually holds.
   # ----------------------------------------------------------------
   reproducible-build:
     name: Reproducible build
@@ -202,6 +206,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -209,8 +214,11 @@ jobs:
       - name: Install Poetry
         uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
         with:
-          version: "1.8.2"
+          version: "2.4.2"
           virtualenvs-in-project: true
+      - name: Derive SOURCE_DATE_EPOCH from the analysed commit
+        run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
+
       - name: Build twice and compare
         run: |
           set -euo pipefail
