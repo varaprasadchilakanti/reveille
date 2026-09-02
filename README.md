@@ -161,6 +161,8 @@ Generates the HTML performance report for the target repository.
 | `--title` | | `TEXT` | Repository name | Override the report title displayed in the HTML output. |
 | `--no-ranking` | | Flag | Off | Omit the contributor ranking table from the output. |
 | `--format` | | `TEXT` | `html` | Output format. Accepted values: `html`, `json`, `csv`. `json` and `csv` write files at the same path stem as `--output`. |
+| `--deterministic` | | Flag | Off | Produce byte-reproducible output. Pins `generated_at` and the end of the analysis window to the repository's own last commit rather than to the clock, so two runs over an identical repository produce identical bytes. |
+| `--verbose` | | Flag | Off | Emit diagnostic logging to stderr. Does not change the report. |
 | `--config` | `-c` | `PATH` | None | Path to a TOML configuration file. If omitted, `reveille.toml` in the current working directory is loaded automatically when present. Use this flag for non-standard file names or paths outside the repository root. CLI flags always take precedence over configuration file values. |
 
 ### `reveille init`
@@ -189,6 +191,9 @@ Validates that the target path is a readable Git repository and that the analysi
 ```bash
 reveille validate --repo /path/to/repository
 ```
+
+`validate` also accepts `--verbose`, which emits diagnostic logging to stderr
+without changing the exit code or the normal output.
 
 ### `reveille help`
 

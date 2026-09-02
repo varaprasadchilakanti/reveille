@@ -194,6 +194,8 @@ CLAUDE.local.md
 .windsurfrules
 GEMINI.md
 AGENTS.md
+.github/copilot-instructions.md
+.github/instructions/
 
 
 # ------------------------------------------------------------------

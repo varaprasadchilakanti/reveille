@@ -8,56 +8,136 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ## [Unreleased]
 
+Nothing yet.
+
+---
+
+## [0.8.0] — 2026-09-02
+
+### Added
+
+- **Every output now records its own provenance.** A report stated numbers without
+  stating what produced them, so two reports that disagreed could not be reconciled.
+  JSON output now carries a `provenance` block: the Reveille version, the analysed
+  HEAD commit SHA, whether a `.mailmap` was applied, whether ranking was enabled and
+  under which weights, and the filters **as requested** — `requested_branch`,
+  `requested_since`, `requested_until`, `exclude_authors`, `min_commits`. The
+  distinction matters: `analysis_since` records where the window began, while
+  `requested_since` records whether anyone asked for it, and without both a reader
+  cannot tell "the full history, which starts in March" from "filtered to start in
+  March". Ranking weights are `null` when ranking is off, because reporting weights
+  that were never applied would be a false statement.
+
+- **`schema_version`, as the first key in the JSON document**, so a consumer can
+  decide whether it can parse the rest before trying. It starts at `1.0` and is
+  independent of the release version. v0.7.0 renamed `derived.bus_factor` to
+  `derived.commit_concentration` and a pipeline reading the old key got a `KeyError`
+  with no way to tell which shape it had been handed; this is the last output change
+  that will be undetectable.
+
+- **`--deterministic`, producing byte-reproducible output.** Verified for both HTML
+  and JSON: two runs over an identical repository produce identical bytes. It pins
+  `generated_at` to the analysed HEAD commit's timestamp, the way a reproducible
+  build pins to `SOURCE_DATE_EPOCH`, and closes the analysis window on the last
+  commit rather than on `date.today()` — otherwise the ranking's recency component
+  still varies with the clock. **It therefore changes scores, not merely bytes**,
+  which is why it is opt-in and why provenance records that it was used.
+
+- **`make check-lock-sync`**, asserting `poetry.lock` still agrees with
+  `pyproject.toml`, wired into CI. This is what audit finding #20 actually asked for.
+  `make check-lock` answers a different question — whether the file parses at all —
+  and a lock can be perfectly valid TOML while describing a dependency set nobody
+  asked for.
+
+- **`poetry.lock` can no longer be merged textually.** `.gitattributes` marks it
+  `-merge`, so Git keeps the current branch's version and declares a conflict instead
+  of writing conflict markers into a generated file. "Keep both sides" is never a
+  valid resolution for a lock file, but it is the natural gesture in a conflict
+  editor; removing the markers removes the gesture. Verified by replaying the original
+  merge: the conflict is still raised, no markers are written, and the retained file
+  still parses.
+
+- **`make check-lock`, and a CI job that runs before anything installs.** The
+  `lockfile` job validates the lock using only the standard library, and `lint`,
+  `typecheck` and `test` all depend on it. The gate deliberately avoids Poetry: an
+  unreadable lock is exactly what stops Poetry running, so a check that needed it
+  could never report the failure it exists to catch. The release SBOM job validates
+  the lock too, since `SECURITY.md` promises the SBOM is byte-reproducible from it.
+
+- **`make check-licence`**, asserting `LICENSE`, `pyproject.toml` and
+  `reveille.__licence__` agree. There was previously no guard on `__licence__` at all.
+
+- **Every source file carries a two-line SPDX header**, including the report template,
+  so a file still declares its licence and copyright holder if it is ever separated
+  from this repository.
+
+- **Workflow hardening**: `persist-credentials: false` on all eight `actions/checkout`
+  steps, `timeout-minutes` on every job (GitHub's default is 360), and concurrency
+  groups on `ci.yml` and `codeql.yml` — deliberately not on `publish.yml`, where
+  cancelling a half-finished publish is worse than letting two run.
+
+- **Dependency updates are grouped into one pull request per ecosystem.** Ungrouped,
+  26 dependency PRs merged between v0.7.0 and this release, and every merge was an
+  opportunity to hand-resolve a `poetry.lock` conflict — which is what broke `main`.
+
+- **`.github/PULL_REQUEST_TEMPLATE.md`**, whose "Verified" section asks what was run
+  and what it showed, and reminds the author to break any new guard and watch it fail.
+
+- **22 new tests**: four on lock integrity, six on licence declarations, and twelve on
+  provenance, schema version and determinism. Each was observed failing against the
+  defect it guards before being trusted.
+
 ### Changed
 
 - **The licence moves from MIT to Apache-2.0.** Versions up to and including 0.7.0
   remain MIT permanently — relicensing is prospective only, and those versions stay
-  available under MIT from the Git history. Apache-2.0 adds three things MIT does not
-  provide: an express patent grant (§3), an automatic inbound-equals-outbound rule for
+  available under MIT from the Git history. Apache-2.0 adds three things MIT does not:
+  an express patent grant (§3), an automatic inbound-equals-outbound rule for
   contributions (§5) so a pull request needs no contributor licence agreement, and an
   explicit trademark non-grant (§6). The cost is real but narrow: §4(b) requires
   modified files to carry change notices, and Apache-2.0 is incompatible with GPLv2
-  (though compatible with GPLv3). Checked first: every one of the 25 runtime packages
-  is permissive, with zero copyleft and no GPL-2.0-only dependency. Recorded as
+  (though compatible with GPLv3). Checked first: all 25 runtime packages are
+  permissive, with zero copyleft and no GPL-2.0-only dependency. Recorded as
   [ADR 0007](docs/adr/0007-apache-2-0-licence.md). No `NOTICE` file is created —
   §4(d) binds downstream only if one exists, and Reveille vendors nothing that needs
   attributing.
 
-- **Every source file now carries a two-line SPDX header**, so a file still declares
-  its licence and copyright holder if it is ever separated from this repository.
+- **`metadata.default_branch` is renamed to `metadata.analysed_branch`, and now holds
+  the right value.** This is a **breaking JSON key change**. The old field held
+  neither the default branch nor the analysed one: it was recomputed from whatever was
+  checked out, ignoring `--branch`. A report generated with `--branch main` from a
+  feature checkout named the feature branch, in the JSON and in the HTML, which renders
+  it as "Branch:". On `main` all three meanings coincide, which is why it survived to
+  v0.7.0. Accepted pre-1.0 on the same reasoning as
+  [ADR 0005](docs/adr/0005-commit-concentration-not-bus-factor.md). Recorded as
+  [ADR 0008](docs/adr/0008-output-provenance-and-schema-version.md).
 
 ### Fixed
 
-- **`poetry.lock` was not valid TOML, and CI had been failing on `main` for six
-  consecutive merges.** A merge conflict inside plotly's `[package.extras]` table was
-  resolved by removing the conflict markers and keeping both sides, which duplicated four
-  keys. Duplicate keys are a TOML syntax error, so `poetry install` failed outright and
-  every `lint`, `typecheck` and `test` job stopped before running anything — reporting
-  "Unable to read the lock file", which names the symptom rather than the cause. The lock
-  has been regenerated; every runtime dependency resolves to exactly the version it did
-  before, and only six development tools moved by a patch release.
+- **`poetry.lock` was not valid TOML, and CI failed on seven consecutive merges to
+  `main`.** A merge conflict inside plotly's `[package.extras]` table was resolved by
+  removing the conflict markers and keeping both sides, which duplicated four keys
+  (`dev`, `dev-build`, `dev-core`, `dev-optional`). Duplicate keys are a TOML syntax
+  error, so `poetry install` failed outright and every `lint`, `typecheck` and `test`
+  job stopped before running anything — reporting "Unable to read the lock file",
+  which names the symptom rather than the cause. The lock was regenerated: every
+  runtime dependency resolves to exactly the version it did before, and six
+  development tools moved — `coverage` and `python-discovery` by a minor release,
+  `filelock`, `platformdirs`, `ruff` and `virtualenv` by a patch.
 
-### Added
+- **The regenerated lock is `lock-version 2.0` rather than `2.1`**, and the `groups`
+  key is absent from all 51 packages. This accounts for most of the diff and is a
+  restoration rather than a regression: `2.1` was written by a Dependabot-era
+  regeneration under a Poetry 2.x, while every declared consumer of the lock — CI,
+  the Makefile, and `CONTRIBUTING.md` — pins Poetry 1.8.2, which predates that format
+  and only warns before proceeding.
 
-- **`poetry.lock` can no longer be merged textually.** `.gitattributes` now marks it
-  `-merge`, so Git keeps the current branch's version and declares a conflict instead of
-  writing conflict markers into a generated file. For a lock file "keep both sides" is
-  never a valid resolution, but it is the natural gesture in a conflict editor; removing
-  the markers removes the gesture, leaving `poetry lock --no-update` as the only way
-  forward.
-
-- **`make check-lock`, and a CI job that runs before anything installs.** The new
-  `lockfile` job validates the lock using only the standard library, and `lint`,
-  `typecheck` and `test` all depend on it. The gate deliberately avoids Poetry: a broken
-  lock is exactly what stops Poetry running, so a check that needed it could never report.
-  The release SBOM job validates the lock too, since `SECURITY.md` promises the SBOM is
-  byte-reproducible for a given `poetry.lock`.
-
-- **`tests/unit/test_lockfile.py`** — four tests asserting the lock exists, parses under a
-  strict TOML reader, declares the metadata the SBOM depends on, and contains no conflict
-  markers. Each was observed failing against the actual corrupt file before being trusted.
-
----
+- **`make check-version` and `make check-licence` could pass while checking nothing.**
+  Both read their two values through `poetry`, and both compared the results without
+  first asserting either was non-empty. If `poetry` failed for any reason, both
+  variables became empty strings, `"" != ""` was false, and the guard reported
+  agreement and exited 0 — with `__licence__` set to anything at all. Both now fail
+  closed and refuse to compare two blanks.
 
 ## [0.7.0] — 2026-08-06
 
@@ -739,7 +819,8 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ---
 
-[Unreleased]: https://github.com/varaprasadchilakanti/reveille/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/varaprasadchilakanti/reveille/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.8.0
 [0.7.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.7.0
 [0.6.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.6.0
 [0.5.1]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.5.1

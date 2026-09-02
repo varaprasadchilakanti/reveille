@@ -40,7 +40,7 @@ poetry run pytest -n auto
 
 ## Supported Python versions
 
-Reveille supports **every non-EOL CPython release at or above 3.11**. As of the 0.7.0
+Reveille supports **every non-EOL CPython release at or above 3.11**. As of the 0.8.0
 release that is **3.11, 3.12, 3.13, and 3.14**. Each is exercised by the CI matrix on
 every pull request; each appears in the PyPI classifiers.
 
@@ -104,11 +104,26 @@ none.
 
 ## Submitting Pull Requests
 
-All pull requests must target the `main` branch. The CI pipeline runs
-`ruff`, `mypy`, and `pytest` across every supported Python version — see
-[Supported Python versions](#supported-python-versions) — plus a
-packaging check and a version-consistency check. All must pass. A pull
-request will not be merged if any check fails.
+All pull requests must target the `main` branch.
+
+CI runs a `lockfile` job first, and every other job depends on it: it asserts
+`poetry.lock` is valid TOML using only the standard library, because a lock
+that cannot be parsed is exactly what stops Poetry running, so a check needing
+Poetry could never report it. The remaining jobs then run in parallel —
+`ruff`, `mypy`, and `pytest` across every supported Python version (see
+[Supported Python versions](#supported-python-versions)) — alongside a
+packaging check, a version-consistency check, a licence-consistency check, and
+a check that `poetry.lock` still agrees with `pyproject.toml`. All must pass.
+A pull request will not be merged if any check fails.
+
+`make ci` runs the same set locally.
+
+One thing worth knowing before you hit it: `poetry.lock` is marked `-merge` in
+`.gitattributes`, so Git will not write conflict markers into it. A conflict
+there prints `warning: Cannot merge binary files: poetry.lock` and leaves your
+own version in place. That is deliberate — the file is generated, and "keep
+both sides" silently duplicates TOML keys. Resolve it by regenerating:
+`poetry lock --no-update`.
 
 The output contract is non-negotiable and must be preserved in every
 contribution: the generated file is always a single self-contained

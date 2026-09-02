@@ -80,10 +80,13 @@ class TestLockfileIntegrity:
     def test_no_conflict_markers(self) -> None:
         """No merge-conflict markers survive in the lock.
 
-        Valid TOML is not sufficient on its own: a conflict resolved by
-        keeping one side cleanly can still leave a stray marker in a
-        comment or string. This is the cheap, direct check for the exact
-        editing mistake that caused the incident.
+        This guards an *adjacent* mistake, not the one that caused the
+        2026-09-02 incident. There the markers were deleted and both sides
+        kept, so the file contained no markers at all and this check would
+        have passed -- only `test_lockfile_is_valid_toml` catches that.
+
+        It is still worth having: committing a lock with the markers left in
+        is the other half of the same error, and it is cheap to detect.
         """
         text = _LOCKFILE.read_text(encoding="utf-8")
         offenders = [

@@ -28,8 +28,17 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SRC = Path(reveille.__file__).parent
 _EXPECTED = "Apache-2.0"
 
-_SPDX = re.compile(r"^# SPDX-License-Identifier: (?P<identifier>\S+)$", re.MULTILINE)
-_COPYRIGHT = re.compile(r"^# SPDX-FileCopyrightText: \d{4} .+$", re.MULTILINE)
+# The template is a Jinja file, so its header is a Jinja comment rather than a
+# Python one. Both forms are matched, because "every source file" has to mean
+# every file that ships -- the template is in the wheel, and a file that leaves
+# the repository without a header carries no licence information at all.
+_SPDX = re.compile(r"^(?:# |\{# )SPDX-License-Identifier: (?P<identifier>[^\s#]+)", re.MULTILINE)
+_COPYRIGHT = re.compile(r"^(?:# |\{# )SPDX-FileCopyrightText: \d{4} .+$", re.MULTILINE)
+
+
+def _source_files() -> list[Path]:
+    """Every shipped source file that can carry a comment header."""
+    return sorted(p for p in _SRC.rglob("*") if p.suffix in {".py", ".j2"})
 
 
 def _pyproject() -> dict[str, object]:
@@ -90,7 +99,7 @@ class TestSpdxHeaders:
         """
         missing = sorted(
             str(path.relative_to(_SRC))
-            for path in _SRC.rglob("*.py")
+            for path in _source_files()
             if not _SPDX.search(path.read_text(encoding="utf-8"))
         )
         assert not missing, f"source files without an SPDX-License-Identifier: {missing}"
@@ -99,7 +108,7 @@ class TestSpdxHeaders:
         """The identifier says which licence; this says whose work it is."""
         missing = sorted(
             str(path.relative_to(_SRC))
-            for path in _SRC.rglob("*.py")
+            for path in _source_files()
             if not _COPYRIGHT.search(path.read_text(encoding="utf-8"))
         )
         assert not missing, f"source files without an SPDX-FileCopyrightText: {missing}"
@@ -108,7 +117,7 @@ class TestSpdxHeaders:
         """A stale header is worse than none: it is a false statement."""
         wrong = sorted(
             (str(path.relative_to(_SRC)), match.group("identifier"))
-            for path in _SRC.rglob("*.py")
+            for path in _source_files()
             if (match := _SPDX.search(path.read_text(encoding="utf-8")))
             and match.group("identifier") != _EXPECTED
         )
