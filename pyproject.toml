@@ -136,7 +136,12 @@ reveille = "reveille.cli:app"
 # ------------------------------------------------------------------
 
 [build-system]
-requires = ["poetry-core>=1.0.0"]
+# Floor raised from 1.0.0 with the toolchain. This is not cosmetic: anyone
+# building from the sdist resolves poetry-core by this constraint, and 1.x
+# emits Metadata 2.1 without `License-File`, ignores SOURCE_DATE_EPOCH, and so
+# produces a different artefact from the one CI verifies as reproducible. The
+# constraint should describe what the project actually needs.
+requires = ["poetry-core>=2.0,<3.0"]
 build-backend = "poetry.core.masonry.api"
 
 

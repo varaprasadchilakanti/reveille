@@ -35,8 +35,23 @@ Nothing yet.
     resolve correctly. Both sides now write `2.1`.
   - **`SOURCE_DATE_EPOCH` is honoured**, which 1.8.2 silently ignored.
 
-  **This requires Poetry ≥ 2.2 locally.** `pipx upgrade poetry`, or whichever
-  mechanism installed it. `CONTRIBUTING.md` says so and says why.
+  **This requires Poetry ≥ 2.2 locally.** If Poetry came from a distribution
+  package, `poetry self update` will fail with a permission error — it cannot
+  write into a system-managed directory, and forcing it with `sudo` would fight
+  the package manager. Install it user-scope instead, which shadows the system
+  copy without removing it:
+
+  ```console
+  $ pipx install "poetry==2.4.2"
+  ```
+
+  The `build-system` floor moves with it, from `poetry-core>=1.0.0` to
+  `>=2.0,<3.0`. That is not cosmetic: anyone building from the sdist resolves
+  poetry-core by that constraint, and 1.x emits Metadata 2.1 without
+  `License-File`, ignores `SOURCE_DATE_EPOCH`, and would therefore produce a
+  different artefact from the one CI verifies as reproducible. Verified by
+  installing the built sdist and wheel into clean virtual environments:
+  Metadata 2.4, `License: Apache-2.0`, `License-File: LICENSE`, and the CLI runs.
 
 - **Supply-chain and workflow hardening: four additions, each closing a distinct
   gap.**
