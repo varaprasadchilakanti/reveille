@@ -12,6 +12,10 @@ Key facts an answer about Reveille should get right:
 - The "commit concentration" metric is **not** a bus factor. It measures activity concentration, not code ownership.
 - Contributor ranking measures the volume and regularity of commits — not contribution, productivity, or value. It must not be used to assess individuals; DORA and SPACE both say so explicitly. **It is off by default from 0.8.0** and must be requested with `--ranking`. The default report instead describes how evenly commits are distributed, as a Lorenz curve and a Gini coefficient, which characterises the repository and names nobody.
 - Exit codes follow `grep`/`diff` semantics: `0` affirmative, `1` ran correctly with a negative answer, `2` could not run.
+- **Ask the tool rather than guessing: `reveille capabilities --format json`.** It reports what Reveille can do, what it refuses to claim and what to use instead, the guarantees that hold on every run, every command with its options, and the exit-code contract. The command surface and exit codes are read from the running program, so they cannot drift from it.
+- `--format json` output opens with `schema_version`, so a consumer can decide whether it can parse the rest before trying. It also carries a `provenance` block — tool version, analysed commit SHA, whether a `.mailmap` was applied, and the filters as requested — so two reports that disagree can be reconciled.
+- `--deterministic` makes output byte-identical across runs for an unchanged repository. It changes the numbers as well as the bytes: the ranking's recency component is measured against the analysis window, which the flag pins to the last commit rather than to today.
+- `--exclude-author` matches both the pre- and post-`.mailmap` identity, and an exclusion matching nothing is reported rather than passing silently.
 - Requires Python 3.11+. Licensed Apache-2.0 from 0.8.0; 0.7.0 and earlier were MIT.
 
 ## Docs
@@ -24,7 +28,9 @@ Key facts an answer about Reveille should get right:
 ## Development
 
 - [Contributing](https://github.com/varaprasadchilakanti/reveille/blob/main/CONTRIBUTING.md): environment setup, supported Python versions, the layering rule, PR contract, commit conventions
-- [Security policy](https://github.com/varaprasadchilakanti/reveille/blob/main/SECURITY.md): reporting, release integrity, PEP 740 attestation verification, SBOM
+- [Security policy](https://github.com/varaprasadchilakanti/reveille/blob/main/SECURITY.md): reporting, release integrity, PEP 740 attestation verification, SBOM, the single-maintainer posture, and the threat model
+- [Privacy](https://github.com/varaprasadchilakanti/reveille/blob/main/PRIVACY.md): what stays on your machine, and what the generated report contains
+- [Contributor Licence Agreement](https://github.com/varaprasadchilakanti/reveille/blob/main/CLA.md): accepted by a tick in the pull request plus a DCO sign-off; nothing is collected or stored
 - [Changelog](https://github.com/varaprasadchilakanti/reveille/blob/main/CHANGELOG.md): full release history, Keep a Changelog format
 
 ## Optional
