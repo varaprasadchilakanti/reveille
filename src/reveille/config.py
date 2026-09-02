@@ -217,6 +217,8 @@ def _parse_report_section(report: dict[str, Any]) -> dict[str, Any]:
                 ) from exc
     if "format" in report:
         kwargs["output_format"] = cast(OutputFormat, str(report["format"]))
+    if "deterministic" in report:
+        kwargs["deterministic"] = bool(report["deterministic"])
     return kwargs
 
 

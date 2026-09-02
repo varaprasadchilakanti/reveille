@@ -186,6 +186,13 @@ ignore = [
 "__init__.py" = ["F401", "F403"]
 "tests/**/*.py" = ["S101", "D"]
 
+[tool.ruff.lint.mccabe]
+# Stated rather than inherited. The `C` selector already enables C901 through
+# mccabe -- it caught three genuine cases during the 0.8.0 work, each of which
+# was resolved by extracting a function rather than by raising the ceiling. The
+# limit is a contract, so it should not depend on a tool default that can move.
+max-complexity = 10
+
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 

@@ -16,6 +16,28 @@ Nothing yet.
 
 ### Added
 
+- **Architectural fitness functions** — `tests/unit/test_architecture.py`. Tests
+  whose subject is a *structural property* rather than a behaviour, so the build
+  fails when the shape stops holding rather than when a feature breaks. The term
+  is from Ford, Parsons and Kua, *Building Evolutionary Architectures* (2017),
+  and `docs/ARCHITECTURE.md` now names it alongside the other lineage this design
+  borrows.
+
+  Seven properties, each written against the AST rather than a text search — a
+  structural check built on `grep` matches comments and docstrings, so it can
+  pass while the property it names is false. The offline guarantee stated
+  structurally (nothing capable of opening a socket is imported anywhere, which
+  is a stronger claim than "this run made no request"); the direction of
+  first-party imports; the read-only guarantee (only the renderer and `init` may
+  write to disk); the exit-code contract (no literal code, so a fourth cannot
+  widen a published contract unnoticed); and completeness of the configuration
+  surface.
+
+  Ruff's `mccabe` complexity limit is now stated explicitly rather than inherited
+  from the tool's default. It was already active and caught three genuine cases
+  during this release, each resolved by extracting a function rather than raising
+  the ceiling.
+
 - **A Lorenz curve and Gini coefficient, replacing an ad-hoc concentration
   number.** The default report now shows how evenly commits are distributed
   across contributors — the cumulative share of commits against the cumulative
@@ -181,8 +203,8 @@ Nothing yet.
   colour with the top-ranked contributor **inside the same chart**; the residual
   slice now takes a reserved neutral, which is also what it means.
 
-- **80 new tests**: four on lock integrity, six on licence declarations, twelve on
-  provenance, schema version and determinism, twelve on chart colour assignment, thirteen security regression tests, fifteen on the capability document, fourteen on the Lorenz curve and Gini coefficient checked against values the definitions fix, and four on the ranking default. Each was observed failing against the
+- **87 new tests**: four on lock integrity, six on licence declarations, twelve on
+  provenance, schema version and determinism, twelve on chart colour assignment, thirteen security regression tests, fifteen on the capability document, fourteen on the Lorenz curve and Gini coefficient checked against values the definitions fix, four on the ranking default, and seven architectural fitness functions. Each was observed failing against the
   defect it guards before being trusted.
 
 ### Changed
@@ -256,6 +278,13 @@ Nothing yet.
   variables became empty strings, `"" != ""` was false, and the guard reported
   agreement and exited 0 — with `__licence__` set to anything at all. Both now fail
   closed and refuse to compare two blanks.
+
+- **`deterministic` was a CLI flag with no `reveille.toml` key.** The field existed
+  on the configuration model and the documentation describes `reveille.toml` as
+  the single configuration surface, but the parser never read it, so
+  `[report] deterministic = true` silently did nothing. Found by the new
+  configuration-surface fitness function on its first run, not by review — every
+  individual piece worked, which is why nothing else noticed.
 
 ### Security
 
