@@ -4,7 +4,8 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install lint format fix typecheck precommit check-lock check-licence check-packaging test test-unit \
+.PHONY: help install lint format fix typecheck precommit check-lock check-lock-sync check-licence check-version \
+	    check-packaging test test-unit \
 	    test-integration test-e2e coverage ci build sbom publish-test \
 	    publish clean
 
@@ -26,6 +27,7 @@ install:  ## Install all dependencies including dev group
 	poetry install
 
 check-lock:  ## Assert poetry.lock is valid TOML before anything tries to install from it
+	@test -f poetry.lock || { echo "poetry.lock is missing."; exit 1; }
 	@if ! ERR=$$(python3 -c "import tomllib; tomllib.load(open('poetry.lock','rb'))" 2>&1); then \
 		echo "poetry.lock is not valid TOML:"; \
 		echo "  $$(echo "$$ERR" | tail -1)"; \
@@ -37,9 +39,29 @@ check-lock:  ## Assert poetry.lock is valid TOML before anything tries to instal
 	fi
 	@echo "poetry.lock is valid TOML"
 
+# Distinct from check-lock, and deliberately so. check-lock asks whether the
+# file can be parsed at all, using only the standard library, so it can run
+# before anything installs. This asks the different question closed by audit
+# finding #20: whether the lock still agrees with pyproject.toml. A lock can be
+# perfectly valid TOML and still describe a dependency set nobody asked for.
+#
+# `poetry lock --check` rather than `poetry check --lock`: the latter also
+# validates Trove classifiers against the list bundled with Poetry 1.8.2, which
+# predates `Programming Language :: Python :: 3.14` and so fails for a reason
+# that has nothing to do with the lock. Revisit when the pinned Poetry moves.
+check-lock-sync:  ## Assert poetry.lock still agrees with pyproject.toml
+	@poetry lock --check
+
 check-licence:  ## Assert LICENSE, pyproject.toml and reveille.__licence__ agree
-	@TOML_LIC=$$(poetry version >/dev/null 2>&1 && python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['tool']['poetry']['license'])"); \
-	CODE_LIC=$$(poetry run python -c "import reveille; print(reveille.__licence__)"); \
+	@TOML_LIC=$$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['tool']['poetry']['license'])") \
+		|| { echo "check-licence: could not read the licence from pyproject.toml"; exit 1; }; \
+	CODE_LIC=$$(poetry run python -c "import reveille; print(reveille.__licence__)") \
+		|| { echo "check-licence: could not read reveille.__licence__"; exit 1; }; \
+	if [ -z "$$TOML_LIC" ] || [ -z "$$CODE_LIC" ]; then \
+		echo "check-licence: a licence value was empty (pyproject='$$TOML_LIC', code='$$CODE_LIC')."; \
+		echo "Refusing to compare two blanks and call it agreement."; \
+		exit 1; \
+	fi; \
 	if [ "$$TOML_LIC" != "$$CODE_LIC" ]; then \
 		echo "Licence mismatch: pyproject.toml=$$TOML_LIC, __init__.py=$$CODE_LIC"; \
 		exit 1; \
@@ -58,12 +80,20 @@ check-packaging:  ## Assert the PEP 561 py.typed marker ships in the built distr
 	@echo "py.typed marker present in wheel and sdist"
 
 check-version:  ## Assert pyproject.toml version matches reveille.__version__
-	@TOML_VER=$$(poetry version --short); \
-	CODE_VER=$$(poetry run python -c "import reveille; print(reveille.__version__)"); \
+	@TOML_VER=$$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['tool']['poetry']['version'])") \
+		|| { echo "check-version: could not read the version from pyproject.toml"; exit 1; }; \
+	CODE_VER=$$(poetry run python -c "import reveille; print(reveille.__version__)") \
+		|| { echo "check-version: could not read reveille.__version__"; exit 1; }; \
+	if [ -z "$$TOML_VER" ] || [ -z "$$CODE_VER" ]; then \
+		echo "check-version: a version value was empty (pyproject='$$TOML_VER', code='$$CODE_VER')."; \
+		echo "Refusing to compare two blanks and call it agreement."; \
+		exit 1; \
+	fi; \
 	if [ "$$TOML_VER" != "$$CODE_VER" ]; then \
 		echo "Version mismatch: pyproject.toml=$$TOML_VER, __init__.py=$$CODE_VER"; \
 		exit 1; \
-	fi
+	fi; \
+	echo "Version declarations agree: $$TOML_VER"
 
 # ------------------------------------------------------------------
 # Code Quality
@@ -110,6 +140,7 @@ coverage:  ## Generate HTML and terminal coverage report
 
 ci:  ## Full CI workflow: lint, typecheck, test
 	$(MAKE) check-lock
+	$(MAKE) check-lock-sync
 	$(MAKE) check-version
 	$(MAKE) check-licence
 	$(MAKE) check-packaging

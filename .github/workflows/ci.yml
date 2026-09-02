@@ -2,8 +2,11 @@
 # Reveille -- Continuous Integration
 #
 # Runs on every push and pull request targeting main.
-# Three jobs run in parallel: lint, typecheck, test.
-# All three must pass before a PR is eligible to merge.
+#
+# `lockfile` runs first and the other three depend on it: if poetry.lock
+# cannot be parsed, every job that installs from it fails with an error that
+# names the symptom rather than the cause. lint, typecheck and test then run
+# in parallel, and all four must pass before a PR is eligible to merge.
 # ==================================================================
 
 name: CI
@@ -80,6 +83,8 @@ jobs:
         run: make check-version
       - name: Check licence declarations agree
         run: make check-licence
+      - name: Check poetry.lock agrees with pyproject.toml
+        run: make check-lock-sync
       - name: Check packaging contract
         run: make check-packaging
 
