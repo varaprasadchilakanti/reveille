@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import os
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -237,6 +238,17 @@ class GitReader:
         try:
             self._repo = Repo(str(repo_path), search_parent_directories=False)
         except InvalidGitRepositoryError as exc:
+            # A `.git` that exists but cannot be read raises the same
+            # exception as one that is not there, and the generic message --
+            # "ensure the path contains a .git directory" -- sends the reader
+            # to check something that is already true. Distinguish the two,
+            # since the fixes are entirely different.
+            git_dir = repo_path / ".git"
+            if git_dir.exists() and not os.access(git_dir, os.R_OK | os.X_OK):
+                raise RepositoryError(
+                    f"'{repo_path}' is a Git repository, but its .git directory "
+                    "cannot be read. Check the permissions on it."
+                ) from exc
             raise RepositoryError(
                 f"'{repo_path}' is not a valid Git repository. "
                 "Ensure the path contains a .git directory."
@@ -283,6 +295,10 @@ class GitReader:
             EmptyRepositoryError: If no commits match the specified window
                 after filtering.
         """
+        # Cleared at entry as well as assigned at the end, so a call that raises
+        # part-way through cannot leave the previous call's result readable.
+        self.unmatched_exclusions = ()
+
         rev = branch or self._resolve_active_branch()
 
         # A revision beginning with `-` is parsed by git as an OPTION, not a
@@ -364,10 +380,13 @@ class GitReader:
         # makes it indistinguishable from one that worked. This matters most
         # for the case the filter exists to serve: somebody asked to be left
         # out, and the report was generated believing they had been.
+        # Assigned unconditionally. Setting it only when non-empty left a reader
+        # reused for a second call still reporting the first call's failed
+        # filter -- a public attribute on a public class, going stale silently.
         unmatched = sorted(exclude_set - matched)
+        self.unmatched_exclusions = tuple(unmatched)
         if unmatched:
             _logger.warning("--exclude-author matched no commits for: %s", ", ".join(unmatched))
-            self.unmatched_exclusions = tuple(unmatched)
 
         if not commits:
             raise EmptyRepositoryError(

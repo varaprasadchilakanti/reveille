@@ -314,6 +314,96 @@ Nothing yet.
 
 ### Fixed
 
+- **The ranking opt-in was real only in JSON; the two formats people read still
+  ranked them.** `--ranking` defaults off in this release, but the HTML template
+  and the CSV writer both gated on `ranked_contributors` being non-empty — and
+  that list is populated with placeholder rows either way, so it was never the
+  gate. The default report therefore still opened a section headed **"Contributor
+  Rankings"**, printed a rank number against every named individual, and carried a
+  screen-reader caption stating the rows were "ordered by composite score" when
+  every score was `0.0` and the real ordering was by commit count. The CSV — the
+  format most likely to be opened in a spreadsheet and sorted — still emitted
+  `tier`, `composite_score` and `percentile` as zeroes, one function below the
+  JSON writer that omits them on purpose and explains why in a comment.
+
+  All three formats now branch on `provenance.ranking_enabled`. With the ranking
+  off the table is headed "Contributors", loses its rank, designation and score
+  columns, and says it is ordered by commit count; the CSV omits the same four
+  fields JSON omits. The underlying figures are untouched — opting out of the
+  ranking does not cost anyone their commit counts. `tests/unit/adapters/
+  test_ranking_presentation.py` asserts this across all three formats in both
+  directions.
+
+- **`reveille init` scaffolded the opposite of the new default.** The generated
+  `reveille.toml` said *"Set to false to omit the contributor ranking table"* over
+  a commented `enabled = true` — pre-0.8.0 semantics, written into the one file
+  the tool creates in a user's repository. A user uncommenting the line as shown
+  would have turned the ranking **on** believing they were accepting a default.
+  The scaffold now shows `enabled = false`, states that uncommenting turns it on,
+  and points at the caveat.
+
+- **The generated `.mailmap` made the claim this release exists to retract.** Its
+  header said mappings ensure *"rankings reflect actual individual output"* —
+  exactly the reading ADR 0010, `reveille capabilities` and the DORA/SPACE
+  citation all refuse. It now says what `.mailmap` actually does: one person
+  committing under several addresses is counted once.
+
+- **The CLA check could never pass with the pull-request template this repository
+  ships.** The acceptance pattern required the tick and the `Reveille-CLA-1.0`
+  token on the same physical line, while the template wraps that bullet across
+  three. Every external contribution would have failed the gate, and the failure
+  message told the contributor to tick a box they had already ticked. The check
+  now scopes to a single markdown list item — the ticked line plus its indented
+  continuations — so it accepts the wrapped form while still rejecting a ticked
+  "I ran the tests" box that merely has the token somewhere else in the body.
+  `tests/unit/test_cla_gate.py` runs the shipped script against the shipped
+  template, so the two cannot drift apart again.
+
+- **`GitReader.unmatched_exclusions` never cleared.** It was assigned only when
+  non-empty, so a reader reused for a second call still reported the first call's
+  failed `--exclude-author` filter — a warning about a filter the caller had not
+  asked for. It is now cleared on entry and assigned unconditionally.
+
+- **`actionlint` was configured but never enforced.** It ran as a pre-commit hook,
+  and `make precommit` was referenced by no workflow, so the cited
+  workflow-correctness guard only ever ran for developers who had installed the
+  git hooks locally. CI now runs it as a `Workflow correctness` job.
+
+- **The workflow-pin guard globbed `*.yml` only.** A `.yaml` workflow — which
+  GitHub honours identically — would have been entirely unchecked for SHA pinning,
+  and the discovery test counts pins rather than files, so it would not have
+  noticed. Verified by dropping an unpinned action into a `.yaml` file and
+  watching the guard fail.
+
+- **Pre-commit hooks were pinned to mutable tags** while `test_workflow_pins.py`
+  requires SHA pins for GitHub Actions on the grounds that a movable tag is an
+  arbitrary-code seam. A pre-commit hook executes on every developer commit and is
+  the same seam, so both third-party hooks are now pinned by commit.
+
+- **A screen-reader accessibility test asserted a magic number.** It required at
+  least ten `scope="col"` attributes — the ranked table's column count — so
+  removing three columns for the ranking opt-in failed it with nothing wrong. It
+  now asserts the property it was proxying for: that no column header lacks a
+  scope, whichever columns are present.
+
+- **Chart area fills were hardcoded `rgba(...)` literals** that happened to equal
+  `_CATEGORICAL_PALETTE[0]`. Nothing coupled them, and the palette was replaced
+  wholesale in this release — a further change would have left a fill in the old
+  hue beneath a line in the new one. Both now derive from the palette entry.
+
+- **`llms.txt` reintroduced an overclaim** that `capabilities.py` had been
+  corrected to remove: *"The only file written is the output path you name."*
+  `reveille init` writes `reveille.toml` and `.mailmap`. Same machine audience,
+  same correction.
+
+- **The Lorenz curve — the chart that replaces the ranking in the default report —
+  shipped with no test at all.** Mutation testing confirmed it could be deleted
+  from the report entirely, have its Gini figure doubled, or fill the wrong region,
+  with the whole suite still passing; the ranking it replaces has thirty-odd tests.
+  `tests/unit/adapters/test_lorenz_chart.py` adds twenty-five, covering geometry,
+  the Gini title, colour coupling, degenerate inputs, and — the mutation the first
+  draft of those tests missed — that the chart actually reaches the rendered report.
+
 - **`poetry.lock` was not valid TOML, and CI failed on seven consecutive merges to
   `main`.** A merge conflict inside plotly's `[package.extras]` table was resolved by
   removing the conflict markers and keeping both sides, which duplicated four keys

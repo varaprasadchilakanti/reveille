@@ -174,3 +174,94 @@ class TestSerialisation:
         assert "WHAT IT DOES NOT DO" in rendered
         assert "READ THE NUMBERS WITH THESE IN MIND" in rendered
         assert __version__ in rendered
+
+
+@pytest.mark.unit
+class TestGuaranteeTextsSayWhatTheyClaim:
+    """The document's own premise is that a machine can trust it.
+
+    `capabilities.py` states that the guarantees are "the ones worth checking
+    against, because each is asserted by a test". That was true of their
+    *presence* and false of their *content*: the existing tests check ids,
+    non-emptiness and uniqueness, so `no-telemetry` could be rewritten to
+    "We collect anonymous usage data." and `repository-modification` to
+    "Freely alters repository history." with the whole suite green.
+
+    These assert the substance. They are deliberately about meaning rather
+    than exact wording -- the text may be improved, but it may not be
+    inverted.
+    """
+
+    def _guarantee(self, guarantee_id: str) -> str:
+        document = build_capabilities(app, ExitCode)
+        matches = [g for g in document["guarantees"] if g["id"] == guarantee_id]
+        assert matches, f"guarantee {guarantee_id!r} is missing from the document"
+        return matches[0]["description"].lower()
+
+    def test_offline_denies_network_use(self) -> None:
+        text = self._guarantee("offline")
+        assert "no network call" in text
+        assert "no remote resource" in text
+
+    def test_read_only_analysis_denies_modifying_the_repository(self) -> None:
+        text = self._guarantee("read-only-analysis")
+        assert "never modifies the repository" in text
+        # And still discloses the one command that does write, which the
+        # earlier wording of llms.txt and this module both once omitted.
+        assert "init" in text
+
+    def test_no_telemetry_denies_collection(self) -> None:
+        text = self._guarantee("no-telemetry")
+        assert "nothing is reported" in text
+        for claim in ("we collect", "usage data", "analytics", "telemetry is sent"):
+            assert claim not in text, f"no-telemetry guarantee asserts the opposite: {claim!r}"
+
+    def test_self_contained_output_denies_external_dependencies(self) -> None:
+        text = self._guarantee("self-contained-output")
+        assert "single file" in text
+        assert "no external dependency" in text
+
+    def test_no_guarantee_promises_something_the_tool_does_not_do(self) -> None:
+        """A blanket sweep for claims this tool must never make."""
+        document = build_capabilities(app, ExitCode)
+        blob = " ".join(g["description"].lower() for g in document["guarantees"])
+        for forbidden in (
+            "measures productivity",
+            "measures contribution",
+            "bus factor",
+            "uploads",
+            "phones home to",
+        ):
+            assert forbidden not in blob, f"a guarantee claims {forbidden!r}"
+
+
+@pytest.mark.unit
+class TestDerivedFactsAreActuallyDerived:
+    """The module's premise is that derived facts cannot drift. Test the seams."""
+
+    def test_output_formats_come_from_the_config_type(self) -> None:
+        """This was a hardcoded literal that nothing cross-checked."""
+        from typing import get_args
+
+        from reveille.config import OutputFormat
+
+        document = build_capabilities(app, ExitCode)
+        assert document["output_formats"] == [str(f) for f in get_args(OutputFormat)]
+
+    def test_output_formats_are_not_empty(self) -> None:
+        assert build_capabilities(app, ExitCode)["output_formats"]
+
+    def test_exit_codes_match_the_enum(self) -> None:
+        document = build_capabilities(app, ExitCode)
+        reported = {entry["code"] for entry in document["exit_codes"]}
+        assert reported == {member.value for member in ExitCode}
+
+    def test_schema_version_matches_the_models(self) -> None:
+        from reveille.domain.models import SCHEMA_VERSION
+
+        assert build_capabilities(app, ExitCode)["output_schema_version"] == SCHEMA_VERSION
+
+    def test_version_matches_the_package(self) -> None:
+        import reveille
+
+        assert build_capabilities(app, ExitCode)["version"] == reveille.__version__

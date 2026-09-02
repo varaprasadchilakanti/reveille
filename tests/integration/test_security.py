@@ -423,6 +423,12 @@ class TestSecondPassFindings:
             ("[filters]\nexclude_authors = 5\n", "list of strings"),
             ('[filters]\nexclude_authors = "abc"\n', "list of strings"),
             ('[ranking]\nweights = "x"\n', "table of named weights"),
+            # `str()` on a table or an array succeeds, so these produced a
+            # title of "{'a': 1}" and an output path of "[1, 2]" -- written
+            # out with exit 0 rather than refused.
+            ("[report]\ntitle = { a = 1 }\n", "expected a string, got dict"),
+            ("[report]\noutput = [1, 2]\n", "expected a string, got list"),
+            ("[report]\nbranch = 7\n", "expected a string, got int"),
         ],
     )
     def test_malformed_config_raises_a_typed_error(
@@ -485,6 +491,25 @@ class TestExclusionActuallyExcludes:
         )
 
         assert reader.unmatched_exclusions == ("nobody at all",)
+
+    def test_a_reused_reader_does_not_report_a_stale_failure(self, tmp_path: Path) -> None:
+        """The attribute was assigned only when non-empty, so it never cleared.
+
+        `GitReader` is a public class with a public attribute and no documented
+        single-use constraint. A second call with a filter that matched -- or
+        with no filter at all -- still reported the first call's failure, which
+        is a warning about a filter the caller did not ask for.
+        """
+        repo = _init_repo(tmp_path / "repo")
+        reader = GitReader(repo)
+
+        reader.read_commits(
+            branch="main", since=None, until=None, exclude_authors=["Nobody At All"]
+        )
+        assert reader.unmatched_exclusions == ("nobody at all",)
+
+        reader.read_commits(branch="main", since=None, until=None, exclude_authors=[])
+        assert reader.unmatched_exclusions == ()
 
 
 @pytest.mark.integration

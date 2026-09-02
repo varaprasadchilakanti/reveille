@@ -34,9 +34,9 @@ Reveille is designed for developers, engineering managers, and technical leads w
 - Contribution heatmap with a GitHub-style year-navigable grid showing per-day commit activity. Year tabs allow switching between calendar years; a contributor dropdown surfaces per-contributor views alongside the aggregated default.
 - Aggregate weekly commit timeline and per-contributor commit frequency chart, enabling direct comparison of burst contributors versus contributors with sustained low-volume engagement across the analysis window
 - Per-contributor breakdowns covering commits, lines added and removed, and active day counts
-- A structured ranking table assigning each contributor a tier designation based on weighted activity metrics
+- An opt-in ranking table (`--ranking`) assigning each contributor a tier designation based on weighted activity metrics. Off by default from 0.8.0 — read the caveat below before turning it on
 - Repository activity indicators including commit concentration, longest inactive streak, and consistency scores
-- Machine-readable output in JSON (ranked contributor statistics and repository metadata) and CSV (contributor table with BOM encoding for Excel compatibility) via `--format json`, `--format csv`
+- Machine-readable output in JSON (contributor statistics and repository metadata) and CSV (contributor table with BOM encoding for Excel compatibility) via `--format json`, `--format csv`
 
 **Design constraints that are non-negotiable:**
 
@@ -242,15 +242,15 @@ The generated HTML file is structured as a formal report with the following sect
 
 **Per-Contributor Commit Frequency** — A multi-trace line chart showing weekly commit frequency for each contributor individually across the analysis window. Each contributor is represented as a separate trace, enabling direct comparison of burst contributors versus those with sustained low-volume engagement — a distinction the aggregate timeline cannot convey.
 
-**Contributor Summary Table** — A ranked table listing each contributor with their commit count, lines added, lines removed, net line delta, active days, most recent commit date, and assigned tier designation.
+**Contributor Summary Table** — A table listing each contributor with their commit count, lines added, lines removed, net line delta, active days, and most recent commit date, ordered by commit count. With `--ranking` it additionally carries a rank, a tier designation and a composite score, and is headed *Contributor Rankings*.
 
 **Contribution Breakdown Charts** — Horizontal bar charts of commits and lines changed per contributor, and two donut charts showing each contributor's proportional share of total commits and total lines changed.
 
 **Repository Activity Indicators** — Commit concentration (the minimum number of contributors accounting for 50% of commits) and longest inactive streak within the analysis window. Commit concentration is a measure of how concentrated the commit history is, not a bus factor: bus factor is a property of line ownership across the surviving codebase, which commit counts cannot establish. See the [User Guide](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md#repository-summary) for how to read it.
 
-**JSON export** — When `--format json` is used, a structured JSON file is written at the same path stem as the HTML output. The payload contains repository metadata, ranked contributor statistics with all scoring fields, and derived health metrics. Suitable for dashboards, data warehouses, and CI integrations without parsing HTML.
+**JSON export** — When `--format json` is used, a structured JSON file is written at the same path stem as the HTML output. The payload contains repository metadata, contributor statistics, and derived health metrics; the scoring fields are present only with `--ranking`. Suitable for dashboards, data warehouses, and CI integrations without parsing HTML.
 
-**CSV export** — When `--format csv` is used, the ranked contributor table is written as a UTF-8 CSV file with BOM encoding. BOM ensures correct column rendering in Microsoft Excel on Windows without requiring a manual import wizard. Columns: rank, name, email, designation, tier, commits, lines added, lines deleted, net lines, active days, last commit date, composite score, percentile.
+**CSV export** — When `--format csv` is used, the contributor table is written as a UTF-8 CSV file with BOM encoding. BOM ensures correct column rendering in Microsoft Excel on Windows without requiring a manual import wizard. Columns: `rank`, `name`, `email`, `commits`, `lines_added`, `lines_deleted`, `net_lines`, `active_days`, `last_commit_date`. With `--ranking`, `designation` and `tier` follow `email`, and `composite_score` and `percentile` are appended. As in the JSON payload, the ranking columns are omitted entirely rather than written as zeroes — a `0` in a spreadsheet is a number someone will sort on.
 
 All charts are rendered with Plotly and are fully interactive — hover states, zoom, pan, and legend toggling are available without any external dependencies.
 

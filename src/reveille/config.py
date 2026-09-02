@@ -200,12 +200,20 @@ def _parse_report_section(report: dict[str, Any]) -> dict[str, Any]:
         ConfigurationError: If a date field contains an invalid ISO 8601 string.
     """
     kwargs: dict[str, Any] = {}
-    if "title" in report:
-        kwargs["title"] = str(report["title"])
-    if "output" in report:
-        kwargs["output_path"] = Path(str(report["output"]))
-    if "branch" in report:
-        kwargs["branch"] = str(report["branch"])
+    # `str()` on a table or an array succeeds and produces nonsense: a title
+    # of "{'a': 1}", or an output path of "[1, 2]", written out with exit 0.
+    # The sibling type checks in `_parse_filters_section` exist for exactly
+    # this reason; these three keys were missing them.
+    for key, field in (("title", "title"), ("output", "output_path"), ("branch", "branch")):
+        if key not in report:
+            continue
+        value = report[key]
+        if not isinstance(value, str):
+            raise ConfigurationError(
+                f"Invalid '{key}' in the [report] section of the configuration "
+                f"file: expected a string, got {type(value).__name__}."
+            )
+        kwargs[field] = Path(value) if field == "output_path" else value
     for field in ("since", "until"):
         if field in report:
             try:

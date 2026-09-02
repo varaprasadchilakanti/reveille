@@ -56,6 +56,40 @@ jobs:
       - name: Validate poetry.lock
         run: make check-lock
 
+  # Workflow correctness
+  #
+  # actionlint was configured as a pre-commit hook and cited as the
+  # workflow-correctness guard, but nothing on the server ran it: `make
+  # precommit` was referenced by no workflow, so the check only happened
+  # for developers who had installed the git hooks locally. A guard that
+  # depends on each contributor's local setup is not a gate.
+  #
+  # It runs through pre-commit rather than a separately downloaded binary
+  # so the version stays pinned in one place, `.pre-commit-config.yaml`.
+  # Complements zizmor rather than duplicating it: zizmor analyses
+  # security posture, actionlint analyses correctness -- unknown contexts,
+  # malformed matrices, expression type errors, and shellcheck over `run:`
+  # blocks.
+  # ----------------------------------------------------------------
+  workflows:
+    name: Workflow correctness (actionlint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: lockfile
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+      - name: Install pre-commit
+        run: python -m pip install --disable-pip-version-check "pre-commit==4.6.2"
+      - name: Run actionlint
+        run: pre-commit run actionlint --all-files --show-diff-on-failure
+
   lint:
     name: Lint (ruff)
     runs-on: ubuntu-latest

@@ -16,6 +16,7 @@ else.
 
 from __future__ import annotations
 
+import hashlib
 import re
 import tomllib
 from pathlib import Path
@@ -27,6 +28,9 @@ import reveille
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SRC = Path(reveille.__file__).parent
 _EXPECTED = "Apache-2.0"
+
+# SHA-256 of the canonical Apache License 2.0 text (11,358 bytes).
+_APACHE_2_0_SHA256 = "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
 
 # The template is a Jinja file, so its header is a Jinja comment rather than a
 # Python one. Both forms are matched, because "every source file" has to mean
@@ -67,10 +71,28 @@ class TestLicenceDeclarationsAgree:
         fill in the appendix placeholders -- risks breaking automated
         licence detection, which matches against the known text.
         """
-        text = (_REPO_ROOT / "LICENSE").read_text(encoding="utf-8")
+        raw = (_REPO_ROOT / "LICENSE").read_bytes()
+        text = raw.decode("utf-8")
+
+        # Pinned by digest, not by substring. Substring checks pass on a file
+        # that contains the MIT text *plus* the two strings being grepped for,
+        # which is not a licence check -- it is a spell check. The canonical
+        # Apache-2.0 text is 11,358 bytes with this digest; any edit at all,
+        # including filling in the appendix placeholders, breaks automated
+        # licence detection, so any edit at all should break this test.
+        assert hashlib.sha256(raw).hexdigest() == _APACHE_2_0_SHA256, (
+            "LICENSE is not the canonical Apache-2.0 text byte for byte. "
+            "If this was deliberate, the licence has changed and every other "
+            "declaration must change with it."
+        )
+
+        # Kept as diagnostics: these say *what* is wrong when the digest fails.
         assert "Apache License" in text
         assert "Version 2.0, January 2004" in text
         assert "TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION" in text
+        assert "Permission is hereby granted, free of charge" not in text, (
+            "LICENSE contains MIT permission text"
+        )
 
     def test_classifier_matches_the_declared_licence(self) -> None:
         """The Trove classifier agrees with the licence field.

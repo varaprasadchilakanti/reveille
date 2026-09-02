@@ -221,8 +221,15 @@ four stages, emitting a `ProgressEvent` before each:
 
 With `ranking_enabled=False`, stage 3 still produces
 `RankedContributor` objects, with `tier=0`, designation `"--"`, and
-score and percentile zeroed. The shape stays constant so the renderer
-has no branch for it.
+score and percentile zeroed. The shape stays constant so the *pipeline*
+needs no branch for it — but every renderer does branch, on
+`provenance.ranking_enabled` rather than on the list being non-empty.
+The placeholders are an internal convenience and must never reach a
+reader: HTML drops the rank, designation and score columns and retitles
+the section, and CSV omits those columns exactly as JSON omits the
+corresponding keys. Gating on `ranked_contributors` instead is the
+defect that shipped a "Contributor Rankings" table full of zeroes into
+the default report.
 
 ### Reading history
 

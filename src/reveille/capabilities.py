@@ -27,9 +27,10 @@ the installed binary and nothing else.
 from __future__ import annotations
 
 import enum
-from typing import Any
+from typing import Any, get_args
 
 from reveille import __version__
+from reveille.config import OutputFormat
 from reveille.domain.models import SCHEMA_VERSION
 
 # The contract version of this document itself, so a consumer can tell a shape
@@ -69,7 +70,11 @@ _CAPABILITIES: tuple[dict[str, str], ...] = (
     {
         "id": "activity-concentration",
         "description": (
-            "Report how many contributors account for a majority of commits in the window."
+            "Report how evenly commits are distributed across contributors in "
+            "the window: how many account for a majority, and the full "
+            "distribution as a Lorenz curve with its Gini coefficient. This "
+            "characterises the repository and names nobody, which is why it is "
+            "in the default report while the per-person ranking is not."
         ),
     },
     {
@@ -351,7 +356,7 @@ def build_capabilities(app: Any, exit_code_enum: type[enum.IntEnum]) -> dict[str
         "version": __version__,
         "summary": _SUMMARY,
         "output_schema_version": SCHEMA_VERSION,
-        "output_formats": ["html", "json", "csv"],
+        "output_formats": _output_formats(),
         "guarantees": [dict(item) for item in _GUARANTEES],
         "can": [dict(item) for item in _CAPABILITIES],
         "cannot": [dict(item) for item in _NOT_CAPABILITIES],
@@ -359,6 +364,26 @@ def build_capabilities(app: Any, exit_code_enum: type[enum.IntEnum]) -> dict[str
         "commands": _commands(app),
         "exit_codes": _exit_codes(exit_code_enum),
     }
+
+
+def _output_formats() -> list[str]:
+    """The output formats the tool actually accepts, read from the type.
+
+    This was a hardcoded `["html", "json", "csv"]` in the one module whose
+    stated premise is that derived facts cannot drift. `config.OutputFormat`
+    is the single definition the CLI and the config parser both validate
+    against, so adding a format there without touching this list would have
+    published a document that understated the tool -- silently, to a program
+    that trusts it.
+    """
+    formats = get_args(OutputFormat)
+    if not formats:
+        raise RuntimeError(
+            "Could not read the output formats from config.OutputFormat. "
+            "The capability document must not claim a format list it cannot "
+            "derive; refusing to emit a document rather than emit a wrong one."
+        )
+    return [str(item) for item in formats]
 
 
 def render_text(document: dict[str, Any]) -> str:

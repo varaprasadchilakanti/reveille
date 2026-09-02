@@ -119,6 +119,26 @@ _LINES_DELETED_COLOUR: str = "#e66767"
 # Contrast: 3.89:1 on the light plot surface, 4.17:1 on the dark one.
 _OTHER_SLICE_COLOUR: str = "#7d7d76"
 
+
+def _translucent(hex_colour: str, alpha: float) -> str:
+    """Return a `#rrggbb` colour as an `rgba(...)` string at the given alpha.
+
+    Area fills were previously written out as literal `rgba(57, 135, 229, ...)`
+    strings that happened to equal `_CATEGORICAL_PALETTE[0]`. Nothing coupled
+    them, so a palette change -- and the palette was replaced wholesale in
+    0.8.0 -- would have left a fill in the old hue under a line in the new one.
+
+    Args:
+        hex_colour: A colour in `#rrggbb` form.
+        alpha: Opacity between 0.0 and 1.0.
+
+    Returns:
+        The equivalent CSS `rgba()` string.
+    """
+    r, g, b = (int(hex_colour[i : i + 2], 16) for i in (1, 3, 5))
+    return f"rgba({r}, {g}, {b}, {alpha})"
+
+
 # Ceiling on a per-contributor bar chart. The height grew with the contributor
 # count and nothing bounded it: 5,000 contributors produced a chart 220,080
 # pixels tall, which no browser renders usefully. The bars compress past this
@@ -363,44 +383,50 @@ class Renderer:
                 "Create the directory before generating a report."
             )
 
+        # Ranking columns are omitted entirely when ranking is off, mirroring
+        # render_json. Emitting `tier,0` and `composite_score,0.0` puts a number
+        # a reader can sort on into the format most likely to be opened in a
+        # spreadsheet -- which is exactly the reading ADR 0010 exists to prevent.
+        # `rank` stays in both formats as the row ordinal; with ranking off the
+        # rows are ordered by commit count.
+        ranked = data.provenance.ranking_enabled
         fieldnames = [
             "rank",
             "name",
             "email",
-            "designation",
-            "tier",
             "commits",
             "lines_added",
             "lines_deleted",
             "net_lines",
             "active_days",
             "last_commit_date",
-            "composite_score",
-            "percentile",
         ]
+        if ranked:
+            fieldnames[3:3] = ["designation", "tier"]
+            fieldnames += ["composite_score", "percentile"]
 
         try:
             with resolved.open("w", encoding="utf-8-sig", newline="") as fh:
                 writer = csv.DictWriter(fh, fieldnames=fieldnames)
                 writer.writeheader()
                 for i, r in enumerate(data.ranked_contributors):
-                    writer.writerow(
-                        {
-                            "rank": i + 1,
-                            "name": _neutralise_csv_cell(r.stats.name),
-                            "email": _neutralise_csv_cell(r.stats.email),
-                            "designation": _neutralise_csv_cell(r.tier_designation),
-                            "tier": r.tier,
-                            "commits": r.stats.commit_count,
-                            "lines_added": r.stats.lines_added,
-                            "lines_deleted": r.stats.lines_deleted,
-                            "net_lines": r.stats.net_lines,
-                            "active_days": r.stats.active_days,
-                            "last_commit_date": r.stats.last_commit_date.isoformat(),
-                            "composite_score": r.composite_score,
-                            "percentile": r.percentile,
-                        }
-                    )
+                    row = {
+                        "rank": i + 1,
+                        "name": _neutralise_csv_cell(r.stats.name),
+                        "email": _neutralise_csv_cell(r.stats.email),
+                        "commits": r.stats.commit_count,
+                        "lines_added": r.stats.lines_added,
+                        "lines_deleted": r.stats.lines_deleted,
+                        "net_lines": r.stats.net_lines,
+                        "active_days": r.stats.active_days,
+                        "last_commit_date": r.stats.last_commit_date.isoformat(),
+                    }
+                    if ranked:
+                        row["designation"] = _neutralise_csv_cell(r.tier_designation)
+                        row["tier"] = r.tier
+                        row["composite_score"] = r.composite_score
+                        row["percentile"] = r.percentile
+                    writer.writerow(row)
         except OSError as exc:
             raise OutputPathError(f"Failed to write CSV report to '{resolved}': {exc}") from exc
 
@@ -512,7 +538,7 @@ def _build_timeline_chart(commits: list[Commit]) -> str:
             mode="lines",
             fill="tozeroy",
             line={"color": _CATEGORICAL_PALETTE[0], "width": 2},
-            fillcolor="rgba(57, 135, 229, 0.10)",
+            fillcolor=_translucent(_CATEGORICAL_PALETTE[0], 0.10),
             hovertemplate="Week of %{x}<br>Commits: %{y}<extra></extra>",
         )
     )
@@ -893,7 +919,7 @@ def _build_lorenz_chart(ranked: list[RankedContributor]) -> str:
             name="Observed distribution",
             line={"color": _CATEGORICAL_PALETTE[0], "width": 2},
             fill="tonexty",
-            fillcolor="rgba(57, 135, 229, 0.12)",
+            fillcolor=_translucent(_CATEGORICAL_PALETTE[0], 0.12),
             hovertemplate=(
                 "Least active %{x:.0f}% of contributors<br>made %{y:.0f}% of commits<extra></extra>"
             ),

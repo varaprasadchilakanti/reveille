@@ -55,6 +55,9 @@ check-lock:  ## Assert poetry.lock is valid TOML before anything tries to instal
 check-lock-sync:  ## Assert poetry.lock still agrees with pyproject.toml
 	@poetry check --lock
 
+# SHA-256 of the canonical Apache License 2.0 text (11,358 bytes).
+APACHE_2_0_SHA256 := cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30
+
 check-licence:  ## Assert LICENSE, pyproject.toml and reveille.__licence__ agree
 	@TOML_LIC=$$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['tool']['poetry']['license'])") \
 		|| { echo "check-licence: could not read the licence from pyproject.toml"; exit 1; }; \
@@ -69,8 +72,14 @@ check-licence:  ## Assert LICENSE, pyproject.toml and reveille.__licence__ agree
 		echo "Licence mismatch: pyproject.toml=$$TOML_LIC, __init__.py=$$CODE_LIC"; \
 		exit 1; \
 	fi; \
-	if ! grep -q "Apache License" LICENSE || ! grep -q "Version 2.0, January 2004" LICENSE; then \
-		echo "LICENSE does not contain the Apache License 2.0 text"; \
+	LIC_SHA=$$(python3 -c "import hashlib,sys; print(hashlib.sha256(open('LICENSE','rb').read()).hexdigest())") \
+		|| { echo "check-licence: could not read LICENSE"; exit 1; }; \
+	if [ "$$LIC_SHA" != "$(APACHE_2_0_SHA256)" ]; then \
+		echo "LICENSE is not the canonical Apache License 2.0 text."; \
+		echo "  expected sha256 $(APACHE_2_0_SHA256)"; \
+		echo "  actual   sha256 $$LIC_SHA"; \
+		echo "A grep for 'Apache License' passes on a file that also contains"; \
+		echo "the MIT text, so the whole file is compared instead."; \
 		exit 1; \
 	fi; \
 	echo "Licence declarations agree: $$TOML_LIC"

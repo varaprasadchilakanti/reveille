@@ -43,16 +43,29 @@ jobs:
           import os, re, sys
           body = os.environ.get("PR_BODY") or ""
           version = os.environ["CLA_VERSION"]
-          # Anchored per line, and the version must appear on the SAME line as
-          # the tick. With re.DOTALL and no anchor, any ticked box anywhere --
-          # "[x] I ran the tests" -- matched as long as the CLA string appeared
-          # later in the body, even inside a code fence. That is not evidence
-          # of acceptance, which is the only thing this check exists to record.
-          pattern = re.compile(
-              r"^\s*[-*]\s*\[[xX]\][^\n]*Reveille-CLA-" + re.escape(version),
+          # Scoped to a single markdown list item: the ticked bullet line plus
+          # its indented continuation lines. The version must appear inside the
+          # SAME item as the tick.
+          #
+          # Two failure modes this walks between. Matching the whole body with
+          # re.DOTALL let any ticked box anywhere -- "[x] I ran the tests" --
+          # pass as long as the CLA string appeared later, even inside a code
+          # fence; that is not evidence of acceptance. But requiring both on one
+          # physical line was worse in practice: the shipped pull-request
+          # template wraps that bullet across three lines, so the gate could
+          # never pass, and told the contributor to tick a box they had ticked.
+          # An item ends at the next bullet or at the next unindented line, so a
+          # following paragraph cannot lend its text to the tick.
+          #
+          # tests/unit/test_cla_gate.py runs this script against the shipped
+          # template, so the gate and the template cannot drift apart again.
+          body = re.sub(r"<!--.*?-->", "", body, flags=re.DOTALL)
+          item = re.compile(
+              r"^[ \t]*[-*][ \t]+\[[xX]\][^\n]*(?:\n[ \t]+[^\n]*)*",
               re.MULTILINE,
           )
-          if pattern.search(body):
+          token = "Reveille-CLA-" + version
+          if any(token in m.group(0) for m in item.finditer(body)):
               print(f"Contributor Licence Agreement {version} accepted in the pull request body.")
               sys.exit(0)
           print(

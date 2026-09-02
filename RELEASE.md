@@ -160,5 +160,22 @@ These live on GitHub, not in the repository, and are easy to lose:
 - A **`main` ruleset** requiring the CI status checks, blocking force pushes and
   restricting deletions. Without it a red build can merge — which is how an
   unreadable `poetry.lock` once reached `main` and stayed for seven merges.
+
+  The checks to require, by the name GitHub shows them under:
+
+  | Workflow | Check |
+  |---|---|
+  | `ci.yml` | Lock file integrity |
+  | `ci.yml` | Workflow correctness (actionlint) |
+  | `ci.yml` | Lint (ruff) |
+  | `ci.yml` | Type Check (mypy) |
+  | `ci.yml` | Test (pytest) |
+  | `ci.yml` | Known vulnerabilities (osv-scanner) |
+  | `ci.yml` | Reproducible build |
+  | `cla.yml` | contributor agreement |
+  | `zizmor.yml` | Analyse workflows (zizmor) |
+
+  A job that is configured but not *required* is advisory: it reports, and the
+  merge button stays green anyway. Requiring them is the whole point.
 - A **PyPI Trusted Publisher** pointing at `publish.yml` with environment `pypi`.
 - A **`pypi` environment** in repository settings.

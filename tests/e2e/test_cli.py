@@ -717,67 +717,77 @@ class TestGenerateCommand:
 # ------------------------------------------------------------------
 
 
+@pytest.fixture
+def init_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A temporary Git repository, made the current directory.
+
+    `reveille init` requires the working directory to be a repository root --
+    that is its documented contract. The success-path tests below relied on
+    pytest's ambient working directory happening to satisfy it, which is true
+    when the suite runs from this checkout and false anywhere else, such as an
+    unpacked sdist. They passed for a reason unrelated to what they assert.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    monkeypatch.chdir(repo)
+    return repo
+
+
 @pytest.mark.e2e
 class TestInitCommand:
     """End-to-end tests for `reveille init`."""
 
-    def test_creates_reveille_toml_at_output_path(
-        self, tmp_path_factory: pytest.TempPathFactory
-    ) -> None:
+    def test_creates_reveille_toml_at_output_path(self, init_cwd: Path) -> None:
         """Default invocation writes reveille.toml to the specified path."""
-        dest = tmp_path_factory.mktemp("init_create") / "reveille.toml"
+        dest = init_cwd / "reveille.toml"
         result = runner.invoke(app, ["init", "--output", str(dest)])
         assert result.exit_code == 0
         assert dest.exists()
 
-    def test_output_confirms_written_path(self, tmp_path_factory: pytest.TempPathFactory) -> None:
+    def test_output_confirms_written_path(self, init_cwd: Path) -> None:
         """The success message includes the written path."""
-        dest = tmp_path_factory.mktemp("init_confirm") / "reveille.toml"
+        dest = init_cwd / "reveille.toml"
         result = runner.invoke(app, ["init", "--output", str(dest)])
         assert "Configuration file written to" in result.output
 
-    def test_exits_nonzero_when_file_exists_without_force(
-        self, tmp_path_factory: pytest.TempPathFactory
-    ) -> None:
+    def test_exits_nonzero_when_file_exists_without_force(self, init_cwd: Path) -> None:
         """Non-zero exit when target exists and --force is absent."""
-        dest = tmp_path_factory.mktemp("init_conflict") / "reveille.toml"
+        dest = init_cwd / "reveille.toml"
         dest.write_text("existing", encoding="utf-8")
         result = runner.invoke(app, ["init", "--output", str(dest)])
         assert result.exit_code != 0
+        assert dest.read_text(encoding="utf-8") == "existing"
 
-    def test_force_flag_overwrites_existing_file(
-        self, tmp_path_factory: pytest.TempPathFactory
-    ) -> None:
+    def test_force_flag_overwrites_existing_file(self, init_cwd: Path) -> None:
         """--force succeeds and replaces the existing file."""
-        dest = tmp_path_factory.mktemp("init_force") / "reveille.toml"
+        dest = init_cwd / "reveille.toml"
         dest.write_text("stale", encoding="utf-8")
         result = runner.invoke(app, ["init", "--output", str(dest), "--force"])
         assert result.exit_code == 0
         assert dest.read_text(encoding="utf-8") != "stale"
 
-    def test_exits_nonzero_when_parent_directory_missing(
-        self, tmp_path_factory: pytest.TempPathFactory
-    ) -> None:
-        """Non-zero exit when the parent directory does not exist."""
-        base = tmp_path_factory.mktemp("init_missing_parent")
-        dest = base / "nonexistent_dir" / "reveille.toml"
+    def test_exits_nonzero_when_parent_directory_missing(self, init_cwd: Path) -> None:
+        """Non-zero exit when the parent directory does not exist.
+
+        Runs inside a real repository so the failure is attributable to the
+        missing directory. Outside one it exited non-zero for the wrong
+        reason, and asserting only on the code could not tell the difference.
+        """
+        dest = init_cwd / "nonexistent_dir" / "reveille.toml"
         result = runner.invoke(app, ["init", "--output", str(dest)])
         assert result.exit_code != 0
+        assert "not a Git repository" not in result.output
 
     def test_exits_nonzero_outside_git_repository(
-        self, tmp_path_factory: pytest.TempPathFactory
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Non-zero exit and no file written when CWD is not a Git repository."""
-        import os
-
-        non_git = tmp_path_factory.mktemp("non_git_cwd")
+        non_git = tmp_path / "plain"
+        non_git.mkdir()
         dest = non_git / "reveille.toml"
-        original = Path(os.getcwd())
-        try:
-            os.chdir(non_git)
-            result = runner.invoke(app, ["init", "--output", str(dest)])
-        finally:
-            os.chdir(original)
+        monkeypatch.chdir(non_git)
+        result = runner.invoke(app, ["init", "--output", str(dest)])
         assert result.exit_code != 0
         assert not dest.exists()
 
@@ -1087,8 +1097,23 @@ class TestReportAccessibility:
         assert "<main" in default_report_content
 
     def test_table_column_headers_declare_scope(self, default_report_content: str) -> None:
-        """Without scope, a screen reader cannot announce which column a cell belongs to."""
-        assert default_report_content.count('scope="col"') >= 10
+        """Without scope, a screen reader cannot announce which column a cell belongs to.
+
+        Asserted as a property rather than a count. The count was `>= 10`,
+        which was the ranked table's column total; when the ranking became
+        opt-in the default table lost three columns and the test failed
+        without anything being wrong. What matters is that no column header
+        lacks a scope, whichever columns are present.
+        """
+        import re
+
+        thead = re.findall(r"<thead>(.*?)</thead>", default_report_content, re.DOTALL)
+        assert thead, "no table header found in the report"
+        headers = [th for block in thead for th in re.findall(r"<th\b[^>]*>", block)]
+        assert headers, "table header contains no header cells"
+        assert all('scope="col"' in th for th in headers), (
+            f"column headers missing scope: {[th for th in headers if 'scope=' not in th]}"
+        )
 
     def test_table_row_headers_declare_scope(self, default_report_content: str) -> None:
         assert 'scope="row"' in default_report_content

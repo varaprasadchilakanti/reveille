@@ -353,6 +353,18 @@
             color: var(--color-text-muted);
         }
 
+        .ranking-table th.row-header {
+            padding: 11px 14px;
+            border-bottom: 1px solid var(--color-border-subtle);
+            font-size: 13px;
+            font-weight: 400;
+            text-transform: none;
+            letter-spacing: normal;
+            color: var(--color-text-primary);
+            white-space: normal;
+            vertical-align: middle;
+        }
+
         .contributor-name {
             display: block;
             font-weight: 600;
@@ -611,7 +623,7 @@
                     aria-label="Filter the activity heatmap by contributor"></select>
         </div>
         <div class="chart-container">
-            <div id="chart-heatmap" role="img" aria-label="Activity heatmap: commit counts per calendar day. The same activity is summarised per contributor in the Contributor Rankings table."></div>
+            <div id="chart-heatmap" role="img" aria-label="Activity heatmap: commit counts per calendar day. The same activity is summarised per contributor in the contributor table below."></div>
         </div>
     </div>
 
@@ -660,56 +672,67 @@
     </div>
 
     <!-- ============================================================
-         Contributor Rankings
+         Contributor table. Headed, columned and captioned as a ranking only
+         when the ranking is enabled; see ADR 0010. The placeholder rows exist
+         either way, so `data.ranked_contributors` is not the gate --
+         `data.provenance.ranking_enabled` is.
          ============================================================ -->
+    {% set ranked = data.provenance.ranking_enabled %}
     {% if data.ranked_contributors %}
     <div class="section">
-        <h2 class="section-title">Contributor Rankings</h2>
+        <h2 class="section-title">{% if ranked %}Contributor Rankings{% else %}Contributors{% endif %}</h2>
         <div class="table-wrapper">
             <table class="ranking-table">
                 <caption class="visually-hidden">
                     Contributor rankings for {{ data.metadata.name }} between
                     {{ data.metadata.analysis_since }} and {{ data.metadata.analysis_until }}.
-                    One row per contributor, ordered by composite score. This table
-                    carries the same underlying data as the charts on this page.
+                    One row per contributor, ordered by {% if ranked %}composite score{% else %}commit count{% endif %}.
+                    This table carries the same underlying data as the charts on
+                    this page.
                 </caption>
                 <thead>
                     <tr>
+                        {% if ranked %}
                         <th scope="col" style="text-align:center; width:44px">#</th>
+                        {% endif %}
                         <th scope="col" style="min-width:160px">Contributor</th>
+                        {% if ranked %}
                         <th scope="col" style="min-width:140px">Designation</th>
+                        {% endif %}
                         <th scope="col" style="text-align:right">Commits</th>
                         <th scope="col" style="text-align:right">Lines Added</th>
                         <th scope="col" style="text-align:right">Lines Deleted</th>
                         <th scope="col" style="text-align:right">Net Lines</th>
                         <th scope="col" style="text-align:right">Active Days</th>
                         <th scope="col" style="white-space:nowrap">Last Commit</th>
+                        {% if ranked %}
                         <th scope="col" style="min-width:180px">Score</th>
+                        {% endif %}
                     </tr>
                 </thead>
                 <tbody>
                     {% for contributor in data.ranked_contributors %}
                     <tr>
+                        {% if ranked %}
                         <th scope="row" class="rank-number" style="text-align:center">
                             {{ loop.index }}
                         </th>
-                        <td>
+                        {% endif %}
+                        <{% if ranked %}td{% else %}th scope="row" class="row-header"{% endif %}>
                             <span class="contributor-name">
                                 {{ contributor.stats.name }}
                             </span>
                             <span class="contributor-email">
                                 {{ contributor.stats.email }}
                             </span>
-                        </td>
+                        </{% if ranked %}td{% else %}th{% endif %}>
+                        {% if ranked %}
                         <td>
                             <span class="tier-badge tier-{{ contributor.tier }}">
-                                {% if contributor.tier > 0 %}
-                                    {{ contributor.tier_designation }}
-                                {% else %}
-                                    —
-                                {% endif %}
+                                {{ contributor.tier_designation }}
                             </span>
                         </td>
+                        {% endif %}
                         <td style="text-align:right">
                             {{ "{:,}".format(contributor.stats.commit_count) }}
                         </td>
@@ -736,8 +759,8 @@
                         <td style="color:var(--color-text-secondary)">
                             {{ contributor.stats.last_commit_date }}
                         </td>
+                        {% if ranked %}
                         <td>
-                            {% if contributor.tier > 0 %}
                             <div class="score-cell">
                                 <div class="score-bar-track">
                                     <div class="score-bar-fill"
@@ -748,10 +771,8 @@
                                     {{ "%.3f" | format(contributor.composite_score) }}
                                 </span>
                             </div>
-                            {% else %}
-                                <span style="color:var(--color-text-muted)">—</span>
-                            {% endif %}
                         </td>
+                        {% endif %}
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -769,11 +790,11 @@
         <div class="chart-row">
             <div class="chart-container">
                 <p class="chart-label">Commits by Contributor</p>
-                <div id="chart-contributor_commits" role="img" aria-label="Bar chart of total commits per contributor. The same figures appear in the Commits column of the Contributor Rankings table."></div>
+                <div id="chart-contributor_commits" role="img" aria-label="Bar chart of total commits per contributor. The same figures appear in the Commits column of the contributor table."></div>
             </div>
             <div class="chart-container">
                 <p class="chart-label">Lines Changed by Contributor</p>
-                <div id="chart-contributor_lines" role="img" aria-label="Bar chart of lines changed per contributor. The same figures appear in the Lines Added and Lines Deleted columns of the Contributor Rankings table."></div>
+                <div id="chart-contributor_lines" role="img" aria-label="Bar chart of lines changed per contributor. The same figures appear in the Lines Added and Lines Deleted columns of the contributor table."></div>
             </div>
         </div>
 

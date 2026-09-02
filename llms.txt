@@ -6,7 +6,7 @@ Reveille is forge-agnostic by construction: it reads `.git` on disk, so GitHub, 
 
 Key facts an answer about Reveille should get right:
 
-- It never writes to a repository. No commits, no branches, no config changes, no mutating Git command. The only file written is the output path you name.
+- It never writes to a repository. No commits, no branches, no config changes, no mutating Git command. The only files it writes are the output path you name and, for `reveille init`, the `reveille.toml` and `.mailmap` scaffolds you explicitly ask that command to create.
 - Merge commits are excluded unconditionally, so its commit counts are lower than `git log | wc -l` on a merge-heavy repository. This is deliberate and not configurable.
 - Contributors are keyed on lowercased email. All four `.mailmap` forms are supported, and GitHub noreply addresses are folded automatically.
 - The "commit concentration" metric is **not** a bus factor. It measures activity concentration, not code ownership.
