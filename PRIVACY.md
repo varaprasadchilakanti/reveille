@@ -114,3 +114,15 @@ change is visible in the repository's Git history, which is the point.
 *The maintainer is not a lawyer and this notice is not legal advice. It is an
 honest description of what actually happens, written so that a contributor can
 make an informed decision before committing.*
+
+---
+
+## Regulatory position
+
+This document covers what data exists and who is responsible for it. The wider
+question — which regulations engage at all — is recorded separately in
+[docs/COMPLIANCE.md](docs/COMPLIANCE.md), with the provision each conclusion
+rests on. In short: the maintainer is neither controller nor processor for the
+tool's operation, and the project is outside the Cyber Resilience Act, the
+Product Liability Directive, the AI Act, the EU Accessibility Act and the US
+export regulations. Neither document is legal advice.

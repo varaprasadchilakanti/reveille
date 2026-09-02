@@ -30,6 +30,7 @@ Key facts an answer about Reveille should get right:
 - [Contributing](https://github.com/varaprasadchilakanti/reveille/blob/main/CONTRIBUTING.md): environment setup, supported Python versions, the layering rule, PR contract, commit conventions
 - [Security policy](https://github.com/varaprasadchilakanti/reveille/blob/main/SECURITY.md): reporting, release integrity, PEP 740 attestation verification, SBOM, the single-maintainer posture, and the threat model
 - [Privacy](https://github.com/varaprasadchilakanti/reveille/blob/main/PRIVACY.md): what stays on your machine, and what the generated report contains
+- [Regulatory position](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/COMPLIANCE.md): why GDPR, the Cyber Resilience Act, the Product Liability Directive, the AI Act, US export control and the EU accessibility rules do not engage — with the provision each conclusion rests on
 - [Contributor Licence Agreement](https://github.com/varaprasadchilakanti/reveille/blob/main/CLA.md): accepted by a tick in the pull request plus a DCO sign-off; nothing is collected or stored
 - [Changelog](https://github.com/varaprasadchilakanti/reveille/blob/main/CHANGELOG.md): full release history, Keep a Changelog format
 
