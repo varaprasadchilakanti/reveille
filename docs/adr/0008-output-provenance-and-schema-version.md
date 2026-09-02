@@ -44,7 +44,7 @@ This is a **breaking JSON key change**, accepted pre-1.0 on the same reasoning a
 ADR 0005: a name with an established meaning attached to a different quantity is a
 defect, and carrying it into a stable API would be worse.
 
-**Every output carries an `AnalysisProvenance` block**: the Reveille version, the
+**The JSON output carries an `AnalysisProvenance` block**: the Reveille version, the
 analysed HEAD SHA, the filters *as requested* (`requested_branch`, `requested_since`,
 `requested_until`, `exclude_authors`, `min_commits`), whether a `.mailmap` was
 applied, whether ranking was enabled and under which weights, and whether the run was
@@ -78,6 +78,13 @@ silently comparable with a normal one.
 individuals, into a document intended to be shared. This is a smaller instance of
 something already true of the report — contributor email addresses are written into
 it — and it does not change the shape of that problem, but it does add to it.
+
+**Provenance is currently carried by the JSON output only.** The HTML report
+shows the repository summary and the analysed branch but no provenance block, and
+the CSV is a contributor table with none. That is a gap, not a decision: the HTML
+is the artefact that actually gets forwarded to somebody, so it is the format
+where "this report cannot say what it measured" bites hardest. Recorded here
+rather than quietly, and tracked for the next release.
 
 **What this does not do.** There is no content hash and no signature. The report says
 what produced it; it does not prove it. Provenance is self-asserted, exactly like the

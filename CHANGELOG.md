@@ -16,7 +16,7 @@ Nothing yet.
 
 ### Added
 
-- **Every output now records its own provenance.** A report stated numbers without
+- **The JSON output now records its own provenance.** A report stated numbers without
   stating what produced them, so two reports that disagreed could not be reconciled.
   JSON output now carries a `provenance` block: the Reveille version, the analysed
   HEAD commit SHA, whether a `.mailmap` was applied, whether ranking was enabled and
