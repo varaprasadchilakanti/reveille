@@ -102,7 +102,12 @@ class ReportConfig(BaseModel):
     until: datetime.date | None = Field(default=None)
     exclude_authors: list[str] = Field(default_factory=list)
     min_commits: int = Field(default=1, ge=1)
-    ranking_enabled: bool = Field(default=True)
+    # Off by default from 0.8.0. The ranking assigns named individuals a
+    # composite score, a percentile and a military tier designation, and a
+    # report that does that by default invites exactly the use its own
+    # documentation says it must not be put to. Opt in with --ranking or
+    # `[ranking] enabled = true`. See docs/adr/0010-ranking-is-opt-in.md.
+    ranking_enabled: bool = Field(default=False)
     ranking_weights: RankingWeights = Field(default_factory=RankingWeights)
     output_format: OutputFormat = Field(default="html")
     deterministic: bool = Field(default=False)

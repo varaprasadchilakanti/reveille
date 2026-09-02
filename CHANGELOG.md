@@ -16,6 +16,27 @@ Nothing yet.
 
 ### Added
 
+- **A Lorenz curve and Gini coefficient, replacing an ad-hoc concentration
+  number.** The default report now shows how evenly commits are distributed
+  across contributors — the cumulative share of commits against the cumulative
+  share of contributors, plotted against a diagonal of perfect equality.
+
+  Both are borrowed deliberately. The Lorenz curve (1905) and the Gini
+  coefficient (1912) are the standard instruments for concentration in a
+  population, and a century of interpretation *and of documented weakness* comes
+  with them. What they replace — "how many contributors account for a majority of
+  commits" — had no literature behind it, no defined range, and a step change in
+  value whenever one contributor crossed half.
+
+  Crucially, neither names anybody, and the curve is unchanged by who sits where
+  in it. It answers a question about the repository, which is why it stays in the
+  default report while the per-person ranking does not.
+
+  The report states the limits beside the chart: a high value is not a fault and
+  a low one is not a target, a single-maintainer project scores 0 by definition,
+  and the maximum for a sample of *n* contributors is `(n-1)/n`, so the number is
+  comparable against this repository over time and not against a different one.
+
 - **A Contributor Licence Agreement, and a `PRIVACY.md`.** Contributions are now
   accepted under [`CLA.md`](CLA.md) version 1.0, alongside a Developer Certificate
   of Origin sign-off. The CLA grants the rights, including the ability to offer
@@ -160,11 +181,31 @@ Nothing yet.
   colour with the top-ranked contributor **inside the same chart**; the residual
   slice now takes a reserved neutral, which is also what it means.
 
-- **62 new tests**: four on lock integrity, six on licence declarations, twelve on
-  provenance, schema version and determinism, twelve on chart colour assignment, thirteen security regression tests, and fifteen on the capability document. Each was observed failing against the
+- **80 new tests**: four on lock integrity, six on licence declarations, twelve on
+  provenance, schema version and determinism, twelve on chart colour assignment, thirteen security regression tests, fifteen on the capability document, fourteen on the Lorenz curve and Gini coefficient checked against values the definitions fix, and four on the ranking default. Each was observed failing against the
   defect it guards before being trusted.
 
 ### Changed
+
+- **The contributor ranking is off by default.** `--ranking` turns it on;
+  `--no-ranking` still works, so no existing invocation breaks. This is a
+  **breaking change to default output in every format**, and it is the intended
+  cost — the previous default was the problem.
+
+  Every release since 0.6.0 added a caveat around this feature rather than
+  changing it: that the weights are a judgement not a derived model, that it
+  measures volume and regularity of commits rather than contribution or value,
+  that DORA and SPACE both say such measures must not be applied to individuals.
+  All true, and none of it changed what a person saw when they ran the command —
+  a report opening with named individuals ranked by score and labelled with a
+  military rank. Documentation does not travel with the artefact, and the HTML
+  report is designed to be forwarded. Recorded as
+  [ADR 0010](docs/adr/0010-ranking-is-opt-in.md).
+
+  When ranking is off, `tier`, `tier_designation`, `composite_score` and
+  `percentile` are **absent** from the JSON rather than present with sentinel
+  values. `"tier": 0` is a number a consumer can mistake for data; an absent key
+  cannot be. `provenance.ranking.enabled` says which shape to expect.
 
 - **The licence moves from MIT to Apache-2.0.** Versions up to and including 0.7.0
   remain MIT permanently — relicensing is prospective only, and those versions stay

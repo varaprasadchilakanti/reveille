@@ -159,7 +159,8 @@ Generates the HTML performance report for the target repository.
 | `--exclude-author` | | `TEXT` | None | Exclude a contributor by name or email. Repeatable. |
 | `--min-commits` | | `INT` | `1` | Exclude contributors with fewer than this many commits in the analysis window. |
 | `--title` | | `TEXT` | Repository name | Override the report title displayed in the HTML output. |
-| `--no-ranking` | | Flag | Off | Omit the contributor ranking table from the output. |
+| `--ranking` | | Flag | Off | Include the contributor ranking table. **Off by default** — it scores and tiers named individuals, which is more than the figures support. See [ADR 0010](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/adr/0010-ranking-is-opt-in.md). |
+| `--no-ranking` | | Flag | Off | Explicitly omit the ranking table. Ranking is already off by default; this exists so existing invocations keep working. |
 | `--format` | | `TEXT` | `html` | Output format. Accepted values: `html`, `json`, `csv`. `json` and `csv` write files at the same path stem as `--output`. |
 | `--deterministic` | | Flag | Off | Produce byte-reproducible output. Pins `generated_at` and the end of the analysis window to the repository's own last commit rather than to the clock, so two runs over an identical repository produce identical bytes. |
 | `--verbose` | | Flag | Off | Emit diagnostic logging to stderr. Does not change the report. |

@@ -375,3 +375,45 @@ worth knowing about before you change what they cover:
 
 `make ci` runs the same gates CI does. Run it before opening a pull
 request.
+
+---
+
+## Lineage
+
+Almost nothing in this design is novel, and that is the point. Naming the
+established technique behind each choice makes it checkable against a
+literature rather than against the author's judgement, and it makes the two or
+three genuinely local decisions easier to find and argue with.
+
+| In this codebase | Established as | How it applies here |
+|---|---|---|
+| `CLI → Service → Domain ← Adapters`, with adapters as the only importers of GitPython, Plotly, Jinja2 and Typer | **Ports and adapters** (Cockburn, 2005), commonly *hexagonal architecture* | The domain depends on no I/O and no presentation framework, so the analysis can be reasoned about without a repository or a browser in the picture. The one honest exception is documented above. |
+| `test_layering.py`, `test_workflow_pins.py`, `test_lockfile.py`, `test_licence.py`, `test_capabilities.py`, `test_docs_links.py` | **Architectural fitness functions** (Ford, Parsons and Kua, *Building Evolutionary Architectures*, 2017) | Tests whose subject is an architectural property rather than a behaviour: the build fails when the *structure* stops holding, not when a feature breaks. They assert the dependency rule by importing each module in a subprocess and inspecting `sys.modules`; that every action is SHA-pinned with a truthful comment; that the lock parses; that every licence declaration agrees; that the capability document matches the program it describes. |
+| Refusing a revision that begins with `-`; accepting only object names `git rev-list` produced; refusing to write through a symlink; guards that exit non-zero when they cannot check | **Fail-safe defaults** and **complete mediation** (Saltzer and Schroeder, 1975) | The default is refusal, and every write passes the same check. This was learnt rather than designed: two release guards were found to *fail open* — comparing two empty strings and reporting agreement — which is the precise failure fail-safe defaults exists to name. |
+| `AnalysisProvenance` on every JSON report — tool version, analysed commit, filters as requested | **Data provenance** | An artefact that cannot state what it measured, over what, with which filters, is not evidence. The distinction between a filter *as requested* and the window that resulted is the part that does the work. |
+| `schema_version` as the first key of the payload | **Schema versioning** | A consumer decides whether it can parse the document before it tries. Introduced because a breaking key rename once shipped with no way to detect it except a `KeyError` at runtime. |
+| The Lorenz curve and Gini coefficient in `domain/concentration.py` | **Lorenz (1905)**, **Gini (1912)** | Standard instruments for concentration in a population, chosen over a bespoke "how many contributors make up a majority" precisely because a century of interpretation — and of documented weakness — comes with them. |
+| `docs/adr/` | **Architecture decision records** (Nygard, 2011) | Immutable once accepted; a changed decision gets a new record that supersedes the old one. |
+| `CHANGELOG.md`, version numbering | **Keep a Changelog**, **Semantic Versioning** | Under `0.y.z` the spec permits breaking changes in a minor bump, which is why the JSON key renames in 0.8.0 are documented loudly rather than deferred. |
+| Trusted Publishing, PEP 740 attestations, a CycloneDX SBOM, SHA-pinned actions | **Software supply chain integrity** (SLSA-adjacent; OpenSSF Scorecard) | Each answers "did this artefact come from this repository's release workflow", which a checksum cannot. |
+
+**What is local to this project, and therefore where scrutiny belongs.** Two
+things, and both are judgements rather than techniques:
+
+1. **The refusal to rank people by default** ([ADR 0010](adr/0010-ranking-is-opt-in.md)),
+   and the decision to state that refusal in machine-readable form so a program
+   reading `reveille capabilities` is told what the tool is not for. The
+   technique — a self-describing capability document — is ordinary. Putting the
+   *limits* in it, as prominently as the features, is the part worth arguing
+   with.
+2. **The rule that a guard is not trusted until it has been observed failing.**
+   Every check in this repository was verified by reintroducing the defect it
+   protects against and watching it fail. This is not a named practice as far as
+   the author is aware, and it is the single most productive habit in the
+   project's history: it has caught a documentation test that passed with the
+   defect present, a licence guard that passed while checking nothing, and a
+   security regression test that was rejecting its own payload for the wrong
+   reason.
+
+If either of those is wrong, the design is wrong, and it is better to find out
+by argument than after more is built on top.

@@ -304,6 +304,30 @@ def _validate_output_path(output: Path, repo_path: Path) -> None:
         )
 
 
+def _apply_ranking_flags(
+    merged: dict[str, Any],
+    *,
+    ranking: bool,
+    no_ranking: bool,
+) -> None:
+    """Resolve the two ranking flags against the configuration file.
+
+    Explicit flags win over the file. If both are given, `--no-ranking` wins:
+    between two contradictory instructions, the one that produces less is the
+    safer reading, and the ranking is the part of the output that most needs a
+    deliberate decision behind it.
+
+    Args:
+        merged: The configuration mapping being assembled, modified in place.
+        ranking: Whether `--ranking` was passed.
+        no_ranking: Whether `--no-ranking` was passed.
+    """
+    if ranking:
+        merged["ranking_enabled"] = True
+    if no_ranking:
+        merged["ranking_enabled"] = False
+
+
 def _merge_cli_flags(
     config_kwargs: ReportConfigKwargs,
     repo: Path,
@@ -315,6 +339,7 @@ def _merge_cli_flags(
     exclude_author: list[str] | None,
     min_commits: int | None,
     no_ranking: bool,
+    ranking: bool,
     output_format: str,
     deterministic: bool,
 ) -> ReportConfigKwargs:
@@ -334,7 +359,8 @@ def _merge_cli_flags(
         title: Report title override, or None if not provided.
         exclude_author: List of authors to exclude, or None.
         min_commits: Minimum commit threshold, or None if not provided.
-        no_ranking: Whether ranking is disabled.
+        no_ranking: Whether ranking is explicitly disabled.
+        ranking: Whether ranking is explicitly enabled.
         output_format: Output format string. Accepted values: html, json, csv.
         deterministic: Whether to produce byte-reproducible output.
 
@@ -361,8 +387,7 @@ def _merge_cli_flags(
         merged["exclude_authors"] = exclude_author
     if min_commits is not None:
         merged["min_commits"] = min_commits
-    if no_ranking:
-        merged["ranking_enabled"] = False
+    _apply_ranking_flags(merged, ranking=ranking, no_ranking=no_ranking)
     merged["output_format"] = cast(OutputFormat, output_format)
 
     return cast(ReportConfigKwargs, merged)
@@ -405,9 +430,23 @@ def generate(
         str | None,
         typer.Option("--title", help="Override the report title in the HTML output."),
     ] = None,
+    ranking: Annotated[
+        bool,
+        typer.Option(
+            "--ranking",
+            help=(
+                "Include the contributor ranking table. Off by default: it "
+                "scores and tiers named individuals, which is not what the "
+                "figures support."
+            ),
+        ),
+    ] = False,
     no_ranking: Annotated[
         bool,
-        typer.Option("--no-ranking", help="Omit the contributor ranking table from the output."),
+        typer.Option(
+            "--no-ranking",
+            help="Explicitly omit the ranking table. Ranking is already off by default.",
+        ),
     ] = False,
     output_format: Annotated[
         str,
@@ -474,6 +513,7 @@ def generate(
         exclude_author,
         min_commits,
         no_ranking,
+        ranking,
         output_format,
         deterministic,
     )

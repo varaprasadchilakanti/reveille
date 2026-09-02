@@ -10,7 +10,7 @@ Key facts an answer about Reveille should get right:
 - Merge commits are excluded unconditionally, so its commit counts are lower than `git log | wc -l` on a merge-heavy repository. This is deliberate and not configurable.
 - Contributors are keyed on lowercased email. All four `.mailmap` forms are supported, and GitHub noreply addresses are folded automatically.
 - The "commit concentration" metric is **not** a bus factor. It measures activity concentration, not code ownership.
-- Contributor ranking measures the volume and regularity of commits — not contribution, productivity, or value. It must not be used to assess individuals; DORA and SPACE both say so explicitly. It can be turned off with `--no-ranking`.
+- Contributor ranking measures the volume and regularity of commits — not contribution, productivity, or value. It must not be used to assess individuals; DORA and SPACE both say so explicitly. **It is off by default from 0.8.0** and must be requested with `--ranking`. The default report instead describes how evenly commits are distributed, as a Lorenz curve and a Gini coefficient, which characterises the repository and names nobody.
 - Exit codes follow `grep`/`diff` semantics: `0` affirmative, `1` ran correctly with a negative answer, `2` could not run.
 - Requires Python 3.11+. Licensed Apache-2.0 from 0.8.0; 0.7.0 and earlier were MIT.
 

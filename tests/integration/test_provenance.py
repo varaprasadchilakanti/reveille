@@ -182,8 +182,11 @@ class TestProvenance:
     def test_records_the_ranking_weights_that_produced_the_scores(
         self, two_branch_repo: Path, tmp_path: Path
     ) -> None:
-        """Scores are meaningless without the weights behind them."""
-        payload = _generate_json(two_branch_repo, tmp_path / "r.json")
+        """Scores are meaningless without the weights behind them.
+
+        Opting in explicitly, because ranking is off by default from 0.8.0.
+        """
+        payload = _generate_json(two_branch_repo, tmp_path / "r.json", ranking_enabled=True)
         ranking = payload["provenance"]["ranking"]
 
         assert ranking["enabled"] is True
@@ -247,3 +250,53 @@ class TestDeterministicOutput:
 
         assert payload["provenance"]["deterministic"] is True
         assert payload["metadata"]["generated_at"].startswith("2024-03-10")
+
+
+@pytest.mark.integration
+class TestRankingIsOptIn:
+    """The contributor ranking is off unless explicitly requested."""
+
+    def test_ranking_is_disabled_by_default(self, two_branch_repo: Path, tmp_path: Path) -> None:
+        """A default report must not score or tier named individuals."""
+        payload = _generate_json(two_branch_repo, tmp_path / "r.json")
+
+        assert payload["provenance"]["ranking"]["enabled"] is False
+
+    def test_ranking_fields_are_absent_rather_than_zeroed(
+        self, two_branch_repo: Path, tmp_path: Path
+    ) -> None:
+        """An omitted key cannot be misread; `"tier": 0` can.
+
+        Emitting sentinel values for something that was never computed hands a
+        consumer a number it may treat as data.
+        """
+        payload = _generate_json(two_branch_repo, tmp_path / "r.json")
+        contributor = payload["contributors"][0]
+
+        for field in ("tier", "tier_designation", "composite_score", "percentile"):
+            assert field not in contributor
+
+    def test_opting_in_restores_the_ranking_fields(
+        self, two_branch_repo: Path, tmp_path: Path
+    ) -> None:
+        """The control: the fields appear when asked for, so their absence means something."""
+        payload = _generate_json(two_branch_repo, tmp_path / "r.json", ranking_enabled=True)
+        contributor = payload["contributors"][0]
+
+        assert payload["provenance"]["ranking"]["enabled"] is True
+        for field in ("tier", "tier_designation", "composite_score", "percentile"):
+            assert field in contributor
+
+    def test_distribution_metrics_survive_the_ranking_being_off(
+        self, two_branch_repo: Path, tmp_path: Path
+    ) -> None:
+        """The Gini coefficient describes the repository, not the people.
+
+        It names nobody and is unchanged by who sits where in the order, which
+        is why it stays in the default report when the per-person ranking does
+        not.
+        """
+        payload = _generate_json(two_branch_repo, tmp_path / "r.json")
+
+        assert "gini_coefficient" in payload["derived"]
+        assert 0.0 <= payload["derived"]["gini_coefficient"] <= 1.0

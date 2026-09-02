@@ -203,6 +203,14 @@
             margin-bottom: 48px;
         }
 
+        .section-note {
+            margin: -6px 0 18px;
+            max-width: 78ch;
+            color: var(--color-text-secondary);
+            font-size: 12.5px;
+            line-height: 1.6;
+        }
+
         .section-title {
             display: flex;
             align-items: baseline;
@@ -618,6 +626,30 @@
     </div>
 
     <!-- ============================================================
+         Contribution Distribution (Lorenz curve)
+         ============================================================ -->
+    <div class="section">
+        <h2 class="section-title">Contribution Distribution</h2>
+        <p class="section-note">
+            How evenly commits are spread across contributors. The dotted
+            diagonal is perfect equality — every contributor with the same
+            number of commits. The further the solid line bows beneath it, the
+            more activity is concentrated in fewer people. The Gini coefficient
+            is the standard single-number summary of that gap, from 0 (equal)
+            towards 1 (concentrated).
+            <br>
+            This describes the repository, not the people in it. A high value
+            is not a fault and a low one is not a target: a project with one
+            maintainer and many occasional contributors scores high for
+            entirely ordinary reasons. It is comparable against this repository
+            over time, not against a different one.
+        </p>
+        <div class="chart-container">
+            <div id="chart-lorenz" role="img" aria-label="Lorenz curve showing the cumulative share of commits held by the cumulative share of contributors, plotted against a line of perfect equality."></div>
+        </div>
+    </div>
+
+    <!-- ============================================================
          Per-Contributor Commit Frequency
          ============================================================ -->
     <div class="section">
@@ -785,6 +817,10 @@
 <script type="application/json" id="spec-contributor_timeline">
 {{ charts.contributor_timeline | safe }}
 </script>
+<script type="application/json" id="spec-lorenz">
+{{ charts.lorenz | safe }}
+</script>
+
 <script type="application/json" id="spec-heatmap">
 {{ charts.heatmap | safe }}
 </script>
@@ -816,7 +852,8 @@
         'contributor_commits',
         'contributor_lines',
         'pie_commits',
-        'pie_lines'
+        'pie_lines',
+        'lorenz'
     ];
 
     var PLOTLY_CONFIG = {

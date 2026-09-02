@@ -113,8 +113,8 @@ _NOT_CAPABILITIES: tuple[dict[str, str], ...] = (
         ),
         "instead": (
             "Nothing here is fit for that purpose. The contributor ranking is a "
-            "visual ordering of commit volume, not an evaluation, and it can be "
-            "switched off entirely with --no-ranking."
+            "visual ordering of commit volume, not an evaluation. It is off by "
+            "default and must be requested explicitly with --ranking."
         ),
     },
     {

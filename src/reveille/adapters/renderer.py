@@ -52,6 +52,7 @@ from jinja2 import (
     select_autoescape,
 )
 
+from reveille.domain.concentration import gini_coefficient, lorenz_curve
 from reveille.domain.models import (
     Commit,
     RankedContributor,
@@ -117,6 +118,11 @@ _LINES_DELETED_COLOUR: str = "#e66767"
 # same way, in the one chart where every slice is visible at once.
 # Contrast: 3.89:1 on the light plot surface, 4.17:1 on the dark one.
 _OTHER_SLICE_COLOUR: str = "#7d7d76"
+
+# The Lorenz chart's reference diagonal. A reference line is not a series, so
+# it takes the same neutral as the residual slice rather than a categorical hue
+# -- it must read as scaffolding, not as a third contributor.
+_EQUALITY_LINE_COLOUR: str = "#7d7d76"
 
 # Pre-compiled patterns for sanitising user-controlled strings.
 # _SCRIPT_BLOCK_RE removes script elements including their content before
@@ -285,10 +291,21 @@ class Renderer:
                     "rank": i + 1,
                     "name": r.stats.name,
                     "email": r.stats.email,
-                    "tier": r.tier,
-                    "tier_designation": r.tier_designation,
-                    "composite_score": r.composite_score,
-                    "percentile": r.percentile,
+                    # Ranking fields are omitted entirely when ranking is off,
+                    # rather than emitted with sentinel values. A key carrying
+                    # `"tier": 0` is a number a consumer can read as data; an
+                    # absent key cannot be misread. `provenance.ranking.enabled`
+                    # says which shape to expect.
+                    **(
+                        {
+                            "tier": r.tier,
+                            "tier_designation": r.tier_designation,
+                            "composite_score": r.composite_score,
+                            "percentile": r.percentile,
+                        }
+                        if data.provenance.ranking_enabled
+                        else {}
+                    ),
                     "commit_count": r.stats.commit_count,
                     "lines_added": r.stats.lines_added,
                     "lines_deleted": r.stats.lines_deleted,
@@ -302,6 +319,7 @@ class Renderer:
             ],
             "derived": {
                 "commit_concentration": derived["commit_concentration"],
+                "gini_coefficient": derived["gini_coefficient"],
                 "longest_inactive_streak": derived["longest_inactive_streak"],
             },
         }
@@ -396,6 +414,12 @@ class Renderer:
         """
         return {
             "commit_concentration": _compute_commit_concentration(data.ranked_contributors),
+            # Rounded to two places: the third decimal of a Gini over a handful
+            # of contributors is noise, and printing it implies a precision the
+            # sample does not carry.
+            "gini_coefficient": round(
+                gini_coefficient([r.stats.commit_count for r in data.ranked_contributors]), 2
+            ),
             "longest_inactive_streak": _compute_longest_inactive_streak(
                 data.commits,
                 data.metadata.analysis_since,
@@ -443,6 +467,7 @@ class Renderer:
             "contributor_lines": _build_contributor_lines_chart(data.ranked_contributors),
             "pie_commits": _build_commit_share_pie(data.ranked_contributors),
             "pie_lines": _build_lines_share_pie(data.ranked_contributors),
+            "lorenz": _build_lorenz_chart(data.ranked_contributors),
         }
 
 
@@ -809,6 +834,76 @@ def _build_lines_share_pie(ranked: list[RankedContributor]) -> str:
 # ------------------------------------------------------------------
 # Derived metric helpers
 # ------------------------------------------------------------------
+
+
+def _build_lorenz_chart(ranked: list[RankedContributor]) -> str:
+    """Build a Lorenz curve of commit distribution across contributors.
+
+    The diagonal is perfect equality -- every contributor with the same number
+    of commits. The plotted curve bows beneath it in proportion to how
+    concentrated activity actually is, and the Gini coefficient in the title is
+    the standard single-number summary of that gap.
+
+    This is a statement about the repository, not about any person in it. No
+    contributor is named, and the curve is unchanged by who is where in it,
+    which is why it remains in the default report while the per-person ranking
+    does not.
+
+    Args:
+        ranked: Contributor list. Only the commit counts are used.
+
+    Returns:
+        A Plotly figure JSON string, or 'null' if there are fewer than two
+        contributors -- a Lorenz curve over one person is the diagonal, which
+        conveys nothing.
+    """
+    if len(ranked) < 2:
+        return "null"
+
+    counts = [r.stats.commit_count for r in ranked]
+    curve = lorenz_curve(counts)
+    gini = gini_coefficient(counts)
+
+    xs = [round(x * 100, 4) for x, _ in curve]
+    ys = [round(y * 100, 4) for _, y in curve]
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=[0, 100],
+            y=[0, 100],
+            mode="lines",
+            name="Perfect equality",
+            line={"color": _EQUALITY_LINE_COLOUR, "width": 2, "dash": "dot"},
+            hovertemplate="Perfect equality<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=xs,
+            y=ys,
+            mode="lines",
+            name="Observed distribution",
+            line={"color": _CATEGORICAL_PALETTE[0], "width": 2},
+            fill="tonexty",
+            fillcolor="rgba(57, 135, 229, 0.12)",
+            hovertemplate=(
+                "Least active %{x:.0f}% of contributors<br>made %{y:.0f}% of commits<extra></extra>"
+            ),
+        )
+    )
+
+    layout = _base_layout()
+    layout["showlegend"] = True
+    layout["legend"] = {"orientation": "h", "y": 1.14, "x": 0}
+    fig.update_layout(
+        **layout,
+        xaxis_title="Share of contributors (%)",
+        yaxis_title="Share of commits (%)",
+        title={"text": f"Gini coefficient: {gini:.2f}", "x": 0, "font": {"size": 13}},
+        height=320,
+    )
+    return _to_json(fig)
 
 
 def _compute_commit_concentration(ranked: list[RankedContributor]) -> int:
