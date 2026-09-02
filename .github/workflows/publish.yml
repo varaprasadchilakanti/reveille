@@ -22,6 +22,7 @@ jobs:
   publish:
     name: Build and publish to PyPI
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment:
       name: pypi
       url: https://pypi.org/project/reveille/
@@ -30,6 +31,8 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -62,10 +65,13 @@ jobs:
   sbom:
     name: Generate SBOM
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -102,6 +108,7 @@ jobs:
   attach-sbom:
     name: Attach SBOM to the GitHub Release
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: sbom
     permissions:
       contents: write

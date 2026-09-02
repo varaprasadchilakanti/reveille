@@ -14,6 +14,13 @@ on:
   pull_request:
     branches: [main]
 
+# A second push to the same branch makes the first run's result irrelevant.
+# Cancelling it frees a runner and removes a stale red/green signal from the
+# PR. `github.ref` keys per branch, so main and each PR queue independently.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
 
   # ----------------------------------------------------------------
@@ -33,6 +40,7 @@ jobs:
   lockfile:
     name: Lock file integrity
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
     steps:
@@ -48,11 +56,14 @@ jobs:
   lint:
     name: Lint (ruff)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: lockfile
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11"
@@ -75,11 +86,14 @@ jobs:
   typecheck:
     name: Type Check (mypy)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: lockfile
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11"
@@ -96,6 +110,7 @@ jobs:
   test:
     name: Test (pytest)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: lockfile
     permissions:
       contents: read
@@ -110,6 +125,8 @@ jobs:
         python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
