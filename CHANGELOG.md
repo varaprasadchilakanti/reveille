@@ -230,6 +230,33 @@ Nothing yet.
   [ADR 0005](docs/adr/0005-commit-concentration-not-bus-factor.md). Recorded as
   [ADR 0008](docs/adr/0008-output-provenance-and-schema-version.md).
 
+### Fixed
+
+- **`poetry.lock` was not valid TOML, and CI failed on seven consecutive merges to
+  `main`.** A merge conflict inside plotly's `[package.extras]` table was resolved by
+  removing the conflict markers and keeping both sides, which duplicated four keys
+  (`dev`, `dev-build`, `dev-core`, `dev-optional`). Duplicate keys are a TOML syntax
+  error, so `poetry install` failed outright and every `lint`, `typecheck` and `test`
+  job stopped before running anything — reporting "Unable to read the lock file",
+  which names the symptom rather than the cause. The lock was regenerated: every
+  runtime dependency resolves to exactly the version it did before, and six
+  development tools moved — `coverage` and `python-discovery` by a minor release,
+  `filelock`, `platformdirs`, `ruff` and `virtualenv` by a patch.
+
+- **The regenerated lock is `lock-version 2.0` rather than `2.1`**, and the `groups`
+  key is absent from all 51 packages. This accounts for most of the diff and is a
+  restoration rather than a regression: `2.1` was written by a Dependabot-era
+  regeneration under a Poetry 2.x, while every declared consumer of the lock — CI,
+  the Makefile, and `CONTRIBUTING.md` — pins Poetry 1.8.2, which predates that format
+  and only warns before proceeding.
+
+- **`make check-version` and `make check-licence` could pass while checking nothing.**
+  Both read their two values through `poetry`, and both compared the results without
+  first asserting either was non-empty. If `poetry` failed for any reason, both
+  variables became empty strings, `"" != ""` was false, and the guard reported
+  agreement and exited 0 — with `__licence__` set to anything at all. Both now fail
+  closed and refuse to compare two blanks.
+
 ### Security
 
 An adversarial review found five issues, each reproduced against a real
@@ -292,33 +319,6 @@ interpolation into `run:` steps).
   forgery payload was rejected by an unrelated field-count check rather than by
   the guard under test, so it proved nothing. It was rebuilt until removing the
   guard genuinely failed it.
-
-### Fixed
-
-- **`poetry.lock` was not valid TOML, and CI failed on seven consecutive merges to
-  `main`.** A merge conflict inside plotly's `[package.extras]` table was resolved by
-  removing the conflict markers and keeping both sides, which duplicated four keys
-  (`dev`, `dev-build`, `dev-core`, `dev-optional`). Duplicate keys are a TOML syntax
-  error, so `poetry install` failed outright and every `lint`, `typecheck` and `test`
-  job stopped before running anything — reporting "Unable to read the lock file",
-  which names the symptom rather than the cause. The lock was regenerated: every
-  runtime dependency resolves to exactly the version it did before, and six
-  development tools moved — `coverage` and `python-discovery` by a minor release,
-  `filelock`, `platformdirs`, `ruff` and `virtualenv` by a patch.
-
-- **The regenerated lock is `lock-version 2.0` rather than `2.1`**, and the `groups`
-  key is absent from all 51 packages. This accounts for most of the diff and is a
-  restoration rather than a regression: `2.1` was written by a Dependabot-era
-  regeneration under a Poetry 2.x, while every declared consumer of the lock — CI,
-  the Makefile, and `CONTRIBUTING.md` — pins Poetry 1.8.2, which predates that format
-  and only warns before proceeding.
-
-- **`make check-version` and `make check-licence` could pass while checking nothing.**
-  Both read their two values through `poetry`, and both compared the results without
-  first asserting either was non-empty. If `poetry` failed for any reason, both
-  variables became empty strings, `"" != ""` was false, and the guard reported
-  agreement and exited 0 — with `__licence__` set to anything at all. Both now fail
-  closed and refuse to compare two blanks.
 
 ## [0.7.0] — 2026-08-06
 

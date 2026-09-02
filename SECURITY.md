@@ -87,6 +87,68 @@ $ make sbom
 The output is byte-reproducible for a given `poetry.lock`, so a
 regenerated SBOM can be compared directly against a published one.
 
+## Project Posture
+
+Reveille has a **single maintainer**. That is a real limitation and it is stated
+here rather than left to be discovered, because two of the checks a security
+scanner applies to this repository cannot honestly be satisfied by one person,
+and pretending otherwise would be worse than the gap.
+
+**Code review.** OpenSSF Scorecard's Code-Review check samples recent commits
+for a second person's approval. There is no second person. Scorecard's own
+documentation concedes the case: *"Requiring reviews for all changes is
+infeasible for some projects, such as those with only one active participant."*
+GitHub also forbids approving your own pull request, so enabling a review
+requirement would either block every merge or require a bypass entry — which
+records an approval that did not happen. **This alert is dismissed deliberately,
+not overlooked.**
+
+What compensates for it, none of which is a substitute:
+
+- Every change reaches `main` through a pull request with required status checks.
+- CodeQL runs on every pull request with the `security-extended` query set.
+- Every GitHub Action is pinned to a commit SHA with a comment naming the
+  version, and a test fails the build if either property lapses.
+- Publishing is by Trusted Publisher over OIDC with PEP 740 attestations, so a
+  released artefact can be traced to the workflow run that built it.
+- Architectural properties are asserted by tests, not by review habit: the
+  layering rule, action pinning, lock-file validity, licence consistency, and
+  agreement between the capability document and the program it describes.
+
+**Fuzzing.** Scorecard's Fuzzing check credits OSS-Fuzz membership,
+ClusterFuzzLite, or a recognised native harness — for Python, `atheris` and
+nothing else. Adding an `atheris` stub would satisfy the string match without
+fuzzing anything, and this project does not do that.
+
+The honest position is that fuzzing *would* be worthwhile here and has not been
+done. Reveille parses untrusted input — author names, addresses and `.mailmap`
+contents from an arbitrary repository — and renders it into HTML and CSV. That
+is a genuine target with a genuine bug class, and an adversarial review of
+v0.8.0 found five real issues in exactly that surface. **The reason to fuzz is
+those bugs, not the badge**, and if it is adopted it will be for that reason.
+
+## Threat Model
+
+The case that matters is **a user running Reveille against a repository somebody
+else controls** — a clone, a fork, a pull-request branch. Everything in git
+history is then attacker-supplied text: author names, email addresses,
+`.mailmap` contents, and ref names. So is any `reveille.toml` at the repository
+root, because the CLI discovers that file automatically from the working
+directory, and its values reach the same places the flags do.
+
+v0.8.0 closed five issues found under that model, each reproduced against a real
+malicious repository before being fixed: argument injection into `git log` that
+allowed arbitrary file overwrite, CSV formula injection, contributor forgery
+through separator injection into author fields, an output-path validation bypass
+combined with symlink-following writes, and an unhandled crash on a forged
+timestamp. Regression tests for all five live in
+`tests/integration/test_security.py`, and each was observed failing against the
+reintroduced vulnerability before being trusted.
+
+Verified unaffected, by testing rather than assumption: HTML and JavaScript
+injection into the report, the offline guarantee, the `.mailmap` parser under
+malformed input, and the CI workflows.
+
 ## Scope
 
 Reveille is a local analysis tool. It reads only the Git repository
