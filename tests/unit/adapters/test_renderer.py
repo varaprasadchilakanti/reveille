@@ -35,6 +35,8 @@ from reveille.adapters.renderer import (
     _to_json,
 )
 from reveille.domain.models import (
+    SCHEMA_VERSION,
+    AnalysisProvenance,
     Commit,
     ContributorStats,
     RankedContributor,
@@ -46,6 +48,23 @@ from reveille.exceptions import OutputPathError
 # ------------------------------------------------------------------
 # Shared factory helpers
 # ------------------------------------------------------------------
+
+
+# Provenance is required by ReportData; these tests do not assert on it.
+_PROVENANCE = AnalysisProvenance(
+    reveille_version="0.0.0-test",
+    schema_version=SCHEMA_VERSION,
+    head_sha="0" * 40,
+    requested_branch=None,
+    requested_since=None,
+    requested_until=None,
+    exclude_authors=(),
+    min_commits=1,
+    ranking_enabled=True,
+    ranking_weights={"commits": 0.3, "lines": 0.25, "consistency": 0.25, "recency": 0.2},
+    mailmap_applied=False,
+    deterministic=False,
+)
 
 
 def _make_commit(
@@ -121,14 +140,19 @@ class TestRenderJson:
         metadata = RepositoryMetadata(
             name="test-repo",
             remote_url=None,
-            default_branch="main",
+            analysed_branch="main",
             total_commits=10,
             unique_contributors=1,
             analysis_since=datetime.date(2024, 1, 1),
             analysis_until=datetime.date(2024, 3, 31),
             generated_at=datetime.datetime(2024, 4, 1, 12, 0, tzinfo=datetime.UTC),
         )
-        return ReportData(metadata=metadata, ranked_contributors=ranked, commits=[])
+        return ReportData(
+            metadata=metadata,
+            provenance=_PROVENANCE,
+            ranked_contributors=ranked,
+            commits=[],
+        )
 
     def test_output_is_valid_json(self, tmp_path: Path) -> None:
         output = tmp_path / "report.json"
@@ -206,14 +230,19 @@ class TestRenderCsv:
         metadata = RepositoryMetadata(
             name="test-repo",
             remote_url=None,
-            default_branch="main",
+            analysed_branch="main",
             total_commits=15,
             unique_contributors=2,
             analysis_since=datetime.date(2024, 1, 1),
             analysis_until=datetime.date(2024, 3, 31),
             generated_at=datetime.datetime(2024, 4, 1, 12, 0, tzinfo=datetime.UTC),
         )
-        return ReportData(metadata=metadata, ranked_contributors=ranked, commits=[])
+        return ReportData(
+            metadata=metadata,
+            provenance=_PROVENANCE,
+            ranked_contributors=ranked,
+            commits=[],
+        )
 
     def test_header_row_contains_expected_columns(self, tmp_path: Path) -> None:
         output = tmp_path / "report.csv"

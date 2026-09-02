@@ -198,15 +198,45 @@ class Renderer:
         derived = self._compute_derived_stats(data)
 
         payload: dict[str, Any] = {
+            # First key in the document, deliberately: a consumer should be
+            # able to decide whether it can parse the rest before it tries.
+            "schema_version": data.provenance.schema_version,
             "metadata": {
                 "name": data.metadata.name,
                 "remote_url": data.metadata.remote_url,
-                "default_branch": data.metadata.default_branch,
+                "analysed_branch": data.metadata.analysed_branch,
                 "total_commits": data.metadata.total_commits,
                 "unique_contributors": data.metadata.unique_contributors,
                 "analysis_since": data.metadata.analysis_since.isoformat(),
                 "analysis_until": data.metadata.analysis_until.isoformat(),
                 "generated_at": data.metadata.generated_at.isoformat(),
+            },
+            # What produced these numbers, and over what. Two reports that
+            # disagree can only be reconciled if each states its own inputs.
+            "provenance": {
+                "reveille_version": data.provenance.reveille_version,
+                "head_sha": data.provenance.head_sha,
+                "deterministic": data.provenance.deterministic,
+                "mailmap_applied": data.provenance.mailmap_applied,
+                "filters": {
+                    "requested_branch": data.provenance.requested_branch,
+                    "requested_since": (
+                        data.provenance.requested_since.isoformat()
+                        if data.provenance.requested_since
+                        else None
+                    ),
+                    "requested_until": (
+                        data.provenance.requested_until.isoformat()
+                        if data.provenance.requested_until
+                        else None
+                    ),
+                    "exclude_authors": list(data.provenance.exclude_authors),
+                    "min_commits": data.provenance.min_commits,
+                },
+                "ranking": {
+                    "enabled": data.provenance.ranking_enabled,
+                    "weights": data.provenance.ranking_weights,
+                },
             },
             "contributors": [
                 {

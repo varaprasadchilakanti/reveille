@@ -5,13 +5,13 @@
 ## Context
 
 Reveille shipped versions 0.1.0 through 0.7.0 under the MIT Licence. Nothing
-about that was broken: MIT is OSI-approved, permissive, and one of three stated
-advantages over the commercial Bitbucket Marketplace alternatives — free and
-permissively licensed, alongside being the only real calendar view for Bitbucket
-Cloud and needing no admin approval to install.
+about that was broken: MIT is OSI-approved and permissive.
 
 So the question was never "is MIT failing", it was whether a different permissive
-licence would serve better before the project acquires outside contributors.
+licence would serve better before the project acquires outside contributors. Being
+free and permissively licensed is one of the few things Reveille offers that the paid
+Bitbucket Marketplace alternatives do not, alongside running without admin approval —
+so any change had to preserve that, not merely avoid breaking it.
 
 Two constraints were checked and are clear:
 

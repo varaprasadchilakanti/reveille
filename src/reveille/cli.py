@@ -315,6 +315,7 @@ def _merge_cli_flags(
     min_commits: int | None,
     no_ranking: bool,
     output_format: str,
+    deterministic: bool,
 ) -> ReportConfigKwargs:
     """Merge CLI flag values into the base configuration dict.
 
@@ -334,6 +335,7 @@ def _merge_cli_flags(
         min_commits: Minimum commit threshold, or None if not provided.
         no_ranking: Whether ranking is disabled.
         output_format: Output format string. Accepted values: html, json, csv.
+        deterministic: Whether to produce byte-reproducible output.
 
     Returns:
         A merged ReportConfigKwargs ready for ReportConfig construction.
@@ -341,6 +343,8 @@ def _merge_cli_flags(
     merged: dict[str, Any] = dict(config_kwargs)
     resolved_repo = repo.resolve()
     merged["repo_path"] = resolved_repo
+    if deterministic:
+        merged["deterministic"] = True
 
     if output != Path("reveille-report.html") or "output_path" not in merged:
         merged["output_path"] = _resolve_output_path(output, resolved_repo)
@@ -411,6 +415,16 @@ def generate(
             help="Output format. Accepted values: html, json, csv.",
         ),
     ] = "html",
+    deterministic: Annotated[
+        bool,
+        typer.Option(
+            "--deterministic",
+            help=(
+                "Produce byte-reproducible output. Pins the timestamp and the "
+                "analysis window to the repository rather than to the clock."
+            ),
+        ),
+    ] = False,
     config: Annotated[
         Path | None,
         typer.Option("--config", "-c", help="Path to a TOML configuration file."),
@@ -460,6 +474,7 @@ def generate(
         min_commits,
         no_ranking,
         output_format,
+        deterministic,
     )
 
     _validate_output_path(output, repo.resolve())

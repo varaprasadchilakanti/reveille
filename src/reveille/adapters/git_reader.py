@@ -205,6 +205,7 @@ class GitReader:
         Raises:
             RepositoryError: If the path is not a valid readable Git repository.
         """
+        self._mailmap_applied = False
         try:
             self._repo = Repo(str(repo_path), search_parent_directories=False)
         except InvalidGitRepositoryError as exc:
@@ -254,7 +255,7 @@ class GitReader:
             EmptyRepositoryError: If no commits match the specified window
                 after filtering.
         """
-        rev = branch or self._resolve_default_branch()
+        rev = branch or self._resolve_active_branch()
 
         log_args: list[str] = ["--no-merges", "--numstat", _LOG_FORMAT]
         if since is not None:
@@ -289,6 +290,7 @@ class GitReader:
             ) from exc
 
         mailmap = self._read_mailmap()
+        self._mailmap_applied = bool(mailmap.by_email or mailmap.by_name_and_email)
 
         commits: list[Commit] = []
         for record in raw_log.split(_RECORD_SEP):
@@ -396,6 +398,7 @@ class GitReader:
         unique_contributors: int,
         analysis_since: datetime.date,
         analysis_until: datetime.date,
+        branch: str | None = None,
     ) -> RepositoryMetadata:
         """Read repository-level metadata.
 
@@ -408,6 +411,9 @@ class GitReader:
             unique_contributors: Unique contributor count after filtering.
             analysis_since: Start of the analysis window.
             analysis_until: End of the analysis window.
+            branch: The ref the analysis walked, as requested by the caller.
+                When omitted the active branch is used -- the same fallback
+                `read_commits` applies, so the two cannot disagree.
 
         Returns:
             A populated RepositoryMetadata instance.
@@ -417,7 +423,7 @@ class GitReader:
         return RepositoryMetadata(
             name=self._repo_path.name,
             remote_url=remote_url,
-            default_branch=self._resolve_default_branch(),
+            analysed_branch=branch or self._resolve_active_branch(),
             total_commits=total_commits,
             unique_contributors=unique_contributors,
             analysis_since=analysis_since,
@@ -429,7 +435,7 @@ class GitReader:
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _resolve_default_branch(self) -> str:
+    def _resolve_active_branch(self) -> str:
         """Return the current active branch name.
 
         Falls back to 'HEAD' when the repository is in a detached HEAD
@@ -442,6 +448,38 @@ class GitReader:
             return self._repo.active_branch.name
         except TypeError:
             return "HEAD"
+
+    def resolve_head_sha(self, branch: str | None = None) -> str | None:
+        """Return the full SHA at the tip of the ref that was analysed.
+
+        This is what pins a report to an exact repository state: the same SHA
+        with the same filters must reproduce the same numbers.
+
+        Args:
+            branch: The ref to resolve. Defaults to the active branch, matching
+                `read_commits` and `read_metadata`.
+
+        Returns:
+            The 40-character commit SHA, or None if the ref cannot be resolved
+            -- an empty repository or an unborn branch, neither of which is an
+            error worth failing a report over.
+        """
+        rev = branch or self._resolve_active_branch()
+        try:
+            return str(self._repo.commit(rev).hexsha)
+        except Exception:
+            return None
+
+    @property
+    def mailmap_applied(self) -> bool:
+        """Whether a non-empty `.mailmap` was applied during aggregation.
+
+        False until `aggregate_contributor_stats` has run, because that is
+        where the file is read. Identity merging materially changes contributor
+        counts, so a report that used one is not comparable with a report that
+        did not.
+        """
+        return self._mailmap_applied
 
     def _resolve_remote_url(self) -> str | None:
         """Return the URL of the origin remote, or the first available remote.

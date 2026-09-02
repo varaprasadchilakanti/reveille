@@ -13,6 +13,16 @@ from __future__ import annotations
 import datetime
 from dataclasses import dataclass, field
 
+# Version of the structured-output contract, independent of the release
+# version. Consumers parse `schema_version` to decide whether they can read a
+# payload. It changes only when the shape changes, and v0.7.0 proved why it is
+# needed: `derived.bus_factor` was renamed to `derived.commit_concentration`
+# with no way for a consumer to detect the change except a KeyError at runtime.
+#
+# Bump the major on any removal or rename; bump the minor on a purely additive
+# field. See docs/adr/0008-output-provenance-and-schema-version.md.
+SCHEMA_VERSION = "1.0"
+
 
 @dataclass(frozen=True)
 class Commit:
@@ -75,16 +85,54 @@ class RankedContributor:
 
 @dataclass(frozen=True)
 class RepositoryMetadata:
-    """Metadata describing the target repository and the analysis window."""
+    """Metadata describing the target repository and the analysis window.
+
+    `analysed_branch` is the ref the analysis actually walked. It was called
+    `default_branch` through v0.7.0 and held neither the default branch nor the
+    analysed one -- it was recomputed from whatever happened to be checked out,
+    so a report produced with `--branch` named the wrong ref in both the HTML
+    and the JSON. See ADR 0005 for the precedent: a label with an established
+    meaning attached to a different quantity is a defect, not a naming quibble.
+    """
 
     name: str
     remote_url: str | None
-    default_branch: str
+    analysed_branch: str
     total_commits: int
     unique_contributors: int
     analysis_since: datetime.date
     analysis_until: datetime.date
     generated_at: datetime.datetime
+
+
+@dataclass(frozen=True)
+class AnalysisProvenance:
+    """How a report was produced: the tool, the exact input, and the filters.
+
+    A report states numbers; provenance states what those numbers measured.
+    Without it two reports that disagree cannot be reconciled, because nothing
+    records whether they differed in filters, in window, in ranking weights, or
+    in the repository state itself.
+
+    The distinction between `requested_*` and the resolved values in
+    `RepositoryMetadata` is deliberate. `analysis_since` records where the
+    window *began*; `requested_since` records whether anybody *asked* for that.
+    A reader cannot otherwise tell "the full history, which starts in March"
+    from "filtered to start in March".
+    """
+
+    reveille_version: str
+    schema_version: str
+    head_sha: str | None
+    requested_branch: str | None
+    requested_since: datetime.date | None
+    requested_until: datetime.date | None
+    exclude_authors: tuple[str, ...]
+    min_commits: int
+    ranking_enabled: bool
+    ranking_weights: dict[str, float] | None
+    mailmap_applied: bool
+    deterministic: bool
 
 
 @dataclass(frozen=True)
@@ -111,5 +159,6 @@ class ReportData:
     """
 
     metadata: RepositoryMetadata
+    provenance: AnalysisProvenance
     ranked_contributors: list[RankedContributor]
     commits: list[Commit] = field(default_factory=list)
