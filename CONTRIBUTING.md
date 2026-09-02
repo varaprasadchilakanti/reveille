@@ -170,18 +170,6 @@ Reveille is licensed under the [Apache Licence 2.0](LICENSE) from version
 0.8.0 onward. Versions up to and including 0.7.0 were released under the MIT
 Licence, and that grant is unaffected.
 
-There is no contributor licence agreement to sign. Apache-2.0 §5 already
-settles the question:
-
-> Unless You explicitly state otherwise, any Contribution intentionally
-> submitted for inclusion in the Work by You to the Licensor shall be under
-> the terms and conditions of this License, without any additional terms or
-> conditions.
-
-So opening a pull request licenses that contribution under Apache-2.0, and
-nothing further is required of you. If you want to contribute under different
-terms, say so in the pull request and we will discuss it before merging.
-
 New source files should carry the two-line SPDX header the rest of the tree
 uses, so that a file still declares its licence if it is ever separated from
 this repository:
@@ -194,3 +182,123 @@ this repository:
 `make check-licence` asserts that `LICENSE`, `pyproject.toml` and
 `reveille.__licence__` agree, and `tests/unit/test_licence.py` asserts that
 every source file carries a header naming the same licence.
+
+## Contributor Licence Agreement
+
+Pull requests to this repository require a contributor licence agreement.
+Filing an issue, reporting a bug, or joining a design discussion does not.
+
+**Read [CLA.md](CLA.md).** Its first section explains the whole thing in plain
+English and takes about two minutes.
+
+### The short version
+
+You keep the copyright in everything you write. The agreement is a
+**licence**, not an assignment — nothing is transferred, and you remain free
+to reuse your own code anywhere else on any terms you like. What you grant is
+permission broad enough that this project can distribute your contribution
+under its current licence *and* under a different licence later, if the
+project ever changes licence.
+
+In return, [CLA.md](CLA.md) §2.3(b) fixes a floor: whatever else happens, your
+contribution stays available under the licence the project was using on the day
+you contributed. That licence can be added to. It cannot be taken away.
+
+Apache-2.0 §5 already licenses an ordinary pull request under Apache-2.0
+without any of this. The agreement exists for one reason: §5 licenses your
+contribution under *that* licence and only that licence, so a future licence
+change would otherwise require tracking down every past contributor. The Linux
+Foundation lists this as one of the three standard reasons a project adopts a
+CLA — see
+<https://bestpractices.linuxfoundation.org/ip/contribution-mechanisms-cla.html>.
+
+If you would rather contribute on different terms, say so in the pull request
+and it will be discussed on its merits rather than refused automatically.
+
+### How to accept it
+
+Two steps, both of which you are probably close to doing already.
+
+**1. Sign off your commits.** Every commit in the pull request needs a
+`Signed-off-by` trailer:
+
+```bash
+git commit --signoff -m "fix(cli): correct exit code on missing config"
+```
+
+To add it to commits you have already made:
+
+```bash
+git rebase --signoff main
+```
+
+Git deliberately has no configuration option that turns `--signoff` on by
+default — `git commit --help` states: *"Git does not (and will not) have a
+configuration variable to enable the --signoff command line option by
+default"*. (`format.signOff` affects `git format-patch`, not `git commit`.)
+If you want it automatic, use an alias or a hook:
+
+```bash
+git config --local alias.ci "commit --signoff"
+```
+
+The trailer means you certify the
+[Developer Certificate of Origin 1.1](https://developercertificate.org/) — that
+you actually wrote the code, or have the right to submit it. The verbatim text
+is in [docs/cla/DCO.txt](docs/cla/DCO.txt).
+
+**2. Tick the box in the pull request description.** The pull request template
+carries this line:
+
+```
+- [ ] I have read [CLA.md](CLA.md) and I accept the Reveille
+  Contributor Licence Agreement, version 1.0 (`Reveille-CLA-1.0`), for the
+  contributions in this pull request and for my future contributions to this
+  project. My commits are signed off (`git commit --signoff`) under the
+  Developer Certificate of Origin 1.1.
+```
+
+Change `[ ]` to `[x]`. Do not edit the wording — the `cla` CI job matches on
+the version identifier, and an altered line will not be recognised.
+
+That is the whole process. There is no form, no email, no external service and
+no account to create.
+
+### Which version applies
+
+The agreement is versioned. The version identified in your pull request
+checkbox is the version that governs your contribution. Superseded versions
+stay in [docs/cla/](docs/cla/) and in this repository's Git history, so it is
+always possible to establish which text a given contribution was made under.
+Changing the agreement never changes the terms of a contribution already made.
+
+### What is recorded about you
+
+Nothing beyond what you publish yourself.
+
+This project keeps **no signature register**: no `signatures.json`, no
+database, no third-party CLA service. The record of your acceptance is the
+pull request and your own commit trailers, which live on GitHub and in this
+repository's Git history. The only personal data involved is the name and
+email address you chose to put in your own commits.
+
+If you do not want your email address to be public, set Git to use a GitHub
+no-reply address before you commit — see
+[GitHub's email addresses reference](https://docs.github.com/en/account-and-profile/reference/email-addresses-reference).
+A signed-off commit with a no-reply address is accepted.
+
+Please note that Git history is append-only in practice: once a commit is
+merged and cloned, the name and email in it cannot realistically be removed
+from every copy. The Developer Certificate of Origin says the same thing in
+its clause (d). Do not put anything in a commit that you would not want
+published permanently.
+
+[PRIVACY.md](PRIVACY.md) sets out exactly what is held, why, for how long, and
+what can and cannot be undone — including a straight answer about erasure from
+Git history. Questions or requests about personal data go to the address given
+there.
+
+> **This project's maintainer is not a lawyer, and none of the above is legal
+> advice.** [CLA.md](CLA.md) is adapted from published agreements whose authors
+> permit adaptation; the adaptation has not been reviewed by counsel. If the
+> agreement matters to your employer, have them read it.

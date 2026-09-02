@@ -1,0 +1,89 @@
+# .github/workflows/cla.yml
+#
+# Verifies two things on every pull request, and stores nothing:
+#   1. the contributor-agreement checkbox in the PR body is ticked, and names
+#      the CLA version this repository currently requires;
+#   2. every commit in the PR carries a Signed-off-by trailer (DCO 1.1).
+#
+# It writes no file, commits nothing, and calls no third-party service. The
+# evidence of acceptance is the pull request and the commit trailers
+# themselves -- data the contributor already published. That is deliberate:
+# a committed signatures file would turn a name-and-email register into a
+# filing system the maintainer controls.
+
+name: cla
+
+# 'pull_request' (not 'pull_request_target') is deliberate: fork pull requests
+# then run with a read-only token and no access to repository secrets, so
+# checking out the contributor's head commit here is safe.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+env:
+  CLA_VERSION: "1.0"
+
+jobs:
+  agreement:
+    name: contributor agreement
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkbox is ticked for the current CLA version
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          python3 - <<'PY'
+          import os, re, sys
+          body = os.environ.get("PR_BODY") or ""
+          version = os.environ["CLA_VERSION"]
+          pattern = re.compile(
+              r"-\s*\[[xX]\].*Reveille-CLA-" + re.escape(version),
+              re.DOTALL,
+          )
+          if pattern.search(body):
+              print(f"Contributor Licence Agreement {version} accepted in the pull request body.")
+              sys.exit(0)
+          print(
+              "The contributor-agreement checkbox is not ticked, or names a "
+              f"version other than {version}.\n\n"
+              "Read CLA.md, then edit the pull request description and tick the box in the "
+              "'Contributor Licence Agreement' section. Do not edit the wording of that line."
+          )
+          sys.exit(1)
+          PY
+
+      - name: Checkout the pull request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Every commit is signed off
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # base.sha can be stale if the base branch moved; use the merge base.
+          BASE="$(git merge-base "$BASE" "$HEAD")"
+          missing=0
+          while read -r sha; do
+            if ! git log -1 --format='%B' "$sha" | grep -qiE '^Signed-off-by: .+ <.+@.+>$'; then
+              echo "::error::missing Signed-off-by trailer: $(git log -1 --format='%h %s' "$sha")"
+              missing=1
+            fi
+          done < <(git rev-list --no-merges "$BASE".."$HEAD")
+          if [ "$missing" -ne 0 ]; then
+            echo "Sign off your commits with 'git commit --signoff'."
+            echo "To fix existing commits: git rebase --signoff ${BASE}"
+            exit 1
+          fi
+          echo "All commits are signed off."

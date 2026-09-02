@@ -423,19 +423,12 @@ See [CHANGELOG.md](https://github.com/varaprasadchilakanti/reveille/blob/main/CH
 
 ---
 
-## Licence
+## Contributing
 
-Reveille is released under the [Apache Licence 2.0](https://github.com/varaprasadchilakanti/reveille/blob/main/LICENSE).
-Copyright 2026 Varaprasad Chilakanti.
+Contributions are welcome. Please read [CONTRIBUTING.md](https://github.com/varaprasadchilakanti/reveille/blob/main/CONTRIBUTING.md) before opening a pull request. It covers the development environment setup, architecture overview, pull request contract, code style requirements, and commit message conventions.
 
-**Versions up to and including 0.7.0 were released under the MIT Licence.**
-That grant is unaffected: anything already obtained under MIT stays under MIT,
-and MIT remains available for those versions in the Git history. The change
-applies from 0.8.0 onward.
+Pull requests carry two requirements beyond passing CI: each commit must be signed off (`git commit --signoff`), and the contributor-agreement box in the pull request template must be ticked. The agreement is [CLA.md](https://github.com/varaprasadchilakanti/reveille/blob/main/CLA.md); it opens with a plain-English explanation, and it does **not** transfer your copyright — you keep it, and you remain free to reuse your own code anywhere else. Filing issues and taking part in design discussions requires neither.
 
-Apache-2.0 was chosen for three things MIT does not provide: an express patent
-grant (§3), an automatic inbound-equals-outbound rule for contributions (§5),
-so a pull request needs no separate agreement, and an explicit statement that
-the licence grants no trademark rights (§6). The reasoning, including what the
-change costs, is recorded in
-[ADR 0007](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/adr/0007-apache-2-0-licence.md).
+Participation is governed by the [Code of Conduct](https://github.com/varaprasadchilakanti/reveille/blob/main/CODE_OF_CONDUCT.md).
+
+---

@@ -16,6 +16,34 @@ Nothing yet.
 
 ### Added
 
+- **A Contributor Licence Agreement, and a `PRIVACY.md`.** Contributions are now
+  accepted under [`CLA.md`](CLA.md) version 1.0, alongside a Developer Certificate
+  of Origin sign-off. The CLA grants the rights, including the ability to offer
+  the project under an additional licence later; the DCO certifies provenance per
+  commit. Recorded as [ADR 0009](docs/adr/0009-contributor-licence-agreement.md),
+  which also narrows the claim in ADR 0007 that Apache-2.0 §5 left nothing to
+  administer — §5 carves out "any separate license agreement you may have
+  executed with Licensor", which is what this is.
+
+  The text is adapted from the Apache ICLA v2.2 under the ASF's express reuse
+  permission, with all Apache references removed and the derivation noted as that
+  permission requires, plus the outbound-licence clause from the Harmony
+  Agreements under CC BY 3.0. It carries a floor the ICLA does not: whatever else
+  the project is later licensed under, contributions stay available under the
+  licence in force when they were made.
+
+  **Acceptance collects nothing.** A contributor ticks a box in the pull request
+  and signs off their commits — both data they publish themselves — and a CI job
+  verifies it and writes nothing. There is no signatures file, no database, and
+  no third-party service, which is deliberate: a signature register would make
+  the maintainer a data controller for a set of names and addresses, and a
+  committed one could never be erased from anybody's clone.
+
+  `PRIVACY.md` states what the tool does with data (nothing leaves your machine),
+  what the *report* contains (contributor names and email addresses, which makes
+  whoever circulates it responsible for it), and what the project holds about
+  contributors.
+
 - **`reveille capabilities`** — a description of what the tool can and cannot do,
   in plain text or JSON. Written for a program as much as a person: an agent or a
   script can ask the installed binary directly instead of inferring from a README.

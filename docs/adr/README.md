@@ -32,3 +32,4 @@ Deprecated.
 | [0006](0006-offline-single-file-report.md) | The report is a single offline file | Accepted |
 | [0007](0007-apache-2-0-licence.md) | The licence moves from MIT to Apache-2.0 | Accepted |
 | [0008](0008-output-provenance-and-schema-version.md) | Output records its own provenance and declares a schema version | Accepted |
+| [0009](0009-contributor-licence-agreement.md) | Contributions are accepted under a Contributor Licence Agreement | Accepted |
