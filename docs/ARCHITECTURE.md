@@ -137,16 +137,31 @@ derived properties, never I/O.
 **`RankedContributor`** — wraps `stats` with `composite_score`,
 `percentile`, `tier`, `tier_designation`.
 
-**`RepositoryMetadata`** — `name`, `remote_url`, `default_branch`,
+**`RepositoryMetadata`** — `name`, `remote_url`, `analysed_branch`,
 `total_commits`, `unique_contributors`, `analysis_since`,
 `analysis_until`, `generated_at`.
+
+`analysed_branch` is the ref the analysis actually walked. It was called
+`default_branch` through v0.7.0 and held neither the default branch nor the
+analysed one — see [ADR 0008](adr/0008-output-provenance-and-schema-version.md).
+
+**`AnalysisProvenance`** — `reveille_version`, `schema_version`, `head_sha`,
+the filters *as requested* (`requested_branch`, `requested_since`,
+`requested_until`, `exclude_authors_count`, `min_commits`), `ranking_enabled`,
+`ranking_weights`, `mailmap_applied`, `deterministic`.
+
+The requested/resolved distinction is the point: `analysis_since` records where
+the window began, `requested_since` records whether anybody asked for it. Note
+`exclude_authors_count` is a count rather than the values — the operation exists
+to keep somebody out of the report, so naming them in provenance would put them
+back.
 
 **`ProgressEvent`** — `stage`, `elapsed_seconds`, `items_processed`.
 The service emits these; the CLI decides whether to animate them, log
 them, or ignore them. The service has no opinion about terminals.
 
-**`ReportData`** — `metadata`, `ranked_contributors`, `commits`. The
-sole input to `Renderer`.
+**`ReportData`** — `metadata`, `provenance`, `ranked_contributors`, `commits`.
+The sole input to `Renderer`.
 
 ---
 

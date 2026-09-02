@@ -255,6 +255,25 @@ All charts are rendered with Plotly and are fully interactive — hover states, 
 
 ---
 
+### Contribution Distribution
+
+A Lorenz curve of how evenly commits are spread across contributors, with the
+Gini coefficient as a single-number summary. It describes the repository and
+names nobody, which is why it is in the default report while the per-contributor
+ranking is not. A high value is not a fault: a single-maintainer project scores 0
+by definition, and the maximum for *n* contributors is `(n-1)/n`, so the number is
+comparable against the same repository over time rather than against a different
+one.
+
+### Structured Output
+
+`--format json` emits a document whose first key is `schema_version`, so a
+consumer can decide whether it can parse the rest before trying, and a
+`provenance` block recording what produced the numbers: the Reveille version, the
+analysed commit SHA, whether a `.mailmap` was applied, the ranking weights if
+ranking ran, and the filters **as requested**. Full shape in the
+[User Guide](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md#structured-output).
+
 ## Contributor Ranking System
 
 Reveille assigns each contributor a tier designation based on a weighted composite of four metrics.
