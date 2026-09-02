@@ -826,6 +826,39 @@
         modeBarButtonsToRemove: ['sendDataToCloud', 'editInChartStudio']
     };
 
+    // Heatmap colour ramps, one per theme.
+    //
+    // A sequential ramp encodes magnitude, so a busier day must always read as
+    // more prominent than a quieter one. A single ramp cannot do that on two
+    // surfaces: the old fixed scale ended at #1e3a8a, which sits at 9.73:1
+    // against the light plot background but only 1.67:1 against the dark one.
+    // In dark mode the busiest days therefore faded into the background while
+    // the quietest ones glowed -- the chart read backwards, and the effect was
+    // strongest exactly where the data mattered most.
+    //
+    // Both ramps below are one hue, and both were checked so that contrast
+    // against their own surface rises at every step:
+    //   light  #f6f8fa : 1.66 -> 2.92 -> 4.85 -> 9.73
+    //   dark   #161b22 : 1.67 -> 3.35 -> 5.57 -> 9.59
+    // The first stop stays transparent so a day with no commits is the surface
+    // itself rather than a colour meaning "zero".
+    var HEATMAP_SCALES = {
+        light: [
+            [0.0,   'rgba(0,0,0,0)'],
+            [0.001, '#9ec5fe'],
+            [0.35,  '#4f93f0'],
+            [0.70,  '#2563eb'],
+            [1.0,   '#1e3a8a']
+        ],
+        dark: [
+            [0.0,   'rgba(0,0,0,0)'],
+            [0.001, '#1e3a8a'],
+            [0.35,  '#2563eb'],
+            [0.70,  '#4f93f0'],
+            [1.0,   '#93c5fd']
+        ]
+    };
+
     var THEME_LAYOUTS = {
         light: {
             paper_bgcolor: '#ffffff',
@@ -1012,12 +1045,7 @@
             zauto: false,
             zmin: 0,
             zmax: zPeak,
-            colorscale: [
-                [0.0,   'rgba(0,0,0,0)'],
-                [0.001, '#bfdbfe'],
-                [0.35,  '#3b82f6'],
-                [1.0,   '#1e3a8a']
-            ],
+            colorscale: HEATMAP_SCALES[theme],
             showscale: true,
             hovertemplate: '%{customdata}<br>Commits: %{z}<extra></extra>'
         };
@@ -1134,9 +1162,15 @@
             if (!divEl || !divEl._fullLayout) return;
             Plotly.relayout(divEl, overrides);
         });
+        // The heatmap needs a full re-render rather than a relayout. Its
+        // colour ramp is theme-specific -- see HEATMAP_SCALES -- and a
+        // colorscale lives on the trace, which Plotly.relayout does not touch.
+        // Relayout alone would swap the background and leave a ramp built for
+        // the other surface, which is the inverted-reading bug the two ramps
+        // exist to prevent.
         var heatmapEl = document.getElementById('chart-heatmap');
-        if (heatmapEl && heatmapEl._fullLayout) {
-            Plotly.relayout(heatmapEl, overrides);
+        if (heatmapEl && heatmapEl._fullLayout && heatmapData) {
+            renderHeatmap(currentYear, currentContributor, theme);
         }
     }
 

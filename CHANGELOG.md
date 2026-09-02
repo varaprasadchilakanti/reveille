@@ -83,8 +83,36 @@ Nothing yet.
 - **`.github/PULL_REQUEST_TEMPLATE.md`**, whose "Verified" section asks what was run
   and what it showed, and reminds the author to break any new guard and watch it fail.
 
-- **22 new tests**: four on lock integrity, six on licence declarations, and twelve on
-  provenance, schema version and determinism. Each was observed failing against the
+- **The chart palette was replaced with a measured one.** The previous set put
+  `#22c55e` next to `#14b8a6` at a normal-vision perceptual distance of ΔE 11.3 —
+  below the 15 floor at which two adjacent series stop being reliably separable by a
+  reader with full colour vision — and they were adjacent, so the second- and
+  third-ranked contributors were the pair that collided. The replacement was
+  validated against both report surfaces before adoption: worst adjacent pair is
+  ΔE 19.3 normal vision and 8.4 under protanopia, clearing both floors in each mode.
+  One palette now serves both themes, so no colour changes when the theme is toggled.
+
+- **The activity heatmap read backwards in dark mode.** Its colour ramp was fixed
+  across themes and ended at a near-black blue: 9.73:1 against the light plot
+  background but **1.67:1 against the dark one**. The busiest days faded into the
+  background while the quietest glowed — the encoding inverted exactly where the
+  data mattered most. There are now two single-hue ramps, one per theme, each
+  checked so contrast against its own surface rises at every step. The theme toggle
+  re-renders the heatmap rather than relayouting it, because a colorscale lives on
+  the trace and `Plotly.relayout` does not touch it.
+
+- **Two charts could draw two different contributors identically.** The
+  contributor timeline drew one trace per contributor with `palette[i % len]`, so
+  the ninth contributor silently reused the first one's colour and line style; it
+  now caps at the palette length, and everyone else remains in the rankings table
+  and the heatmap's contributor filter, neither of which has a colour budget. The
+  commit-share pie aggregated past eight slices but then requested nine colours
+  from an eight-colour palette, so "Other Contributors" wrapped around and shared a
+  colour with the top-ranked contributor **inside the same chart**; the residual
+  slice now takes a reserved neutral, which is also what it means.
+
+- **34 new tests**: four on lock integrity, six on licence declarations, twelve on
+  provenance, schema version and determinism, and twelve on chart colour assignment. Each was observed failing against the
   defect it guards before being trusted.
 
 ### Changed
