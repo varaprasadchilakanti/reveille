@@ -127,7 +127,12 @@ class AnalysisProvenance:
     requested_branch: str | None
     requested_since: datetime.date | None
     requested_until: datetime.date | None
-    exclude_authors: tuple[str, ...]
+    # A count, not the values. `--exclude-author` exists to keep a person out
+    # of the report; writing their address into a labelled provenance field
+    # puts it back, and promotes it from one row among many to something
+    # greppable. The count still distinguishes a filtered report from an
+    # unfiltered one, which is all provenance needs.
+    exclude_authors_count: int
     min_commits: int
     ranking_enabled: bool
     ranking_weights: dict[str, float] | None

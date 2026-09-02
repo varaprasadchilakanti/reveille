@@ -251,7 +251,7 @@ def _build_provenance(
         requested_branch=config.branch,
         requested_since=config.since,
         requested_until=config.until,
-        exclude_authors=tuple(config.exclude_authors),
+        exclude_authors_count=len(config.exclude_authors),
         min_commits=config.min_commits,
         ranking_enabled=config.ranking_enabled,
         # Reporting weights that were never applied would be a false statement.

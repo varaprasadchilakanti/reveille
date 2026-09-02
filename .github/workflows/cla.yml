@@ -43,9 +43,14 @@ jobs:
           import os, re, sys
           body = os.environ.get("PR_BODY") or ""
           version = os.environ["CLA_VERSION"]
+          # Anchored per line, and the version must appear on the SAME line as
+          # the tick. With re.DOTALL and no anchor, any ticked box anywhere --
+          # "[x] I ran the tests" -- matched as long as the CLA string appeared
+          # later in the body, even inside a code fence. That is not evidence
+          # of acceptance, which is the only thing this check exists to record.
           pattern = re.compile(
-              r"-\s*\[[xX]\].*Reveille-CLA-" + re.escape(version),
-              re.DOTALL,
+              r"^\s*[-*]\s*\[[xX]\][^\n]*Reveille-CLA-" + re.escape(version),
+              re.MULTILINE,
           )
           if pattern.search(body):
               print(f"Contributor Licence Agreement {version} accepted in the pull request body.")

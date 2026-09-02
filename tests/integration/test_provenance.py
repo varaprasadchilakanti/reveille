@@ -175,7 +175,11 @@ class TestProvenance:
         )
         filters = payload["provenance"]["filters"]
 
-        assert filters["exclude_authors"] == ["bot@example.com"]
+        # A count, not the identifiers: --exclude-author exists to keep a
+        # person out of the report, and writing their address into a labelled
+        # provenance field would put it back.
+        assert filters["exclude_authors_count"] == 1
+        assert "bot@example.com" not in json.dumps(payload)
         assert filters["min_commits"] == 2
         assert filters["requested_since"] is None
 

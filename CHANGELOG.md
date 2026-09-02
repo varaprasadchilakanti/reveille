@@ -203,7 +203,7 @@ Nothing yet.
   colour with the top-ranked contributor **inside the same chart**; the residual
   slice now takes a reserved neutral, which is also what it means.
 
-- **87 new tests**: four on lock integrity, six on licence declarations, twelve on
+- **97 new tests**: four on lock integrity, six on licence declarations, twelve on
   provenance, schema version and determinism, twelve on chart colour assignment, thirteen security regression tests, fifteen on the capability document, fourteen on the Lorenz curve and Gini coefficient checked against values the definitions fix, four on the ranking default, and seven architectural fitness functions. Each was observed failing against the
   defect it guards before being trusted.
 
@@ -343,7 +343,56 @@ no map trace is ever constructed); the `.mailmap` parser (all patterns linear,
 no ReDoS); and the CI workflows (no `pull_request_target`, no untrusted
 interpolation into `run:` steps).
 
-- **13 security regression tests.** Each was observed failing against the
+- **A second adversarial review found three more, plus five smaller issues.**
+  The first pass had fixed a symlink check that ran on the **final path
+  component only** — and a symlinked *parent directory* is not a symlink at the
+  leaf, so the guard passed while a 4 MB report landed outside the repository.
+  Git stores symlinks, so a hostile repository can commit one; the victim clones
+  and runs bare `reveille generate`, and an auto-discovered `reveille.toml`
+  chooses the destination. An output path supplied by a configuration file is now
+  a hard error if it resolves outside the repository. An explicit `--output` is
+  unaffected, because a path the user typed may legitimately point anywhere.
+
+- **`reveille init` had no symlink guard at all**, and `.mailmap` is a Git-native
+  file a repository can commit *as a symlink*. A dangling link also passed the
+  `exists()` check, so no `--force` was needed. Both writers now refuse.
+
+- **A configuration reading `enabled = "false"` switched the ranking ON.** The
+  parser used `bool(...)`, and every non-empty string is truthy. Given that the
+  ranking is the one feature that names individuals, that was the wrong direction
+  to fail in. Non-boolean values are now rejected outright.
+
+- **`--exclude-author` republished the excluded person's address.** The one
+  operation whose purpose is to keep somebody out of the report wrote their email
+  into a labelled `provenance.filters.exclude_authors` field — promoting it from
+  one row among many to something greppable. Provenance now records
+  `exclude_authors_count`, which still distinguishes a filtered report from an
+  unfiltered one without republishing anybody.
+
+- **`--exclude-author <name>` silently missed anyone renamed by a `.mailmap`.**
+  `git log --format=%an` shows the *pre*-mailmap name, so that is what a user
+  copies — and only the resolved name was matched. The person stayed in the
+  report, fully identified, exit code 0, no diagnostic. Both raw and resolved
+  identities are matched now, and a filter that matches nothing is reported
+  rather than passing in silence.
+
+- **A malformed `reveille.toml` printed a traceback and exited 1.** `int()` and
+  `list()` were called bare, so a mistyped value raised outside the handler.
+  Exit 1 means "ran correctly, negative answer" on this project's published
+  contract; a CI job branching on it would read a crash as a clean result. Each
+  parser now raises a typed error naming the offending key, and exits 2.
+
+- **The capability document overstated two guarantees.** It claimed the analysed
+  repository is never modified and that the only file written is the report you
+  name — both false for `reveille init`. Corrected, because the whole point of
+  that document is that a program can trust it.
+
+- **The CLA acceptance check matched a tick on an unrelated line.** The pattern
+  was unanchored with `re.DOTALL`, so any ticked box followed anywhere by the
+  agreement string counted — including one inside a code fence. Now anchored per
+  line, with the version required on the same line as the tick.
+
+- **23 security regression tests.** Each was observed failing against the
   reintroduced vulnerability. One of them did not, on first writing: the
   forgery payload was rejected by an unrelated field-count check rather than by
   the guard under test, so it proved nothing. It was rebuilt until removing the

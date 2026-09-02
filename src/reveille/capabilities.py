@@ -114,7 +114,8 @@ _NOT_CAPABILITIES: tuple[dict[str, str], ...] = (
         "instead": (
             "Nothing here is fit for that purpose. The contributor ranking is a "
             "visual ordering of commit volume, not an evaluation. It is off by "
-            "default and must be requested explicitly with --ranking."
+            "default and is enabled only by an explicit --ranking flag or an "
+            "`enabled = true` entry in a reveille.toml."
         ),
     },
     {
@@ -147,8 +148,9 @@ _NOT_CAPABILITIES: tuple[dict[str, str], ...] = (
     {
         "id": "repository-modification",
         "description": (
-            "Write to, stage in, or otherwise alter the repository it reads. "
-            "The only file it writes is the report you name."
+            "Alter the contents, history, index or refs of a repository. "
+            "`generate` writes only the report you name; `init` writes only "
+            "the configuration files you ask it for."
         ),
         "instead": "",
     },
@@ -216,8 +218,12 @@ _GUARANTEES: tuple[dict[str, str], ...] = (
         ),
     },
     {
-        "id": "read-only",
-        "description": "The analysed repository is never modified.",
+        "id": "read-only-analysis",
+        "description": (
+            "Analysis never modifies the repository it reads. `reveille init` "
+            "is the one command that writes into a repository, and only the "
+            "files you ask it for: reveille.toml, and .mailmap with --mailmap."
+        ),
     },
     {
         "id": "no-telemetry",

@@ -272,7 +272,7 @@ def _resolve_output_path(output: Path, repo_path: Path) -> Path:
     return output
 
 
-def _validate_output_path(output: Path, repo_path: Path) -> None:
+def _validate_output_path(output: Path, repo_path: Path, *, from_config: bool = False) -> None:
     """Validate the output path for traversal components and boundary awareness.
 
     Rejects paths containing upward traversal components before resolution.
@@ -283,11 +283,39 @@ def _validate_output_path(output: Path, repo_path: Path) -> None:
     Args:
         output: The output path as provided by the user (pre-resolution).
         repo_path: The resolved repository root used as the boundary reference.
+        from_config: Whether the path came from a configuration file rather
+            than from an explicit `--output` flag. A path the user typed may
+            legitimately point anywhere; a path a *file* supplied may not,
+            because `reveille.toml` is auto-discovered from the working
+            directory and can therefore arrive inside a repository somebody
+            else controls.
 
     Raises:
         typer.Exit: ExitCode.CANNOT_RUN if the path contains upward
             traversal components.
     """
+    # A symlinked *parent* directory is not a symlink at the leaf, so checking
+    # only the final component misses it. Resolving first and then comparing
+    # against the repository root catches the whole chain -- and refusing only
+    # for a config-supplied path keeps `-o /tmp/report.html` working, which is
+    # ordinary use.
+    if from_config:
+        resolved = output.expanduser().resolve()
+        try:
+            inside = resolved.is_relative_to(repo_path)
+        except ValueError:  # pragma: no cover - differing drives on Windows
+            inside = False
+        if not inside:
+            typer.echo(
+                f"Error: the configuration file sets an output path that resolves "
+                f"outside the repository: '{resolved}'.\n"
+                "A reveille.toml is discovered automatically from the working "
+                "directory, so it may come from a repository you do not control. "
+                "Pass --output explicitly if you intended to write here.",
+                err=True,
+            )
+            raise typer.Exit(code=ExitCode.CANNOT_RUN)
+
     if ".." in output.parts:
         typer.echo(
             f"Error: output path '{output}' contains upward traversal components. "
@@ -492,9 +520,9 @@ def generate(
         except ConfigurationError as exc:
             if _auto_discovered:
                 typer.echo(
-                    f"Configuration error: auto-discovered {_CONVENTIONAL_CONFIG} "
-                    f"contains invalid TOML.\nDetail: {exc}\n"
-                    f"Correct the syntax or regenerate the file with: "
+                    f"Configuration error in the auto-discovered "
+                    f"{_CONVENTIONAL_CONFIG}.\nDetail: {exc}\n"
+                    f"Correct the file, or regenerate it with: "
                     f"reveille init --force",
                     err=True,
                 )
@@ -523,7 +551,12 @@ def generate(
     # repository somebody else controls -- and validating the CLI argument left
     # that path unchecked, so a config file could write outside the repository
     # with no traversal warning at all.
-    _validate_output_path(Path(merged.get("output_path", output)), repo.resolve())
+    _output_from_config = "output_path" in config_kwargs and output == Path("reveille-report.html")
+    _validate_output_path(
+        Path(merged.get("output_path", output)),
+        repo.resolve(),
+        from_config=_output_from_config,
+    )
 
     try:
         report_config = ReportConfig(**merged)

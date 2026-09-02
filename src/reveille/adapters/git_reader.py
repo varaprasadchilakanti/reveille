@@ -218,6 +218,7 @@ class GitReader:
             RepositoryError: If the path is not a valid readable Git repository.
         """
         self._mailmap_applied = False
+        self.unmatched_exclusions: tuple[str, ...] = ()
         try:
             self._repo = Repo(str(repo_path), search_parent_directories=False)
         except InvalidGitRepositoryError as exc:
@@ -333,10 +334,20 @@ class GitReader:
         self._mailmap_applied = bool(mailmap.by_email or mailmap.by_name_and_email)
 
         commits: list[Commit] = []
+        matched: set[str] = set()
         for record in raw_log.split(_RECORD_SEP):
-            commit = _parse_log_record(record, mailmap, exclude_set, authentic_shas)
+            commit = _parse_log_record(record, mailmap, exclude_set, authentic_shas, matched)
             if commit is not None:
                 commits.append(commit)
+
+        # A filter that matched nothing is almost always a typo, and silence
+        # makes it indistinguishable from one that worked. This matters most
+        # for the case the filter exists to serve: somebody asked to be left
+        # out, and the report was generated believing they had been.
+        unmatched = sorted(exclude_set - matched)
+        if unmatched:
+            _logger.warning("--exclude-author matched no commits for: %s", ", ".join(unmatched))
+            self.unmatched_exclusions = tuple(unmatched)
 
         if not commits:
             raise EmptyRepositoryError(
@@ -586,6 +597,7 @@ def _parse_log_record(
     mailmap: _Mailmap,
     exclude_set: set[str],
     authentic_shas: set[str],
+    matched: set[str],
 ) -> Commit | None:
     """Turn one `git log` record into a Commit, or reject it.
 
@@ -601,6 +613,8 @@ def _parse_log_record(
         exclude_set: Lowercased names and addresses to drop.
         authentic_shas: Object names git itself reported for this revision. A
             record whose SHA is absent was not produced by a commit.
+        matched: Mutated in place with every exclusion value that matched, so
+            the caller can report the ones that never did.
 
     Returns:
         The parsed Commit, or None if the record is empty, malformed,
@@ -630,13 +644,20 @@ def _parse_log_record(
 
     author_name, author_email = _resolve_identity(raw_name, raw_email, mailmap)
 
-    # The raw address is matched too so that an --exclude-author value copied
-    # from `git log` still works after normalisation.
-    if (
-        author_name.lower() in exclude_set
-        or author_email.lower() in exclude_set
-        or raw_email.lower() in exclude_set
-    ):
+    # Both the resolved and the raw identity are matched, so an
+    # --exclude-author value copied from `git log` still works after
+    # normalisation. The raw *name* matters as much as the raw address: with a
+    # .mailmap renaming "Bob Jones" to "Robert Jones", `git log --format=%an`
+    # shows the old name, so that is what a user copies -- and matching only
+    # the resolved name would leave the person in the report while exiting 0.
+    hits = exclude_set & {
+        author_name.lower(),
+        author_email.lower(),
+        raw_name.lower(),
+        raw_email.lower(),
+    }
+    if hits:
+        matched |= hits
         return None
 
     try:

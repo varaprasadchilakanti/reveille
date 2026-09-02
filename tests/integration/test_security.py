@@ -32,13 +32,14 @@ import csv
 import datetime
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 from reveille.adapters.git_reader import GitReader
 from reveille.adapters.renderer import Renderer
-from reveille.config import ReportConfig
+from reveille.config import ReportConfig, load_config_from_toml
 from reveille.domain.models import (
     SCHEMA_VERSION,
     AnalysisProvenance,
@@ -47,8 +48,20 @@ from reveille.domain.models import (
     ReportData,
     RepositoryMetadata,
 )
-from reveille.exceptions import OutputPathError, RepositoryError
+from reveille.exceptions import (
+    ConfigurationError,
+    OutputPathError,
+    RepositoryError,
+)
+from reveille.init import write_init_config, write_mailmap_template
 from reveille.services.report import generate_report
+
+
+def _write_toml(tmp_path: Path, body: str) -> Path:
+    """Write a config file and return its path."""
+    path = tmp_path / "reveille.toml"
+    path.write_text(body, encoding="utf-8")
+    return path
 
 
 def _run(args: list[str], cwd: Path, env_override: dict[str, str] | None = None) -> str:
@@ -210,7 +223,7 @@ def _report_with_name(name: str) -> ReportData:
             requested_branch=None,
             requested_since=None,
             requested_until=None,
-            exclude_authors=(),
+            exclude_authors_count=0,
             min_commits=1,
             ranking_enabled=False,
             ranking_weights=None,
@@ -320,3 +333,150 @@ class TestOfflineGuarantee:
 
         assert '<img src="http://evil.test' not in html
         assert "evil.test" not in html or "&lt;img" in html
+
+
+@pytest.mark.integration
+class TestSecondPassFindings:
+    """Regressions for issues a second adversarial review found.
+
+    The first pass fixed a symlink check that ran on the final path component
+    only. That is not the same property as "the write lands where it should":
+    a symlinked *parent directory* is not a symlink at the leaf, so the guard
+    passed while a 4 MB report landed outside the repository. A guard that
+    covers most of a property is easy to mistake for one that covers it.
+    """
+
+    def test_config_supplied_output_cannot_escape_via_a_symlinked_parent(
+        self, tmp_path: Path
+    ) -> None:
+        """A hostile repository can commit a symlink; git stores them.
+
+        The victim clones and runs bare `reveille generate`. No flags, no
+        prompt: the auto-discovered reveille.toml chose the destination.
+        """
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        victim = outside / "notes.html"
+        victim.write_text("IMPORTANT", encoding="utf-8")
+
+        repo = _init_repo(tmp_path / "hostile")
+        (repo / "escape").symlink_to(outside)
+        (repo / "reveille.toml").write_text(
+            '[report]\noutput = "escape/notes.html"\n', encoding="utf-8"
+        )
+
+        # The installed console script, not `python -m reveille.cli`: the
+        # module has no __main__ guard, so `-m` imports it, runs nothing and
+        # exits 0 -- which would make this test pass against the vulnerability.
+        console_script = Path(sys.executable).parent / "reveille"
+        result = subprocess.run(
+            [str(console_script), "generate"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode != 0
+        assert victim.read_text(encoding="utf-8") == "IMPORTANT"
+
+    def test_init_refuses_a_symlinked_config_destination(self, tmp_path: Path) -> None:
+        """A dangling link passes an `exists()` check and still redirects."""
+        target = tmp_path / "not-yet-there.txt"
+        link = tmp_path / "reveille.toml"
+        link.symlink_to(target)
+
+        with pytest.raises(OutputPathError, match="symbolic link"):
+            write_init_config(link, force=False)
+
+        assert not target.exists()
+
+    def test_init_refuses_a_symlinked_mailmap(self, tmp_path: Path) -> None:
+        """`.mailmap` is Git-native, so a repository can ship it as a link."""
+        victim = tmp_path / "victim_rc"
+        victim.write_text("USER DATA", encoding="utf-8")
+        link = tmp_path / ".mailmap"
+        link.symlink_to(victim)
+
+        with pytest.raises(OutputPathError, match="symbolic link"):
+            write_mailmap_template(link, force=True)
+
+        assert victim.read_text(encoding="utf-8") == "USER DATA"
+
+    def test_a_quoted_false_does_not_enable_the_ranking(self, tmp_path: Path) -> None:
+        """`bool("false")` is True, and the wrong direction to fail in.
+
+        A configuration that reads as "off" must never produce tiered named
+        individuals -- least of all one auto-discovered from a clone.
+        """
+        with pytest.raises(ConfigurationError, match="true or false"):
+            load_config_from_toml(_write_toml(tmp_path, '[ranking]\nenabled = "false"\n'))
+
+    @pytest.mark.parametrize(
+        ("body", "message"),
+        [
+            ('[filters]\nmin_commits = "abc"\n', "whole number"),
+            ("[filters]\nexclude_authors = 5\n", "list of strings"),
+            ('[filters]\nexclude_authors = "abc"\n', "list of strings"),
+            ('[ranking]\nweights = "x"\n', "table of named weights"),
+        ],
+    )
+    def test_malformed_config_raises_a_typed_error(
+        self, body: str, message: str, tmp_path: Path
+    ) -> None:
+        """These were bare int()/list() calls that escaped as tracebacks.
+
+        The CLI catches ConfigurationError only, so each printed a Rich
+        traceback and exited 1 -- which on this project's published contract
+        means "ran correctly, negative answer" rather than "could not run".
+        """
+        with pytest.raises(ConfigurationError, match=message):
+            load_config_from_toml(_write_toml(tmp_path, body))
+
+
+@pytest.mark.integration
+class TestExclusionActuallyExcludes:
+    """`--exclude-author` is the one operation whose purpose is privacy."""
+
+    def test_excludes_a_person_renamed_by_a_mailmap(self, tmp_path: Path) -> None:
+        """`git log --format=%an` shows the pre-mailmap name; users copy that.
+
+        Matching only the resolved name left the person fully identified in
+        the report, by name and address, with exit code 0 and no diagnostic.
+        """
+        repo = _init_repo(tmp_path / "repo", author="Bob Jones", email="bob@corp.example")
+        (repo / ".mailmap").write_text(
+            "Robert Jones <bob@corp.example> Bob Jones <bob@corp.example>\n",
+            encoding="utf-8",
+        )
+        _run(["git", "add", "-A"], repo)
+        _run(
+            ["git", "commit", "-qm", "mailmap"],
+            repo,
+            {
+                "GIT_AUTHOR_NAME": "Alice Smith",
+                "GIT_AUTHOR_EMAIL": "alice@corp.example",
+                "GIT_COMMITTER_NAME": "Alice Smith",
+                "GIT_COMMITTER_EMAIL": "alice@corp.example",
+            },
+        )
+
+        commits = GitReader(repo).read_commits(
+            branch="main", since=None, until=None, exclude_authors=["Bob Jones"]
+        )
+        names = {c.author_name for c in commits}
+
+        assert not any("Jones" in n for n in names), f"still present: {names}"
+
+    def test_an_exclusion_that_matches_nothing_is_reported(self, tmp_path: Path) -> None:
+        """Silence makes a typo indistinguishable from a working filter.
+
+        That matters most in the case the flag exists for: somebody asked to
+        be left out, and the report was generated believing they had been.
+        """
+        repo = _init_repo(tmp_path / "repo")
+        reader = GitReader(repo)
+        reader.read_commits(
+            branch="main", since=None, until=None, exclude_authors=["Nobody At All"]
+        )
+
+        assert reader.unmatched_exclusions == ("nobody at all",)

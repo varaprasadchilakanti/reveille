@@ -278,7 +278,7 @@ class Renderer:
                         if data.provenance.requested_until
                         else None
                     ),
-                    "exclude_authors": list(data.provenance.exclude_authors),
+                    "exclude_authors_count": data.provenance.exclude_authors_count,
                     "min_commits": data.provenance.min_commits,
                 },
                 "ranking": {

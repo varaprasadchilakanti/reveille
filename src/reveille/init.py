@@ -231,6 +231,7 @@ def write_init_config(output_path: Path, *, force: bool = False) -> Path:
         OutputPathError: If the parent directory does not exist or the
             file cannot be written due to a filesystem error.
     """
+    _refuse_symlink(output_path)
     resolved = output_path.resolve()
 
     if not resolved.parent.exists():
@@ -274,6 +275,7 @@ def write_mailmap_template(output_path: Path, *, force: bool = False) -> Path | 
         OutputPathError: If the parent directory does not exist or the
             file cannot be written due to a filesystem error.
     """
+    _refuse_symlink(output_path)
     resolved = output_path.resolve()
 
     if not resolved.parent.exists():
@@ -291,3 +293,26 @@ def write_mailmap_template(output_path: Path, *, force: bool = False) -> Path | 
         raise OutputPathError(f"Failed to write .mailmap template to '{resolved}': {exc}") from exc
 
     return resolved
+
+
+def _refuse_symlink(path: Path) -> None:
+    """Refuse to write through a symbolic link.
+
+    `Path.resolve()` follows a link, so the check must run on the path as
+    given. Both destinations here are attacker-reachable: `.mailmap` is a
+    Git-native file that a repository can commit *as a symlink*, and a
+    dangling link passes an `exists()` check while still redirecting the
+    write.
+
+    Args:
+        path: The destination as supplied, before resolution.
+
+    Raises:
+        OutputPathError: If the path is a symbolic link.
+    """
+    if path.is_symlink():
+        raise OutputPathError(
+            f"Refusing to write through the symbolic link '{path}'. "
+            "Writing would replace the link's target rather than the link. "
+            "Remove the link, or choose another path."
+        )

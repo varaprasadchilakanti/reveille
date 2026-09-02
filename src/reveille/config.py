@@ -230,12 +230,32 @@ def _parse_filters_section(filters: dict[str, Any]) -> dict[str, Any]:
 
     Returns:
         A partial kwargs dict for ReportConfig construction.
+
+    Raises:
+        ConfigurationError: If a value has the wrong type. These were bare
+            `int()` and `list()` calls, so a mistyped key raised ValueError or
+            TypeError, escaped the CLI's ConfigurationError handler, printed a
+            traceback, and exited 1 -- which on this project's published
+            contract means "ran correctly, negative answer" rather than "could
+            not run".
     """
     kwargs: dict[str, Any] = {}
     if "min_commits" in filters:
-        kwargs["min_commits"] = int(filters["min_commits"])
+        value = filters["min_commits"]
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ConfigurationError(
+                f"[filters] min_commits must be a whole number, not {value!r}."
+            )
+        kwargs["min_commits"] = value
     if "exclude_authors" in filters:
-        kwargs["exclude_authors"] = list(filters["exclude_authors"])
+        authors = filters["exclude_authors"]
+        # A bare string would be split into characters by `list()`, silently
+        # excluding contributors named "a", "b", "c" and nobody the user meant.
+        if not isinstance(authors, list) or not all(isinstance(a, str) for a in authors):
+            raise ConfigurationError(
+                f"[filters] exclude_authors must be a list of strings, not {authors!r}."
+            )
+        kwargs["exclude_authors"] = list(authors)
     return kwargs
 
 
@@ -250,9 +270,24 @@ def _parse_ranking_section(ranking: dict[str, Any]) -> dict[str, Any]:
     """
     kwargs: dict[str, Any] = {}
     if "enabled" in ranking:
-        kwargs["ranking_enabled"] = bool(ranking["enabled"])
+        # Strict, not `bool(...)`. Any non-empty string is truthy, so
+        # `enabled = "false"` would have switched the ranking ON -- and the
+        # ranking is the one feature where an accidental enable names
+        # individuals. A config that reads as "off" must never produce tiers.
+        value = ranking["enabled"]
+        if not isinstance(value, bool):
+            raise ConfigurationError(
+                f"[ranking] enabled must be true or false, not {value!r}. "
+                'Quoted values such as "false" are strings, and every '
+                "non-empty string would count as true."
+            )
+        kwargs["ranking_enabled"] = value
     if "weights" in ranking:
         w = ranking["weights"]
+        if not isinstance(w, dict):
+            raise ConfigurationError(
+                f"[ranking] weights must be a table of named weights, not {w!r}."
+            )
         kwargs["ranking_weights"] = RankingWeights(
             commits=float(w.get("commits", 0.30)),
             lines=float(w.get("lines", 0.25)),
