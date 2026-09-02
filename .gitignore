@@ -173,6 +173,30 @@ ipython_config.py
 
 
 # ------------------------------------------------------------------
+# LOCAL TOOLING CONFIGURATION
+#
+# Editor, IDE and assistant settings describe how an individual works,
+# not what this project is. They are personal to whoever set them up and
+# carry no meaning for anyone else, so they stay out of the tree for the
+# same reason .vscode/ and .idea/ do.
+#
+# Everything a contributor actually needs is written for people, in
+# CONTRIBUTING.md, docs/ARCHITECTURE.md and docs/adr/.
+# ------------------------------------------------------------------
+
+.claude/
+CLAUDE.md
+CLAUDE.local.md
+.cursor/
+.cursorrules
+.aider*
+.continue/
+.windsurfrules
+GEMINI.md
+AGENTS.md
+
+
+# ------------------------------------------------------------------
 # OPERATING SYSTEM
 # ------------------------------------------------------------------
 
