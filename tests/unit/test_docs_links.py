@@ -33,6 +33,8 @@ _LINK = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 # llms.txt use these so they render correctly on PyPI and when quoted
 # out of context, which means the plain relative-path check below cannot
 # see them -- and a renamed file leaves them broken and unnoticed.
+_README = _ROOT / "README.md"
+
 _SELF_URL = re.compile(r"https://github\.com/varaprasadchilakanti/reveille/blob/main/([^)\s#]+)")
 
 _DOCUMENTS = [
@@ -112,3 +114,33 @@ class TestDocumentationLinks:
         listed = set(_relative_targets(adr_dir / "README.md"))
         assert on_disk, "no ADRs found -- the check below would be vacuous"
         assert on_disk == listed, f"index and directory disagree: {on_disk ^ listed}"
+
+
+@pytest.mark.unit
+class TestReadmeStructure:
+    """The README's own table of contents must match its headings.
+
+    Added after an edit truncated the file at `## Licence` and left the
+    document with a duplicated `## Contributing`, a table of contents entry
+    pointing at a heading that no longer existed, and no licence section at
+    all. Every individual link still resolved, so nothing failed -- the
+    document was internally broken in a way only its own structure revealed.
+    """
+
+    def test_no_heading_appears_twice(self) -> None:
+        """A duplicated section is a sign an edit went wrong, not a choice."""
+        headings = re.findall(r"^## (.+)$", _README.read_text(encoding="utf-8"), re.M)
+
+        duplicates = sorted({h for h in headings if headings.count(h) > 1})
+        assert not duplicates, f"duplicated README headings: {duplicates}"
+
+    def test_contents_list_matches_the_headings(self) -> None:
+        """Every anchor in the contents must name a heading, and vice versa."""
+        text = _README.read_text(encoding="utf-8")
+        listed = set(re.findall(r"^- \[([^\]]+)\]\(#", text, re.M))
+        headings = set(re.findall(r"^## (.+)$", text, re.M)) - {"Contents"}
+
+        assert listed == headings, (
+            f"listed but absent: {sorted(listed - headings)}; "
+            f"present but unlisted: {sorted(headings - listed)}"
+        )

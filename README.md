@@ -20,6 +20,7 @@ Reveille reads your repository's Git history and produces a single portable `.ht
 - [Running Tests](#running-tests)
 - [Contributing](#contributing)
 - [Changelog](#changelog)
+- [Legal and Privacy](#legal-and-privacy)
 - [Licence](#licence)
 
 ---
@@ -429,13 +430,6 @@ ruff check src/
 
 ---
 
-## Contributing
-
-Contributions are welcome. Please read [CONTRIBUTING.md](https://github.com/varaprasadchilakanti/reveille/blob/main/CONTRIBUTING.md) before opening a pull request. It covers the development environment setup, architecture overview, pull request contract, code style requirements, and commit message conventions.
-
-Participation is governed by the [Code of Conduct](https://github.com/varaprasadchilakanti/reveille/blob/main/CODE_OF_CONDUCT.md).
-
----
 
 ## Changelog
 
@@ -452,3 +446,35 @@ Pull requests carry two requirements beyond passing CI: each commit must be sign
 Participation is governed by the [Code of Conduct](https://github.com/varaprasadchilakanti/reveille/blob/main/CODE_OF_CONDUCT.md).
 
 ---
+
+## Legal and Privacy
+
+Reveille runs entirely on your machine and sends nothing anywhere. The report it
+writes contains contributor names and email addresses, so circulating it means
+handling personal data — [PRIVACY.md](https://github.com/varaprasadchilakanti/reveille/blob/main/PRIVACY.md) sets out who is responsible
+for what, and `--exclude-author` removes a person entirely, matching both their
+pre- and post-`.mailmap` identity.
+
+[docs/COMPLIANCE.md](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/COMPLIANCE.md) records why GDPR, the EU Cyber
+Resilience Act, the Product Liability Directive, the AI Act, US export control
+and the EU accessibility rules do not engage, citing the provision each
+conclusion rests on. It is research rather than legal advice, written so the
+reasoning can be argued with instead of assumed.
+
+---
+
+## Licence
+
+Reveille is released under the [Apache Licence 2.0](https://github.com/varaprasadchilakanti/reveille/blob/main/LICENSE).
+Copyright 2026 Varaprasad Chilakanti.
+
+**Versions up to and including 0.7.0 were released under the MIT Licence.** That
+grant is unaffected: anything already obtained under MIT stays under MIT, and MIT
+remains available for those versions in the Git history. The change applies from
+0.8.0 onward.
+
+Apache-2.0 was chosen for three things MIT does not provide: an express patent
+grant (§3), an automatic inbound-equals-outbound rule for contributions (§5), and
+an explicit statement that the licence grants no trademark rights (§6). The
+reasoning, including what the change costs, is recorded in
+[ADR 0007](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/adr/0007-apache-2-0-licence.md).
