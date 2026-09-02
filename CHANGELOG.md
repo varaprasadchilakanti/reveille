@@ -8,7 +8,36 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **`poetry.lock` was not valid TOML, and CI had been failing on `main` for six
+  consecutive merges.** A merge conflict inside plotly's `[package.extras]` table was
+  resolved by removing the conflict markers and keeping both sides, which duplicated four
+  keys. Duplicate keys are a TOML syntax error, so `poetry install` failed outright and
+  every `lint`, `typecheck` and `test` job stopped before running anything — reporting
+  "Unable to read the lock file", which names the symptom rather than the cause. The lock
+  has been regenerated; every runtime dependency resolves to exactly the version it did
+  before, and only six development tools moved by a patch release.
+
+### Added
+
+- **`poetry.lock` can no longer be merged textually.** `.gitattributes` now marks it
+  `-merge`, so Git keeps the current branch's version and declares a conflict instead of
+  writing conflict markers into a generated file. For a lock file "keep both sides" is
+  never a valid resolution, but it is the natural gesture in a conflict editor; removing
+  the markers removes the gesture, leaving `poetry lock --no-update` as the only way
+  forward.
+
+- **`make check-lock`, and a CI job that runs before anything installs.** The new
+  `lockfile` job validates the lock using only the standard library, and `lint`,
+  `typecheck` and `test` all depend on it. The gate deliberately avoids Poetry: a broken
+  lock is exactly what stops Poetry running, so a check that needed it could never report.
+  The release SBOM job validates the lock too, since `SECURITY.md` promises the SBOM is
+  byte-reproducible for a given `poetry.lock`.
+
+- **`tests/unit/test_lockfile.py`** — four tests asserting the lock exists, parses under a
+  strict TOML reader, declares the metadata the SBOM depends on, and contains no conflict
+  markers. Each was observed failing against the actual corrupt file before being trusted.
 
 ---
 

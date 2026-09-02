@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install lint format fix typecheck precommit check-packaging test test-unit \
+.PHONY: help install lint format fix typecheck precommit check-lock check-packaging test test-unit \
 	    test-integration test-e2e coverage ci build sbom publish-test \
 	    publish clean
 
@@ -24,6 +24,18 @@ help:  ## Display available targets
 
 install:  ## Install all dependencies including dev group
 	poetry install
+
+check-lock:  ## Assert poetry.lock is valid TOML before anything tries to install from it
+	@if ! ERR=$$(python3 -c "import tomllib; tomllib.load(open('poetry.lock','rb'))" 2>&1); then \
+		echo "poetry.lock is not valid TOML:"; \
+		echo "  $$(echo "$$ERR" | tail -1)"; \
+		echo ""; \
+		echo "A generated lock file must never be hand-merged: 'keep both sides'"; \
+		echo "silently duplicates keys. Regenerate it with the tool that owns it:"; \
+		echo "    poetry lock --no-update"; \
+		exit 1; \
+	fi
+	@echo "poetry.lock is valid TOML"
 
 check-packaging:  ## Assert the PEP 561 py.typed marker ships in the built distributions
 	@rm -rf dist
@@ -84,6 +96,7 @@ coverage:  ## Generate HTML and terminal coverage report
 # ------------------------------------------------------------------
 
 ci:  ## Full CI workflow: lint, typecheck, test
+	$(MAKE) check-lock
 	$(MAKE) check-version
 	$(MAKE) check-packaging
 	$(MAKE) lint

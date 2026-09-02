@@ -40,6 +40,35 @@ Makefile    text
 *.sh        text eol=lf
 
 # ------------------------------------------------------------------
+# Generated lock files -- never merge textually
+#
+# `poetry.lock` is machine-generated TOML with no meaningful line-level
+# semantics. On 2026-09-02 a merge of a plotly upgrade into `main`
+# conflicted inside plotly's `[package.extras]` table -- one side listed
+# four extras, the other five. Git raised the conflict correctly. It was
+# then resolved by removing the conflict markers and keeping *both*
+# blocks, which duplicated four keys.
+#
+# Duplicate keys are a TOML syntax error. `poetry install` stopped
+# working entirely, and CI failed on six consecutive merges to `main`.
+#
+# The failure mode is specific: for a generated file, "keep both sides"
+# is never a valid resolution, but it is the most natural gesture in a
+# conflict editor. Unsetting `merge` removes that gesture. Git no longer
+# writes conflict markers into this file -- it keeps the current
+# branch's version and declares the merge conflicted -- so there is no
+# marker to delete and no way to hand-merge. The only way forward is to
+# regenerate the file with the tool that owns it:
+#
+#     poetry lock --no-update
+#
+# See gitattributes(5), "Performing a three-way merge", `merge` unset.
+# This is a guard against a human editing action, not against Git.
+# ------------------------------------------------------------------
+
+poetry.lock     text -merge
+
+# ------------------------------------------------------------------
 # Explicitly binary -- never normalise, never diff
 # ------------------------------------------------------------------
 

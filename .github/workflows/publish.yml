@@ -71,6 +71,12 @@ jobs:
         with:
           python-version: "3.11"
 
+      # The SBOM is only as trustworthy as the lock it is derived from,
+      # and SECURITY.md promises it is byte-reproducible for a given
+      # poetry.lock. Assert the lock is readable before claiming that.
+      - name: Validate poetry.lock
+        run: make check-lock
+
       # cyclonedx-py reads pyproject.toml and poetry.lock as files, so it
       # needs neither Poetry nor the project environment. Keeping it out
       # of the project's own dependency graph means the tool that
