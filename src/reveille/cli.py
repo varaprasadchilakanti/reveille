@@ -477,7 +477,12 @@ def generate(
         deterministic,
     )
 
-    _validate_output_path(output, repo.resolve())
+    # Validate the EFFECTIVE path, not the flag. `merged["output_path"]` may
+    # have come from a reveille.toml -- including one auto-discovered inside a
+    # repository somebody else controls -- and validating the CLI argument left
+    # that path unchecked, so a config file could write outside the repository
+    # with no traversal warning at all.
+    _validate_output_path(Path(merged.get("output_path", output)), repo.resolve())
 
     try:
         report_config = ReportConfig(**merged)

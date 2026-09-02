@@ -38,15 +38,27 @@ from reveille.domain.models import Commit, ContributorStats, RepositoryMetadata
 from reveille.exceptions import EmptyRepositoryError, RepositoryError
 
 # Record and field delimiters for the single-pass `git log` read.
-# ASCII 0x1E (record separator) and 0x1F (unit separator) are control
-# characters that cannot appear in a commit header field, so they parse
-# unambiguously where a printable delimiter would not.
+# ASCII 0x1E (record separator) and 0x1F (unit separator) are chosen because
+# they are vanishingly rare in real commit metadata, not because they are
+# impossible there. Git's ident sanitiser strips `<`, `>` and newlines from an
+# author field, but it does NOT strip other C0 control characters, so a commit
+# object written directly with `git hash-object --literally` can embed these
+# separators in an author name or address and split one record into several.
+# Every field is therefore scrubbed after parsing -- see _strip_control_chars.
 _logger = logging.getLogger(__name__)
 
 _RECORD_SEP = "\x1e"
 _FIELD_SEP = "\x1f"
 
 _LOG_FORMAT = f"--format={_RECORD_SEP}%H{_FIELD_SEP}%an{_FIELD_SEP}%ae{_FIELD_SEP}%ct"
+
+# A well-formed record always opens with a 40-character object name. Checking it
+# is a cheap way to discard a record that separator injection has split.
+_SHA_RE = re.compile(r"[0-9a-f]{40}")
+
+# C0 controls and DEL. Tab, newline and carriage return are included: none of
+# them belongs in an author name, and all three break downstream formats.
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 # GitHub's prefixed private-commit address: 12345678+username@users.noreply.github.com.
 # The username is captured; the numeric account ID is discarded.
@@ -257,16 +269,21 @@ class GitReader:
         """
         rev = branch or self._resolve_active_branch()
 
-        log_args: list[str] = ["--no-merges", "--numstat", _LOG_FORMAT]
-        if since is not None:
-            log_args.append(f"--after={since.isoformat()}")
-        if until is not None:
-            # Add one day to make the until boundary inclusive.
-            inclusive_until = until + datetime.timedelta(days=1)
-            log_args.append(f"--before={inclusive_until.isoformat()}")
-        # The trailing `--` disambiguates the revision from a path of the
-        # same name, which git would otherwise report as ambiguous.
-        log_args.extend([rev, "--"])
+        # A revision beginning with `-` is parsed by git as an OPTION, not a
+        # ref. The trailing `--` below separates revisions from paths; it does
+        # not protect the revision slot. Without this guard, a branch value of
+        # `--output=/path/to/file` makes `git log` write its output over that
+        # file -- and `branch` can arrive from an auto-discovered reveille.toml
+        # sitting in a repository the attacker controls, so the victim needs
+        # only to run `reveille generate` inside a clone.
+        if rev.startswith("-"):
+            raise RepositoryError(
+                f"Refusing to use {rev!r} as a revision: a value beginning with "
+                "'-' is interpreted by git as a command-line option rather than "
+                "a branch. If a ref really has this name, rename it."
+            )
+
+        log_args, rev_list_args = _build_log_args(rev, since, until)
 
         exclude_set = {entry.lower() for entry in exclude_authors}
 
@@ -279,6 +296,29 @@ class GitReader:
                 f"Repository at '{self._repo_path}' contains no commits. "
                 "Make at least one commit before generating a report."
             )
+
+        # `git log --format` interpolates the author name verbatim, and a name
+        # can contain the separators this reader splits on -- so one crafted
+        # commit can inject an entire extra record and fabricate a contributor.
+        # Scrubbing the fields afterwards cannot help: by then the split has
+        # already happened.
+        #
+        # So take the object names from git itself, where the attacker has no
+        # say. `rev-list` computes each SHA rather than echoing text, and does
+        # no diff work, so it is cheap beside the --numstat read. A record whose
+        # SHA is not in this set did not come from a commit.
+        _logger.debug("git rev-list %s", " ".join(rev_list_args))
+        try:
+            authentic_shas = {
+                line.strip()
+                for line in str(self._repo.git.rev_list(*rev_list_args)).splitlines()
+                if line.strip()
+            }
+        except GitCommandError as exc:
+            raise RepositoryError(
+                f"Failed to enumerate commits on branch '{rev}'. "
+                "Verify the branch exists in this repository."
+            ) from exc
 
         _logger.debug("git log %s", " ".join(log_args))
         try:
@@ -294,41 +334,9 @@ class GitReader:
 
         commits: list[Commit] = []
         for record in raw_log.split(_RECORD_SEP):
-            if not record.strip():
-                continue
-
-            header, _, numstat_block = record.partition("\n")
-            fields = header.split(_FIELD_SEP)
-            if len(fields) != 4:
-                continue
-
-            sha, raw_name, raw_email, committed_at = fields
-
-            author_name, author_email = _resolve_identity(raw_name, raw_email, mailmap)
-
-            # The raw address is matched too so that an --exclude-author
-            # value copied from `git log` still works after normalisation.
-            if (
-                author_name.lower() in exclude_set
-                or author_email.lower() in exclude_set
-                or raw_email.lower() in exclude_set
-            ):
-                continue
-
-            lines_added, lines_deleted = _sum_numstat(numstat_block)
-            commits.append(
-                Commit(
-                    sha=sha,
-                    author_name=author_name,
-                    author_email=author_email,
-                    timestamp=datetime.datetime.fromtimestamp(
-                        int(committed_at),
-                        tz=datetime.UTC,
-                    ),
-                    lines_added=lines_added,
-                    lines_deleted=lines_deleted,
-                )
-            )
+            commit = _parse_log_record(record, mailmap, exclude_set, authentic_shas)
+            if commit is not None:
+                commits.append(commit)
 
         if not commits:
             raise EmptyRepositoryError(
@@ -553,3 +561,140 @@ class GitReader:
                 mailmap.by_email[email] = (m1.group(1).strip(), email)
 
         return mailmap
+
+
+def _strip_control_chars(value: str) -> str:
+    """Remove C0 control characters from a git identity field.
+
+    Git's ident sanitiser strips `<`, `>` and newlines but leaves other control
+    characters intact, so an author name written directly into a commit object
+    can contain the record and field separators this reader splits on. One such
+    commit was enough to fabricate three contributors and promote an invented
+    name to the top ranking tier.
+
+    Args:
+        value: A raw author name or address straight from `git log`.
+
+    Returns:
+        The value with every C0 control character and DEL removed.
+    """
+    return _CONTROL_CHARS_RE.sub("", value)
+
+
+def _parse_log_record(
+    record: str,
+    mailmap: _Mailmap,
+    exclude_set: set[str],
+    authentic_shas: set[str],
+) -> Commit | None:
+    """Turn one `git log` record into a Commit, or reject it.
+
+    Every rejection path here is a defence rather than a convenience. A commit
+    object written directly with `git hash-object --literally` can carry
+    control characters in its author fields and a timestamp that is not a
+    number, and Git will replay both faithfully. A record that survives all of
+    the checks below is one this reader is willing to attribute to a person.
+
+    Args:
+        record: One record from the split log output, without its separator.
+        mailmap: Parsed `.mailmap` lookup tables.
+        exclude_set: Lowercased names and addresses to drop.
+        authentic_shas: Object names git itself reported for this revision. A
+            record whose SHA is absent was not produced by a commit.
+
+    Returns:
+        The parsed Commit, or None if the record is empty, malformed,
+        excluded by filter, or carries an unusable timestamp.
+    """
+    if not record.strip():
+        return None
+
+    header, _, numstat_block = record.partition("\n")
+    fields = header.split(_FIELD_SEP)
+    if len(fields) != 4:
+        return None
+
+    sha, raw_name, raw_email, committed_at = fields
+
+    # A crafted author name can produce a record that *looks* well formed --
+    # right field count, forty hex characters -- so shape alone is not enough.
+    # Membership in the set git computed is.
+    if not _SHA_RE.fullmatch(sha) or sha not in authentic_shas:
+        return None
+
+    # An author field carrying our own separators can split one commit into
+    # several fabricated contributors -- and the ranking then promotes an
+    # invented name into a tier. Scrub before trusting.
+    raw_name = _strip_control_chars(raw_name)
+    raw_email = _strip_control_chars(raw_email)
+
+    author_name, author_email = _resolve_identity(raw_name, raw_email, mailmap)
+
+    # The raw address is matched too so that an --exclude-author value copied
+    # from `git log` still works after normalisation.
+    if (
+        author_name.lower() in exclude_set
+        or author_email.lower() in exclude_set
+        or raw_email.lower() in exclude_set
+    ):
+        return None
+
+    try:
+        timestamp = datetime.datetime.fromtimestamp(int(committed_at), tz=datetime.UTC)
+    except (ValueError, OverflowError, OSError):
+        # A hand-written commit object can carry a timestamp that is not a
+        # number, or one far outside the platform's range. That is one unusable
+        # record, not a reason to abandon the whole report.
+        _logger.debug("skipping commit %s: unparseable timestamp", sha[:12])
+        return None
+
+    lines_added, lines_deleted = _sum_numstat(numstat_block)
+    return Commit(
+        sha=sha,
+        author_name=author_name,
+        author_email=author_email,
+        timestamp=timestamp,
+        lines_added=lines_added,
+        lines_deleted=lines_deleted,
+    )
+
+
+def _build_log_args(
+    rev: str,
+    since: datetime.date | None,
+    until: datetime.date | None,
+) -> tuple[list[str], list[str]]:
+    """Build the argument lists for the numstat read and the SHA allowlist.
+
+    Returned as a pair because the two commands must agree on revision
+    selection and on the date window. `rev-list` shares those with `log` but
+    rejects diff-formatting options such as `--numstat`, so the lists are built
+    explicitly rather than one filtered from the other -- if the windows drifted
+    apart the allowlist would stop covering every record the log returns.
+
+    Args:
+        rev: The revision to walk. Already checked not to begin with `-`.
+        since: Inclusive start of the analysis window, if any.
+        until: Inclusive end of the analysis window, if any.
+
+    Returns:
+        A `(log_args, rev_list_args)` pair.
+    """
+    log_args: list[str] = ["--no-merges", "--numstat", _LOG_FORMAT]
+    rev_list_args: list[str] = ["--no-merges"]
+
+    if since is not None:
+        log_args.append(f"--after={since.isoformat()}")
+        rev_list_args.append(f"--after={since.isoformat()}")
+    if until is not None:
+        # Add one day so the until boundary is inclusive.
+        inclusive_until = (until + datetime.timedelta(days=1)).isoformat()
+        log_args.append(f"--before={inclusive_until}")
+        rev_list_args.append(f"--before={inclusive_until}")
+
+    # `--end-of-options` stops git parsing anything after it as an option; the
+    # trailing `--` disambiguates the revision from a path of the same name.
+    for args in (log_args, rev_list_args):
+        args.extend(["--end-of-options", rev, "--"])
+
+    return log_args, rev_list_args

@@ -177,6 +177,7 @@ class Renderer:
                 the file cannot be written.
             RenderError: If the Jinja2 template raises an error during rendering.
         """
+        _assert_not_symlink(output_path)
         resolved = output_path.resolve()
         if not resolved.parent.exists():
             raise OutputPathError(
@@ -228,6 +229,7 @@ class Renderer:
             OutputPathError: If the parent directory does not exist or
                 the file cannot be written.
         """
+        _assert_not_symlink(output_path)
         resolved = output_path.resolve()
         if not resolved.parent.exists():
             raise OutputPathError(
@@ -328,6 +330,7 @@ class Renderer:
             OutputPathError: If the parent directory does not exist or
                 the file cannot be written.
         """
+        _assert_not_symlink(output_path)
         resolved = output_path.resolve()
         if not resolved.parent.exists():
             raise OutputPathError(
@@ -359,9 +362,9 @@ class Renderer:
                     writer.writerow(
                         {
                             "rank": i + 1,
-                            "name": r.stats.name,
-                            "email": r.stats.email,
-                            "designation": r.tier_designation,
+                            "name": _neutralise_csv_cell(r.stats.name),
+                            "email": _neutralise_csv_cell(r.stats.email),
+                            "designation": _neutralise_csv_cell(r.tier_designation),
                             "tier": r.tier,
                             "commits": r.stats.commit_count,
                             "lines_added": r.stats.lines_added,
@@ -882,6 +885,67 @@ def _compute_longest_inactive_streak(
 # ------------------------------------------------------------------
 # Chart helper utilities
 # ------------------------------------------------------------------
+
+
+# Characters that make a spreadsheet treat a cell as a formula rather than text.
+# Tab and carriage return are included because a leading one is skipped by the
+# parser, exposing whatever follows it.
+_CSV_FORMULA_PREFIXES: tuple[str, ...] = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _assert_not_symlink(output_path: Path) -> None:
+    """Refuse to write a report through a symbolic link.
+
+    `Path.write_text` follows a symlink, so an output path pointing at one
+    overwrites whatever it targets. Combined with an output path taken from an
+    auto-discovered configuration file, that is a way for a repository to
+    choose which of the victim's files a 4 MB report lands on.
+
+    The check must run on the path **as given**. `Path.resolve()` follows
+    symlinks, so a resolved path is already the target and reports
+    `is_symlink() is False` -- checking after resolution silently passes every
+    time, which is exactly how the first version of this guard failed.
+
+    Args:
+        output_path: The output path as supplied, before resolution.
+
+    Raises:
+        OutputPathError: If the path is a symbolic link.
+    """
+    if output_path.is_symlink():
+        raise OutputPathError(
+            f"Refusing to write through the symbolic link '{output_path}'. "
+            "Writing would overwrite the link's target rather than the link. "
+            "Choose a regular file path, or remove the link first."
+        )
+
+
+def _neutralise_csv_cell(value: str) -> str:
+    """Prevent a text cell from being executed as a spreadsheet formula.
+
+    Author names and addresses come from commit metadata, which anybody who has
+    ever contributed to the analysed repository controls. Excel and LibreOffice
+    evaluate a cell beginning with `=`, `+`, `-` or `@` as a formula, which is a
+    route to `HYPERLINK` exfiltration and, historically, DDE command execution.
+    Reveille writes the CSV with a BOM specifically so Excel opens it directly,
+    which makes this the likely path rather than an unlikely one.
+
+    The mitigation is the conventional one: a leading apostrophe, which every
+    major spreadsheet reads as "treat the rest as text" and does not display.
+
+    Only free-text columns are passed through here. Numeric columns are written
+    from integers and floats, so a leading `-` there is a real minus sign.
+
+    Args:
+        value: A free-text cell value derived from repository metadata.
+
+    Returns:
+        The value, prefixed with an apostrophe if it would otherwise be
+        interpreted as a formula.
+    """
+    if value.startswith(_CSV_FORMULA_PREFIXES):
+        return "'" + value
+    return value
 
 
 def _sanitise_chart_label(value: str) -> str:

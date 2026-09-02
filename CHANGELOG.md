@@ -111,8 +111,8 @@ Nothing yet.
   colour with the top-ranked contributor **inside the same chart**; the residual
   slice now takes a reserved neutral, which is also what it means.
 
-- **34 new tests**: four on lock integrity, six on licence declarations, twelve on
-  provenance, schema version and determinism, and twelve on chart colour assignment. Each was observed failing against the
+- **47 new tests**: four on lock integrity, six on licence declarations, twelve on
+  provenance, schema version and determinism, twelve on chart colour assignment, and thirteen security regression tests. Each was observed failing against the
   defect it guards before being trusted.
 
 ### Changed
@@ -139,6 +139,69 @@ Nothing yet.
   v0.7.0. Accepted pre-1.0 on the same reasoning as
   [ADR 0005](docs/adr/0005-commit-concentration-not-bus-factor.md). Recorded as
   [ADR 0008](docs/adr/0008-output-provenance-and-schema-version.md).
+
+### Security
+
+An adversarial review found five issues, each reproduced against a real
+malicious repository before being fixed. The threat model throughout is that
+**a victim runs Reveille against a repository somebody else controls** — a
+clone, a fork, a pull-request branch. Everything in git history is then
+attacker-supplied text, and so is any `reveille.toml` at the repository root,
+because the CLI discovers that file automatically from the working directory.
+
+- **Argument injection into `git log`, allowing arbitrary file overwrite.** A
+  revision beginning with `-` is parsed by git as an option, and the trailing
+  `--` separates revisions from *paths* — it does not protect the revision
+  slot. `--branch "--output=/path/to/file"` made git write its log output over
+  that file. Reachable with no flags at all through an auto-discovered
+  `reveille.toml`, so running `reveille generate` inside a clone was enough.
+  Revisions beginning with `-` are now refused, and `--end-of-options` is
+  passed as a second line of defence.
+
+- **CSV formula injection.** Contributor names are written to a CSV opened with
+  a BOM specifically so Excel reads it directly, and nothing neutralised a
+  leading `=`, `+`, `-`, `@`, tab or carriage return — the route to `HYPERLINK`
+  exfiltration and, historically, DDE command execution. Free-text cells are
+  now prefixed with an apostrophe when they would otherwise be evaluated.
+  Numeric columns are untouched, so a real minus sign still reads as one.
+
+- **Contributor forgery through separator injection.** The single-pass reader
+  splits `git log` output on ASCII 0x1E and 0x1F. Git's ident sanitiser strips
+  `<`, `>` and newlines from an author field but **not** other control
+  characters, so a commit object written with `git hash-object --literally`
+  could inject a whole extra record and fabricate a contributor — who the
+  ranking would then promote into a tier. Records are now accepted only if
+  their object name appears in a list `git rev-list` produced, where the
+  attacker has no say. Scrubbing the fields afterwards cannot fix this and was
+  not enough on its own: by the time a field is scrubbed, the split has already
+  happened.
+
+- **Output path validation ran on the wrong path, and writes followed symbolic
+  links.** The CLI validated the `--output` flag but wrote the merged value, so
+  a path supplied by a configuration file skipped the traversal check
+  entirely. Separately, `write_text` follows a symlink, so an output path
+  pointing at one overwrote its target. Both are fixed; the symlink check runs
+  before the path is resolved, because `Path.resolve()` follows the link and
+  makes the check pass every time.
+
+- **A forged timestamp crashed the run.** A commit carrying a non-numeric or
+  out-of-range `%ct` raised an unhandled `OverflowError`. That record is now
+  skipped and the report still generates.
+
+**Verified unaffected**, and worth stating because they were tested rather than
+assumed: HTML and JavaScript injection into the report (Jinja2 autoescaping is
+on and chart JSON is escaped at the `</` sequence, so payloads stay inert
+text); the offline guarantee (zero remote-loading tags; the only network code
+in the vendored Plotly bundle is map-tile handling that is unreachable because
+no map trace is ever constructed); the `.mailmap` parser (all patterns linear,
+no ReDoS); and the CI workflows (no `pull_request_target`, no untrusted
+interpolation into `run:` steps).
+
+- **13 security regression tests.** Each was observed failing against the
+  reintroduced vulnerability. One of them did not, on first writing: the
+  forgery payload was rejected by an unrelated field-count check rather than by
+  the guard under test, so it proved nothing. It was rebuilt until removing the
+  guard genuinely failed it.
 
 ### Fixed
 
