@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Varaprasad Chilakanti
+# SPDX-License-Identifier: Apache-2.0
+
 """Core domain models for Reveille.
 
 Pure Python dataclasses with no framework dependencies, no I/O,

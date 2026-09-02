@@ -9,7 +9,7 @@ name = "reveille"
 version = "0.7.0"
 description = "A CLI tool that generates self-contained HTML performance reports from local Git repositories."
 authors = ["Varaprasad Chilakanti <varaprasadchilakanti@gmail.com>"]
-license = "MIT"
+license = "Apache-2.0"
 readme = "README.md"
 homepage = "https://github.com/varaprasadchilakanti/reveille"
 repository = "https://github.com/varaprasadchilakanti/reveille"
@@ -28,7 +28,13 @@ classifiers = [
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Intended Audience :: Information Technology",
-    "License :: OSI Approved :: MIT License",
+    # PEP 639 deprecates licence classifiers in favour of a
+    # `License-Expression` SPDX field, but that needs Poetry >= 2.2 and the
+    # `[project]` table; this project builds with Poetry 1.8.2, which emits
+    # neither. Dropping the classifier now would leave the distribution with
+    # no structured licence metadata at all, so it stays until the toolchain
+    # moves. The SPDX identifier is `Apache-2.0`.
+    "License :: OSI Approved :: Apache Software License",
     "Natural Language :: English",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",

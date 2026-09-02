@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Varaprasad Chilakanti
+# SPDX-License-Identifier: Apache-2.0
+
 """Config scaffolding for the `reveille init` command.
 
 Provides the annotated default TOML template, the annotated default

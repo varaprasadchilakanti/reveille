@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Varaprasad Chilakanti
+# SPDX-License-Identifier: Apache-2.0
+
 """CLI entry point for Reveille.
 
 Defines the public commands: generate, validate, init, version, help.

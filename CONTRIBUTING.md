@@ -151,5 +151,31 @@ chore(release): bump version to 0.4.0
 
 ## Licence
 
-By contributing to Reveille, you agree that your contributions will
-be licensed under the [MIT Licence](LICENSE).
+Reveille is licensed under the [Apache Licence 2.0](LICENSE) from version
+0.8.0 onward. Versions up to and including 0.7.0 were released under the MIT
+Licence, and that grant is unaffected.
+
+There is no contributor licence agreement to sign. Apache-2.0 §5 already
+settles the question:
+
+> Unless You explicitly state otherwise, any Contribution intentionally
+> submitted for inclusion in the Work by You to the Licensor shall be under
+> the terms and conditions of this License, without any additional terms or
+> conditions.
+
+So opening a pull request licenses that contribution under Apache-2.0, and
+nothing further is required of you. If you want to contribute under different
+terms, say so in the pull request and we will discuss it before merging.
+
+New source files should carry the two-line SPDX header the rest of the tree
+uses, so that a file still declares its licence if it is ever separated from
+this repository:
+
+```python
+# SPDX-FileCopyrightText: 2026 Your Name
+# SPDX-License-Identifier: Apache-2.0
+```
+
+`make check-licence` asserts that `LICENSE`, `pyproject.toml` and
+`reveille.__licence__` agree, and `tests/unit/test_licence.py` asserts that
+every source file carries a header naming the same licence.

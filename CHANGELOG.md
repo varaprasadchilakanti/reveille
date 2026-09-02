@@ -8,6 +8,24 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **The licence moves from MIT to Apache-2.0.** Versions up to and including 0.7.0
+  remain MIT permanently — relicensing is prospective only, and those versions stay
+  available under MIT from the Git history. Apache-2.0 adds three things MIT does not
+  provide: an express patent grant (§3), an automatic inbound-equals-outbound rule for
+  contributions (§5) so a pull request needs no contributor licence agreement, and an
+  explicit trademark non-grant (§6). The cost is real but narrow: §4(b) requires
+  modified files to carry change notices, and Apache-2.0 is incompatible with GPLv2
+  (though compatible with GPLv3). Checked first: every one of the 25 runtime packages
+  is permissive, with zero copyleft and no GPL-2.0-only dependency. Recorded as
+  [ADR 0007](docs/adr/0007-apache-2-0-licence.md). No `NOTICE` file is created —
+  §4(d) binds downstream only if one exists, and Reveille vendors nothing that needs
+  attributing.
+
+- **Every source file now carries a two-line SPDX header**, so a file still declares
+  its licence and copyright holder if it is ever separated from this repository.
+
 ### Fixed
 
 - **`poetry.lock` was not valid TOML, and CI had been failing on `main` for six

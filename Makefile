@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install lint format fix typecheck precommit check-lock check-packaging test test-unit \
+.PHONY: help install lint format fix typecheck precommit check-lock check-licence check-packaging test test-unit \
 	    test-integration test-e2e coverage ci build sbom publish-test \
 	    publish clean
 
@@ -36,6 +36,19 @@ check-lock:  ## Assert poetry.lock is valid TOML before anything tries to instal
 		exit 1; \
 	fi
 	@echo "poetry.lock is valid TOML"
+
+check-licence:  ## Assert LICENSE, pyproject.toml and reveille.__licence__ agree
+	@TOML_LIC=$$(poetry version >/dev/null 2>&1 && python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['tool']['poetry']['license'])"); \
+	CODE_LIC=$$(poetry run python -c "import reveille; print(reveille.__licence__)"); \
+	if [ "$$TOML_LIC" != "$$CODE_LIC" ]; then \
+		echo "Licence mismatch: pyproject.toml=$$TOML_LIC, __init__.py=$$CODE_LIC"; \
+		exit 1; \
+	fi; \
+	if ! grep -q "Apache License" LICENSE || ! grep -q "Version 2.0, January 2004" LICENSE; then \
+		echo "LICENSE does not contain the Apache License 2.0 text"; \
+		exit 1; \
+	fi; \
+	echo "Licence declarations agree: $$TOML_LIC"
 
 check-packaging:  ## Assert the PEP 561 py.typed marker ships in the built distributions
 	@rm -rf dist
@@ -98,6 +111,7 @@ coverage:  ## Generate HTML and terminal coverage report
 ci:  ## Full CI workflow: lint, typecheck, test
 	$(MAKE) check-lock
 	$(MAKE) check-version
+	$(MAKE) check-licence
 	$(MAKE) check-packaging
 	$(MAKE) lint
 	$(MAKE) typecheck

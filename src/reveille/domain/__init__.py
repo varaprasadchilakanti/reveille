@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Varaprasad Chilakanti
+# SPDX-License-Identifier: Apache-2.0
+
 """Domain layer for Reveille.
 
 Contains pure Python models and the ranking engine. This package

@@ -67,6 +67,8 @@ jobs:
         run: poetry run ruff check src tests
       - name: Check version sync
         run: make check-version
+      - name: Check licence declarations agree
+        run: make check-licence
       - name: Check packaging contract
         run: make check-packaging
 

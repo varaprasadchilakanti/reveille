@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Varaprasad Chilakanti
+# SPDX-License-Identifier: Apache-2.0
+
 """Contributor ranking engine.
 
 Assigns each contributor a composite score and tier designation based

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Varaprasad Chilakanti
+# SPDX-License-Identifier: Apache-2.0
+
 """Configuration model for Reveille report generation.
 
 ReportConfig is the single validated input object passed from the

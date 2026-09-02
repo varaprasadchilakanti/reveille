@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Varaprasad Chilakanti
+# SPDX-License-Identifier: Apache-2.0
+
 r"""Report renderer adapter.
 
 Renders `ReportData` to one of three formats. `render` produces the

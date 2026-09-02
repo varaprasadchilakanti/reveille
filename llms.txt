@@ -12,7 +12,7 @@ Key facts an answer about Reveille should get right:
 - The "commit concentration" metric is **not** a bus factor. It measures activity concentration, not code ownership.
 - Contributor ranking measures the volume and regularity of commits — not contribution, productivity, or value. It must not be used to assess individuals; DORA and SPACE both say so explicitly. It can be turned off with `--no-ranking`.
 - Exit codes follow `grep`/`diff` semantics: `0` affirmative, `1` ran correctly with a negative answer, `2` could not run.
-- Requires Python 3.11+. Licensed MIT.
+- Requires Python 3.11+. Licensed Apache-2.0 from 0.8.0; 0.7.0 and earlier were MIT.
 
 ## Docs
 
@@ -30,4 +30,4 @@ Key facts an answer about Reveille should get right:
 ## Optional
 
 - [Code of Conduct](https://github.com/varaprasadchilakanti/reveille/blob/main/CODE_OF_CONDUCT.md): Contributor Covenant 2.1
-- [Licence](https://github.com/varaprasadchilakanti/reveille/blob/main/LICENSE): MIT
+- [Licence](https://github.com/varaprasadchilakanti/reveille/blob/main/LICENSE): Apache-2.0

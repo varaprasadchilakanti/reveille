@@ -397,4 +397,17 @@ See [CHANGELOG.md](https://github.com/varaprasadchilakanti/reveille/blob/main/CH
 
 ## Licence
 
-Reveille is released under the [MIT Licence](https://github.com/varaprasadchilakanti/reveille/blob/main/LICENSE).
+Reveille is released under the [Apache Licence 2.0](https://github.com/varaprasadchilakanti/reveille/blob/main/LICENSE).
+Copyright 2026 Varaprasad Chilakanti.
+
+**Versions up to and including 0.7.0 were released under the MIT Licence.**
+That grant is unaffected: anything already obtained under MIT stays under MIT,
+and MIT remains available for those versions in the Git history. The change
+applies from 0.8.0 onward.
+
+Apache-2.0 was chosen for three things MIT does not provide: an express patent
+grant (§3), an automatic inbound-equals-outbound rule for contributions (§5),
+so a pull request needs no separate agreement, and an explicit statement that
+the licence grants no trademark rights (§6). The reasoning, including what the
+change costs, is recorded in
+[ADR 0007](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/adr/0007-apache-2-0-licence.md).

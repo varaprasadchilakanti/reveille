@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Varaprasad Chilakanti
+# SPDX-License-Identifier: Apache-2.0
+
 """Domain-specific exception hierarchy for Reveille.
 
 All exceptions raised by Reveille's public interface are subclasses of

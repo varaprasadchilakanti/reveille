@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Varaprasad Chilakanti
+# SPDX-License-Identifier: Apache-2.0
+
 """Git repository reader adapter.
 
 Translates raw GitPython data into typed domain models. This is the
