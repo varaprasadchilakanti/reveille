@@ -1095,6 +1095,6 @@ class TestReportAccessibility:
         remote host. Attribution URLs inside the vendored Plotly bundle
         are inert string literals for chart types Reveille never renders.
         """
-        assert not re.search(r"<link[^>]+href=\"https?://", default_report_content)
-        assert not re.search(r"<script[^>]+src=\"https?://", default_report_content)
-        assert not re.search(r"<img[^>]+src=\"https?://", default_report_content)
+        assert not re.search(r"<link[^>]+href=[\"']https?://", default_report_content)
+        assert not re.search(r"<script[^>]+src=[\"']https?://", default_report_content)
+        assert not re.search(r"<img[^>]+src=[\"']https?://", default_report_content)

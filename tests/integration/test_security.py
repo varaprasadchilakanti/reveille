@@ -31,6 +31,7 @@ from __future__ import annotations
 import csv
 import datetime
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -331,8 +332,12 @@ class TestOfflineGuarantee:
         Renderer().render(_report_with_name('<img src="http://evil.test/x.png">'), out)
         html = out.read_text(encoding="utf-8")
 
-        assert '<img src="http://evil.test' not in html
-        assert "evil.test" not in html or "&lt;img" in html
+        # A disjunction here would be unconditionally true once any escaped
+        # `&lt;img` appeared anywhere in the document, which it does. Assert the
+        # specific thing instead: the payload may appear as escaped text, but
+        # never as a live attribute in any quoting style.
+        assert not re.search(r"""<img[^>]+src=["']?https?://evil\.test""", html)
+        assert "&lt;img" in html, "payload should survive as escaped text"
 
 
 @pytest.mark.integration

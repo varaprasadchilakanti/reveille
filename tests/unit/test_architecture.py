@@ -35,8 +35,15 @@ _CONFIG_SOURCE = _SRC / "config.py"
 
 
 def _modules() -> list[Path]:
-    """Every Python module in the package."""
-    return sorted(p for p in _SRC.rglob("*.py") if p.name != "__init__.py")
+    """Every Python module in the package, `__init__.py` included.
+
+    The exemption these once carried blinded three guarantees at once. A
+    package's `__init__.py` executes at import, so `import socket` placed
+    there would have been invisible to the offline check, to the dependency
+    direction check, and to the filesystem-write check -- in the one file that
+    is guaranteed to run.
+    """
+    return sorted(_SRC.rglob("*.py"))
 
 
 def _tree(path: Path) -> ast.Module:

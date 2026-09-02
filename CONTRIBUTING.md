@@ -127,6 +127,8 @@ document in the same pull request. An architecture document that
 describes an intended design rather than the built one is worse than
 none.
 
+Releases follow [RELEASE.md](RELEASE.md).
+
 ## Submitting Pull Requests
 
 All pull requests must target the `main` branch.

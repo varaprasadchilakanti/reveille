@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -304,3 +305,89 @@ class TestRankingIsOptIn:
 
         assert "gini_coefficient" in payload["derived"]
         assert 0.0 <= payload["derived"]["gini_coefficient"] <= 1.0
+
+
+@pytest.mark.integration
+class TestAnalysisWindowIsTimezoneIndependent:
+    """`--since` and `--until` must mean the same thing on every machine."""
+
+    @pytest.fixture()
+    def boundary_repo(self, tmp_path_factory: pytest.TempPathFactory) -> Path:
+        """One commit at 22:00 UTC, which lands on a different local date."""
+        repo = tmp_path_factory.mktemp("boundary")
+        env = {
+            "GIT_AUTHOR_NAME": "Alice",
+            "GIT_AUTHOR_EMAIL": "alice@example.com",
+            "GIT_COMMITTER_NAME": "Alice",
+            "GIT_COMMITTER_EMAIL": "alice@example.com",
+            "GIT_AUTHOR_DATE": "2024-06-10T22:00:00+00:00",
+            "GIT_COMMITTER_DATE": "2024-06-10T22:00:00+00:00",
+        }
+        subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+        (repo / "a.txt").write_text("x\n", encoding="utf-8")
+        subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+        subprocess.run(
+            ["git", "commit", "-qm", "boundary"],
+            cwd=repo,
+            check=True,
+            env={**os.environ, **env},
+        )
+        return repo
+
+    @pytest.mark.parametrize(
+        "timezone", ["UTC", "Pacific/Auckland", "America/Los_Angeles", "Asia/Kolkata"]
+    )
+    def test_the_same_window_gives_the_same_answer_in_every_timezone(
+        self, timezone: str, boundary_repo: Path, tmp_path: Path
+    ) -> None:
+        """Git parses a bare date in LOCAL time; this tool renders UTC.
+
+        Before the boundaries were pinned to UTC, one commit at 22:00Z with
+        `--since 2024-06-11` produced an empty window under UTC and under
+        America/Los_Angeles, and a full report under Pacific/Auckland. Same
+        repository, same flags, three different answers.
+        """
+        result = subprocess.run(
+            [
+                str(Path(sys.executable).parent / "reveille"),
+                "generate",
+                "--repo",
+                str(boundary_repo),
+                "--since",
+                "2024-06-11",
+                "-o",
+                str(tmp_path / f"{timezone.replace('/', '_')}.html"),
+            ],
+            capture_output=True,
+            text=True,
+            env={**os.environ, "TZ": timezone},
+        )
+
+        # 2024-06-10T22:00Z is before the window in UTC, so every machine must
+        # agree that there is nothing to report.
+        assert result.returncode == 1, f"{timezone}: {result.stdout}{result.stderr}"
+
+    @pytest.mark.parametrize("timezone", ["UTC", "Pacific/Auckland", "America/Los_Angeles"])
+    def test_a_window_that_includes_the_commit_also_agrees(
+        self, timezone: str, boundary_repo: Path, tmp_path: Path
+    ) -> None:
+        """The control: the fix must not simply exclude everything."""
+        out = tmp_path / f"{timezone.replace('/', '_')}-in.html"
+        result = subprocess.run(
+            [
+                str(Path(sys.executable).parent / "reveille"),
+                "generate",
+                "--repo",
+                str(boundary_repo),
+                "--since",
+                "2024-06-10",
+                "-o",
+                str(out),
+            ],
+            capture_output=True,
+            text=True,
+            env={**os.environ, "TZ": timezone},
+        )
+
+        assert result.returncode == 0, f"{timezone}: {result.stdout}{result.stderr}"
+        assert out.is_file()

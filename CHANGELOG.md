@@ -96,6 +96,14 @@ Nothing yet.
   be reproducible for the wrong reason; only comparing two builds shows whether
   the property actually holds.
 
+- **`RELEASE.md`** — the release procedure, which existed only in gitignored notes.
+  A project with a PyPI Trusted Publisher and PEP 740 attestations had no written
+  release process in the repository at all: the tag ceremony, what the publish
+  workflow does, how to verify from the published artefact rather than the source
+  tree, and how to recover a bad release (yank and re-publish; never delete — a
+  filename can never be reused). It also names the three repository settings the
+  release path depends on, which live on GitHub and are easy to lose.
+
 - **Architectural fitness functions** — `tests/unit/test_architecture.py`. Tests
   whose subject is a *structural property* rather than a behaviour, so the build
   fails when the shape stops holding rather than when a feature breaks. The term
@@ -255,7 +263,7 @@ Nothing yet.
 - **`.github/PULL_REQUEST_TEMPLATE.md`**, whose "Verified" section asks what was run
   and what it showed, and reminds the author to break any new guard and watch it fail.
 
-- **99 new tests**: four on lock integrity, six on licence declarations, twelve on
+- **107 new tests**: four on lock integrity, six on licence declarations, twelve on
   provenance, schema version and determinism, twelve on chart colour assignment, thirteen security regression tests, fifteen on the capability document, fourteen on the Lorenz curve and Gini coefficient checked against values the definitions fix, four on the ranking default, seven architectural fitness functions, and two on README structure. Each was observed failing against the
   defect it guards before being trusted.
 
@@ -351,6 +359,39 @@ Nothing yet.
   variables became empty strings, `"" != ""` was false, and the guard reported
   agreement and exited 0 — with `__licence__` set to anything at all. Both now fail
   closed and refuse to compare two blanks.
+
+- **`[report] format` in `reveille.toml` was silently ignored.** The CLI assigned
+  `output_format` unconditionally, and the flag's default was `"html"` — so the
+  default overwrote whatever the config file said. A user automating a JSON export
+  via config got HTML, exit 0, no warning. This is the same defect the `min_commits`
+  `None` sentinel was introduced to fix; the fix had never been applied here.
+  Verified in all three directions: config-only now yields JSON, an explicit flag
+  overrides the config, and no config still defaults to HTML.
+
+- **`--since` and `--until` meant different things on different machines.** Git
+  parses a bare `YYYY-MM-DD` in the *local* timezone, while every timestamp
+  Reveille renders is UTC. Measured with one commit at `2024-06-10T22:00Z` and
+  `--since 2024-06-11`: empty under UTC, empty under `America/Los_Angeles`, a full
+  report under `Pacific/Auckland` — same repository, same flags, three different
+  answers. Window boundaries are now pinned to UTC, which is also what
+  `--deterministic` needs in order to mean anything.
+
+- **Three guards passed while checking nothing**, found by re-breaking every
+  invariant rather than by reading:
+
+  - `tests/unit/test_architecture.py` exempted every `__init__.py`, which blinded
+    the offline guarantee, the dependency-direction rule and the filesystem-write
+    rule *simultaneously* — in the one file guaranteed to execute on import.
+  - The offline-moat test matched only double-quoted attributes, so
+    `<link href='https://…'>` passed. A sibling check three hundred lines away had
+    it right.
+  - A security assertion was a disjunction already true on its right operand.
+
+- **`reveille capabilities` failed open.** It read the command list with
+  `getattr(group, "commands", {})`, so a Click internals change would have emitted
+  a valid-looking document claiming the tool has no commands, exit 0, to a program
+  that trusts it. It now refuses. Its test compared `set(X) == set(X)` and would
+  have passed with both sides empty; it now also checks an independent literal.
 
 - **The README had lost its licence section and grown a duplicate heading.** An
   edit during this release truncated the file at `## Licence`, so the licence

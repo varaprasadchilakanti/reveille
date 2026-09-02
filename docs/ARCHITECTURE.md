@@ -260,7 +260,7 @@ fold together.
 
 `_build_charts` returns a dict keyed `timeline`,
 `contributor_timeline`, `heatmap`, `contributor_commits`,
-`contributor_lines`, `pie_commits`, `pie_lines`. Each value is a Plotly
+`contributor_lines`, `pie_commits`, `pie_lines`, `lorenz`. Each value is a Plotly
 JSON string, or the string `"null"` when there is nothing to draw —
 the template checks for that sentinel rather than the renderer deciding
 what the page looks like.

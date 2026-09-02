@@ -254,9 +254,24 @@ def _commands(app: Any) -> list[dict[str, Any]]:
     import typer.main
 
     group = typer.main.get_command(app)
+
+    # Fail closed. `getattr(group, "commands", {})` would return an empty
+    # mapping if Click ever restructured, and this function would then emit a
+    # document claiming the tool has no commands -- silently, with exit 0, to a
+    # program that trusts it. An empty command list is never a true answer
+    # here, so it is an error rather than a default.
+    commands = getattr(group, "commands", None)
+    if not commands:
+        raise RuntimeError(
+            "Could not read the command list from the CLI application. This "
+            "usually means the installed Click or Typer version changed its "
+            "internals. Refusing to emit a capability document that would "
+            "describe this tool as having no commands."
+        )
+
     described: list[dict[str, Any]] = []
 
-    for name, command in sorted(getattr(group, "commands", {}).items()):
+    for name, command in sorted(commands.items()):
         options: list[dict[str, Any]] = []
         for param in command.params:
             opts = getattr(param, "opts", [])

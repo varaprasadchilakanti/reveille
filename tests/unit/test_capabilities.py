@@ -48,11 +48,40 @@ class TestDerivedFactsCannotDrift:
         assert document["output_schema_version"] == SCHEMA_VERSION
 
     def test_every_registered_command_is_described(self, document: dict) -> None:
-        """The command list is read from the Typer app, so it must be exact."""
+        """The command list is read from the Typer app, so it must be exact.
+
+        Checked against an independent literal as well as against the app.
+        Comparing only `set(get_command(app).commands)` to a document built
+        from that same expression is `set(X) == set(X)`: if Click restructured
+        and both sides became empty, the test would pass while the document
+        told a program this tool has no commands.
+        """
         registered = set(typer.main.get_command(app).commands)
         described = {c["name"] for c in document["commands"]}
 
         assert described == registered
+        assert described == {"generate", "validate", "init", "capabilities", "help"}
+
+    def test_a_broken_introspection_raises_rather_than_emptying(self) -> None:
+        """An empty command list is never a true answer, so it must not be one.
+
+        `getattr(group, "commands", {})` would have produced exactly that: a
+        valid-looking document, exit 0, claiming no commands exist.
+        """
+        import typer.main as typer_main
+
+        from reveille.capabilities import _commands
+
+        class _NoCommands:
+            pass
+
+        original = typer_main.get_command
+        typer_main.get_command = lambda _app: _NoCommands()  # type: ignore[assignment]
+        try:
+            with pytest.raises(RuntimeError, match="Could not read the command list"):
+                _commands(app)
+        finally:
+            typer_main.get_command = original
 
     def test_the_capabilities_command_describes_itself(self, document: dict) -> None:
         """A self-description that omits itself is incomplete by construction."""

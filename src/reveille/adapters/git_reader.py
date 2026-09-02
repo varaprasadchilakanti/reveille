@@ -493,8 +493,8 @@ class GitReader:
     def mailmap_applied(self) -> bool:
         """Whether a non-empty `.mailmap` was applied during aggregation.
 
-        False until `aggregate_contributor_stats` has run, because that is
-        where the file is read. Identity merging materially changes contributor
+        False until `read_commits` has run, because that is where the file is
+        read. Identity merging materially changes contributor
         counts, so a report that used one is not comparable with a report that
         did not.
         """
@@ -704,14 +704,25 @@ def _build_log_args(
     log_args: list[str] = ["--no-merges", "--numstat", _LOG_FORMAT]
     rev_list_args: list[str] = ["--no-merges"]
 
+    # Boundaries are pinned to UTC. Git parses a bare `YYYY-MM-DD` in the
+    # machine's LOCAL timezone, while every timestamp this reader produces is
+    # rendered in UTC -- so the same repository and the same `--since` gave
+    # different answers on different machines. Measured with one commit at
+    # 2024-06-10T22:00Z and `--since 2024-06-11`: empty under UTC and under
+    # America/Los_Angeles, one commit under Pacific/Auckland.
+    #
+    # An explicit offset removes the machine from the answer, which is also
+    # what `--deterministic` needs in order to mean anything.
     if since is not None:
-        log_args.append(f"--after={since.isoformat()}")
-        rev_list_args.append(f"--after={since.isoformat()}")
+        boundary = f"{since.isoformat()}T00:00:00+00:00"
+        log_args.append(f"--after={boundary}")
+        rev_list_args.append(f"--after={boundary}")
     if until is not None:
-        # Add one day so the until boundary is inclusive.
+        # One day past the boundary, so `--until` is inclusive of its own date.
         inclusive_until = (until + datetime.timedelta(days=1)).isoformat()
-        log_args.append(f"--before={inclusive_until}")
-        rev_list_args.append(f"--before={inclusive_until}")
+        boundary = f"{inclusive_until}T00:00:00+00:00"
+        log_args.append(f"--before={boundary}")
+        rev_list_args.append(f"--before={boundary}")
 
     # `--end-of-options` stops git parsing anything after it as an option; the
     # trailing `--` disambiguates the revision from a path of the same name.

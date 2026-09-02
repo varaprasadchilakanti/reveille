@@ -16,8 +16,6 @@ import pytest
 
 from reveille.config import ReportConfig
 from reveille.domain.models import (
-    SCHEMA_VERSION,
-    AnalysisProvenance,
     Commit,
     ContributorStats,
     ProgressEvent,
@@ -30,23 +28,6 @@ from reveille.services.report import generate_report
 # ------------------------------------------------------------------
 # Shared fixtures
 # ------------------------------------------------------------------
-
-# Provenance is required by ReportData but is inert for these tests: the
-# service builds the real one, and nothing here asserts on it.
-_PROVENANCE = AnalysisProvenance(
-    reveille_version="0.0.0-test",
-    schema_version=SCHEMA_VERSION,
-    head_sha="0" * 40,
-    requested_branch=None,
-    requested_since=None,
-    requested_until=None,
-    exclude_authors_count=0,
-    min_commits=1,
-    ranking_enabled=True,
-    ranking_weights={"commits": 0.3, "lines": 0.25, "consistency": 0.25, "recency": 0.2},
-    mailmap_applied=False,
-    deterministic=False,
-)
 
 
 @pytest.fixture()
@@ -293,11 +274,11 @@ class TestGenerateReport:
             reader_instance.read_metadata.return_value = sample_metadata
             mock_rank.return_value = [sample_ranked]
 
-            def capture(
-                data: ReportData,
-                path: Path,
-                heatmap_granularity: str = "monthly",
-            ) -> Path:
+            # Signature mirrors Renderer.render exactly. It previously carried
+            # a `heatmap_granularity` parameter the real method does not have,
+            # which survived only because it had a default -- the drift a mock
+            # without autospec cannot report.
+            def capture(data: ReportData, path: Path) -> Path:
                 captured.append(data)
                 return path
 

@@ -368,7 +368,7 @@ def _merge_cli_flags(
     min_commits: int | None,
     no_ranking: bool,
     ranking: bool,
-    output_format: str,
+    output_format: str | None,
     deterministic: bool,
 ) -> ReportConfigKwargs:
     """Merge CLI flag values into the base configuration dict.
@@ -389,7 +389,11 @@ def _merge_cli_flags(
         min_commits: Minimum commit threshold, or None if not provided.
         no_ranking: Whether ranking is explicitly disabled.
         ranking: Whether ranking is explicitly enabled.
-        output_format: Output format string. Accepted values: html, json, csv.
+        output_format: Output format string, or None if the flag was not given.
+            A `None` sentinel rather than the default value, because comparing
+            against "html" cannot tell an explicit `--format html` from an
+            absent flag -- and an unconditional assignment here silently
+            overwrote whatever `reveille.toml` had set.
         deterministic: Whether to produce byte-reproducible output.
 
     Returns:
@@ -416,7 +420,8 @@ def _merge_cli_flags(
     if min_commits is not None:
         merged["min_commits"] = min_commits
     _apply_ranking_flags(merged, ranking=ranking, no_ranking=no_ranking)
-    merged["output_format"] = cast(OutputFormat, output_format)
+    if output_format is not None:
+        merged["output_format"] = cast(OutputFormat, output_format)
 
     return cast(ReportConfigKwargs, merged)
 
@@ -477,12 +482,12 @@ def generate(
         ),
     ] = False,
     output_format: Annotated[
-        str,
+        str | None,
         typer.Option(
             "--format",
-            help="Output format. Accepted values: html, json, csv.",
+            help="Output format. Accepted values: html, json, csv. [default: html]",
         ),
-    ] = "html",
+    ] = None,
     deterministic: Annotated[
         bool,
         typer.Option(
