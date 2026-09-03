@@ -20,6 +20,7 @@ import plotly.graph_objects as go
 import pytest
 
 from reveille.adapters.renderer import (
+    _PIE_MAX_SLICES,
     Renderer,
     _aggregate_pie_data,
     _build_commit_share_pie,
@@ -762,35 +763,28 @@ class TestAggregatePieData:
         assert values == [10, 8, 5]
 
     def test_exactly_max_slices_returned_unchanged(self) -> None:
-        items = [(f"Contributor{i}", 10 - i) for i in range(8)]
+        items = [(f"Contributor{i}", 10 - i) for i in range(_PIE_MAX_SLICES)]
         labels, _values = _aggregate_pie_data(items)
-        assert len(labels) == 8
+        assert len(labels) == _PIE_MAX_SLICES
         assert "Other Contributors" not in labels
 
     def test_beyond_max_slices_aggregates_remainder(self) -> None:
-        items = [(f"Contributor{i}", 10) for i in range(10)]
+        """The cap is the palette length: past it there is no colour left."""
+        items = [(f"Contributor{i}", 10) for i in range(_PIE_MAX_SLICES + 2)]
         labels, values = _aggregate_pie_data(items)
-        assert len(labels) == 9  # 8 named + 1 aggregate
+        assert len(labels) == _PIE_MAX_SLICES + 1
         assert labels[-1] == "Other Contributors"
-        assert values[-1] == 20  # 2 contributors * 10 each
+        assert values[-1] == 20
 
     def test_aggregate_value_is_sum_of_remainder(self) -> None:
-        items = [
-            ("A", 100),
-            ("B", 80),
-            ("C", 60),
-            ("D", 40),
-            ("E", 30),
-            ("F", 20),
-            ("G", 10),
-            ("H", 5),
-            ("I", 3),
-            ("J", 2),
-        ]
+        items = [(chr(65 + i), (10 - i) * 10) for i in range(_PIE_MAX_SLICES + 3)]
         labels, values = _aggregate_pie_data(items)
-        # First 8 items kept; I (3) and J (2) aggregated = 5.
-        assert values[-1] == 5
+        expected = sum(value for _label, value in items[_PIE_MAX_SLICES:])
+        assert values[-1] == expected
         assert labels[-1] == "Other Contributors"
+        assert sum(values) == sum(value for _label, value in items), (
+            "aggregating must not lose or invent commits"
+        )
 
     def test_output_lengths_are_equal(self) -> None:
         items = [(f"C{i}", i + 1) for i in range(15)]
