@@ -75,8 +75,17 @@ what an installation of it contains.
 The SBOM is produced by a job that is independent of publishing, so a
 failure to generate one cannot withhold a release. It is uploaded as the
 `sbom` artifact of the workflow run and attached to the GitHub Release.
-If the Release is drafted after the tag is pushed — the usual order —
-the artifact is attached by hand when it is drafted.
+If the Release is drafted after the tag is pushed — the usual order — the
+artifact is attached by hand when it is drafted, and **before the Release
+is published**: this repository enables release immutability, and a
+published release accepts no further assets.
+
+Where that was missed, the SBOM is still obtainable. It remains the
+`sbom` artifact of the workflow run, and it can be regenerated from the
+tag as below — the two are byte-identical, so neither is more
+authoritative than the other. **v0.8.0 has no SBOM attached to its
+Release**, because the attesting step failed on a glob it could not
+expand; the artifact and the regeneration path both work.
 
 The same file can be regenerated from a checkout at any tag:
 

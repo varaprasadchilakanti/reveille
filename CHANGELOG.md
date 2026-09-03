@@ -23,6 +23,20 @@ before 0.8.0 predate the convention and are left as they were released.
   a filename resolved once, in one step, so a tag push and a manual re-run
   cannot disagree about it.
 
+- **The SBOM could not be attached to a published release, and the job failed
+  trying.** This repository enables release immutability, so a published
+  release accepts no further assets — by hand or by workflow. The attach step
+  now warns and continues instead of failing: its own comment already said an
+  unattached SBOM "is not a failure", and the security-relevant output, the
+  attestation, is stored against the repository rather than as a release asset
+  and succeeds regardless. `SECURITY.md` and `RELEASE.md` both said to attach
+  the artifact when drafting the Release; both now say to do it **before
+  publishing**, which is the only window that exists.
+
+  `SECURITY.md` also records plainly that **v0.8.0 has no SBOM attached to its
+  Release**. The artifact and `make sbom` at the tag both still produce it, and
+  they are byte-identical, so nothing about verifying that release is lost.
+
 - **A failed SBOM job could not be retried.** The workflow ran only on a tag
   push, and re-running it from the tag re-runs the workflow file *as it was at
   that tag* — the same failure. With release immutability enabled the tag

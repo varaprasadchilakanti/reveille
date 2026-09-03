@@ -151,6 +151,11 @@ In the web interface — Releases → Draft a new release — choose the existin
 tag, paste the title and body, and attach the `sbom` artifact downloaded
 from the workflow run. This is the ordinary path and needs no tooling.
 
+**Attach the SBOM before you press Publish.** With release immutability
+enabled, a published release accepts no further assets, and there is no
+way to add one afterwards — not by hand, and not by re-running the
+workflow. Only the title and notes stay editable.
+
 With the GitHub CLI, if you have it installed and authenticated:
 
 ```bash

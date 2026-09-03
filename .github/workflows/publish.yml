@@ -209,13 +209,29 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$TAG" reveille-*-sbom.cdx.json \
-              --repo "$GITHUB_REPOSITORY" --clobber
-            echo "SBOM attached to release $TAG."
-          else
+          set -uo pipefail
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "No Release exists for $TAG yet."
             echo "The SBOM is available as the 'sbom' artifact of this run."
-            echo "Attach it when drafting the Release:"
-            echo "  gh release upload $TAG reveille-*-sbom.cdx.json"
+            echo "Attach it while drafting the Release, before publishing it."
+            exit 0
           fi
+
+          if gh release upload "$TAG" reveille-*-sbom.cdx.json \
+               --repo "$GITHUB_REPOSITORY" --clobber; then
+            echo "SBOM attached to release $TAG."
+            exit 0
+          fi
+
+          # A published immutable release accepts no new assets. That is a
+          # setting working as intended, not a fault in this run, and it
+          # must not fail a pipeline whose security-relevant output -- the
+          # attestation -- has already succeeded. The SBOM stays available
+          # as this run's artifact, and `make sbom` at the tag reproduces
+          # it byte for byte.
+          echo "::warning::could not attach the SBOM to release $TAG."
+          echo "If release immutability is enabled, a published release"
+          echo "accepts no new assets. Attach the SBOM while drafting the"
+          echo "Release next time, before publishing it."
+          echo "The SBOM remains downloadable as the 'sbom' artifact here."
+          exit 0
