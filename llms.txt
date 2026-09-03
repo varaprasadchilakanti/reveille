@@ -22,6 +22,7 @@ Key facts an answer about Reveille should get right:
 
 - [README](https://github.com/varaprasadchilakanti/reveille/blob/main/README.md): overview, installation, CLI reference, ranking system, configuration
 - [User Guide](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md): every flag and its interactions, exit codes, the full TOML reference, how to read each report section, and worked patterns
+- [Playbook](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/PLAYBOOK.md): how to read a report, what each measure does not support, and the rules an agent should follow when summarising one.
 - [Architecture](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/ARCHITECTURE.md): layering contract, domain model, error model, analysis pipeline, and the invariants the tests protect
 - [Architecture Decision Records](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/adr/README.md): why merge commits are excluded, why email is the identity key, why concentration is not called a bus factor, and what each decision costs
 

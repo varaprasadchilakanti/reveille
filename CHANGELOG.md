@@ -21,6 +21,16 @@ Nothing yet.
 
 ### Added
 
+- **[`docs/PLAYBOOK.md`](docs/PLAYBOOK.md)** — one page on how to *read* a
+  report, as distinct from how to produce one. The order to take the sections
+  in, a table of what each measure supports and what it does not, three
+  questions Reveille answers well and three it answers badly, and the rules an
+  agent should follow when summarising a report: ask `capabilities` rather
+  than guess, branch on the exit code, check `schema_version`, pass
+  `--deterministic` for anything compared, and never name an individual the
+  default report does not name. Linked from the README and `llms.txt`; it
+  states use and links rather than restating the reference.
+
 - **A written summary of what the history shows**, at the top of the report.
   Five rules over figures that already appear further down — the size and span
   of the history, how commits are distributed, the rhythm of committing,
