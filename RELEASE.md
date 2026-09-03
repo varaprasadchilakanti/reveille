@@ -73,11 +73,46 @@ broken release.
 
 ## 4. Tag and publish
 
+**Tag the merge commit on `main`, not the branch.** A tag points at one
+commit; tagging the branch tip publishes a tree that was never on `main`.
+
 ```bash
 git switch main && git pull
-git tag vX.Y.Z
+git tag -s vX.Y.Z -m "Release X.Y.Z — <the theme from the CHANGELOG heading>"
 git push origin vX.Y.Z
 ```
+
+**On signing.** `-s` uses whatever `gpg.format` names. SSH is the least
+setup, since the key you already push with can also sign:
+
+```bash
+git config --global gpg.format ssh
+git config --global user.signingkey ~/.ssh/id_ed25519_github.pub
+git config --global tag.gpgsign true
+```
+
+Then add that **same public key a second time** on GitHub, under Settings
+→ SSH and GPG keys → New SSH key, with **Key type: Signing Key**. GitHub
+keeps authentication and signing keys in separate registers, so a key
+present only as an authentication key verifies nothing. Its own
+documentation says so: *"If you already use an SSH key to authenticate
+with GitHub, you can also upload that same key again for use as a signing
+key."*
+
+Two failure modes worth knowing before they cost you a version number:
+
+- `gpg: skipped ... No secret key` means `gpg.format` is still `openpgp`
+  and no GPG key exists. Set the format, or drop to `-a` for an annotated
+  unsigned tag, which is what releases before 0.8.0 used.
+- A signature verifies only when the **tagger email is a verified email on
+  the account**. This repository sets `user.email` locally; a global
+  fallback address will produce an Unverified tag that cannot be fixed
+  afterwards.
+
+**If release immutability is enabled** (Settings → General → *Disallow
+assets and tags from being modified once a release is published*), a
+published tag is final. An unsigned tag stays unsigned, and a tag on the
+wrong commit stays on the wrong commit. Get both right before pushing.
 
 The tag push triggers `.github/workflows/publish.yml`, which:
 
@@ -89,18 +124,35 @@ The tag push triggers `.github/workflows/publish.yml`, which:
 
 Watch the run. If it fails before the upload step, delete the tag
 (`git push --delete origin vX.Y.Z && git tag -d vX.Y.Z`), fix, and re-tag.
+This works only while no Release has been published for that tag: with
+release immutability enabled, publishing a Release freezes the tag, and
+the recovery becomes X.Y.Z+1 rather than a re-tag.
 **Once the upload succeeds, that version number is spent** — see step 6.
 
 ## 5. Draft the GitHub Release
 
+**Publication has already happened by this point.** Pushing the tag is what
+uploads to PyPI; the GitHub Release is a separate, human-readable page. If
+you never create one, the package is still published. Nothing here is a
+prerequisite for anything.
+
 The Release is normally written after the tag, so the SBOM job has usually
-finished by then and its artifact needs attaching by hand:
+finished and its artifact can be attached.
+
+In the web interface — Releases → Draft a new release — choose the existing
+tag, paste the title and body, and attach the `sbom` artifact downloaded
+from the workflow run. This is the ordinary path and needs no tooling.
+
+With the GitHub CLI, if you have it installed and authenticated:
 
 ```bash
-gh release download --repo varaprasadchilakanti/reveille  # or download the 'sbom' artifact from the run
-gh release create vX.Y.Z --title "vX.Y.Z — <headline>" --notes-file <(...)
+gh run download --repo varaprasadchilakanti/reveille --name sbom
+gh release create vX.Y.Z --title "vX.Y.Z — <headline>" --notes-file notes.md
 gh release upload vX.Y.Z reveille-*-sbom.cdx.json
 ```
+
+`gh` is a convenience, not a requirement, and it is not installed by
+default. The two paths produce the same Release.
 
 **The title is not invented here.** It is `vX.Y.Z` followed by the theme already
 written into the CHANGELOG heading in step 1 — e.g. *"v0.8.0 — Security
