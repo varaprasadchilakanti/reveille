@@ -544,10 +544,8 @@ class Renderer:
                 data.metadata.analysis_since,
                 data.metadata.analysis_until,
             ),
-            "contributor_commits": _build_contributor_commits_chart(data.ranked_contributors),
             "contributor_lines": _build_contributor_lines_chart(data.ranked_contributors),
             "pie_commits": _build_commit_share_pie(data.ranked_contributors),
-            "pie_lines": _build_lines_share_pie(data.ranked_contributors),
             "lorenz": _build_lorenz_chart(data.ranked_contributors),
             "commit_size": _build_commit_size_chart(data.commits),
             "hotspots": _build_hotspot_chart(data.file_stats),
@@ -792,46 +790,6 @@ def _build_heatmap_data(
     return json.dumps(payload).replace("</", "<\\/")
 
 
-def _build_contributor_commits_chart(ranked: list[RankedContributor]) -> str:
-    """Build a horizontal bar chart of commit counts per contributor.
-
-    Contributors are ordered by rank, with the highest-ranked contributor
-    at the top of the chart.
-
-    Args:
-        ranked: Ranked contributor list sorted by composite score descending.
-
-    Returns:
-        A Plotly figure JSON string, or 'null' if ranked is empty.
-    """
-    if not ranked:
-        return "null"
-
-    labels = _contributor_labels(ranked)
-    names = [labels[r.stats.email.lower()] for r in reversed(ranked)]
-    counts = [r.stats.commit_count for r in reversed(ranked)]
-    tiers = [r.tier_designation for r in reversed(ranked)]
-
-    fig = go.Figure(
-        go.Bar(
-            x=counts,
-            y=names,
-            orientation="h",
-            marker_color=_CATEGORICAL_PALETTE[0],
-            customdata=tiers,
-            hovertemplate="%{y}<br>Commits: %{x}<br>Tier: %{customdata}<extra></extra>",
-            text=[str(c) for c in counts],
-            textposition="outside",
-        )
-    )
-    fig.update_layout(
-        **_base_layout(),
-        xaxis_title="Commits",
-        height=max(280, min(len(ranked) * 44 + 80, _MAX_CHART_HEIGHT)),
-    )
-    return _to_json(fig)
-
-
 def _build_contributor_lines_chart(ranked: list[RankedContributor]) -> str:
     """Build a grouped bar chart of lines added and deleted per contributor.
 
@@ -921,53 +879,6 @@ def _build_commit_share_pie(ranked: list[RankedContributor]) -> str:
     return _to_json(fig)
 
 
-def _build_lines_share_pie(ranked: list[RankedContributor]) -> str:
-    """Build a donut chart showing each contributor's share of total lines changed.
-
-    Lines changed is additions plus deletions, providing a volume measure
-    of code activity independent of the net direction of change.
-    Contributors beyond _PIE_MAX_SLICES are aggregated.
-
-    Args:
-        ranked: Ranked contributor list sorted by composite score descending.
-
-    Returns:
-        A Plotly figure JSON string, or 'null' if fewer than two contributors
-        are present.
-    """
-    if len(ranked) < 2:
-        return "null"
-
-    display = _contributor_labels(ranked)
-    sorted_r = sorted(ranked, key=lambda r: r.stats.lines_changed, reverse=True)
-    labels, values = _aggregate_pie_data(
-        [(display[r.stats.email.lower()], r.stats.lines_changed) for r in sorted_r]
-    )
-
-    fig = go.Figure(
-        go.Pie(
-            labels=labels,
-            values=values,
-            hole=0.42,
-            textposition="outside",
-            textinfo="label+percent",
-            marker={"colors": _pie_colors(len(labels), has_other=labels[-1] == _OTHER_LABEL)},
-            hovertemplate="%{label}<br>Lines: %{value:,}<br>%{percent}<extra></extra>",
-            sort=False,
-        )
-    )
-    layout = _base_layout()
-    layout["showlegend"] = False
-    layout["margin"] = {"l": 20, "r": 20, "t": 20, "b": 20}
-    fig.update_layout(**layout, height=320)
-    return _to_json(fig)
-
-
-# ------------------------------------------------------------------
-# Derived metric helpers
-# ------------------------------------------------------------------
-
-
 def _build_commit_size_chart(commits: list[Commit]) -> str:
     """Build a histogram of change size per commit, on a log-spaced scale.
 
@@ -1017,11 +928,36 @@ def _build_commit_size_chart(commits: list[Commit]) -> str:
     )
     layout = _base_layout()
     layout["xaxis"] = {"type": "category", "automargin": True}
+
+    # The distribution is heavily skewed and the bins are log-spaced, so
+    # the bars alone do not tell a reader where the middle sits -- the
+    # tallest bar is not the median when the bins double in width each
+    # step. Marking the median bucket gives the shape an anchor, which is
+    # what turns a row of bars into a distribution a reader can describe.
+    sizes = sorted(commit.lines_added + commit.lines_deleted for commit in commits)
+    median = sizes[len(sizes) // 2]
+    median_index = len(edges) - 1
+    for position, edge in enumerate(edges):
+        if median < edge:
+            median_index = max(position - 1, 0)
+            break
+    layout["annotations"] = [
+        {
+            "x": labels[median_index],
+            "y": buckets[median_index],
+            "yanchor": "bottom",
+            "yshift": 22,
+            "text": f"median {median:,} lines",
+            "showarrow": False,
+            "font": {"size": 11},
+        }
+    ]
+
     fig.update_layout(
         **layout,
         xaxis_title="Lines changed in one commit",
         yaxis_title="Commits",
-        height=280,
+        height=300,
     )
     return _to_json(fig)
 

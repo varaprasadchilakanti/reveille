@@ -29,10 +29,8 @@ import pytest
 
 from reveille.adapters.renderer import (
     _build_commit_share_pie,
-    _build_contributor_commits_chart,
     _build_contributor_lines_chart,
     _build_contributor_timeline_chart,
-    _build_lines_share_pie,
     _contributor_labels,
 )
 from reveille.domain.models import Commit, ContributorStats, RankedContributor
@@ -98,27 +96,14 @@ class TestTheLabelMap:
 class TestNoChartCollapsesTwoContributorsIntoOne:
     """The failure was silent and differed per trace type."""
 
-    def test_the_commits_bar_chart_draws_one_bar_each(self) -> None:
-        trace = json.loads(_build_contributor_commits_chart(COLLIDING))["data"][0]
-        assert len(set(trace["y"])) == len(COLLIDING), (
-            f"{len(set(trace['y']))} categories for {len(COLLIDING)} contributors: "
-            "two bars are being drawn over each other"
-        )
-        assert sum(trace["x"]) == 200
-
     def test_the_lines_bar_chart_draws_one_group_each(self) -> None:
         figure = json.loads(_build_contributor_lines_chart(COLLIDING))
         for trace in figure["data"]:
             assert len(set(trace["x"])) == len(COLLIDING)
 
-    @pytest.mark.parametrize(
-        ("builder", "total"),
-        [(_build_commit_share_pie, 200), (_build_lines_share_pie, 200 * 11)],
-    )
-    def test_a_pie_does_not_sum_two_people_into_one_slice(
-        self, builder: object, total: int
-    ) -> None:
-        trace = json.loads(builder(COLLIDING))["data"][0]  # type: ignore[operator]
+    def test_a_pie_does_not_sum_two_people_into_one_slice(self) -> None:
+        total = 200
+        trace = json.loads(_build_commit_share_pie(COLLIDING))["data"][0]
         assert len(set(trace["labels"])) == len(COLLIDING), (
             "two slices share a label, so Plotly adds them together and the "
             "pie disagrees with the table beside it"
@@ -152,9 +137,7 @@ class TestTheCommonCaseIsUnchanged:
     @pytest.mark.parametrize(
         "builder",
         [
-            _build_contributor_commits_chart,
             _build_commit_share_pie,
-            _build_lines_share_pie,
         ],
     )
     def test_no_address_is_shown_when_names_are_unique(self, builder: object) -> None:
