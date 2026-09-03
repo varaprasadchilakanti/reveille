@@ -84,6 +84,26 @@ Read [llms.txt](../llms.txt) first — it is the short index. Then:
    individual in a summary the default report does not name. The
    generated findings hold to this; anything built on top should too.
 
+## Where the measures come from
+
+None of these is invented here. Each is a documented instrument with a
+century, or at least a decade, of interpretation and criticism attached —
+which is the point of using it rather than a bespoke score.
+
+| In the report | Instrument | Source |
+|---|---|---|
+| Contribution Distribution | Lorenz curve, Gini coefficient | Lorenz (1905); Gini (1912) |
+| Where Change Concentrates | Relative code churn; hotspot analysis | Nagappan & Ball, ICSE 2005; Tornhill, 2013 |
+| Change Size per Commit | Relative code churn | Nagappan & Ball, ICSE 2005 |
+| Repository Profile | Graphical perception, on why it is read as five numbers and not a shape | Cleveland & McGill, JASA 1984 |
+| What the History Shows | Data-to-text generation | Reiter & Dale, 2000 |
+| Chart colours | Color Universal Design; dichromat simulation; contrast | Okabe & Ito, 2008; Viénot, Brettel & Mollon, 1999; WCAG 2.1 |
+| The refusal to rank people | Position on individual metrics | DORA; SPACE (Forsgren et al., 2021) |
+
+`docs/ARCHITECTURE.md` carries the same table with the reasoning for each
+choice, and names what is local to this project — which is where scrutiny
+belongs.
+
 ## Conventions this project holds to
 
 These are the working rules, not aspirations. They are stated once here
