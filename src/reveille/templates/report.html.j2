@@ -1,3 +1,27 @@
+{#
+   The text alternative for a chart. `role="img"` makes an SVG's children
+   presentational, so the aria-label is the only thing a screen-reader
+   user gets from the picture -- and a label naming the chart type
+   conveys no data. WCAG 2.1 SC 1.1.1 asks for an alternative serving the
+   equivalent purpose, so the numbers are rendered as a table, visually
+   hidden and read from the same arrays the chart is drawn from.
+#}
+{% macro chart_table(chart_id, caption) %}
+{%- set table = chart_tables.get(chart_id) %}
+{%- if table %}
+        <table class="visually-hidden">
+            <caption>{{ caption }}</caption>
+            <thead>
+                <tr>{% for column in table.columns %}<th scope="col">{{ column }}</th>{% endfor %}</tr>
+            </thead>
+            <tbody>
+                {% for row in table.rows %}
+                <tr><th scope="row">{{ row[0] }}</th>{% for cell in row[1:] %}<td>{{ cell }}</td>{% endfor %}</tr>
+                {% endfor %}
+            </tbody>
+        </table>
+{%- endif %}
+{% endmacro %}
 {# SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti #}
 {# SPDX-License-Identifier: Apache-2.0 #}
 <!DOCTYPE html>
@@ -32,6 +56,7 @@
             --color-tier-3: #15803d;
             --color-tier-2: #b45309;
             --color-tier-1: #57606a;
+            --color-tier-ink: #ffffff;
         }
 
         /* ============================================================
@@ -52,13 +77,23 @@
             --color-positive:        #3fb950;
             --color-negative:        #f85149;
 
-            --color-tier-7: #484f58;
-            --color-tier-6: #1e40af;
-            --color-tier-5: #2563eb;
-            --color-tier-4: #0891b2;
-            --color-tier-3: #16a34a;
-            --color-tier-2: #d97706;
-            --color-tier-1: #57606a;
+            /* A filled badge on a dark page cannot carry white text: the
+               fill must be dark enough for white to read on it, and light
+               enough to be visible against the page, and those pull apart.
+               Measured on the previous set: white on tier-3 was 3.30:1 and
+               the tier-6 fill was 2.17:1 against the page -- six of seven
+               failed one bound or the other. Dark text on a light fill
+               satisfies both, and is the ordinary treatment for a badge on
+               a dark surface. `--color-tier-ink` carries that text colour;
+               the light theme keeps white. */
+            --color-tier-7: #8b949e;
+            --color-tier-6: #6ea8fe;
+            --color-tier-5: #79c0ff;
+            --color-tier-4: #39c5cf;
+            --color-tier-3: #3fb950;
+            --color-tier-2: #e3a008;
+            --color-tier-1: #8b949e;
+            --color-tier-ink: #0d1117;
         }
 
         /* ============================================================
@@ -517,11 +552,11 @@
         }
 
         /* Tiers 3–7: solid filled */
-        .tier-7 { background: var(--color-tier-7); color: #f0f6fc; }
-        .tier-6 { background: var(--color-tier-6); color: #ffffff; }
-        .tier-5 { background: var(--color-tier-5); color: #ffffff; }
-        .tier-4 { background: var(--color-tier-4); color: #ffffff; }
-        .tier-3 { background: var(--color-tier-3); color: #ffffff; }
+        .tier-7 { background: var(--color-tier-7); color: var(--color-tier-ink); }
+        .tier-6 { background: var(--color-tier-6); color: var(--color-tier-ink); }
+        .tier-5 { background: var(--color-tier-5); color: var(--color-tier-ink); }
+        .tier-4 { background: var(--color-tier-4); color: var(--color-tier-ink); }
+        .tier-3 { background: var(--color-tier-3); color: var(--color-tier-ink); }
 
         /* Tiers 1–2: outlined — subdued to enforce visual hierarchy */
         .tier-2 {
@@ -782,7 +817,8 @@
             more concentrated the activity.
         </p>
         <div class="chart-container">
-            <div id="chart-lorenz" role="img" aria-label="Lorenz curve showing the cumulative share of commits held by the cumulative share of contributors, plotted against a line of perfect equality."></div>
+            <div id="chart-lorenz" role="img" aria-label="Lorenz curve showing the cumulative share of commits held by the cumulative share of contributors, plotted against a line of perfect equality. The same figures follow as a table."></div>
+{{ chart_table("lorenz", "Cumulative share of commits against cumulative share of contributors") }}
         </div>
         <p class="chart-foot">
             Gini runs 0 (even) to {{ '%.2f'|format(derived.gini_ceiling) }}, which is the most
@@ -806,7 +842,7 @@
                     aria-label="Filter the activity heatmap by contributor"></select>
         </div>
         <div class="chart-container">
-            <div id="chart-heatmap" role="img" aria-label="Activity heatmap: commit counts per calendar day. The same activity is summarised per contributor in the contributor table below."></div>
+            <div id="chart-heatmap" role="img" aria-label="Activity heatmap: commit counts per calendar day. {{ derived.heatmap_summary }}"></div>
         </div>
     </div>
 
@@ -816,7 +852,8 @@
     <div class="section">
         <h2 class="section-title">Weekly Commit Timeline</h2>
         <div class="chart-container">
-            <div id="chart-timeline" role="img" aria-label="Line chart of total commits per calendar week across the analysis window."></div>
+            <div id="chart-timeline" role="img" aria-label="Line chart of total commits per calendar week across the analysis window. The same figures follow as a table."></div>
+{{ chart_table("timeline", "Commits per week") }}
         </div>
     </div>
 
@@ -830,7 +867,8 @@
             Five shares of the analysis window, each between 0% and 100%.
         </p>
         <div class="chart-container">
-            <div id="chart-profile" role="img" aria-label="Radar chart of five repository measures: spread of commits across contributors, continuity of weeks with activity, currency of the last commit, share of files revisited, and share of small commits."></div>
+            <div id="chart-profile" role="img" aria-label="Radar chart of five repository measures: spread of commits across contributors, continuity of weeks with activity, currency of the last commit, share of files revisited, and share of small commits. The same figures follow as a table."></div>
+{{ chart_table("profile", "The five repository profile measures") }}
         </div>
         <p class="chart-foot">
             Read it as five numbers, not as a shape. The enclosed area depends
@@ -858,7 +896,8 @@
             first bar.
         </p>
         <div class="chart-container">
-            <div id="chart-commit_size" role="img" aria-label="Histogram of commits grouped by the number of lines changed in each, on a log-spaced scale."></div>
+            <div id="chart-commit_size" role="img" aria-label="Histogram of commits grouped by the number of lines changed in each, on a log-spaced scale. The same figures follow as a table."></div>
+{{ chart_table("commit_size", "Commits grouped by the number of lines each changed") }}
         </div>
         <p class="chart-foot">
             Churn is added plus deleted, not net: a commit that removes five
@@ -879,7 +918,8 @@
             Paths absorbing the most change, pooled across everyone.
         </p>
         <div class="chart-container">
-            <div id="chart-hotspots" role="img" aria-label="Horizontal bar chart of the file paths with the most lines changed across the analysis window."></div>
+            <div id="chart-hotspots" role="img" aria-label="Horizontal bar chart of the file paths with the most lines changed across the analysis window. The same figures follow as a table."></div>
+{{ chart_table("hotspots", "Files by total lines changed") }}
         </div>
         <p class="chart-foot">
             Churn is added plus deleted, not net. This is the churn axis of
@@ -898,7 +938,8 @@
             What kind of work the window contained.
         </p>
         <div class="chart-container">
-            <div id="chart-extensions" role="img" aria-label="Bar chart of lines changed grouped by file extension."></div>
+            <div id="chart-extensions" role="img" aria-label="Bar chart of lines changed grouped by file extension. The same figures follow as a table."></div>
+{{ chart_table("extensions", "Lines changed by file type") }}
         </div>
         <p class="chart-foot">
             Extensions beyond the largest eight are pooled rather than dropped,
@@ -914,7 +955,8 @@
     <div class="section">
         <h2 class="section-title">Per-Contributor Commit Frequency</h2>
         <div class="chart-container">
-            <div id="chart-contributor_timeline" role="img" aria-label="Line chart of commits per calendar week, one line per contributor."></div>
+            <div id="chart-contributor_timeline" role="img" aria-label="Line chart of commits per calendar week, one line per contributor. The same figures follow as a table."></div>
+{{ chart_table("contributor_timeline", "Commits per week, per contributor") }}
         </div>
     </div>
 
@@ -1054,10 +1096,12 @@
             <div class="chart-container">
                 <p class="chart-label">Share of Commits</p>
                 <div id="chart-pie_commits" role="img" aria-label="Donut chart of each contributor's share of total commits. Exact counts appear in the Commits column of the contributor table above."></div>
+{{ chart_table("pie_commits", "Each contributor's share of commits") }}
             </div>
             <div class="chart-container">
                 <p class="chart-label">Lines Changed by Contributor</p>
                 <div id="chart-contributor_lines" role="img" aria-label="Grouped bar chart of lines added and lines deleted per contributor. The same figures appear in the Lines Added and Lines Deleted columns of the contributor table."></div>
+{{ chart_table("contributor_lines", "Lines added and deleted, per contributor") }}
             </div>
         </div>
     </div>
@@ -1145,7 +1189,10 @@
 
     var PLOTLY_CONFIG = {
         responsive: true,
-        displayModeBar: true,
+        // 'hover' rather than true: ten always-visible toolbars were
+        // printed into every PDF export, advertising controls a reader
+        // of paper cannot operate.
+        displayModeBar: 'hover',
         displaylogo: false,
         modeBarButtonsToRemove: ['sendDataToCloud', 'editInChartStudio']
     };
@@ -1166,36 +1213,40 @@
     //   dark   #161b22 : 1.67 -> 3.35 -> 5.57 -> 9.59
     // The first stop stays transparent so a day with no commits is the surface
     // itself rather than a colour meaning "zero".
+    // Heatmap colour ramps, one per theme.
+    //
+    // A sequential ramp encodes magnitude, so a busier day must always read
+    // as more prominent than a quieter one. A single ramp cannot do that on
+    // two surfaces, and contrast has to rise at every step.
+    //
+    // The lowest non-zero step matters most and was the weakest: at 1.66:1
+    // light and 1.67:1 dark, a day with one commit was barely separable
+    // from a day with none -- and colour is the only encoding here, with no
+    // hover in a printed PDF. Both ramps now start at or above the 3:1 that
+    // WCAG 2.1 asks of a graphical object needed to understand the content.
+    //
+    //   light  #f6f8fa : 3.67 -> 5.44 -> 7.57 -> 10.86
+    //   dark   #161b22 : 3.61 -> 5.22 -> 7.82 -> 11.41
+    //
+    // The first stop stays transparent, so a day with no commits is the
+    // surface itself rather than a colour meaning "zero".
     var HEATMAP_SCALES = {
         light: [
             [0.0,   'rgba(0,0,0,0)'],
-            [0.001, '#9ec5fe'],
-            [0.35,  '#4f93f0'],
-            [0.70,  '#2563eb'],
-            [1.0,   '#1e3a8a']
+            [0.001, '#4f83c4'],
+            [0.35,  '#2f66ad'],
+            [0.70,  '#1d4f95'],
+            [1.0,   '#12386e']
         ],
         dark: [
             [0.0,   'rgba(0,0,0,0)'],
-            [0.001, '#1e3a8a'],
-            [0.35,  '#2563eb'],
-            [0.70,  '#4f93f0'],
-            [1.0,   '#93c5fd']
+            [0.001, '#3d6fd0'],
+            [0.35,  '#5b8ce6'],
+            [0.70,  '#83b0f5'],
+            [1.0,   '#b6d4ff']
         ]
     };
 
-    // Every theme-dependent colour a chart needs, one entry per theme.
-    //
-    // These were once written as dotted attribute strings -- 'font.color',
-    // 'xaxis.gridcolor'. Plotly expands that form in relayout() and
-    // restyle() but NOT in newPlot() or react(), which take a plain layout
-    // object, so every dotted key here was silently dropped. Only the two
-    // undotted background keys ever applied. Under the dark theme that left
-    // axis text at Plotly's default #444 -- 1.78:1 against the plot area,
-    // where WCAG 2.1 AA requires 4.5:1 -- under a grid still painted in the
-    // light theme's #e2e8f0, which is 14:1 the wrong way round.
-    //
-    // Nested objects are the form newPlot() reads. mergeLayout() below is
-    // what makes them safe to apply.
     var THEME_LAYOUTS = {
         light: {
             paper_bgcolor: '#ffffff',

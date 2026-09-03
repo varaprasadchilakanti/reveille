@@ -13,57 +13,54 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ## [Unreleased]
 
+Nothing yet.
+
+---
+
+## [0.8.1] — 2026-09-03 — Charts a Screen Reader Can Read
+
+0.8.0 states that the report targets WCAG 2.1 AA. It shipped four
+measurable failures against that. This release closes them and changes
+nothing else: no new features, no behaviour change, no API change.
+
 ### Fixed
 
-- **The SBOM attestation failed on every release, and 0.8.0 was the first to
-  find out.** `actions/attest` expands globs in `subject-path` but not in
-  `predicate-path`, and both were given `reveille-*-sbom.cdx.json`. The step
-  failed with `predicate file not found` — after the distributions had already
-  reached PyPI, which is the half that cannot be retried. Both inputs now take
-  a filename resolved once, in one step, so a tag push and a manual re-run
-  cannot disagree about it.
+- **Seven of the report's ten charts had no text alternative.** `role="img"`
+  makes an SVG's children presentational, so the `aria-label` is the whole of
+  what a screen-reader user receives — and those labels named the chart type
+  and no figures. Every chart now carries a visually hidden data table,
+  captioned, with row and column scopes, read back out of the same arrays the
+  chart is drawn from so the two cannot drift. The heatmap, whose payload is a
+  daily grid rather than a figure and whose day-by-day table would run to
+  hundreds of rows, states its totals, its span and its busiest day in the
+  label instead. WCAG 2.1 SC 1.1.1.
 
-- **The Release is now drafted by the workflow, with the SBOM already
-  attached.** The old design generated the SBOM, tried to attach it to a
-  Release that does not exist yet at tag time, and left a human to attach it
-  later — into a window that release immutability closes the moment Publish is
-  pressed. Requiring a person to remember a step that has one narrow window is
-  a design fault, not a discipline problem.
+- **The contributor timeline distinguished its series by hue alone.** Up to
+  four solid lines, one colour each. A legend is a key to the colour, not a
+  substitute for it — it still requires the discrimination it is meant to
+  stand in for, and a greyscale print or a photocopy loses it entirely. Each
+  series now takes a dash pattern from a fixed order alongside its hue, as the
+  Lorenz chart's reference line already did. WCAG 2.1 SC 1.4.1.
 
-  The `release` job now creates a **draft** Release with the SBOM attached, the
-  title read from the CHANGELOG heading and the body from that version's
-  section. A draft accepts assets; a published release does not. Nothing is
-  retyped, so the Release and the changelog cannot disagree — which is what the
-  heading convention introduced earlier in this release was for, now that it is
-  machine-read rather than merely copied by hand.
+- **Six of seven tier badges failed contrast in the dark theme.** White text
+  on the tier-3 fill measured 3.30:1 against a 4.5:1 requirement, and the
+  tier-6 fill 2.17:1 against the page where 3:1 is required. A filled badge on
+  a dark page cannot carry white text: the fill must be dark enough for white
+  to read on it and light enough to be seen against the page, and those pull
+  apart. Dark text on a light fill satisfies both and is the ordinary
+  treatment for a badge on a dark surface. The filled-versus-outlined
+  distinction that marks the tiers apart is unchanged. WCAG 2.1 SC 1.4.3 and
+  1.4.11. Visible only with `--ranking`.
 
-  `.github/scripts/release_notes.py` does the reading, and is tested against
-  this repository's real CHANGELOG: every released version must be describable,
-  a heading missing its date or theme fails, and a missing version is an error
-  rather than an untitled release. That check runs on every commit, not at tag
-  time — by tag time the tag is immutable and too late to fix.
+- **The heatmap's lowest step was barely distinguishable from an empty day.**
+  1.66:1 light and 1.67:1 dark, where colour is the only encoding and a
+  printed page has no hover. Both ramps now begin at or above 3:1 and rise at
+  every step: 3.67 → 5.44 → 7.57 → 10.86 light, 3.61 → 5.22 → 7.82 → 11.41
+  dark. WCAG 2.1 SC 1.4.11.
 
-- **The SBOM could not be attached to a published release, and the job failed
-  trying.** This repository enables release immutability, so a published
-  release accepts no further assets — by hand or by workflow. The attach step
-  now warns and continues instead of failing: its own comment already said an
-  unattached SBOM "is not a failure", and the security-relevant output, the
-  attestation, is stored against the repository rather than as a release asset
-  and succeeds regardless. `SECURITY.md` and `RELEASE.md` both said to attach
-  the artifact when drafting the Release; both now say to do it **before
-  publishing**, which is the only window that exists.
-
-  `SECURITY.md` also records plainly that **v0.8.0 has no SBOM attached to its
-  Release**. The artifact and `make sbom` at the tag both still produce it, and
-  they are byte-identical, so nothing about verifying that release is lost.
-
-- **A failed SBOM job could not be retried.** The workflow ran only on a tag
-  push, and re-running it from the tag re-runs the workflow file *as it was at
-  that tag* — the same failure. With release immutability enabled the tag
-  cannot be moved, so that version would have been left permanently without an
-  attested SBOM. A `workflow_dispatch` trigger takes an existing tag, checks it
-  out, and regenerates. Publication is guarded off that path: a version number
-  is spent on first upload, so a second attempt would fail regardless.
+- **Ten Plotly toolbars printed into every PDF.** `displayModeBar` was `true`
+  rather than `'hover'`, so each chart carried a permanently visible strip of
+  controls advertising interactions a reader of paper cannot perform.
 
 ---
 
@@ -1731,7 +1728,8 @@ interpolation into `run:` steps).
 
 ---
 
-[Unreleased]: https://github.com/varaprasadchilakanti/reveille/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/varaprasadchilakanti/reveille/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.8.1
 [0.8.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.8.0
 [0.7.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.7.0
 [0.6.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.6.0
