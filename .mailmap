@@ -1,0 +1,37 @@
+# Canonical contributor identities.
+#
+# Git records whatever name and address were configured on the machine that
+# made each commit, so one person routinely appears as several contributors:
+# a work address and a personal one, a laptop reinstalled with a different
+# name, or a commit made through the GitHub web interface, which uses a
+# private noreply address rather than the one in your config.
+#
+# This file states which of those identities are the same person. Git honours
+# it in `git shortlog -sne` and `git log --use-mailmap`; GitHub honours it on
+# the contributors graph; Reveille honours all four forms of it.
+#
+# Format, most specific first (see `git help mailmap`):
+#
+#   Proper Name <proper@address> Commit Name <commit@address>
+#   Proper Name <proper@address> <commit@address>
+#   <proper@address> <commit@address>
+#   Proper Name <proper@address>
+#
+# It maps identities together. It does not rank anyone, and Reveille's
+# ranking is off by default regardless.
+
+# One commit was made through the GitHub web interface, which recorded the
+# account's noreply address instead of the configured one. Without this line
+# it reads as a separate contributor: the table listed three people where
+# there are two, and the charts disagreed with the table about which.
+Vara Prasad Chilakanti <varaprasadchilakanti@gmail.com> <140685918+varaprasadchilakanti@users.noreply.github.com>
+
+# The legacy, unprefixed form of the same GitHub noreply address. Accounts
+# that predate 2017 have commits under both; this repository has none, and
+# the line costs nothing if it never matches.
+Vara Prasad Chilakanti <varaprasadchilakanti@gmail.com> <varaprasadchilakanti@users.noreply.github.com>
+
+# The display name was spelled without the space until v0.8.0. The address
+# never changed, so Reveille already folds these into one contributor -- this
+# line only fixes which spelling is shown.
+Vara Prasad Chilakanti <varaprasadchilakanti@gmail.com> Varaprasad Chilakanti <varaprasadchilakanti@gmail.com>
