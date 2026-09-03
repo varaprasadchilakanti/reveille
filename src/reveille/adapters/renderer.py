@@ -58,6 +58,7 @@ from reveille.domain.models import (
     RankedContributor,
     ReportData,
 )
+from reveille.domain.summary import summarise
 from reveille.exceptions import OutputPathError, RenderError
 
 # Label of the aggregated residual slice, referenced where its colour is chosen.
@@ -484,6 +485,13 @@ class Renderer:
                 data.commits,
                 data.metadata.analysis_since,
                 data.metadata.analysis_until,
+            ),
+            # Written findings, generated from these same numbers by rules.
+            # See domain/summary.py: no model, no network, and the same
+            # history always produces the same sentences.
+            "findings": summarise(
+                data.commits,
+                [r.stats for r in data.ranked_contributors],
             ),
         }
 
