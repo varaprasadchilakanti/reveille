@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti
+# SPDX-License-Identifier: Apache-2.0
+
 r"""Report renderer adapter.
 
 Renders `ReportData` to one of three formats. `render` produces the
@@ -49,31 +52,135 @@ from jinja2 import (
     select_autoescape,
 )
 
+from reveille.domain.concentration import gini_coefficient, lorenz_curve
+from reveille.domain.files import extension_breakdown, hotspots
 from reveille.domain.models import (
     Commit,
+    FileStats,
     RankedContributor,
     ReportData,
 )
+from reveille.domain.profile import ProfileAxis, repository_profile
+from reveille.domain.summary import summarise
 from reveille.exceptions import OutputPathError, RenderError
 
-# Maximum individual slices in a pie chart. Contributors beyond this
-# threshold are aggregated into a single "Other Contributors" slice
-# to maintain readability at standard browser zoom levels.
-_PIE_MAX_SLICES: int = 8
+# Label of the aggregated residual slice, referenced where its colour is chosen.
+_OTHER_LABEL: str = "Other Contributors"
 
-# Mid-brightness palette distinguishable on both light and dark backgrounds.
-_PIE_PALETTE: list[str] = [
-    "#3b82f6",
-    "#14b8a6",
-    "#22c55e",
-    "#a855f7",
-    "#f59e0b",
-    "#06b6d4",
-    "#ec4899",
-    "#84cc16",
-    "#6366f1",
-    "#f97316",
+# Categorical palette, used wherever colour encodes *identity* -- one hue per
+# contributor, in fixed order.
+#
+# These eight are a measured set, not a chosen one. The previous palette put
+# #22c55e (green) next to #14b8a6 (teal) at a normal-vision perceptual distance
+# of Delta-E 11.3, below the 15 floor at which two adjacent series stop being
+# reliably separable by a reader with full colour vision -- and they were
+# adjacent, so contributors ranked second and third were the pair that
+# collided. It also failed for deuteranopia at the margins.
+#
+# This set was validated against both report surfaces before adoption:
+# the light plot background (#f6f8fa) and the dark one (#161b22). Worst
+# adjacent pair is Delta-E 19.3 normal vision and 8.4 under protanopia,
+# clearing both floors in each mode -- which is why one palette can serve both
+# themes and no colours need to change when the theme toggle is used.
+#
+# Four slots, and four is not a style choice -- it is the measured ceiling.
+#
+# A series colour here has to satisfy three constraints at once, because one
+# fixed set is drawn on both themes:
+#
+#   * >= 3:1 against BOTH plot surfaces (#f6f8fa light, #161b22 dark), since
+#     the theme toggle changes the surface and not the series;
+#   * >= 15 OKLab dE from every other slot in normal vision, below which two
+#     series are indistinguishable to everyone;
+#   * >= 6 OKLab dE from every other slot under simulated protanopia,
+#     deuteranopia and tritanopia (Vienot-Brettel-Mollon), the documented
+#     floor that is admissible only alongside secondary encoding.
+#
+# Searched over a pool of 29 candidates, the largest set satisfying all three
+# is four. The previous eight-slot palette failed 13 of its 28 pairs, and not
+# only for colour-blind readers: orange against red measured 7.1 in NORMAL
+# vision, magenta against red 7.8, blue against violet 9.8. Three pairs of
+# series that nobody could tell apart.
+#
+# Hues are Okabe & Ito's Color Universal Design set (2008) where they clear
+# the dual-surface contrast requirement; their sky blue, yellow and pink do
+# not, and are excluded rather than fixed, since darkening them collapses the
+# separation that made them worth having.
+#
+# Secondary encoding is present and load-bearing: every chart using these has
+# a legend, the pies carry direct labels, and the contributor table restates
+# every figure as text. Beyond four series the honest move is to aggregate,
+# not to invent a fifth colour -- `_MAX_SERIES` and `_PIE_MAX_SLICES` both do.
+# `tests/unit/adapters/test_palette.py` recomputes all three constraints, so
+# a future edit that breaks one fails the build rather than the reader.
+_CATEGORICAL_PALETTE: list[str] = [
+    "#0072B2",  # blue
+    "#D55E00",  # vermillion
+    "#009E73",  # bluish green
+    "#8E5572",  # muted plum
 ]
+
+# Series colours are assigned in fixed order and never cycled. A ninth
+# contributor does not get slot one again -- two people sharing a colour makes
+# the chart state something false. Charts that could exceed the palette cap
+# their series count instead; see _build_contributor_timeline_chart.
+_MAX_SERIES: int = len(_CATEGORICAL_PALETTE)
+
+# Maximum individual slices in a pie chart. A slice is an identity, so it
+# needs a distinguishable colour; beyond the palette, contributors aggregate
+# into a single "Other Contributors" slice rather than reusing a hue. Derived
+# from the palette so the two cannot drift: a pie once drew a ninth slice in
+# slot one, sharing a colour with the top contributor in the one chart where
+# every slice is visible at once.
+_PIE_MAX_SLICES: int = len(_CATEGORICAL_PALETTE)
+
+# Added and deleted lines are a semantic pair, not two arbitrary categories, so
+# they are named rather than taken from the categorical order. They are drawn
+# from the same validated set to keep one visual language across the report.
+_LINES_ADDED_COLOUR: str = "#008300"
+_LINES_DELETED_COLOUR: str = "#e66767"
+
+# The trailing "Other Contributors" slice is a residual, not an identity, so it
+# gets a neutral rather than a hue from the categorical order. Without this the
+# ninth slice wrapped around to slot one and shared a colour with the
+# top-ranked contributor inside the same pie -- two different things drawn the
+# same way, in the one chart where every slice is visible at once.
+# A true neutral: 4.27:1 on the light plot surface, 3.81:1 on the dark one,
+# and zero chroma, which is what makes it read as an aggregate rather than a
+# fifth person. Asserted in tests/unit/adapters/test_palette.py.
+_OTHER_SLICE_COLOUR: str = "#767676"
+
+
+def _translucent(hex_colour: str, alpha: float) -> str:
+    """Return a `#rrggbb` colour as an `rgba(...)` string at the given alpha.
+
+    Area fills were previously written out as literal `rgba(57, 135, 229, ...)`
+    strings that happened to equal `_CATEGORICAL_PALETTE[0]`. Nothing coupled
+    them, so a palette change -- and the palette was replaced wholesale in
+    0.8.0 -- would have left a fill in the old hue under a line in the new one.
+
+    Args:
+        hex_colour: A colour in `#rrggbb` form.
+        alpha: Opacity between 0.0 and 1.0.
+
+    Returns:
+        The equivalent CSS `rgba()` string.
+    """
+    r, g, b = (int(hex_colour[i : i + 2], 16) for i in (1, 3, 5))
+    return f"rgba({r}, {g}, {b}, {alpha})"
+
+
+# Ceiling on a per-contributor bar chart. The height grew with the contributor
+# count and nothing bounded it: 5,000 contributors produced a chart 220,080
+# pixels tall, which no browser renders usefully. The bars compress past this
+# point, which is a worse chart -- but a worse chart is not the same kind of
+# problem as an unusable document.
+_MAX_CHART_HEIGHT: int = 2400
+
+# The Lorenz chart's reference diagonal. A reference line is not a series, so
+# it takes the same neutral as the residual slice rather than a categorical hue
+# -- it must read as scaffolding, not as a third contributor.
+_EQUALITY_LINE_COLOUR: str = "#767676"
 
 # Pre-compiled patterns for sanitising user-controlled strings.
 # _SCRIPT_BLOCK_RE removes script elements including their content before
@@ -134,6 +241,7 @@ class Renderer:
                 the file cannot be written.
             RenderError: If the Jinja2 template raises an error during rendering.
         """
+        _assert_not_symlink(output_path)
         resolved = output_path.resolve()
         if not resolved.parent.exists():
             raise OutputPathError(
@@ -185,6 +293,7 @@ class Renderer:
             OutputPathError: If the parent directory does not exist or
                 the file cannot be written.
         """
+        _assert_not_symlink(output_path)
         resolved = output_path.resolve()
         if not resolved.parent.exists():
             raise OutputPathError(
@@ -195,25 +304,66 @@ class Renderer:
         derived = self._compute_derived_stats(data)
 
         payload: dict[str, Any] = {
+            # First key in the document, deliberately: a consumer should be
+            # able to decide whether it can parse the rest before it tries.
+            "schema_version": data.provenance.schema_version,
             "metadata": {
                 "name": data.metadata.name,
                 "remote_url": data.metadata.remote_url,
-                "default_branch": data.metadata.default_branch,
+                "analysed_branch": data.metadata.analysed_branch,
                 "total_commits": data.metadata.total_commits,
                 "unique_contributors": data.metadata.unique_contributors,
                 "analysis_since": data.metadata.analysis_since.isoformat(),
                 "analysis_until": data.metadata.analysis_until.isoformat(),
                 "generated_at": data.metadata.generated_at.isoformat(),
             },
+            # What produced these numbers, and over what. Two reports that
+            # disagree can only be reconciled if each states its own inputs.
+            "provenance": {
+                "reveille_version": data.provenance.reveille_version,
+                "head_sha": data.provenance.head_sha,
+                "deterministic": data.provenance.deterministic,
+                "mailmap_applied": data.provenance.mailmap_applied,
+                "filters": {
+                    "requested_branch": data.provenance.requested_branch,
+                    "requested_since": (
+                        data.provenance.requested_since.isoformat()
+                        if data.provenance.requested_since
+                        else None
+                    ),
+                    "requested_until": (
+                        data.provenance.requested_until.isoformat()
+                        if data.provenance.requested_until
+                        else None
+                    ),
+                    "exclude_authors_count": data.provenance.exclude_authors_count,
+                    "min_commits": data.provenance.min_commits,
+                },
+                "ranking": {
+                    "enabled": data.provenance.ranking_enabled,
+                    "weights": data.provenance.ranking_weights,
+                },
+            },
             "contributors": [
                 {
                     "rank": i + 1,
                     "name": r.stats.name,
                     "email": r.stats.email,
-                    "tier": r.tier,
-                    "tier_designation": r.tier_designation,
-                    "composite_score": r.composite_score,
-                    "percentile": r.percentile,
+                    # Ranking fields are omitted entirely when ranking is off,
+                    # rather than emitted with sentinel values. A key carrying
+                    # `"tier": 0` is a number a consumer can read as data; an
+                    # absent key cannot be misread. `provenance.ranking.enabled`
+                    # says which shape to expect.
+                    **(
+                        {
+                            "tier": r.tier,
+                            "tier_designation": r.tier_designation,
+                            "composite_score": r.composite_score,
+                            "percentile": r.percentile,
+                        }
+                        if data.provenance.ranking_enabled
+                        else {}
+                    ),
                     "commit_count": r.stats.commit_count,
                     "lines_added": r.stats.lines_added,
                     "lines_deleted": r.stats.lines_deleted,
@@ -227,6 +377,7 @@ class Renderer:
             ],
             "derived": {
                 "commit_concentration": derived["commit_concentration"],
+                "gini_coefficient": derived["gini_coefficient"],
                 "longest_inactive_streak": derived["longest_inactive_streak"],
             },
         }
@@ -255,6 +406,7 @@ class Renderer:
             OutputPathError: If the parent directory does not exist or
                 the file cannot be written.
         """
+        _assert_not_symlink(output_path)
         resolved = output_path.resolve()
         if not resolved.parent.exists():
             raise OutputPathError(
@@ -262,44 +414,50 @@ class Renderer:
                 "Create the directory before generating a report."
             )
 
+        # Ranking columns are omitted entirely when ranking is off, mirroring
+        # render_json. Emitting `tier,0` and `composite_score,0.0` puts a number
+        # a reader can sort on into the format most likely to be opened in a
+        # spreadsheet -- which is exactly the reading ADR 0010 exists to prevent.
+        # `rank` stays in both formats as the row ordinal; with ranking off the
+        # rows are ordered by commit count.
+        ranked = data.provenance.ranking_enabled
         fieldnames = [
             "rank",
             "name",
             "email",
-            "designation",
-            "tier",
             "commits",
             "lines_added",
             "lines_deleted",
             "net_lines",
             "active_days",
             "last_commit_date",
-            "composite_score",
-            "percentile",
         ]
+        if ranked:
+            fieldnames[3:3] = ["designation", "tier"]
+            fieldnames += ["composite_score", "percentile"]
 
         try:
             with resolved.open("w", encoding="utf-8-sig", newline="") as fh:
                 writer = csv.DictWriter(fh, fieldnames=fieldnames)
                 writer.writeheader()
                 for i, r in enumerate(data.ranked_contributors):
-                    writer.writerow(
-                        {
-                            "rank": i + 1,
-                            "name": r.stats.name,
-                            "email": r.stats.email,
-                            "designation": r.tier_designation,
-                            "tier": r.tier,
-                            "commits": r.stats.commit_count,
-                            "lines_added": r.stats.lines_added,
-                            "lines_deleted": r.stats.lines_deleted,
-                            "net_lines": r.stats.net_lines,
-                            "active_days": r.stats.active_days,
-                            "last_commit_date": r.stats.last_commit_date.isoformat(),
-                            "composite_score": r.composite_score,
-                            "percentile": r.percentile,
-                        }
-                    )
+                    row = {
+                        "rank": i + 1,
+                        "name": _neutralise_csv_cell(r.stats.name),
+                        "email": _neutralise_csv_cell(r.stats.email),
+                        "commits": r.stats.commit_count,
+                        "lines_added": r.stats.lines_added,
+                        "lines_deleted": r.stats.lines_deleted,
+                        "net_lines": r.stats.net_lines,
+                        "active_days": r.stats.active_days,
+                        "last_commit_date": r.stats.last_commit_date.isoformat(),
+                    }
+                    if ranked:
+                        row["designation"] = _neutralise_csv_cell(r.tier_designation)
+                        row["tier"] = r.tier
+                        row["composite_score"] = r.composite_score
+                        row["percentile"] = r.percentile
+                    writer.writerow(row)
         except OSError as exc:
             raise OutputPathError(f"Failed to write CSV report to '{resolved}': {exc}") from exc
 
@@ -320,10 +478,33 @@ class Renderer:
         """
         return {
             "commit_concentration": _compute_commit_concentration(data.ranked_contributors),
+            # Rounded to two places: the third decimal of a Gini over a handful
+            # of contributors is noise, and printing it implies a precision the
+            # sample does not carry.
+            "gini_coefficient": round(
+                gini_coefficient([r.stats.commit_count for r in data.ranked_contributors]), 2
+            ),
+            # Gini's maximum for a sample of n is (n-1)/n, so a report over
+            # two contributors can never exceed 0.50 however lopsided the
+            # split. Showing 0.23 against a stated 0-to-1 scale invites the
+            # reader to conclude "23% of the way to maximum concentration"
+            # when it is 46% of the achievable range.
+            "gini_ceiling": round(
+                (len(data.ranked_contributors) - 1) / len(data.ranked_contributors), 2
+            )
+            if len(data.ranked_contributors) > 1
+            else 0.0,
             "longest_inactive_streak": _compute_longest_inactive_streak(
                 data.commits,
                 data.metadata.analysis_since,
                 data.metadata.analysis_until,
+            ),
+            # Written findings, generated from these same numbers by rules.
+            # See domain/summary.py: no model, no network, and the same
+            # history always produces the same sentences.
+            "findings": summarise(
+                data.commits,
+                [r.stats for r in data.ranked_contributors],
             ),
         }
 
@@ -363,16 +544,68 @@ class Renderer:
                 data.metadata.analysis_since,
                 data.metadata.analysis_until,
             ),
-            "contributor_commits": _build_contributor_commits_chart(data.ranked_contributors),
             "contributor_lines": _build_contributor_lines_chart(data.ranked_contributors),
             "pie_commits": _build_commit_share_pie(data.ranked_contributors),
-            "pie_lines": _build_lines_share_pie(data.ranked_contributors),
+            "lorenz": _build_lorenz_chart(data.ranked_contributors),
+            "commit_size": _build_commit_size_chart(data.commits),
+            "hotspots": _build_hotspot_chart(data.file_stats),
+            "extensions": _build_extension_chart(data.file_stats),
+            "profile": _build_profile_chart(
+                repository_profile(
+                    data.commits,
+                    [r.stats for r in data.ranked_contributors],
+                    data.file_stats,
+                    data.metadata.analysis_since,
+                    data.metadata.analysis_until,
+                )
+            ),
         }
 
 
 # ------------------------------------------------------------------
 # Chart construction functions
 # ------------------------------------------------------------------
+
+
+def _contributor_labels(ranked: list[RankedContributor]) -> dict[str, str]:
+    """Map each contributor's email to a label unique within the report.
+
+    ADR 0002 makes the lowercased email the identity key. The display
+    name is not unique -- two people can share one, and so can one person
+    committing under two addresses before a `.mailmap` ties them
+    together. Charts keyed on the name inherit that ambiguity, and Plotly
+    resolves a repeated category label differently depending on the trace
+    type: a bar chart collapses the bars onto one category, a pie sums
+    the slices, and a line chart draws two legend entries a reader cannot
+    tell apart.
+
+    Measured against this repository before its `.mailmap` existed, with
+    201 commits under one address and 1 under another:
+
+        contributors table   201 and 1, listed separately
+        commits bar chart    201, the second bar drawn over the first
+        commit share pie     202, the two labels silently summed
+
+    Three views of one repository, three answers. A name that occurs once
+    is used as it is; a name that occurs more than once carries the
+    address that distinguishes it, and only then -- disambiguating every
+    label would clutter the common case for no reader benefit.
+
+    Args:
+        ranked: Every contributor in the report.
+
+    Returns:
+        A mapping from lowercased email to the label to draw.
+    """
+    sanitised = {r.stats.email.lower(): _sanitise_chart_label(r.stats.name) for r in ranked}
+    occurrences: dict[str, int] = defaultdict(int)
+    for label in sanitised.values():
+        occurrences[label] += 1
+
+    return {
+        email: (label if occurrences[label] == 1 else f"{label} <{_sanitise_chart_label(email)}>")
+        for email, label in sanitised.items()
+    }
 
 
 def _build_timeline_chart(commits: list[Commit]) -> str:
@@ -403,18 +636,13 @@ def _build_timeline_chart(commits: list[Commit]) -> str:
             y=counts,
             mode="lines",
             fill="tozeroy",
-            line={"color": "#3b82f6", "width": 2},
-            fillcolor="rgba(59, 130, 246, 0.10)",
+            line={"color": _CATEGORICAL_PALETTE[0], "width": 2},
+            fillcolor=_translucent(_CATEGORICAL_PALETTE[0], 0.10),
             hovertemplate="Week of %{x}<br>Commits: %{y}<extra></extra>",
         )
     )
     layout = _base_layout()
-    layout["xaxis"] = {
-        "type": "category",
-        "gridcolor": "#e2e8f0",
-        "linecolor": "#d1d9e0",
-        "tickangle": -45,
-    }
+    layout["xaxis"] = {"type": "category", "tickangle": -45, "automargin": True}
     fig.update_layout(
         **layout,
         xaxis_title="Week",
@@ -430,11 +658,17 @@ def _build_contributor_timeline_chart(
 ) -> str:
     """Build a per-contributor weekly commit frequency line chart.
 
-    Each contributor in the ranked list is represented as a separate
-    Scatter trace. Commits from contributors absent from the ranked list
-    (filtered by min_commits) are excluded. Traces follow the ranked
-    order so the highest-composite-score contributor appears first in
-    the legend.
+    Each contributor is represented as a separate Scatter trace, in ranked
+    order, so the highest-composite-score contributor appears first in the
+    legend. Commits from contributors absent from the ranked list (filtered by
+    min_commits) are excluded.
+
+    At most `_MAX_SERIES` contributors are drawn. Beyond that the palette would
+    have to repeat, and two people sharing a colour and a line style makes the
+    chart assert something untrue -- a reader has no way to tell which line
+    belongs to whom. The per-contributor detail for everyone else remains in
+    the rankings table and in the heatmap's contributor filter, both of which
+    scale without a colour budget.
 
     Args:
         commits: All commits in the analysis window.
@@ -447,7 +681,11 @@ def _build_contributor_timeline_chart(
     if not commits or len(ranked) < 2:
         return "null"
 
-    weekly_per_email: dict[str, dict[str, int]] = {r.stats.email.lower(): {} for r in ranked}
+    shown = ranked[:_MAX_SERIES]
+    # Built over the full list, not just the drawn subset: a name is only
+    # ambiguous relative to every contributor in the report.
+    labels = _contributor_labels(ranked)
+    weekly_per_email: dict[str, dict[str, int]] = {r.stats.email.lower(): {} for r in shown}
 
     for commit in commits:
         email = commit.author_email.lower()
@@ -462,7 +700,7 @@ def _build_contributor_timeline_chart(
         return "null"
 
     fig = go.Figure()
-    for i, r in enumerate(ranked):
+    for i, r in enumerate(shown):
         email = r.stats.email.lower()
         bins = weekly_per_email.get(email, {})
         counts = [bins.get(w, 0) for w in all_weeks]
@@ -471,19 +709,14 @@ def _build_contributor_timeline_chart(
                 x=all_weeks,
                 y=counts,
                 mode="lines",
-                name=_sanitise_chart_label(r.stats.name),
-                line={"color": _PIE_PALETTE[i % len(_PIE_PALETTE)], "width": 2},
+                name=labels[r.stats.email.lower()],
+                line={"color": _CATEGORICAL_PALETTE[i], "width": 2},
                 hovertemplate="Week of %{x}<br>Commits: %{y}<extra></extra>",
             )
         )
 
     layout = _base_layout()
-    layout["xaxis"] = {
-        "type": "category",
-        "gridcolor": "#e2e8f0",
-        "linecolor": "#d1d9e0",
-        "tickangle": -45,
-    }
+    layout["xaxis"] = {"type": "category", "tickangle": -45, "automargin": True}
     layout["showlegend"] = True
     layout["legend"] = {"orientation": "h", "y": 1.12, "x": 0}
     fig.update_layout(
@@ -539,13 +772,14 @@ def _build_heatmap_data(
             per_email[email_key] = defaultdict(int)
         per_email[email_key][date_str] += 1
 
+    labels = _contributor_labels(ranked_contributors)
     contributors: list[dict[str, str]] = [{"email": "__aggregated__", "name": "All Contributors"}]
     daily_counts: dict[str, dict[str, int]] = {"__aggregated__": dict(agg_counts)}
 
     for r in ranked_contributors:
         email_key = r.stats.email.lower()
         if email_key in per_email:
-            contributors.append({"email": email_key, "name": _sanitise_chart_label(r.stats.name)})
+            contributors.append({"email": email_key, "name": labels[email_key]})
             daily_counts[email_key] = dict(per_email[email_key])
 
     payload: dict[str, object] = {
@@ -554,45 +788,6 @@ def _build_heatmap_data(
         "daily_counts": daily_counts,
     }
     return json.dumps(payload).replace("</", "<\\/")
-
-
-def _build_contributor_commits_chart(ranked: list[RankedContributor]) -> str:
-    """Build a horizontal bar chart of commit counts per contributor.
-
-    Contributors are ordered by rank, with the highest-ranked contributor
-    at the top of the chart.
-
-    Args:
-        ranked: Ranked contributor list sorted by composite score descending.
-
-    Returns:
-        A Plotly figure JSON string, or 'null' if ranked is empty.
-    """
-    if not ranked:
-        return "null"
-
-    names = [_sanitise_chart_label(r.stats.name) for r in reversed(ranked)]
-    counts = [r.stats.commit_count for r in reversed(ranked)]
-    tiers = [r.tier_designation for r in reversed(ranked)]
-
-    fig = go.Figure(
-        go.Bar(
-            x=counts,
-            y=names,
-            orientation="h",
-            marker_color="#3b82f6",
-            customdata=tiers,
-            hovertemplate="%{y}<br>Commits: %{x}<br>Tier: %{customdata}<extra></extra>",
-            text=[str(c) for c in counts],
-            textposition="outside",
-        )
-    )
-    fig.update_layout(
-        **_base_layout(),
-        xaxis_title="Commits",
-        height=max(280, len(ranked) * 44 + 80),
-    )
-    return _to_json(fig)
 
 
 def _build_contributor_lines_chart(ranked: list[RankedContributor]) -> str:
@@ -607,7 +802,8 @@ def _build_contributor_lines_chart(ranked: list[RankedContributor]) -> str:
     if not ranked:
         return "null"
 
-    names = [_sanitise_chart_label(r.stats.name) for r in ranked]
+    labels = _contributor_labels(ranked)
+    names = [labels[r.stats.email.lower()] for r in ranked]
     added = [r.stats.lines_added for r in ranked]
     deleted = [r.stats.lines_deleted for r in ranked]
 
@@ -617,7 +813,7 @@ def _build_contributor_lines_chart(ranked: list[RankedContributor]) -> str:
             name="Lines Added",
             x=names,
             y=added,
-            marker_color="#10b981",
+            marker_color=_LINES_ADDED_COLOUR,
             hovertemplate="%{x}<br>Added: %{y:,}<extra></extra>",
         )
     )
@@ -626,7 +822,7 @@ def _build_contributor_lines_chart(ranked: list[RankedContributor]) -> str:
             name="Lines Deleted",
             x=names,
             y=deleted,
-            marker_color="#f87171",
+            marker_color=_LINES_DELETED_COLOUR,
             hovertemplate="%{x}<br>Deleted: %{y:,}<extra></extra>",
         )
     )
@@ -658,9 +854,10 @@ def _build_commit_share_pie(ranked: list[RankedContributor]) -> str:
     if len(ranked) < 2:
         return "null"
 
+    display = _contributor_labels(ranked)
     sorted_r = sorted(ranked, key=lambda r: r.stats.commit_count, reverse=True)
     labels, values = _aggregate_pie_data(
-        [(_sanitise_chart_label(r.stats.name), r.stats.commit_count) for r in sorted_r]
+        [(display[r.stats.email.lower()], r.stats.commit_count) for r in sorted_r]
     )
 
     fig = go.Figure(
@@ -670,7 +867,7 @@ def _build_commit_share_pie(ranked: list[RankedContributor]) -> str:
             hole=0.42,
             textposition="outside",
             textinfo="label+percent",
-            marker={"colors": _pie_colors(len(labels))},
+            marker={"colors": _pie_colors(len(labels), has_other=labels[-1] == _OTHER_LABEL)},
             hovertemplate="%{label}<br>Commits: %{value:,}<br>%{percent}<extra></extra>",
             sort=False,
         )
@@ -682,50 +879,315 @@ def _build_commit_share_pie(ranked: list[RankedContributor]) -> str:
     return _to_json(fig)
 
 
-def _build_lines_share_pie(ranked: list[RankedContributor]) -> str:
-    """Build a donut chart showing each contributor's share of total lines changed.
+def _build_commit_size_chart(commits: list[Commit]) -> str:
+    """Build a histogram of change size per commit, on a log-spaced scale.
 
-    Lines changed is additions plus deletions, providing a volume measure
-    of code activity independent of the net direction of change.
-    Contributors beyond _PIE_MAX_SLICES are aggregated.
+    Relative code churn -- lines added plus deleted, per commit -- is the
+    measure Nagappan and Ball put on a formal footing in "Use of Relative
+    Code Churn Measures to Predict System Defect Density" (ICSE 2005).
+    What it shows here is the shape of the working rhythm: whether a
+    repository advances in many small steps or a few large ones.
+
+    Buckets are log-spaced because change size is heavily skewed. Linear
+    buckets over a range that spans one line to ten thousand put almost
+    every commit in the first bar, which states nothing.
+
+    This is a property of the history, not of anyone in it: the commits
+    are pooled, and no contributor is separated out.
 
     Args:
-        ranked: Ranked contributor list sorted by composite score descending.
+        commits: All commits in the analysis window.
 
     Returns:
-        A Plotly figure JSON string, or 'null' if fewer than two contributors
-        are present.
+        A Plotly figure JSON string, or 'null' if commits is empty.
+    """
+    if not commits:
+        return "null"
+
+    edges = [1, 10, 50, 200, 1000, 5000]
+    labels = ["1-9", "10-49", "50-199", "200-999", "1k-4,999", "5,000+"]
+    buckets = [0] * len(labels)
+    for commit in commits:
+        size = commit.lines_added + commit.lines_deleted
+        index = len(edges) - 1
+        for position, edge in enumerate(edges):
+            if size < edge:
+                index = max(position - 1, 0)
+                break
+        buckets[index] += 1
+
+    fig = go.Figure(
+        go.Bar(
+            x=labels,
+            y=buckets,
+            marker_color=_CATEGORICAL_PALETTE[0],
+            text=[str(count) if count else "" for count in buckets],
+            textposition="outside",
+            hovertemplate="%{x} lines changed<br>Commits: %{y}<extra></extra>",
+        )
+    )
+    layout = _base_layout()
+    layout["xaxis"] = {"type": "category", "automargin": True}
+
+    # The distribution is heavily skewed and the bins are log-spaced, so
+    # the bars alone do not tell a reader where the middle sits -- the
+    # tallest bar is not the median when the bins double in width each
+    # step. Marking the median bucket gives the shape an anchor, which is
+    # what turns a row of bars into a distribution a reader can describe.
+    sizes = sorted(commit.lines_added + commit.lines_deleted for commit in commits)
+    median = sizes[len(sizes) // 2]
+    median_index = len(edges) - 1
+    for position, edge in enumerate(edges):
+        if median < edge:
+            median_index = max(position - 1, 0)
+            break
+    layout["annotations"] = [
+        {
+            "x": labels[median_index],
+            "y": buckets[median_index],
+            "yanchor": "bottom",
+            "yshift": 22,
+            "text": f"median {median:,} lines",
+            "showarrow": False,
+            "font": {"size": 11},
+        }
+    ]
+
+    fig.update_layout(
+        **layout,
+        xaxis_title="Lines changed in one commit",
+        yaxis_title="Commits",
+        height=300,
+    )
+    return _to_json(fig)
+
+
+def _build_hotspot_chart(files: list[FileStats]) -> str:
+    """Build a horizontal bar chart of the paths absorbing the most change.
+
+    The churn axis of hotspot analysis (Tornhill, *Your Code as a Crime
+    Scene*, 2013), resting on relative code churn (Nagappan & Ball, ICSE
+    2005). Reveille reads history and never file content, so it reports
+    churn alone rather than crossing it with complexity -- a file that
+    changes often is one to look at, not one that is wrong.
+
+    Args:
+        files: Per-path activity for the analysis window.
+
+    Returns:
+        A Plotly figure JSON string, or 'null' if there is nothing to show.
+    """
+    ranked = hotspots(files, limit=12)
+    if not ranked:
+        return "null"
+
+    paths = [_sanitise_chart_label(f.path) for f in reversed(ranked)]
+    churn = [f.lines_changed for f in reversed(ranked)]
+    commits = [f.commits for f in reversed(ranked)]
+
+    fig = go.Figure(
+        go.Bar(
+            x=churn,
+            y=paths,
+            orientation="h",
+            marker_color=_CATEGORICAL_PALETTE[0],
+            customdata=commits,
+            hovertemplate=(
+                "%{y}<br>Lines changed: %{x:,}<br>Commits: %{customdata}<extra></extra>"
+            ),
+            text=[f"{value:,}" for value in churn],
+            textposition="outside",
+        )
+    )
+    fig.update_layout(
+        **_base_layout(),
+        xaxis_title="Lines changed (added + deleted)",
+        height=max(280, min(len(ranked) * 30 + 90, _MAX_CHART_HEIGHT)),
+    )
+    return _to_json(fig)
+
+
+def _build_extension_chart(files: list[FileStats]) -> str:
+    """Build a bar chart of churn totalled by file extension.
+
+    What kind of work a period contained -- source, tests, documentation,
+    configuration -- without naming a file or a person.
+
+    Args:
+        files: Per-path activity for the analysis window.
+
+    Returns:
+        A Plotly figure JSON string, or 'null' if there is nothing to show.
+    """
+    breakdown = extension_breakdown(files, limit=8)
+    if not breakdown:
+        return "null"
+
+    labels = [label for label, _ in breakdown]
+    values = [value for _, value in breakdown]
+
+    fig = go.Figure(
+        go.Bar(
+            x=labels,
+            y=values,
+            marker_color=_CATEGORICAL_PALETTE[2],
+            text=[f"{value:,}" for value in values],
+            textposition="outside",
+            hovertemplate="%{x}<br>Lines changed: %{y:,}<extra></extra>",
+        )
+    )
+    layout = _base_layout()
+    layout["xaxis"] = {"type": "category", "automargin": True}
+    fig.update_layout(
+        **layout,
+        xaxis_title="File type",
+        yaxis_title="Lines changed",
+        height=280,
+    )
+    return _to_json(fig)
+
+
+def _build_profile_chart(axes: list[ProfileAxis]) -> str:
+    """Build the five-axis repository profile as a radar chart.
+
+    The form is used deliberately and with its weaknesses handled rather
+    than hidden. A radar encodes by area, which Cleveland and McGill
+    (JASA, 1984) rank far below position and length for accuracy, and the
+    enclosed area depends on the arbitrary order of the axes -- permuting
+    two changes the silhouette without changing a number. So the order is
+    fixed in `AXIS_ORDER`, every vertex carries its own value as text, and
+    the fill is kept faint so the shape reads as a guide rather than as
+    the measurement.
+
+    Every axis is a naturally bounded share, so the radial axis is a true
+    0 to 1 with no rescaling.
+
+    Args:
+        axes: The profile axes, already in their documented order.
+
+    Returns:
+        A Plotly figure JSON string, or 'null' if there is no profile.
+    """
+    if not axes:
+        return "null"
+
+    labels = [axis.name for axis in axes]
+    values = [round(axis.value, 3) for axis in axes]
+    descriptions = [axis.description for axis in axes]
+
+    # Closing the loop: a radar trace must return to its first vertex or
+    # Plotly leaves the polygon open between the last axis and the first.
+    fig = go.Figure(
+        go.Scatterpolar(
+            r=[*values, values[0]],
+            theta=[*labels, labels[0]],
+            mode="lines+markers+text",
+            fill="toself",
+            fillcolor=_translucent(_CATEGORICAL_PALETTE[0], 0.12),
+            line={"color": _CATEGORICAL_PALETTE[0], "width": 2},
+            marker={"size": 8, "color": _CATEGORICAL_PALETTE[0]},
+            text=[f"{value:.0%}" for value in [*values, values[0]]],
+            textposition="top center",
+            # Left unset these take the trace colour, which is 3.34:1 on the
+            # dark polar surface. The theme manager supplies the value.
+            textfont={"size": 12},
+            customdata=[*descriptions, descriptions[0]],
+            hovertemplate="%{theta}: %{r:.0%}<br>%{customdata}<extra></extra>",
+        )
+    )
+    layout = _base_layout()
+    # A polar plot has no cartesian axes; carrying them through would emit
+    # xaxis/yaxis keys Plotly ignores here and a reader would puzzle over.
+    layout.pop("xaxis", None)
+    layout.pop("yaxis", None)
+    # A radar needs room for the outer axis labels, which the shared
+    # margin does not allow for.
+    layout["margin"] = {"l": 70, "r": 70, "t": 40, "b": 40}
+    fig.update_layout(
+        **layout,
+        polar={
+            "radialaxis": {
+                "range": [0, 1],
+                "tickformat": ".0%",
+                "tickvals": [0.25, 0.5, 0.75, 1.0],
+                "angle": 90,
+            },
+            "angularaxis": {"direction": "clockwise"},
+        },
+        height=380,
+    )
+    return _to_json(fig)
+
+
+def _build_lorenz_chart(ranked: list[RankedContributor]) -> str:
+    """Build a Lorenz curve of commit distribution across contributors.
+
+    The diagonal is perfect equality -- every contributor with the same number
+    of commits. The plotted curve bows beneath it in proportion to how
+    concentrated activity actually is.
+
+    The Gini coefficient summarising that gap is rendered by the template on
+    the section heading, not here. As a chart title it was anchored top-left,
+    which is where Plotly also anchors the legend, so the two overlapped.
+
+    This is a statement about the repository, not about any person in it. No
+    contributor is named, and the curve is unchanged by who is where in it,
+    which is why it remains in the default report while the per-person ranking
+    does not.
+
+    Args:
+        ranked: Contributor list. Only the commit counts are used.
+
+    Returns:
+        A Plotly figure JSON string, or 'null' if there are fewer than two
+        contributors -- a Lorenz curve over one person is the diagonal, which
+        conveys nothing.
     """
     if len(ranked) < 2:
         return "null"
 
-    sorted_r = sorted(ranked, key=lambda r: r.stats.lines_changed, reverse=True)
-    labels, values = _aggregate_pie_data(
-        [(_sanitise_chart_label(r.stats.name), r.stats.lines_changed) for r in sorted_r]
-    )
+    counts = [r.stats.commit_count for r in ranked]
+    curve = lorenz_curve(counts)
 
-    fig = go.Figure(
-        go.Pie(
-            labels=labels,
-            values=values,
-            hole=0.42,
-            textposition="outside",
-            textinfo="label+percent",
-            marker={"colors": _pie_colors(len(labels))},
-            hovertemplate="%{label}<br>Lines: %{value:,}<br>%{percent}<extra></extra>",
-            sort=False,
+    xs = [round(x * 100, 4) for x, _ in curve]
+    ys = [round(y * 100, 4) for _, y in curve]
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=[0, 100],
+            y=[0, 100],
+            mode="lines",
+            name="Perfect equality",
+            line={"color": _EQUALITY_LINE_COLOUR, "width": 2, "dash": "dot"},
+            hovertemplate="Perfect equality<extra></extra>",
         )
     )
+    fig.add_trace(
+        go.Scatter(
+            x=xs,
+            y=ys,
+            mode="lines",
+            name="Observed distribution",
+            line={"color": _CATEGORICAL_PALETTE[0], "width": 2},
+            fill="tonexty",
+            fillcolor=_translucent(_CATEGORICAL_PALETTE[0], 0.12),
+            hovertemplate=(
+                "Least active %{x:.0f}% of contributors<br>made %{y:.0f}% of commits<extra></extra>"
+            ),
+        )
+    )
+
     layout = _base_layout()
-    layout["showlegend"] = False
-    layout["margin"] = {"l": 20, "r": 20, "t": 20, "b": 20}
-    fig.update_layout(**layout, height=320)
+    layout["showlegend"] = True
+    layout["legend"] = {"orientation": "h", "y": 1.14, "x": 0}
+    fig.update_layout(
+        **layout,
+        xaxis_title="Share of contributors (%)",
+        yaxis_title="Share of commits (%)",
+        height=320,
+    )
     return _to_json(fig)
-
-
-# ------------------------------------------------------------------
-# Derived metric helpers
-# ------------------------------------------------------------------
 
 
 def _compute_commit_concentration(ranked: list[RankedContributor]) -> int:
@@ -804,6 +1266,67 @@ def _compute_longest_inactive_streak(
 # ------------------------------------------------------------------
 
 
+# Characters that make a spreadsheet treat a cell as a formula rather than text.
+# Tab and carriage return are included because a leading one is skipped by the
+# parser, exposing whatever follows it.
+_CSV_FORMULA_PREFIXES: tuple[str, ...] = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _assert_not_symlink(output_path: Path) -> None:
+    """Refuse to write a report through a symbolic link.
+
+    `Path.write_text` follows a symlink, so an output path pointing at one
+    overwrites whatever it targets. Combined with an output path taken from an
+    auto-discovered configuration file, that is a way for a repository to
+    choose which of the victim's files a 4 MB report lands on.
+
+    The check must run on the path **as given**. `Path.resolve()` follows
+    symlinks, so a resolved path is already the target and reports
+    `is_symlink() is False` -- checking after resolution silently passes every
+    time, which is exactly how the first version of this guard failed.
+
+    Args:
+        output_path: The output path as supplied, before resolution.
+
+    Raises:
+        OutputPathError: If the path is a symbolic link.
+    """
+    if output_path.is_symlink():
+        raise OutputPathError(
+            f"Refusing to write through the symbolic link '{output_path}'. "
+            "Writing would overwrite the link's target rather than the link. "
+            "Choose a regular file path, or remove the link first."
+        )
+
+
+def _neutralise_csv_cell(value: str) -> str:
+    """Prevent a text cell from being executed as a spreadsheet formula.
+
+    Author names and addresses come from commit metadata, which anybody who has
+    ever contributed to the analysed repository controls. Excel and LibreOffice
+    evaluate a cell beginning with `=`, `+`, `-` or `@` as a formula, which is a
+    route to `HYPERLINK` exfiltration and, historically, DDE command execution.
+    Reveille writes the CSV with a BOM specifically so Excel opens it directly,
+    which makes this the likely path rather than an unlikely one.
+
+    The mitigation is the conventional one: a leading apostrophe, which every
+    major spreadsheet reads as "treat the rest as text" and does not display.
+
+    Only free-text columns are passed through here. Numeric columns are written
+    from integers and floats, so a leading `-` there is a real minus sign.
+
+    Args:
+        value: A free-text cell value derived from repository metadata.
+
+    Returns:
+        The value, prefixed with an apostrophe if it would otherwise be
+        interpreted as a formula.
+    """
+    if value.startswith(_CSV_FORMULA_PREFIXES):
+        return "'" + value
+    return value
+
+
 def _sanitise_chart_label(value: str) -> str:
     """Strip HTML tags, null bytes, and surrounding whitespace from a chart label.
 
@@ -848,21 +1371,27 @@ def _aggregate_pie_data(
 
     top = items[:_PIE_MAX_SLICES]
     others_total = sum(i[1] for i in items[_PIE_MAX_SLICES:])
-    labels = [i[0] for i in top] + ["Other Contributors"]
+    labels = [i[0] for i in top] + [_OTHER_LABEL]
     values = [i[1] for i in top] + [others_total]
     return labels, values
 
 
-def _pie_colors(n: int) -> list[str]:
-    """Return n colours from the professional palette, cycling if necessary.
+def _pie_colors(n: int, has_other: bool = False) -> list[str]:
+    """Return n slice colours, assigned in fixed palette order.
 
     Args:
         n: Number of colours required.
+        has_other: Whether the final slice is the aggregated "Other
+            Contributors" residual rather than a named contributor.
 
     Returns:
-        A list of n hex colour strings.
+        A list of n hex colour strings. No colour is ever repeated within a
+        single chart: identity slices take the categorical palette in order,
+        and the residual slice takes a reserved neutral.
     """
-    return [_PIE_PALETTE[i % len(_PIE_PALETTE)] for i in range(n)]
+    if has_other and n >= 1:
+        return [_CATEGORICAL_PALETTE[i] for i in range(n - 1)] + [_OTHER_SLICE_COLOUR]
+    return [_CATEGORICAL_PALETTE[i] for i in range(n)]
 
 
 # ------------------------------------------------------------------
@@ -890,8 +1419,13 @@ def _base_layout() -> dict[str, Any]:
             "size": 12,
         },
         "margin": {"l": 60, "r": 30, "t": 20, "b": 50},
-        "xaxis": {"gridcolor": "#e2e8f0", "linecolor": "#d1d9e0"},
-        "yaxis": {"gridcolor": "#e2e8f0", "linecolor": "#d1d9e0"},
+        # Plotly measures the rendered tick labels and axis title and grows
+        # the margin to fit them. Without it the fixed bottom margin of 50px
+        # is a guess: it was too small for -45 degree date labels, so the
+        # "Week" title was drawn on top of them, and too small on the left
+        # for a contributor axis, which truncated names to "dabot[bot]".
+        "xaxis": {"automargin": True},
+        "yaxis": {"automargin": True},
         "showlegend": False,
         "modebar": {"remove": ["logo"]},
     }
@@ -900,9 +1434,17 @@ def _base_layout() -> dict[str, Any]:
 def _to_json(fig: go.Figure) -> str:
     r"""Serialise a Plotly figure to a JSON specification string.
 
-    Background colours (paper_bgcolor, plot_bgcolor) and font colour are
-    stripped from the layout before serialisation. These are injected by
-    the client-side theme manager at render time.
+    Every theme-dependent colour is stripped from the layout before
+    serialisation, because a chart specification is rendered under both
+    themes and a colour baked in here can only be right under one of them.
+    The client-side theme manager is the single source of these values.
+
+    This runs at the one point every chart passes through, so a builder
+    that sets an axis colour cannot leak it into the document. Before
+    this, two builders and the shared base layout each set the light
+    theme's grid and line colours; under the dark theme they rendered a
+    14:1 grid over the plot area, because the manager's attempt to
+    override them never took effect.
 
     The sequence "</" is escaped as "<\/" throughout the output to prevent
     any "</script>" in label text from terminating the embedding script block.
@@ -916,9 +1458,71 @@ def _to_json(fig: go.Figure) -> str:
     figure_json: str = fig.to_json() or "{}"
     raw: dict[str, Any] = json.loads(figure_json)
     layout = raw.get("layout", {})
-    for key in ("paper_bgcolor", "plot_bgcolor"):
-        layout.pop(key, None)
-    if "font" in layout:
-        layout["font"].pop("color", None)
+
+    # Plotly.py serialises its entire default template into every figure:
+    # 7,105 bytes per chart, 84% of each specification, and the same bytes
+    # each time. Plotly.js registers the same default client-side, so the
+    # copy carried in the document changes nothing about how a chart draws.
+    # What it does carry is a light-theme palette -- a plot background, a
+    # white grid, an axis colour -- inside a document rendered under two
+    # themes, which is the class of defect this module has just been
+    # cleared of. Every colour a chart actually depends on is set
+    # explicitly, by the builder for the data and by the theme manager for
+    # the surface.
+    layout.pop("template", None)
+
+    _strip_theme_colours(layout)
     raw["layout"] = layout
     return json.dumps(raw).replace("</", "<\\/")
+
+
+#: Layout keys whose value is a colour that differs between the two themes.
+#: Each entry is a path of nested layout keys. `_strip_theme_colours`
+#: removes every one of these, and a fitness function asserts that no
+#: emitted chart specification contains any of them.
+_THEME_COLOUR_PATHS: tuple[tuple[str, ...], ...] = (
+    ("paper_bgcolor",),
+    ("plot_bgcolor",),
+    ("font", "color"),
+    ("legend", "bgcolor"),
+    ("legend", "bordercolor"),
+    ("legend", "font", "color"),
+    ("hoverlabel", "bgcolor"),
+    ("hoverlabel", "bordercolor"),
+    ("hoverlabel", "font", "color"),
+    ("modebar", "bgcolor"),
+    ("modebar", "color"),
+    ("modebar", "activecolor"),
+)
+
+#: Axis-local colour keys, stripped from every axis the layout declares.
+#: Plotly numbers additional axes `xaxis2`, `yaxis3` and so on, so the
+#: axis names are matched by prefix rather than listed.
+_AXIS_COLOUR_KEYS: tuple[str, ...] = (
+    "gridcolor",
+    "linecolor",
+    "zerolinecolor",
+    "tickcolor",
+)
+
+
+def _strip_theme_colours(layout: dict[str, Any]) -> None:
+    """Remove every theme-dependent colour from a Plotly layout, in place.
+
+    Args:
+        layout: The layout mapping of a serialised Plotly figure.
+    """
+    for path in _THEME_COLOUR_PATHS:
+        node: Any = layout
+        for key in path[:-1]:
+            node = node.get(key) if isinstance(node, dict) else None
+            if node is None:
+                break
+        if isinstance(node, dict):
+            node.pop(path[-1], None)
+
+    for name, value in layout.items():
+        if not name.startswith(("xaxis", "yaxis")) or not isinstance(value, dict):
+            continue
+        for key in _AXIS_COLOUR_KEYS:
+            value.pop(key, None)

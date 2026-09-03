@@ -30,7 +30,7 @@ command. Anything that would change repository state is out of scope by
 construction, not by omission.
 
 **It is offline.** Nothing is transmitted anywhere. The generated report
-loads no CDN, no web font, and no remote image — the ~3.5 MB Plotly
+loads no CDN, no web font, and no remote image — the ~4.1 MB Plotly
 bundle is embedded in the file itself. This is what makes the output
 safe to attach to an email or embed in Confluence, and it is enforced by
 a test asserting no `<link>`, `<script>`, or `<img>` in the template
@@ -106,11 +106,15 @@ src/reveille/
     cli.py            Typer app, exit codes, progress display
     config.py         Pydantic config models and TOML loading
     init.py           reveille.toml and .mailmap scaffold generation
+    capabilities.py   the machine-readable self-description; what the tool
+                      can and, more usefully, cannot do
     exceptions.py     the exception hierarchy
     py.typed          PEP 561 marker — this package ships type information
     domain/
         models.py     frozen dataclasses; no behaviour beyond derived properties
-        ranking.py    the scoring and tiering algorithm
+        ranking.py    the scoring and tiering algorithm (opt-in from 0.8.0)
+        concentration.py  Lorenz curve and Gini coefficient; describes the
+                      distribution and names nobody
     adapters/
         git_reader.py GitPython in; domain models out
         renderer.py   domain models in; HTML, JSON, or CSV out
@@ -137,16 +141,31 @@ derived properties, never I/O.
 **`RankedContributor`** — wraps `stats` with `composite_score`,
 `percentile`, `tier`, `tier_designation`.
 
-**`RepositoryMetadata`** — `name`, `remote_url`, `default_branch`,
+**`RepositoryMetadata`** — `name`, `remote_url`, `analysed_branch`,
 `total_commits`, `unique_contributors`, `analysis_since`,
 `analysis_until`, `generated_at`.
+
+`analysed_branch` is the ref the analysis actually walked. It was called
+`default_branch` through v0.7.0 and held neither the default branch nor the
+analysed one — see [ADR 0008](adr/0008-output-provenance-and-schema-version.md).
+
+**`AnalysisProvenance`** — `reveille_version`, `schema_version`, `head_sha`,
+the filters *as requested* (`requested_branch`, `requested_since`,
+`requested_until`, `exclude_authors_count`, `min_commits`), `ranking_enabled`,
+`ranking_weights`, `mailmap_applied`, `deterministic`.
+
+The requested/resolved distinction is the point: `analysis_since` records where
+the window began, `requested_since` records whether anybody asked for it. Note
+`exclude_authors_count` is a count rather than the values — the operation exists
+to keep somebody out of the report, so naming them in provenance would put them
+back.
 
 **`ProgressEvent`** — `stage`, `elapsed_seconds`, `items_processed`.
 The service emits these; the CLI decides whether to animate them, log
 them, or ignore them. The service has no opinion about terminals.
 
-**`ReportData`** — `metadata`, `ranked_contributors`, `commits`. The
-sole input to `Renderer`.
+**`ReportData`** — `metadata`, `provenance`, `ranked_contributors`, `commits`.
+The sole input to `Renderer`.
 
 ---
 
@@ -202,8 +221,15 @@ four stages, emitting a `ProgressEvent` before each:
 
 With `ranking_enabled=False`, stage 3 still produces
 `RankedContributor` objects, with `tier=0`, designation `"--"`, and
-score and percentile zeroed. The shape stays constant so the renderer
-has no branch for it.
+score and percentile zeroed. The shape stays constant so the *pipeline*
+needs no branch for it — but every renderer does branch, on
+`provenance.ranking_enabled` rather than on the list being non-empty.
+The placeholders are an internal convenience and must never reach a
+reader: HTML drops the rank, designation and score columns and retitles
+the section, and CSV omits those columns exactly as JSON omits the
+corresponding keys. Gating on `ranked_contributors` instead is the
+defect that shipped a "Contributor Rankings" table full of zeroes into
+the default report.
 
 ### Reading history
 
@@ -245,7 +271,7 @@ fold together.
 
 `_build_charts` returns a dict keyed `timeline`,
 `contributor_timeline`, `heatmap`, `contributor_commits`,
-`contributor_lines`, `pie_commits`, `pie_lines`. Each value is a Plotly
+`contributor_lines`, `pie_commits`, `pie_lines`, `lorenz`. Each value is a Plotly
 JSON string, or the string `"null"` when there is nothing to draw —
 the template checks for that sentinel rather than the renderer deciding
 what the page looks like.
@@ -268,7 +294,7 @@ from the serialised layout. Theme colours are injected client-side via
 without a re-render.
 
 `_PLOTLY_JS_BUNDLE` is read once at module import. `get_plotlyjs()`
-reads ~3.5 MB from disk per call; caching it took the e2e suite from
+reads ~4.1 MB from disk per call; caching it took the e2e suite from
 roughly forty minutes to two.
 
 ---
@@ -375,3 +401,50 @@ worth knowing about before you change what they cover:
 
 `make ci` runs the same gates CI does. Run it before opening a pull
 request.
+
+---
+
+## Lineage
+
+Almost nothing in this design is novel, and that is the point. Naming the
+established technique behind each choice makes it checkable against a
+literature rather than against the author's judgement, and it makes the two or
+three genuinely local decisions easier to find and argue with.
+
+| In this codebase | Established as | How it applies here |
+|---|---|---|
+| `CLI → Service → Domain ← Adapters`, with adapters as the only importers of GitPython, Plotly, Jinja2 and Typer | **Ports and adapters** (Cockburn, 2005), commonly *hexagonal architecture* | The domain depends on no I/O and no presentation framework, so the analysis can be reasoned about without a repository or a browser in the picture. The one honest exception is documented above. |
+| `test_layering.py`, `test_workflow_pins.py`, `test_lockfile.py`, `test_licence.py`, `test_capabilities.py`, `test_docs_links.py` | **Architectural fitness functions** (Ford, Parsons and Kua, *Building Evolutionary Architectures*, 2017) | Tests whose subject is an architectural property rather than a behaviour: the build fails when the *structure* stops holding, not when a feature breaks. They assert the dependency rule by importing each module in a subprocess and inspecting `sys.modules`; that every action is SHA-pinned with a truthful comment; that the lock parses; that every licence declaration agrees; that the capability document matches the program it describes. |
+| Refusing a revision that begins with `-`; accepting only object names `git rev-list` produced; refusing to write through a symlink; guards that exit non-zero when they cannot check | **Fail-safe defaults** and **complete mediation** (Saltzer and Schroeder, 1975) | The default is refusal, and every write passes the same check. This was learnt rather than designed: two release guards were found to *fail open* — comparing two empty strings and reporting agreement — which is the precise failure fail-safe defaults exists to name. |
+| `AnalysisProvenance` on every JSON report — tool version, analysed commit, filters as requested | **Data provenance** | An artefact that cannot state what it measured, over what, with which filters, is not evidence. The distinction between a filter *as requested* and the window that resulted is the part that does the work. |
+| `schema_version` as the first key of the payload | **Schema versioning** | A consumer decides whether it can parse the document before it tries. Introduced because a breaking key rename once shipped with no way to detect it except a `KeyError` at runtime. |
+| The Lorenz curve and Gini coefficient in `domain/concentration.py` | **Lorenz (1905)**, **Gini (1912)** | Standard instruments for concentration in a population, chosen over a bespoke "how many contributors make up a majority" precisely because a century of interpretation — and of documented weakness — comes with them. |
+| `domain/summary.py` — the written findings at the top of the report | **Data-to-text generation** (Reiter and Dale, *Building Natural Language Generation Systems*, 2000) | Content selected by rules over computed statistics, realised through fixed templates. Deterministic, offline, and no model — which is the only kind of generated prose that can live in a tool making an offline guarantee. The findings are checkable because each carries the figure it rests on. |
+| `domain/files.py` — churn per path, and the hotspot ranking | **Relative code churn** (Nagappan and Ball, *Use of Relative Code Churn Measures to Predict System Defect Density*, ICSE 2005); **hotspot analysis** (Tornhill, *Your Code as a Crime Scene*, 2013) | Churn is added plus deleted, not net. The full hotspot method crosses churn with a complexity measure; Reveille reads history and never file content, so it reports the churn axis alone and says so under the chart. A file that changes often is one to look at, not one that is wrong. |
+| `domain/profile.py` — the five-axis radar, and the decision to label every vertex | **Graphical perception** (Cleveland and McGill, *Graphical Perception: Theory, Experimentation, and Application to the Development of Graphical Methods*, JASA 1984) | Position and length are read far more accurately than angle and area. A radar encodes by area *and* its silhouette depends on the arbitrary axis order, so the order is fixed and never data-dependent, every vertex carries its value as text, and the report states that the area means nothing. The form is used because it is asked for and is recognisable over time — not because it is accurate. |
+| `_CATEGORICAL_PALETTE`, and the decision that four is the maximum | **Color Universal Design** (Okabe and Ito, 2008); **dichromat simulation** (Viénot, Brettel and Mollon, 1999); **WCAG 2.1** contrast | A series colour must clear three constraints at once — contrast against both plot surfaces, separation in normal vision, and separation under simulated colour blindness. Over a 29-candidate pool the largest satisfying set is four, so beyond four the report aggregates rather than inventing a fifth hue. `tests/unit/adapters/test_palette.py` carries the arithmetic and recomputes it on every run. |
+| `.mailmap` handling, and email as the identity key | **`gitmailmap(5)`** | All four documented forms, with Git's own matching precedence, so a `.mailmap` that works with `git shortlog` works here. |
+| `docs/adr/` | **Architecture decision records** (Nygard, 2011) | Immutable once accepted; a changed decision gets a new record that supersedes the old one. |
+| `CHANGELOG.md`, version numbering | **Keep a Changelog**, **Semantic Versioning** | Under `0.y.z` the spec permits breaking changes in a minor bump, which is why the JSON key renames in 0.8.0 are documented loudly rather than deferred. |
+| Trusted Publishing, PEP 740 attestations, a CycloneDX SBOM, SHA-pinned actions | **Software supply chain integrity** (SLSA-adjacent; OpenSSF Scorecard) | Each answers "did this artefact come from this repository's release workflow", which a checksum cannot. |
+
+**What is local to this project, and therefore where scrutiny belongs.** Two
+things, and both are judgements rather than techniques:
+
+1. **The refusal to rank people by default** ([ADR 0010](adr/0010-ranking-is-opt-in.md)),
+   and the decision to state that refusal in machine-readable form so a program
+   reading `reveille capabilities` is told what the tool is not for. The
+   technique — a self-describing capability document — is ordinary. Putting the
+   *limits* in it, as prominently as the features, is the part worth arguing
+   with.
+2. **The rule that a guard is not trusted until it has been observed failing.**
+   Every check in this repository was verified by reintroducing the defect it
+   protects against and watching it fail. This is not a named practice as far as
+   the author is aware, and it is the single most productive habit in the
+   project's history: it has caught a documentation test that passed with the
+   defect present, a licence guard that passed while checking nothing, and a
+   security regression test that was rejecting its own payload for the wrong
+   reason.
+
+If either of those is wrong, the design is wrong, and it is better to find out
+by argument than after more is built on top.

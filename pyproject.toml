@@ -6,10 +6,10 @@
 
 [tool.poetry]
 name = "reveille"
-version = "0.7.0"
+version = "0.8.0"
 description = "A CLI tool that generates self-contained HTML performance reports from local Git repositories."
-authors = ["Varaprasad Chilakanti <varaprasadchilakanti@gmail.com>"]
-license = "MIT"
+authors = ["Vara Prasad Chilakanti <varaprasadchilakanti@gmail.com>"]
+license = "Apache-2.0"
 readme = "README.md"
 homepage = "https://github.com/varaprasadchilakanti/reveille"
 repository = "https://github.com/varaprasadchilakanti/reveille"
@@ -28,7 +28,16 @@ classifiers = [
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Intended Audience :: Information Technology",
-    "License :: OSI Approved :: MIT License",
+    # PEP 639 deprecates licence classifiers in favour of a `License-Expression`
+    # SPDX field. The pinned Poetry 2.4.2 supports it and now warns about this
+    # classifier, so the blocker is no longer the toolchain -- it is that the
+    # migration means moving the whole of `[tool.poetry]` to the PEP 621
+    # `[project]` table, which is a packaging change of its own and does not
+    # belong in a release already carrying a relicensing. Dropping the
+    # classifier without adding the expression would leave the distribution
+    # with no structured licence metadata at all. The SPDX identifier is
+    # `Apache-2.0`.
+    "License :: OSI Approved :: Apache Software License",
     "Natural Language :: English",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
@@ -127,7 +136,12 @@ reveille = "reveille.cli:app"
 # ------------------------------------------------------------------
 
 [build-system]
-requires = ["poetry-core>=1.0.0"]
+# Floor raised from 1.0.0 with the toolchain. This is not cosmetic: anyone
+# building from the sdist resolves poetry-core by this constraint, and 1.x
+# emits Metadata 2.1 without `License-File`, ignores SOURCE_DATE_EPOCH, and so
+# produces a different artefact from the one CI verifies as reproducible. The
+# constraint should describe what the project actually needs.
+requires = ["poetry-core>=2.0,<3.0"]
 build-backend = "poetry.core.masonry.api"
 
 
@@ -179,6 +193,13 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401", "F403"]
 "tests/**/*.py" = ["S101", "D"]
+
+[tool.ruff.lint.mccabe]
+# Stated rather than inherited. The `C` selector already enables C901 through
+# mccabe -- it caught three genuine cases during the 0.8.0 work, each of which
+# was resolved by extracting a function rather than by raising the ceiling. The
+# limit is a contract, so it should not depend on a tool default that can move.
+max-complexity = 10
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

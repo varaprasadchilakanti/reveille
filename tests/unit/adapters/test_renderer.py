@@ -20,14 +20,13 @@ import plotly.graph_objects as go
 import pytest
 
 from reveille.adapters.renderer import (
+    _PIE_MAX_SLICES,
     Renderer,
     _aggregate_pie_data,
     _build_commit_share_pie,
-    _build_contributor_commits_chart,
     _build_contributor_lines_chart,
     _build_contributor_timeline_chart,
     _build_heatmap_data,
-    _build_lines_share_pie,
     _build_timeline_chart,
     _compute_commit_concentration,
     _compute_longest_inactive_streak,
@@ -35,6 +34,8 @@ from reveille.adapters.renderer import (
     _to_json,
 )
 from reveille.domain.models import (
+    SCHEMA_VERSION,
+    AnalysisProvenance,
     Commit,
     ContributorStats,
     RankedContributor,
@@ -46,6 +47,23 @@ from reveille.exceptions import OutputPathError
 # ------------------------------------------------------------------
 # Shared factory helpers
 # ------------------------------------------------------------------
+
+
+# Provenance is required by ReportData; these tests do not assert on it.
+_PROVENANCE = AnalysisProvenance(
+    reveille_version="0.0.0-test",
+    schema_version=SCHEMA_VERSION,
+    head_sha="0" * 40,
+    requested_branch=None,
+    requested_since=None,
+    requested_until=None,
+    exclude_authors_count=0,
+    min_commits=1,
+    ranking_enabled=True,
+    ranking_weights={"commits": 0.3, "lines": 0.25, "consistency": 0.25, "recency": 0.2},
+    mailmap_applied=False,
+    deterministic=False,
+)
 
 
 def _make_commit(
@@ -121,14 +139,19 @@ class TestRenderJson:
         metadata = RepositoryMetadata(
             name="test-repo",
             remote_url=None,
-            default_branch="main",
+            analysed_branch="main",
             total_commits=10,
             unique_contributors=1,
             analysis_since=datetime.date(2024, 1, 1),
             analysis_until=datetime.date(2024, 3, 31),
             generated_at=datetime.datetime(2024, 4, 1, 12, 0, tzinfo=datetime.UTC),
         )
-        return ReportData(metadata=metadata, ranked_contributors=ranked, commits=[])
+        return ReportData(
+            metadata=metadata,
+            provenance=_PROVENANCE,
+            ranked_contributors=ranked,
+            commits=[],
+        )
 
     def test_output_is_valid_json(self, tmp_path: Path) -> None:
         output = tmp_path / "report.json"
@@ -206,14 +229,19 @@ class TestRenderCsv:
         metadata = RepositoryMetadata(
             name="test-repo",
             remote_url=None,
-            default_branch="main",
+            analysed_branch="main",
             total_commits=15,
             unique_contributors=2,
             analysis_since=datetime.date(2024, 1, 1),
             analysis_until=datetime.date(2024, 3, 31),
             generated_at=datetime.datetime(2024, 4, 1, 12, 0, tzinfo=datetime.UTC),
         )
-        return ReportData(metadata=metadata, ranked_contributors=ranked, commits=[])
+        return ReportData(
+            metadata=metadata,
+            provenance=_PROVENANCE,
+            ranked_contributors=ranked,
+            commits=[],
+        )
 
     def test_header_row_contains_expected_columns(self, tmp_path: Path) -> None:
         output = tmp_path / "report.csv"
@@ -597,52 +625,6 @@ class TestBuildHeatmapData:
 
 
 # ------------------------------------------------------------------
-# _build_contributor_commits_chart
-# ------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestBuildContributorCommitsChart:
-    """Tests for the horizontal commit count bar chart builder."""
-
-    def test_empty_ranked_returns_null_sentinel(self) -> None:
-        assert _build_contributor_commits_chart([]) == "null"
-
-    def test_single_contributor_returns_valid_chart_json(self) -> None:
-        ranked = [_make_ranked("Alice", commit_count=15)]
-        assert _is_valid_chart_json(_build_contributor_commits_chart(ranked))
-
-    def test_multiple_contributors_return_valid_chart_json(self) -> None:
-        ranked = [
-            _make_ranked("Alice", commit_count=30),
-            _make_ranked("Bob", commit_count=12),
-            _make_ranked("Carol", commit_count=5),
-        ]
-        assert _is_valid_chart_json(_build_contributor_commits_chart(ranked))
-
-    @pytest.mark.parametrize(
-        "injected_name,expected_absent",
-        [
-            ("<b>Alice</b>", "<b>"),
-            ("<script>alert(1)</script>Alice", "<script>"),
-            ("Alice\x00Smith", "\x00"),
-        ],
-    )
-    def test_html_injection_stripped_from_labels(
-        self,
-        injected_name: str,
-        expected_absent: str,
-    ) -> None:
-        """User-controlled strings containing HTML must not appear raw in chart output."""
-        ranked = [
-            _make_ranked(injected_name, commit_count=10),
-            _make_ranked("Bob", commit_count=5),
-        ]
-        result = _build_contributor_commits_chart(ranked)
-        assert expected_absent not in result
-
-
-# ------------------------------------------------------------------
 # _build_contributor_lines_chart
 # ------------------------------------------------------------------
 
@@ -681,15 +663,16 @@ class TestBuildContributorLinesChart:
 
 @pytest.mark.unit
 class TestBuildPieCharts:
-    """Tests for the commit share and lines share donut charts."""
+    """Tests for the commit share donut.
+
+    The lines-share donut was removed: it duplicated the grouped bar
+    beside it, and a share of lines changed is the least meaningful
+    share in the report.
+    """
 
     def test_single_contributor_commits_returns_null_sentinel(self) -> None:
         ranked = [_make_ranked("Alice", commit_count=10)]
         assert _build_commit_share_pie(ranked) == "null"
-
-    def test_single_contributor_lines_returns_null_sentinel(self) -> None:
-        ranked = [_make_ranked("Alice", commit_count=10)]
-        assert _build_lines_share_pie(ranked) == "null"
 
     def test_two_contributors_commits_returns_valid_chart_json(self) -> None:
         ranked = [
@@ -697,13 +680,6 @@ class TestBuildPieCharts:
             _make_ranked("Bob", commit_count=10),
         ]
         assert _is_valid_chart_json(_build_commit_share_pie(ranked))
-
-    def test_two_contributors_lines_returns_valid_chart_json(self) -> None:
-        ranked = [
-            _make_ranked("Alice", commit_count=20, lines_added=800, lines_deleted=100),
-            _make_ranked("Bob", commit_count=5, lines_added=200, lines_deleted=40),
-        ]
-        assert _is_valid_chart_json(_build_lines_share_pie(ranked))
 
     def test_pie_trace_has_hole_property(self) -> None:
         """Confirms the donut form: hole must be present and non-zero."""
@@ -733,35 +709,28 @@ class TestAggregatePieData:
         assert values == [10, 8, 5]
 
     def test_exactly_max_slices_returned_unchanged(self) -> None:
-        items = [(f"Contributor{i}", 10 - i) for i in range(8)]
+        items = [(f"Contributor{i}", 10 - i) for i in range(_PIE_MAX_SLICES)]
         labels, _values = _aggregate_pie_data(items)
-        assert len(labels) == 8
+        assert len(labels) == _PIE_MAX_SLICES
         assert "Other Contributors" not in labels
 
     def test_beyond_max_slices_aggregates_remainder(self) -> None:
-        items = [(f"Contributor{i}", 10) for i in range(10)]
+        """The cap is the palette length: past it there is no colour left."""
+        items = [(f"Contributor{i}", 10) for i in range(_PIE_MAX_SLICES + 2)]
         labels, values = _aggregate_pie_data(items)
-        assert len(labels) == 9  # 8 named + 1 aggregate
+        assert len(labels) == _PIE_MAX_SLICES + 1
         assert labels[-1] == "Other Contributors"
-        assert values[-1] == 20  # 2 contributors * 10 each
+        assert values[-1] == 20
 
     def test_aggregate_value_is_sum_of_remainder(self) -> None:
-        items = [
-            ("A", 100),
-            ("B", 80),
-            ("C", 60),
-            ("D", 40),
-            ("E", 30),
-            ("F", 20),
-            ("G", 10),
-            ("H", 5),
-            ("I", 3),
-            ("J", 2),
-        ]
+        items = [(chr(65 + i), (10 - i) * 10) for i in range(_PIE_MAX_SLICES + 3)]
         labels, values = _aggregate_pie_data(items)
-        # First 8 items kept; I (3) and J (2) aggregated = 5.
-        assert values[-1] == 5
+        expected = sum(value for _label, value in items[_PIE_MAX_SLICES:])
+        assert values[-1] == expected
         assert labels[-1] == "Other Contributors"
+        assert sum(values) == sum(value for _label, value in items), (
+            "aggregating must not lose or invent commits"
+        )
 
     def test_output_lengths_are_equal(self) -> None:
         items = [(f"C{i}", i + 1) for i in range(15)]

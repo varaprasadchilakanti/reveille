@@ -44,7 +44,12 @@ def _pins() -> list[tuple[str, int, str, str, str | None]]:
         Tuples of (file name, line number, action, ref, comment).
     """
     found = []
-    for path in sorted(_WORKFLOWS.glob("*.yml")):
+    # Both extensions. GitHub honours `.yaml` exactly as it honours `.yml`,
+    # so globbing one of them left the other silently unpinned -- and the
+    # discovery test below counts pins, not files, so it would not have
+    # noticed a whole workflow going unchecked.
+    paths = sorted([*_WORKFLOWS.glob("*.yml"), *_WORKFLOWS.glob("*.yaml")])
+    for path in paths:
         for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             match = _USES.match(line)
             if match is not None:

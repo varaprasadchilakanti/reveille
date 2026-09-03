@@ -19,6 +19,7 @@ import os
 import re
 import subprocess
 import sys
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
@@ -29,6 +30,71 @@ from reveille import __version__
 from reveille.cli import ExitCode, app
 
 runner = CliRunner()
+
+
+class _ElementStripper(HTMLParser):
+    """Remove named elements, and their content, from an HTML document.
+
+    A regular expression was used for this until CodeQL objected, rightly:
+    `<script\b.*?</script>` is not a sound way to find the end of an
+    element. The parser that replaced it was written inside the test that
+    used it, where its seven handlers pushed that test to a cyclomatic
+    complexity of 18 against a limit of 10. It belongs out here.
+    """
+
+    def __init__(self, blocked: set[str]) -> None:
+        super().__init__(convert_charrefs=False)
+        self._blocked = {name.lower() for name in blocked}
+        self._depth = 0
+        self.parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: object) -> None:
+        if tag.lower() in self._blocked:
+            self._depth += 1
+        elif self._depth == 0:
+            self.parts.append(self.get_starttag_text() or "")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() in self._blocked and self._depth > 0:
+            self._depth -= 1
+        elif self._depth == 0:
+            self.parts.append(f"</{tag}>")
+
+    def handle_startendtag(self, tag: str, attrs: object) -> None:
+        if self._depth == 0 and tag.lower() not in self._blocked:
+            self.parts.append(self.get_starttag_text() or "")
+
+    def handle_data(self, data: str) -> None:
+        if self._depth == 0:
+            self.parts.append(data)
+
+    def handle_comment(self, data: str) -> None:
+        if self._depth == 0:
+            self.parts.append(f"<!--{data}-->")
+
+    def handle_decl(self, decl: str) -> None:
+        if self._depth == 0:
+            self.parts.append(f"<!{decl}>")
+
+    def handle_pi(self, data: str) -> None:
+        if self._depth == 0:
+            self.parts.append(f"<?{data}>")
+
+
+def _strip_elements(document: str, blocked: set[str]) -> str:
+    """Return `document` with the `blocked` elements and their content gone.
+
+    Args:
+        document: An HTML document.
+        blocked: Lowercase element names to remove.
+
+    Returns:
+        The remaining markup.
+    """
+    stripper = _ElementStripper(blocked)
+    stripper.feed(document)
+    stripper.close()
+    return "".join(stripper.parts)
 
 
 # ------------------------------------------------------------------
@@ -717,67 +783,77 @@ class TestGenerateCommand:
 # ------------------------------------------------------------------
 
 
+@pytest.fixture
+def init_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A temporary Git repository, made the current directory.
+
+    `reveille init` requires the working directory to be a repository root --
+    that is its documented contract. The success-path tests below relied on
+    pytest's ambient working directory happening to satisfy it, which is true
+    when the suite runs from this checkout and false anywhere else, such as an
+    unpacked sdist. They passed for a reason unrelated to what they assert.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    monkeypatch.chdir(repo)
+    return repo
+
+
 @pytest.mark.e2e
 class TestInitCommand:
     """End-to-end tests for `reveille init`."""
 
-    def test_creates_reveille_toml_at_output_path(
-        self, tmp_path_factory: pytest.TempPathFactory
-    ) -> None:
+    def test_creates_reveille_toml_at_output_path(self, init_cwd: Path) -> None:
         """Default invocation writes reveille.toml to the specified path."""
-        dest = tmp_path_factory.mktemp("init_create") / "reveille.toml"
+        dest = init_cwd / "reveille.toml"
         result = runner.invoke(app, ["init", "--output", str(dest)])
         assert result.exit_code == 0
         assert dest.exists()
 
-    def test_output_confirms_written_path(self, tmp_path_factory: pytest.TempPathFactory) -> None:
+    def test_output_confirms_written_path(self, init_cwd: Path) -> None:
         """The success message includes the written path."""
-        dest = tmp_path_factory.mktemp("init_confirm") / "reveille.toml"
+        dest = init_cwd / "reveille.toml"
         result = runner.invoke(app, ["init", "--output", str(dest)])
         assert "Configuration file written to" in result.output
 
-    def test_exits_nonzero_when_file_exists_without_force(
-        self, tmp_path_factory: pytest.TempPathFactory
-    ) -> None:
+    def test_exits_nonzero_when_file_exists_without_force(self, init_cwd: Path) -> None:
         """Non-zero exit when target exists and --force is absent."""
-        dest = tmp_path_factory.mktemp("init_conflict") / "reveille.toml"
+        dest = init_cwd / "reveille.toml"
         dest.write_text("existing", encoding="utf-8")
         result = runner.invoke(app, ["init", "--output", str(dest)])
         assert result.exit_code != 0
+        assert dest.read_text(encoding="utf-8") == "existing"
 
-    def test_force_flag_overwrites_existing_file(
-        self, tmp_path_factory: pytest.TempPathFactory
-    ) -> None:
+    def test_force_flag_overwrites_existing_file(self, init_cwd: Path) -> None:
         """--force succeeds and replaces the existing file."""
-        dest = tmp_path_factory.mktemp("init_force") / "reveille.toml"
+        dest = init_cwd / "reveille.toml"
         dest.write_text("stale", encoding="utf-8")
         result = runner.invoke(app, ["init", "--output", str(dest), "--force"])
         assert result.exit_code == 0
         assert dest.read_text(encoding="utf-8") != "stale"
 
-    def test_exits_nonzero_when_parent_directory_missing(
-        self, tmp_path_factory: pytest.TempPathFactory
-    ) -> None:
-        """Non-zero exit when the parent directory does not exist."""
-        base = tmp_path_factory.mktemp("init_missing_parent")
-        dest = base / "nonexistent_dir" / "reveille.toml"
+    def test_exits_nonzero_when_parent_directory_missing(self, init_cwd: Path) -> None:
+        """Non-zero exit when the parent directory does not exist.
+
+        Runs inside a real repository so the failure is attributable to the
+        missing directory. Outside one it exited non-zero for the wrong
+        reason, and asserting only on the code could not tell the difference.
+        """
+        dest = init_cwd / "nonexistent_dir" / "reveille.toml"
         result = runner.invoke(app, ["init", "--output", str(dest)])
         assert result.exit_code != 0
+        assert "not a Git repository" not in result.output
 
     def test_exits_nonzero_outside_git_repository(
-        self, tmp_path_factory: pytest.TempPathFactory
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Non-zero exit and no file written when CWD is not a Git repository."""
-        import os
-
-        non_git = tmp_path_factory.mktemp("non_git_cwd")
+        non_git = tmp_path / "plain"
+        non_git.mkdir()
         dest = non_git / "reveille.toml"
-        original = Path(os.getcwd())
-        try:
-            os.chdir(non_git)
-            result = runner.invoke(app, ["init", "--output", str(dest)])
-        finally:
-            os.chdir(original)
+        monkeypatch.chdir(non_git)
+        result = runner.invoke(app, ["init", "--output", str(dest)])
         assert result.exit_code != 0
         assert not dest.exists()
 
@@ -1014,19 +1090,54 @@ class TestVerboseFlag:
             package_logger.handlers = original_handlers
             package_logger.setLevel(original_level)
 
-    def test_configuring_without_verbose_attaches_nothing(self) -> None:
+    def test_without_verbose_a_handler_is_attached_at_warning_level(self) -> None:
+        """Warnings are not diagnostics and must not need a flag.
+
+        This asserted the opposite until v0.8.0: no handler at all without
+        `--verbose`, which meant `--exclude-author` matching nobody was
+        completely silent. A privacy filter that silently did nothing looked
+        exactly like one that worked.
+        """
         import logging
 
         from reveille.cli import _configure_logging
 
         package_logger = logging.getLogger("reveille")
         original_handlers = list(package_logger.handlers)
+        original_level = package_logger.level
         try:
             package_logger.handlers = [logging.NullHandler()]
             _configure_logging(verbose=False)
-            assert all(isinstance(h, logging.NullHandler) for h in package_logger.handlers)
+
+            streams = [
+                h
+                for h in package_logger.handlers
+                if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.NullHandler)
+            ]
+            assert len(streams) == 1
+            assert package_logger.level == logging.WARNING
         finally:
             package_logger.handlers = original_handlers
+            package_logger.setLevel(original_level)
+
+    def test_a_warning_reaches_stderr_without_verbose(self, e2e_repo: Path, tmp_path: Path) -> None:
+        """The case this exists for: an exclusion that matched nothing."""
+        result = CliRunner().invoke(
+            app,
+            [
+                "generate",
+                "--repo",
+                str(e2e_repo),
+                "--output",
+                str(tmp_path / "r.html"),
+                "--exclude-author",
+                "nobody@nowhere.example",
+            ],
+        )
+
+        assert result.exit_code == ExitCode.SUCCESS
+        assert "matched no commits" in result.output
+        assert "DEBUG" not in result.output
 
 
 # ------------------------------------------------------------------
@@ -1052,8 +1163,23 @@ class TestReportAccessibility:
         assert "<main" in default_report_content
 
     def test_table_column_headers_declare_scope(self, default_report_content: str) -> None:
-        """Without scope, a screen reader cannot announce which column a cell belongs to."""
-        assert default_report_content.count('scope="col"') >= 10
+        """Without scope, a screen reader cannot announce which column a cell belongs to.
+
+        Asserted as a property rather than a count. The count was `>= 10`,
+        which was the ranked table's column total; when the ranking became
+        opt-in the default table lost three columns and the test failed
+        without anything being wrong. What matters is that no column header
+        lacks a scope, whichever columns are present.
+        """
+        import re
+
+        thead = re.findall(r"<thead>(.*?)</thead>", default_report_content, re.DOTALL)
+        assert thead, "no table header found in the report"
+        headers = [th for block in thead for th in re.findall(r"<th\b[^>]*>", block)]
+        assert headers, "table header contains no header cells"
+        assert all('scope="col"' in th for th in headers), (
+            f"column headers missing scope: {[th for th in headers if 'scope=' not in th]}"
+        )
 
     def test_table_row_headers_declare_scope(self, default_report_content: str) -> None:
         assert 'scope="row"' in default_report_content
@@ -1095,6 +1221,58 @@ class TestReportAccessibility:
         remote host. Attribution URLs inside the vendored Plotly bundle
         are inert string literals for chart types Reveille never renders.
         """
-        assert not re.search(r"<link[^>]+href=\"https?://", default_report_content)
-        assert not re.search(r"<script[^>]+src=\"https?://", default_report_content)
-        assert not re.search(r"<img[^>]+src=\"https?://", default_report_content)
+        assert not re.search(r"<link[^>]+href=[\"']https?://", default_report_content)
+        assert not re.search(r"<script[^>]+src=[\"']https?://", default_report_content)
+        assert not re.search(r"<img[^>]+src=[\"']https?://", default_report_content)
+
+    def test_no_markup_or_stylesheet_fetches_a_remote_resource(
+        self,
+        default_report_content: str,
+    ) -> None:
+        """The offline guarantee, asserted as a property rather than a tag list.
+
+        The test above names three tags. That list is only as good as
+        whoever remembers to extend it: an ``<iframe src>``, an ``<object
+        data>``, a ``poster=``, or a CSS ``@import`` would each forfeit
+        the guarantee while leaving it green.
+
+        ``<script>`` bodies are excluded because the vendored Plotly
+        bundle carries map-tile and attribution URLs as string literals,
+        for trace types Reveille never emits. ``<style>`` bodies are
+        deliberately *not* excluded: a stylesheet is applied, so its
+        ``url()`` and ``@import`` rules fetch.
+
+        ``href`` is checked on ``<link>`` only. An ``<a href>`` to a
+        remote page navigates on a click; it does not load anything into
+        the report, and flagging it would make this guard cry wolf.
+        """
+        markup = _strip_elements(default_report_content, {"script", "style"})
+
+        loaded = re.findall(
+            r"""\b(?:src|srcset|poster|data)\s*=\s*["'](?:https?:)?//[^"']*""",
+            markup,
+        )
+        assert loaded == [], f"report markup loads remote resources: {loaded}"
+
+        linked = re.findall(
+            r"""<link\b[^>]*\bhref\s*=\s*["'](?:https?:)?//[^"']*""",
+            markup,
+            re.IGNORECASE,
+        )
+        assert linked == [], f"report links remote stylesheets: {linked}"
+
+        stylesheets = re.findall(
+            r"<style\b[^>]*>(.*?)</style>",
+            default_report_content,
+            re.DOTALL | re.IGNORECASE,
+        )
+        assert stylesheets, "the report carries no inline stylesheet"
+        css = "\n".join(stylesheets)
+        assert "@import" not in css, "an @import in the report CSS fetches at render time"
+
+        remote = [
+            reference
+            for reference in re.findall(r"""url\(\s*["']?([^)"']+)""", css)
+            if reference.startswith(("http://", "https://", "//"))
+        ]
+        assert remote == [], f"report CSS references remote hosts: {remote}"

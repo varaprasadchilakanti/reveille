@@ -16,7 +16,12 @@ repos:
 # General file hygiene
 # ------------------------------------------------------------------
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v6.0.0
+    # Pinned by commit, not by tag. A tag is mutable: whoever controls the
+    # repository can move it, and these hooks execute on every developer
+    # commit. tests/unit/test_workflow_pins.py already enforces this for
+    # GitHub Actions on exactly that reasoning; a pre-commit hook is the
+    # same arbitrary-code seam, so it gets the same treatment.
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # v6.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
@@ -24,6 +29,19 @@ repos:
       - id: check-case-conflict
       - id: check-merge-conflict
       - id: detect-private-key
+
+# ------------------------------------------------------------------
+# Workflow correctness
+#
+# Complements rather than duplicates the zizmor workflow: zizmor analyses
+# security posture, actionlint analyses correctness -- unknown contexts,
+# malformed matrices, expression type errors, and shellcheck over `run:`
+# blocks. Different failure domains, so both earn their place.
+# ------------------------------------------------------------------
+  - repo: https://github.com/rhysd/actionlint
+    rev: 03d0035246f3e81f36aed592ffb4bebf33a03106  # v1.7.7
+    hooks:
+      - id: actionlint
 
 # ------------------------------------------------------------------
 # Local hooks -- delegate to Poetry virtualenv for version parity

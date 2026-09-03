@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti
+# SPDX-License-Identifier: Apache-2.0
+
 """Core domain models for Reveille.
 
 Pure Python dataclasses with no framework dependencies, no I/O,
@@ -9,6 +12,16 @@ from __future__ import annotations
 
 import datetime
 from dataclasses import dataclass, field
+
+# Version of the structured-output contract, independent of the release
+# version. Consumers parse `schema_version` to decide whether they can read a
+# payload. It changes only when the shape changes, and v0.7.0 proved why it is
+# needed: `derived.bus_factor` was renamed to `derived.commit_concentration`
+# with no way for a consumer to detect the change except a KeyError at runtime.
+#
+# Bump the major on any removal or rename; bump the minor on a purely additive
+# field. See docs/adr/0008-output-provenance-and-schema-version.md.
+SCHEMA_VERSION = "1.0"
 
 
 @dataclass(frozen=True)
@@ -25,6 +38,32 @@ class Commit:
     @property
     def lines_changed(self) -> int:
         """Total lines touched by this commit (additions + deletions)."""
+        return self.lines_added + self.lines_deleted
+
+
+@dataclass(frozen=True)
+class FileStats:
+    """Activity recorded against one path, pooled across contributors.
+
+    A file, not a person. Nothing here identifies who changed what, which
+    is why it is in the default report at all.
+
+    Attributes:
+        path: The file path, relative to the repository root, after any
+            rename has been resolved to its destination.
+        commits: Number of commits that touched this path.
+        lines_added: Lines added to this path across those commits.
+        lines_deleted: Lines deleted from this path across those commits.
+    """
+
+    path: str
+    commits: int
+    lines_added: int
+    lines_deleted: int
+
+    @property
+    def lines_changed(self) -> int:
+        """Total churn: added plus deleted, not net."""
         return self.lines_added + self.lines_deleted
 
 
@@ -72,16 +111,59 @@ class RankedContributor:
 
 @dataclass(frozen=True)
 class RepositoryMetadata:
-    """Metadata describing the target repository and the analysis window."""
+    """Metadata describing the target repository and the analysis window.
+
+    `analysed_branch` is the ref the analysis actually walked. It was called
+    `default_branch` through v0.7.0 and held neither the default branch nor the
+    analysed one -- it was recomputed from whatever happened to be checked out,
+    so a report produced with `--branch` named the wrong ref in both the HTML
+    and the JSON. See ADR 0005 for the precedent: a label with an established
+    meaning attached to a different quantity is a defect, not a naming quibble.
+    """
 
     name: str
     remote_url: str | None
-    default_branch: str
+    analysed_branch: str
     total_commits: int
     unique_contributors: int
     analysis_since: datetime.date
     analysis_until: datetime.date
     generated_at: datetime.datetime
+
+
+@dataclass(frozen=True)
+class AnalysisProvenance:
+    """How a report was produced: the tool, the exact input, and the filters.
+
+    A report states numbers; provenance states what those numbers measured.
+    Without it two reports that disagree cannot be reconciled, because nothing
+    records whether they differed in filters, in window, in ranking weights, or
+    in the repository state itself.
+
+    The distinction between `requested_*` and the resolved values in
+    `RepositoryMetadata` is deliberate. `analysis_since` records where the
+    window *began*; `requested_since` records whether anybody *asked* for that.
+    A reader cannot otherwise tell "the full history, which starts in March"
+    from "filtered to start in March".
+    """
+
+    reveille_version: str
+    schema_version: str
+    head_sha: str | None
+    requested_branch: str | None
+    requested_since: datetime.date | None
+    requested_until: datetime.date | None
+    # A count, not the values. `--exclude-author` exists to keep a person out
+    # of the report; writing their address into a labelled provenance field
+    # puts it back, and promotes it from one row among many to something
+    # greppable. The count still distinguishes a filtered report from an
+    # unfiltered one, which is all provenance needs.
+    exclude_authors_count: int
+    min_commits: int
+    ranking_enabled: bool
+    ranking_weights: dict[str, float] | None
+    mailmap_applied: bool
+    deterministic: bool
 
 
 @dataclass(frozen=True)
@@ -108,5 +190,10 @@ class ReportData:
     """
 
     metadata: RepositoryMetadata
+    provenance: AnalysisProvenance
     ranked_contributors: list[RankedContributor]
     commits: list[Commit] = field(default_factory=list)
+    #: Per-path activity, pooled across contributors. Defaults to empty so
+    #: a caller constructing a report without it -- every existing test --
+    #: keeps working; the file sections are then simply absent.
+    file_stats: list[FileStats] = field(default_factory=list)

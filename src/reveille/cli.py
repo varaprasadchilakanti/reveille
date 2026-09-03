@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti
+# SPDX-License-Identifier: Apache-2.0
+
 """CLI entry point for Reveille.
 
 Defines the public commands: generate, validate, init, version, help.
@@ -17,13 +20,14 @@ from __future__ import annotations
 import datetime
 import enum
 import itertools
+import json
 import logging
 import sys
 import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Annotated, Any, ClassVar, cast
+from typing import Annotated, Any, ClassVar, TextIO, cast
 
 import typer
 
@@ -69,6 +73,27 @@ class ExitCode(enum.IntEnum):
     """
 
 
+class _StderrHandler(logging.StreamHandler):  # type: ignore[type-arg]
+    """A stderr handler that resolves the stream at emit time.
+
+    `logging.StreamHandler` captures `sys.stderr` when it is constructed. A
+    handler now outlives a single invocation -- it is attached on every run, not
+    only under `--verbose` -- so a captured stream can be closed or replaced
+    beneath it, which raises `ValueError: I/O operation on closed file` from
+    inside the logging machinery. Looking the stream up on each write costs an
+    attribute access and removes the failure mode.
+    """
+
+    @property
+    def stream(self) -> TextIO:
+        """The current `sys.stderr`, resolved on every access."""
+        return sys.stderr
+
+    @stream.setter
+    def stream(self, _value: object) -> None:
+        """Ignore assignment; the stream is always the current `sys.stderr`."""
+
+
 def _configure_logging(verbose: bool) -> None:
     """Attach a stderr log handler when diagnostics are requested.
 
@@ -77,25 +102,27 @@ def _configure_logging(verbose: bool) -> None:
     libraries. This is the only place a handler is attached, so importing
     Reveille as a library stays silent unless the host application opts in.
 
+    A handler is always attached; `verbose` chooses the level. Warnings are
+    not diagnostics -- `--exclude-author` matching nobody is the case this
+    matters for, and it was previously visible only with `--verbose`, so a
+    filter that silently did nothing looked exactly like one that worked. That
+    is the wrong thing to hide for the one flag whose purpose is privacy.
+
     Args:
-        verbose: True to emit DEBUG-level diagnostics to stderr.
+        verbose: True to emit DEBUG-level diagnostics as well as warnings.
     """
-    if not verbose:
-        return
+    level = logging.DEBUG if verbose else logging.WARNING
     package_logger = logging.getLogger("reveille")
     # Idempotent: a second call in the same process must not duplicate
     # every diagnostic line. Only the NullHandler installed at import
     # time is expected to be present here.
-    if any(
-        isinstance(h, logging.StreamHandler) and not isinstance(h, logging.NullHandler)
-        for h in package_logger.handlers
-    ):
-        package_logger.setLevel(logging.DEBUG)
+    if any(isinstance(h, _StderrHandler) for h in package_logger.handlers):
+        package_logger.setLevel(level)
         return
-    handler = logging.StreamHandler(sys.stderr)
+    handler = _StderrHandler()
     handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
     package_logger.addHandler(handler)
-    package_logger.setLevel(logging.DEBUG)
+    package_logger.setLevel(level)
 
 
 app = typer.Typer(
@@ -268,7 +295,7 @@ def _resolve_output_path(output: Path, repo_path: Path) -> Path:
     return output
 
 
-def _validate_output_path(output: Path, repo_path: Path) -> None:
+def _validate_output_path(output: Path, repo_path: Path, *, from_config: bool = False) -> None:
     """Validate the output path for traversal components and boundary awareness.
 
     Rejects paths containing upward traversal components before resolution.
@@ -279,11 +306,39 @@ def _validate_output_path(output: Path, repo_path: Path) -> None:
     Args:
         output: The output path as provided by the user (pre-resolution).
         repo_path: The resolved repository root used as the boundary reference.
+        from_config: Whether the path came from a configuration file rather
+            than from an explicit `--output` flag. A path the user typed may
+            legitimately point anywhere; a path a *file* supplied may not,
+            because `reveille.toml` is auto-discovered from the working
+            directory and can therefore arrive inside a repository somebody
+            else controls.
 
     Raises:
         typer.Exit: ExitCode.CANNOT_RUN if the path contains upward
             traversal components.
     """
+    # A symlinked *parent* directory is not a symlink at the leaf, so checking
+    # only the final component misses it. Resolving first and then comparing
+    # against the repository root catches the whole chain -- and refusing only
+    # for a config-supplied path keeps `-o /tmp/report.html` working, which is
+    # ordinary use.
+    if from_config:
+        resolved = output.expanduser().resolve()
+        try:
+            inside = resolved.is_relative_to(repo_path)
+        except ValueError:  # pragma: no cover - differing drives on Windows
+            inside = False
+        if not inside:
+            typer.echo(
+                f"Error: the configuration file sets an output path that resolves "
+                f"outside the repository: '{resolved}'.\n"
+                "A reveille.toml is discovered automatically from the working "
+                "directory, so it may come from a repository you do not control. "
+                "Pass --output explicitly if you intended to write here.",
+                err=True,
+            )
+            raise typer.Exit(code=ExitCode.CANNOT_RUN)
+
     if ".." in output.parts:
         typer.echo(
             f"Error: output path '{output}' contains upward traversal components. "
@@ -300,6 +355,30 @@ def _validate_output_path(output: Path, repo_path: Path) -> None:
         )
 
 
+def _apply_ranking_flags(
+    merged: dict[str, Any],
+    *,
+    ranking: bool,
+    no_ranking: bool,
+) -> None:
+    """Resolve the two ranking flags against the configuration file.
+
+    Explicit flags win over the file. If both are given, `--no-ranking` wins:
+    between two contradictory instructions, the one that produces less is the
+    safer reading, and the ranking is the part of the output that most needs a
+    deliberate decision behind it.
+
+    Args:
+        merged: The configuration mapping being assembled, modified in place.
+        ranking: Whether `--ranking` was passed.
+        no_ranking: Whether `--no-ranking` was passed.
+    """
+    if ranking:
+        merged["ranking_enabled"] = True
+    if no_ranking:
+        merged["ranking_enabled"] = False
+
+
 def _merge_cli_flags(
     config_kwargs: ReportConfigKwargs,
     repo: Path,
@@ -311,7 +390,9 @@ def _merge_cli_flags(
     exclude_author: list[str] | None,
     min_commits: int | None,
     no_ranking: bool,
-    output_format: str,
+    ranking: bool,
+    output_format: str | None,
+    deterministic: bool,
 ) -> ReportConfigKwargs:
     """Merge CLI flag values into the base configuration dict.
 
@@ -329,8 +410,14 @@ def _merge_cli_flags(
         title: Report title override, or None if not provided.
         exclude_author: List of authors to exclude, or None.
         min_commits: Minimum commit threshold, or None if not provided.
-        no_ranking: Whether ranking is disabled.
-        output_format: Output format string. Accepted values: html, json, csv.
+        no_ranking: Whether ranking is explicitly disabled.
+        ranking: Whether ranking is explicitly enabled.
+        output_format: Output format string, or None if the flag was not given.
+            A `None` sentinel rather than the default value, because comparing
+            against "html" cannot tell an explicit `--format html` from an
+            absent flag -- and an unconditional assignment here silently
+            overwrote whatever `reveille.toml` had set.
+        deterministic: Whether to produce byte-reproducible output.
 
     Returns:
         A merged ReportConfigKwargs ready for ReportConfig construction.
@@ -338,6 +425,8 @@ def _merge_cli_flags(
     merged: dict[str, Any] = dict(config_kwargs)
     resolved_repo = repo.resolve()
     merged["repo_path"] = resolved_repo
+    if deterministic:
+        merged["deterministic"] = True
 
     if output != Path("reveille-report.html") or "output_path" not in merged:
         merged["output_path"] = _resolve_output_path(output, resolved_repo)
@@ -353,9 +442,9 @@ def _merge_cli_flags(
         merged["exclude_authors"] = exclude_author
     if min_commits is not None:
         merged["min_commits"] = min_commits
-    if no_ranking:
-        merged["ranking_enabled"] = False
-    merged["output_format"] = cast(OutputFormat, output_format)
+    _apply_ranking_flags(merged, ranking=ranking, no_ranking=no_ranking)
+    if output_format is not None:
+        merged["output_format"] = cast(OutputFormat, output_format)
 
     return cast(ReportConfigKwargs, merged)
 
@@ -397,17 +486,41 @@ def generate(
         str | None,
         typer.Option("--title", help="Override the report title in the HTML output."),
     ] = None,
+    ranking: Annotated[
+        bool,
+        typer.Option(
+            "--ranking",
+            help=(
+                "Include the contributor ranking table. Off by default: it "
+                "scores and tiers named individuals, which is not what the "
+                "figures support."
+            ),
+        ),
+    ] = False,
     no_ranking: Annotated[
         bool,
-        typer.Option("--no-ranking", help="Omit the contributor ranking table from the output."),
+        typer.Option(
+            "--no-ranking",
+            help="Explicitly omit the ranking table. Ranking is already off by default.",
+        ),
     ] = False,
     output_format: Annotated[
-        str,
+        str | None,
         typer.Option(
             "--format",
-            help="Output format. Accepted values: html, json, csv.",
+            help="Output format. Accepted values: html, json, csv. [default: html]",
         ),
-    ] = "html",
+    ] = None,
+    deterministic: Annotated[
+        bool,
+        typer.Option(
+            "--deterministic",
+            help=(
+                "Produce byte-reproducible output. Pins the timestamp and the "
+                "analysis window to the repository rather than to the clock."
+            ),
+        ),
+    ] = False,
     config: Annotated[
         Path | None,
         typer.Option("--config", "-c", help="Path to a TOML configuration file."),
@@ -435,9 +548,9 @@ def generate(
         except ConfigurationError as exc:
             if _auto_discovered:
                 typer.echo(
-                    f"Configuration error: auto-discovered {_CONVENTIONAL_CONFIG} "
-                    f"contains invalid TOML.\nDetail: {exc}\n"
-                    f"Correct the syntax or regenerate the file with: "
+                    f"Configuration error in the auto-discovered "
+                    f"{_CONVENTIONAL_CONFIG}.\nDetail: {exc}\n"
+                    f"Correct the file, or regenerate it with: "
                     f"reveille init --force",
                     err=True,
                 )
@@ -456,10 +569,31 @@ def generate(
         exclude_author,
         min_commits,
         no_ranking,
+        ranking,
         output_format,
+        deterministic,
     )
 
-    _validate_output_path(output, repo.resolve())
+    # Validate the EFFECTIVE path, not the flag. `merged["output_path"]` may
+    # have come from a reveille.toml -- including one auto-discovered inside a
+    # repository somebody else controls -- and validating the CLI argument left
+    # that path unchecked, so a config file could write outside the repository
+    # with no traversal warning at all.
+    # Only an AUTO-DISCOVERED config is untrusted. `--config /path/to.toml` is a
+    # path the user typed, exactly like `--output`, so it earns the same
+    # latitude: a warning rather than a refusal. Treating both alike blocked a
+    # deliberate choice and told the user their file had been "discovered
+    # automatically", which was not true.
+    _output_from_config = (
+        _auto_discovered
+        and "output_path" in config_kwargs
+        and output == Path("reveille-report.html")
+    )
+    _validate_output_path(
+        Path(merged.get("output_path", output)),
+        repo.resolve(),
+        from_config=_output_from_config,
+    )
 
     try:
         report_config = ReportConfig(**merged)
@@ -604,6 +738,33 @@ def init(
             typer.echo(f".mailmap template written to: {mailmap_result}")
         else:
             typer.echo(".mailmap already exists — skipped.")
+
+
+@app.command()
+def capabilities(
+    output_format: Annotated[
+        str,
+        typer.Option(
+            "--format",
+            help="Output format. Accepted values: text, json.",
+        ),
+    ] = "text",
+) -> None:
+    """Describe what Reveille can and cannot do, for a person or a program."""
+    from reveille.capabilities import build_capabilities, render_text
+
+    if output_format not in {"text", "json"}:
+        typer.echo(
+            f"Error: unsupported format '{output_format}'. Accepted values: text, json.",
+            err=True,
+        )
+        raise typer.Exit(code=ExitCode.CANNOT_RUN)
+
+    document = build_capabilities(app, ExitCode)
+    if output_format == "json":
+        typer.echo(json.dumps(document, indent=2))
+    else:
+        typer.echo(render_text(document))
 
 
 @app.command()

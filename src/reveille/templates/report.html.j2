@@ -1,3 +1,5 @@
+{# SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti #}
+{# SPDX-License-Identifier: Apache-2.0 #}
 <!DOCTYPE html>
 <html lang="en" data-theme="light">
 <head>
@@ -43,7 +45,7 @@
             --color-border-subtle:   #21262d;
             --color-text-primary:    #e6edf3;
             --color-text-secondary:  #8b949e;
-            --color-text-muted:      #7d8590;
+            --color-text-muted:      #868f99;
             --color-primary:         #58a6ff;
             --color-primary-dim:     #1f3458;
             --color-accent:          #79c0ff;
@@ -201,6 +203,134 @@
             margin-bottom: 48px;
         }
 
+        .section-note {
+            margin: -6px 0 18px;
+            max-width: 78ch;
+            color: var(--color-text-secondary);
+            font-size: 12.5px;
+            line-height: 1.6;
+        }
+
+        /* A single figure carried on the section heading, for a number that
+           belongs to the whole section rather than to one series. The Lorenz
+           curve's Gini used to be the chart's own title, anchored top-left,
+           which is where Plotly also anchors the legend -- the two overlapped
+           in every export. */
+        .section-metric {
+            margin-left: auto;
+            font-size: 12px;
+            font-weight: 400;
+            letter-spacing: 0.02em;
+            color: var(--color-text-secondary);
+            white-space: nowrap;
+        }
+
+        .section-metric b {
+            font-variant-numeric: tabular-nums;
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--color-text-primary);
+        }
+
+        /* Method and caveat, under the chart it qualifies rather than above
+           it. A reader looking for the finding should reach the chart first;
+           a reader questioning the finding needs this, and knows to look. */
+        .findings {
+            list-style: none;
+            margin: 0 0 4px;
+            padding: 0;
+            display: grid;
+            gap: 1px;
+            background: var(--color-border);
+            border: 1px solid var(--color-border);
+        }
+
+        .findings li {
+            background: var(--color-surface-raised);
+            padding: 14px 16px;
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 2px 16px;
+            align-items: baseline;
+        }
+
+        .finding-head {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--color-text-primary);
+        }
+
+        .finding-evidence {
+            font-variant-numeric: tabular-nums;
+            font-size: 11.5px;
+            letter-spacing: 0.02em;
+            color: var(--color-text-muted);
+            white-space: nowrap;
+        }
+
+        .finding-detail {
+            grid-column: 1 / -1;
+            font-size: 12.5px;
+            line-height: 1.55;
+            color: var(--color-text-secondary);
+        }
+
+        @media (max-width: 640px) {
+            .findings li { grid-template-columns: 1fr; }
+            .finding-evidence { grid-column: 1; }
+        }
+
+        .chart-foot {
+            margin: 10px 0 0;
+            padding-top: 9px;
+            border-top: 1px solid var(--color-border-subtle);
+            color: var(--color-text-muted);
+            font-size: 11.5px;
+            line-height: 1.55;
+        }
+
+        /* The report is read on screen and printed to PDF. Splitting a chart
+           or a table across a page break loses the axis with it. */
+        @media print {
+            /* Browsers do not print background colours by default, but they
+               do print text colour. A reader who had ever pressed "Dark
+               Mode" printed #e6edf3 on white paper: 1.18:1, an effectively
+               blank page. The theme persists in localStorage, so it
+               survived a reload and every later report. Print is always
+               the light palette. */
+            :root,
+            [data-theme="dark"] {
+                --color-bg:             #ffffff;
+                --color-surface:        #f6f8fa;
+                --color-surface-raised: #ffffff;
+                --color-border:         #d1d9e0;
+                --color-border-subtle:  #eaeef2;
+                --color-text-primary:   #1c2128;
+                --color-text-secondary: #57606a;
+                --color-text-muted:     #5c636b;
+                --color-primary:        #1e40af;
+                --color-accent:         #2563eb;
+                --color-positive:       #1a7f37;
+                --color-negative:       #cf222e;
+            }
+
+            /* Controls that cannot be operated on paper, advertising views
+               the reader cannot reach. */
+            .theme-toggle,
+            .heatmap-controls,
+            .modebar {
+                display: none !important;
+            }
+
+            .section,
+            .chart-container,
+            .stat-card,
+            .ranking-table {
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+        }
+
         .section-title {
             display: flex;
             align-items: baseline;
@@ -208,11 +338,15 @@
             padding-bottom: 8px;
             margin-bottom: 20px;
             border-bottom: 1px solid var(--color-border);
-            font-size: 10px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            color: var(--color-text-secondary);
+            /* Was 10px uppercase, which made the document's structural
+               landmarks its smallest text -- about 7.5pt in a printed PDF.
+               Uppercase also removes the word-shape cues a reader uses to
+               scan, so it is kept only for short labels where scanning is
+               not the job. */
+            font-size: 17px;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+            color: var(--color-text-primary);
         }
 
         .section-title-qualifier {
@@ -341,6 +475,18 @@
             font-size: 12px;
             font-weight: 700;
             color: var(--color-text-muted);
+        }
+
+        .ranking-table th.row-header {
+            padding: 11px 14px;
+            border-bottom: 1px solid var(--color-border-subtle);
+            font-size: 13px;
+            font-weight: 400;
+            text-transform: none;
+            letter-spacing: normal;
+            color: var(--color-text-primary);
+            white-space: normal;
+            vertical-align: middle;
         }
 
         .contributor-name {
@@ -526,12 +672,12 @@
     <header class="report-header">
         <div class="report-header-copy">
             <h1>{{ data.metadata.name }}</h1>
-            <p class="report-subtitle">Repository Performance Report</p>
+            <p class="report-subtitle">Repository History Report</p>
             <div class="report-meta">
                 {% if data.metadata.remote_url %}
                 <span><strong>Remote:</strong> {{ data.metadata.remote_url }}</span>
                 {% endif %}
-                <span><strong>Branch:</strong> {{ data.metadata.default_branch }}</span>
+                <span><strong>Branch:</strong> {{ data.metadata.analysed_branch }}</span>
                 <span>
                     <strong>Period:</strong>
                     {{ data.metadata.analysis_since }} to {{ data.metadata.analysis_until }}
@@ -559,35 +705,94 @@
             <div class="label" aria-hidden="true">Contributors</div>
         </div>
         <div class="summary-card">
-            <span class="visually-hidden">Commit Concentration: {{ derived.commit_concentration }}</span>
+            <span class="visually-hidden">Contributors holding half the commits: {{ derived.commit_concentration }}</span>
             <div class="value" aria-hidden="true">{{ derived.commit_concentration }}</div>
-            <div class="label" aria-hidden="true">Commit Concentration</div>
+            <div class="label" aria-hidden="true">Hold Half the Commits</div>
         </div>
         <div class="summary-card">
-            <span class="visually-hidden">Max Inactive Days: {{ derived.longest_inactive_streak }}</span>
+            <span class="visually-hidden">Longest run of days with no commits: {{ derived.longest_inactive_streak }}</span>
             <div class="value" aria-hidden="true">{{ derived.longest_inactive_streak }}</div>
-            <div class="label" aria-hidden="true">Max Inactive Days</div>
+            <div class="label" aria-hidden="true">Longest Quiet Run (days)</div>
         </div>
+        {#
+           The fifth card names a person only when the ranking was asked
+           for. It previously did so unconditionally: `--no-ranking`
+           removed the rank column, the designation and the score, and
+           still printed a named individual under the superlative "Top
+           Contributor" at the top of the page. ADR 0010 says the default
+           report describes the repository and names nobody; this card
+           was the one place it did not.
+
+           Off, the slot carries the Gini instead -- a repository-level
+           figure, and the one the distribution section is built on.
+        #}
+        {% if data.provenance.ranking_enabled and data.ranked_contributors %}
         <div class="summary-card">
             <span class="visually-hidden">
-                Top Contributor:
-                {% if data.ranked_contributors %}
-                    {{ data.ranked_contributors[0].stats.name }}
-                {% else %}
-                    none
-                {% endif %}
+                Top Contributor by commit volume:
+                {{ data.ranked_contributors[0].stats.name }}
             </span>
             <div class="value" aria-hidden="true">
-                {% if data.ranked_contributors %}
-                    {{ data.ranked_contributors[0].stats.name.split()[0] }}
-                {% else %}
-                    --
-                {% endif %}
+                {{ data.ranked_contributors[0].stats.name.split()[0] }}
             </div>
             <div class="label" aria-hidden="true">Top Contributor</div>
         </div>
+        {% else %}
+        <div class="summary-card">
+            <span class="visually-hidden">
+                Commit distribution, Gini coefficient:
+                {{ '%.2f'|format(derived.gini_coefficient) }}
+            </span>
+            <div class="value" aria-hidden="true">{{ '%.2f'|format(derived.gini_coefficient) }}</div>
+            <div class="label" aria-hidden="true">Distribution (Gini)</div>
+        </div>
+        {% endif %}
     </div>
 
+    <!-- ============================================================
+         What the history shows -- generated from the figures below
+         ============================================================ -->
+    {% if derived.findings %}
+    <div class="section">
+        <h2 class="section-title">What the History Shows</h2>
+        <ul class="findings">
+            {% for finding in derived.findings %}
+            <li>
+                <span class="finding-head">{{ finding.headline }}</span>
+                <span class="finding-evidence">{{ finding.evidence }}</span>
+                {% if finding.detail %}<span class="finding-detail">{{ finding.detail }}</span>{% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+        <p class="chart-foot">
+            Generated from the figures in this report by fixed rules, offline
+            and without a language model. The same history always produces the
+            same sentences. No individual is named or assessed.
+        </p>
+    </div>
+    {% endif %}
+    <!-- ============================================================
+         Contribution Distribution (Lorenz curve)
+         ============================================================ -->
+    <div class="section">
+        <h2 class="section-title">Contribution Distribution<span class="section-metric">Gini <b>{{ '%.2f'|format(derived.gini_coefficient) }}</b></span></h2>
+        <p class="section-note">
+            Cumulative share of commits against cumulative share of
+            contributors. The further the curve bows below the diagonal, the
+            more concentrated the activity.
+        </p>
+        <div class="chart-container">
+            <div id="chart-lorenz" role="img" aria-label="Lorenz curve showing the cumulative share of commits held by the cumulative share of contributors, plotted against a line of perfect equality."></div>
+        </div>
+        <p class="chart-foot">
+            Gini runs 0 (even) to {{ '%.2f'|format(derived.gini_ceiling) }}, which is the most
+            concentrated {{ data.metadata.unique_contributors }} contributors can be — the maximum is (n-1)/n, not 1.
+            It describes the
+            repository, not the people in it: a single maintainer with
+            occasional contributors scores high for ordinary reasons.
+            Comparable against this repository over time, not against another.
+        </p>
+    </div>
     <!-- ============================================================
          Activity Heatmap
          ============================================================ -->
@@ -601,7 +806,7 @@
                     aria-label="Filter the activity heatmap by contributor"></select>
         </div>
         <div class="chart-container">
-            <div id="chart-heatmap" role="img" aria-label="Activity heatmap: commit counts per calendar day. The same activity is summarised per contributor in the Contributor Rankings table."></div>
+            <div id="chart-heatmap" role="img" aria-label="Activity heatmap: commit counts per calendar day. The same activity is summarised per contributor in the contributor table below."></div>
         </div>
     </div>
 
@@ -616,6 +821,94 @@
     </div>
 
     <!-- ============================================================
+         Repository profile -- five bounded shares, fixed axis order
+         ============================================================ -->
+    {% if charts.profile != 'null' %}
+    <div class="section">
+        <h2 class="section-title">Repository Profile</h2>
+        <p class="section-note">
+            Five shares of the analysis window, each between 0% and 100%.
+        </p>
+        <div class="chart-container">
+            <div id="chart-profile" role="img" aria-label="Radar chart of five repository measures: spread of commits across contributors, continuity of weeks with activity, currency of the last commit, share of files revisited, and share of small commits."></div>
+        </div>
+        <p class="chart-foot">
+            Read it as five numbers, not as a shape. The enclosed area depends
+            on the order of the axes, which carries no meaning, and area is
+            read far less accurately than position or length (Cleveland &amp;
+            McGill, JASA 1984) — so the order is fixed and every vertex is
+            labelled. Each axis is a naturally bounded share, never rescaled to
+            fit. None of them is a target: a finished library scores low on
+            most, for entirely ordinary reasons. No axis measures a person.
+        </p>
+    </div>
+    {% endif %}
+
+
+
+    <!-- ============================================================
+         Commit Size Distribution
+         ============================================================ -->
+    <div class="section">
+        <h2 class="section-title">Change Size per Commit</h2>
+        <p class="section-note">
+            The size of a typical change, and how far the tail runs.
+            Buckets double in width at each step, because the distribution is
+            heavily skewed — on linear bins almost every commit lands in the
+            first bar.
+        </p>
+        <div class="chart-container">
+            <div id="chart-commit_size" role="img" aria-label="Histogram of commits grouped by the number of lines changed in each, on a log-spaced scale."></div>
+        </div>
+        <p class="chart-foot">
+            Churn is added plus deleted, not net: a commit that removes five
+            hundred lines is a large change. Relative code churn in the sense
+            of Nagappan &amp; Ball (ICSE 2005). Because the bins widen, the
+            tallest bar is not the median — the median is marked. Describes the
+            working rhythm of the repository and separates no contributor out.
+        </p>
+    </div>
+
+    <!-- ============================================================
+         Where the change lands -- files, not people
+         ============================================================ -->
+    {% if charts.hotspots != 'null' %}
+    <div class="section">
+        <h2 class="section-title">Where Change Concentrates</h2>
+        <p class="section-note">
+            Paths absorbing the most change, pooled across everyone.
+        </p>
+        <div class="chart-container">
+            <div id="chart-hotspots" role="img" aria-label="Horizontal bar chart of the file paths with the most lines changed across the analysis window."></div>
+        </div>
+        <p class="chart-foot">
+            Churn is added plus deleted, not net. This is the churn axis of
+            hotspot analysis (Tornhill, 2013; Nagappan &amp; Ball, ICSE 2005) —
+            Reveille reads history and never file content, so it cannot cross
+            churn with complexity. A file that changes often is one to look
+            at, not one that is wrong. Machine-generated files such as lock
+            files are excluded; they dominate any churn ranking and tell you
+            nothing you can act on.
+        </p>
+    </div>
+
+    <div class="section">
+        <h2 class="section-title">Change by File Type</h2>
+        <p class="section-note">
+            What kind of work the window contained.
+        </p>
+        <div class="chart-container">
+            <div id="chart-extensions" role="img" aria-label="Bar chart of lines changed grouped by file extension."></div>
+        </div>
+        <p class="chart-foot">
+            Extensions beyond the largest eight are pooled rather than dropped,
+            so the total is preserved. Files without an extension, including
+            dotfiles, are reported together.
+        </p>
+    </div>
+    {% endif %}
+
+    <!-- ============================================================
          Per-Contributor Commit Frequency
          ============================================================ -->
     <div class="section">
@@ -626,56 +919,67 @@
     </div>
 
     <!-- ============================================================
-         Contributor Rankings
+         Contributor table. Headed, columned and captioned as a ranking only
+         when the ranking is enabled; see ADR 0010. The placeholder rows exist
+         either way, so `data.ranked_contributors` is not the gate --
+         `data.provenance.ranking_enabled` is.
          ============================================================ -->
+    {% set ranked = data.provenance.ranking_enabled %}
     {% if data.ranked_contributors %}
     <div class="section">
-        <h2 class="section-title">Contributor Rankings</h2>
+        <h2 class="section-title">{% if ranked %}Contributor Rankings{% else %}Contributors{% endif %}</h2>
         <div class="table-wrapper">
             <table class="ranking-table">
                 <caption class="visually-hidden">
-                    Contributor rankings for {{ data.metadata.name }} between
+                    {% if ranked %}Contributor rankings{% else %}Contributors{% endif %} for {{ data.metadata.name }} between
                     {{ data.metadata.analysis_since }} and {{ data.metadata.analysis_until }}.
-                    One row per contributor, ordered by composite score. This table
-                    carries the same underlying data as the charts on this page.
+                    One row per contributor, ordered by {% if ranked %}composite score{% else %}commit count{% endif %}.
+                    This table carries the same underlying data as the charts on
+                    this page.
                 </caption>
                 <thead>
                     <tr>
+                        {% if ranked %}
                         <th scope="col" style="text-align:center; width:44px">#</th>
+                        {% endif %}
                         <th scope="col" style="min-width:160px">Contributor</th>
+                        {% if ranked %}
                         <th scope="col" style="min-width:140px">Designation</th>
+                        {% endif %}
                         <th scope="col" style="text-align:right">Commits</th>
                         <th scope="col" style="text-align:right">Lines Added</th>
                         <th scope="col" style="text-align:right">Lines Deleted</th>
                         <th scope="col" style="text-align:right">Net Lines</th>
                         <th scope="col" style="text-align:right">Active Days</th>
                         <th scope="col" style="white-space:nowrap">Last Commit</th>
+                        {% if ranked %}
                         <th scope="col" style="min-width:180px">Score</th>
+                        {% endif %}
                     </tr>
                 </thead>
                 <tbody>
                     {% for contributor in data.ranked_contributors %}
                     <tr>
+                        {% if ranked %}
                         <th scope="row" class="rank-number" style="text-align:center">
                             {{ loop.index }}
                         </th>
-                        <td>
+                        {% endif %}
+                        <{% if ranked %}td{% else %}th scope="row" class="row-header"{% endif %}>
                             <span class="contributor-name">
                                 {{ contributor.stats.name }}
                             </span>
                             <span class="contributor-email">
                                 {{ contributor.stats.email }}
                             </span>
-                        </td>
+                        </{% if ranked %}td{% else %}th{% endif %}>
+                        {% if ranked %}
                         <td>
                             <span class="tier-badge tier-{{ contributor.tier }}">
-                                {% if contributor.tier > 0 %}
-                                    {{ contributor.tier_designation }}
-                                {% else %}
-                                    —
-                                {% endif %}
+                                {{ contributor.tier_designation }}
                             </span>
                         </td>
+                        {% endif %}
                         <td style="text-align:right">
                             {{ "{:,}".format(contributor.stats.commit_count) }}
                         </td>
@@ -702,8 +1006,8 @@
                         <td style="color:var(--color-text-secondary)">
                             {{ contributor.stats.last_commit_date }}
                         </td>
+                        {% if ranked %}
                         <td>
-                            {% if contributor.tier > 0 %}
                             <div class="score-cell">
                                 <div class="score-bar-track">
                                     <div class="score-bar-fill"
@@ -714,10 +1018,8 @@
                                     {{ "%.3f" | format(contributor.composite_score) }}
                                 </span>
                             </div>
-                            {% else %}
-                                <span style="color:var(--color-text-muted)">—</span>
-                            {% endif %}
                         </td>
+                        {% endif %}
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -732,25 +1034,30 @@
     <div class="section">
         <h2 class="section-title">Contribution Breakdown</h2>
 
+        {#
+           One chart per question, and the form chosen for the question.
+
+           Commit share is part-of-whole, which is the one job a pie does
+           well: "is this one person's repository, or a team's" is read
+           off a single wedge. Exact counts are in the table above, so
+           the pie is not asked to do the comparison a bar would do
+           better (Cleveland & McGill, JASA 1984, rank position above
+           angle). Slices are capped at the palette length with a
+           residual, so it never degrades into unreadable slivers.
+
+           Lines changed stays a grouped bar: added against deleted is
+           two series, which a pie cannot show at all. Its share was
+           dropped -- it duplicated the bar beside it, and a share of
+           lines changed is the least meaningful share in the report.
+        #}
         <div class="chart-row">
             <div class="chart-container">
-                <p class="chart-label">Commits by Contributor</p>
-                <div id="chart-contributor_commits" role="img" aria-label="Bar chart of total commits per contributor. The same figures appear in the Commits column of the Contributor Rankings table."></div>
+                <p class="chart-label">Share of Commits</p>
+                <div id="chart-pie_commits" role="img" aria-label="Donut chart of each contributor's share of total commits. Exact counts appear in the Commits column of the contributor table above."></div>
             </div>
             <div class="chart-container">
                 <p class="chart-label">Lines Changed by Contributor</p>
-                <div id="chart-contributor_lines" role="img" aria-label="Bar chart of lines changed per contributor. The same figures appear in the Lines Added and Lines Deleted columns of the Contributor Rankings table."></div>
-            </div>
-        </div>
-
-        <div class="chart-row">
-            <div class="chart-container">
-                <p class="chart-label">Commit Share</p>
-                <div id="chart-pie_commits" role="img" aria-label="Donut chart of each contributor's share of total commits."></div>
-            </div>
-            <div class="chart-container">
-                <p class="chart-label">Lines Changed Share</p>
-                <div id="chart-pie_lines" role="img" aria-label="Donut chart of each contributor's share of total lines changed."></div>
+                <div id="chart-contributor_lines" role="img" aria-label="Grouped bar chart of lines added and lines deleted per contributor. The same figures appear in the Lines Added and Lines Deleted columns of the contributor table."></div>
             </div>
         </div>
     </div>
@@ -783,6 +1090,26 @@
 <script type="application/json" id="spec-contributor_timeline">
 {{ charts.contributor_timeline | safe }}
 </script>
+<script type="application/json" id="spec-lorenz">
+{{ charts.lorenz | safe }}
+</script>
+
+<script type="application/json" id="spec-commit_size">
+{{ charts.commit_size | safe }}
+</script>
+
+<script type="application/json" id="spec-hotspots">
+{{ charts.hotspots | safe }}
+</script>
+
+<script type="application/json" id="spec-extensions">
+{{ charts.extensions | safe }}
+</script>
+
+<script type="application/json" id="spec-profile">
+{{ charts.profile | safe }}
+</script>
+
 <script type="application/json" id="spec-heatmap">
 {{ charts.heatmap | safe }}
 </script>
@@ -795,10 +1122,6 @@
 <script type="application/json" id="spec-pie_commits">
 {{ charts.pie_commits | safe }}
 </script>
-<script type="application/json" id="spec-pie_lines">
-{{ charts.pie_lines | safe }}
-</script>
-
 <!-- ================================================================
      Theme manager and chart initialisation
      ================================================================ -->
@@ -811,10 +1134,13 @@
     var CHART_IDS = [
         'timeline',
         'contributor_timeline',
-        'contributor_commits',
         'contributor_lines',
         'pie_commits',
-        'pie_lines'
+        'lorenz',
+        'commit_size',
+        'hotspots',
+        'extensions',
+        'profile'
     ];
 
     var PLOTLY_CONFIG = {
@@ -824,26 +1150,141 @@
         modeBarButtonsToRemove: ['sendDataToCloud', 'editInChartStudio']
     };
 
+    // Heatmap colour ramps, one per theme.
+    //
+    // A sequential ramp encodes magnitude, so a busier day must always read as
+    // more prominent than a quieter one. A single ramp cannot do that on two
+    // surfaces: the old fixed scale ended at #1e3a8a, which sits at 9.73:1
+    // against the light plot background but only 1.67:1 against the dark one.
+    // In dark mode the busiest days therefore faded into the background while
+    // the quietest ones glowed -- the chart read backwards, and the effect was
+    // strongest exactly where the data mattered most.
+    //
+    // Both ramps below are one hue, and both were checked so that contrast
+    // against their own surface rises at every step:
+    //   light  #f6f8fa : 1.66 -> 2.92 -> 4.85 -> 9.73
+    //   dark   #161b22 : 1.67 -> 3.35 -> 5.57 -> 9.59
+    // The first stop stays transparent so a day with no commits is the surface
+    // itself rather than a colour meaning "zero".
+    var HEATMAP_SCALES = {
+        light: [
+            [0.0,   'rgba(0,0,0,0)'],
+            [0.001, '#9ec5fe'],
+            [0.35,  '#4f93f0'],
+            [0.70,  '#2563eb'],
+            [1.0,   '#1e3a8a']
+        ],
+        dark: [
+            [0.0,   'rgba(0,0,0,0)'],
+            [0.001, '#1e3a8a'],
+            [0.35,  '#2563eb'],
+            [0.70,  '#4f93f0'],
+            [1.0,   '#93c5fd']
+        ]
+    };
+
+    // Every theme-dependent colour a chart needs, one entry per theme.
+    //
+    // These were once written as dotted attribute strings -- 'font.color',
+    // 'xaxis.gridcolor'. Plotly expands that form in relayout() and
+    // restyle() but NOT in newPlot() or react(), which take a plain layout
+    // object, so every dotted key here was silently dropped. Only the two
+    // undotted background keys ever applied. Under the dark theme that left
+    // axis text at Plotly's default #444 -- 1.78:1 against the plot area,
+    // where WCAG 2.1 AA requires 4.5:1 -- under a grid still painted in the
+    // light theme's #e2e8f0, which is 14:1 the wrong way round.
+    //
+    // Nested objects are the form newPlot() reads. mergeLayout() below is
+    // what makes them safe to apply.
     var THEME_LAYOUTS = {
         light: {
             paper_bgcolor: '#ffffff',
             plot_bgcolor:  '#f6f8fa',
-            'font.color':  '#1c2128',
-            'xaxis.gridcolor': '#e2e8f0',
-            'xaxis.linecolor': '#d1d9e0',
-            'yaxis.gridcolor': '#e2e8f0',
-            'yaxis.linecolor': '#d1d9e0'
+            font:   { color: '#1c2128' },
+            xaxis:  { gridcolor: '#e2e8f0', linecolor: '#d1d9e0',
+                      zerolinecolor: '#d1d9e0', tickcolor: '#d1d9e0' },
+            yaxis:  { gridcolor: '#e2e8f0', linecolor: '#d1d9e0',
+                      zerolinecolor: '#d1d9e0', tickcolor: '#d1d9e0' },
+            legend: { font: { color: '#1c2128' } },
+            hoverlabel: {
+                bgcolor:     '#ffffff',
+                bordercolor: '#d1d9e0',
+                font:        { color: '#1c2128' }
+            },
+            // Left to Plotly, these derive from paper_bgcolor: the icons are
+            // drawn at 30% of a contrast colour and repainted at 70% on
+            // hover. Pinning both ends the derivation, so the toolbar keeps
+            // a fixed, checked contrast under either theme instead of one
+            // computed from a background we change underneath it.
+            // A polar plot does not inherit plot_bgcolor. Plotly defaults
+            // polar.bgcolor to #fff, so the radar drew a white disc inside
+            // a dark card -- the same class of defect the cartesian axes
+            // were cleared of, living in the gap between two guards.
+            polar: {
+                bgcolor: '#f6f8fa',
+                radialaxis:  { gridcolor: '#e2e8f0', linecolor: '#e2e8f0', color: '#1c2128' },
+                angularaxis: { gridcolor: '#e2e8f0', linecolor: '#e2e8f0', color: '#1c2128' }
+            },
+            modebar: {
+                bgcolor:     '#ffffff',
+                color:       '#57606a',
+                activecolor: '#1e40af'
+            }
         },
         dark: {
             paper_bgcolor: '#21262d',
             plot_bgcolor:  '#161b22',
-            'font.color':  '#e6edf3',
-            'xaxis.gridcolor': '#30363d',
-            'xaxis.linecolor': '#30363d',
-            'yaxis.gridcolor': '#30363d',
-            'yaxis.linecolor': '#30363d'
+            font:   { color: '#e6edf3' },
+            xaxis:  { gridcolor: '#30363d', linecolor: '#30363d',
+                      zerolinecolor: '#30363d', tickcolor: '#30363d' },
+            yaxis:  { gridcolor: '#30363d', linecolor: '#30363d',
+                      zerolinecolor: '#30363d', tickcolor: '#30363d' },
+            legend: { font: { color: '#e6edf3' } },
+            hoverlabel: {
+                bgcolor:     '#21262d',
+                bordercolor: '#30363d',
+                font:        { color: '#e6edf3' }
+            },
+            // A polar plot does not inherit plot_bgcolor. Plotly defaults
+            // polar.bgcolor to #fff, so the radar drew a white disc inside
+            // a dark card -- the same class of defect the cartesian axes
+            // were cleared of, living in the gap between two guards.
+            polar: {
+                bgcolor: '#161b22',
+                radialaxis:  { gridcolor: '#30363d', linecolor: '#30363d', color: '#e6edf3' },
+                angularaxis: { gridcolor: '#30363d', linecolor: '#30363d', color: '#e6edf3' }
+            },
+            modebar: {
+                bgcolor:     '#21262d',
+                color:       '#8b949e',
+                activecolor: '#58a6ff'
+            }
         }
     };
+
+    // Recursively merge the theme layout over a chart's own layout.
+    //
+    // Object.assign is shallow. Assigning { xaxis: { gridcolor } } over a
+    // layout whose xaxis carries { type, tickangle, title } would replace
+    // the axis wholesale and take the axis title with it.
+    function mergeLayout(base, overlay) {
+        var out = Object.assign({}, base);
+        Object.keys(overlay).forEach(function (key) {
+            var value = overlay[key];
+            var target = out[key];
+            if (value && typeof value === 'object' && !Array.isArray(value)) {
+                out[key] = mergeLayout(
+                    (target && typeof target === 'object' && !Array.isArray(target))
+                        ? target
+                        : {},
+                    value
+                );
+            } else {
+                out[key] = value;
+            }
+        });
+        return out;
+    }
 
     // Heatmap state — populated during DOMContentLoaded.
     var heatmapData = null;
@@ -904,8 +1345,12 @@
             return;
         }
 
-        var layout = Object.assign({}, spec.layout || {}, THEME_LAYOUTS[theme]);
-        Plotly.newPlot(divEl, spec.data, layout, PLOTLY_CONFIG);
+        var layout = mergeLayout(spec.layout || {}, THEME_LAYOUTS[theme]);
+        if (divEl._fullLayout) {
+            Plotly.react(divEl, spec.data, layout, PLOTLY_CONFIG);
+        } else {
+            Plotly.newPlot(divEl, spec.data, layout, PLOTLY_CONFIG);
+        }
     }
 
     function initAllCharts(theme) {
@@ -1010,17 +1455,12 @@
             zauto: false,
             zmin: 0,
             zmax: zPeak,
-            colorscale: [
-                [0.0,   'rgba(0,0,0,0)'],
-                [0.001, '#bfdbfe'],
-                [0.35,  '#3b82f6'],
-                [1.0,   '#1e3a8a']
-            ],
+            colorscale: HEATMAP_SCALES[theme],
             showscale: true,
             hovertemplate: '%{customdata}<br>Commits: %{z}<extra></extra>'
         };
 
-        var layout = Object.assign({}, {
+        var layout = mergeLayout({
             font: {
                 family: "-apple-system, BlinkMacSystemFont, 'Segoe UI', " +
                         "Roboto, 'Helvetica Neue', Arial, sans-serif",
@@ -1126,15 +1566,22 @@
     // ------------------------------------------------------------------
 
     function applyThemeToCharts(theme) {
-        var overrides = THEME_LAYOUTS[theme];
-        CHART_IDS.forEach(function (id) {
-            var divEl = document.getElementById('chart-' + id);
-            if (!divEl || !divEl._fullLayout) return;
-            Plotly.relayout(divEl, overrides);
-        });
+        // Re-plot through the same path the first render uses, rather than
+        // Plotly.relayout. relayout would work -- it is the one entry point
+        // that expands dotted attribute strings, which is why the toggle
+        // appeared correct while the first paint was not -- but handing it a
+        // nested object replaces the container it names, so a themed xaxis
+        // would take the axis title with it. One path, one set of semantics.
+        CHART_IDS.forEach(function (id) { initChart(id, theme); });
+        // The heatmap needs a full re-render rather than a relayout. Its
+        // colour ramp is theme-specific -- see HEATMAP_SCALES -- and a
+        // colorscale lives on the trace, which Plotly.relayout does not touch.
+        // Relayout alone would swap the background and leave a ramp built for
+        // the other surface, which is the inverted-reading bug the two ramps
+        // exist to prevent.
         var heatmapEl = document.getElementById('chart-heatmap');
-        if (heatmapEl && heatmapEl._fullLayout) {
-            Plotly.relayout(heatmapEl, overrides);
+        if (heatmapEl && heatmapEl._fullLayout && heatmapData) {
+            renderHeatmap(currentYear, currentContributor, theme);
         }
     }
 

@@ -2,8 +2,11 @@
 # Reveille -- Continuous Integration
 #
 # Runs on every push and pull request targeting main.
-# Three jobs run in parallel: lint, typecheck, test.
-# All three must pass before a PR is eligible to merge.
+#
+# `lockfile` runs first and the other three depend on it: if poetry.lock
+# cannot be parsed, every job that installs from it fails with an error that
+# names the symptom rather than the cause. lint, typecheck and test then run
+# in parallel, and all four must pass before a PR is eligible to merge.
 # ==================================================================
 
 name: CI
@@ -14,22 +17,97 @@ on:
   pull_request:
     branches: [main]
 
+# A second push to the same branch makes the first run's result irrelevant.
+# Cancelling it frees a runner and removes a stale red/green signal from the
+# PR. `github.ref` keys per branch, so main and each PR queue independently.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
 
-  lint:
-    name: Lint (ruff)
+  # ----------------------------------------------------------------
+  # Lock file integrity
+  #
+  # Runs first, and every other job depends on it. `poetry.lock` is
+  # generated TOML: on 2026-09-02 a hand-resolved merge conflict
+  # duplicated four keys in it, which is a syntax error, and every job
+  # below failed with "Unable to read the lock file" -- an error that
+  # says nothing about the actual cause.
+  #
+  # This job deliberately uses nothing but the standard library, so the
+  # gate does not depend on the thing it is gating: if the lock is
+  # broken, Poetry cannot install, so a check that needs Poetry to run
+  # would never report.
+  # ----------------------------------------------------------------
+  lockfile:
+    name: Lock file integrity
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+      - name: Validate poetry.lock
+        run: make check-lock
+
+  # Workflow correctness
+  #
+  # actionlint was configured as a pre-commit hook and cited as the
+  # workflow-correctness guard, but nothing on the server ran it: `make
+  # precommit` was referenced by no workflow, so the check only happened
+  # for developers who had installed the git hooks locally. A guard that
+  # depends on each contributor's local setup is not a gate.
+  #
+  # It runs through pre-commit rather than a separately downloaded binary
+  # so the version stays pinned in one place, `.pre-commit-config.yaml`.
+  # Complements zizmor rather than duplicating it: zizmor analyses
+  # security posture, actionlint analyses correctness -- unknown contexts,
+  # malformed matrices, expression type errors, and shellcheck over `run:`
+  # blocks.
+  # ----------------------------------------------------------------
+  workflows:
+    name: Workflow correctness (actionlint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: lockfile
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+      - name: Install pre-commit
+        run: python -m pip install --disable-pip-version-check "pre-commit==4.6.2"
+      - name: Run actionlint
+        run: pre-commit run actionlint --all-files --show-diff-on-failure
+
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: lockfile
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11"
       - name: Install Poetry
         uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
         with:
-          version: "1.8.2"
+          version: "2.4.2"
           virtualenvs-in-project: true
       - name: Install dependencies
         run: poetry install --no-interaction
@@ -37,23 +115,31 @@ jobs:
         run: poetry run ruff check src tests
       - name: Check version sync
         run: make check-version
+      - name: Check licence declarations agree
+        run: make check-licence
+      - name: Check poetry.lock agrees with pyproject.toml
+        run: make check-lock-sync
       - name: Check packaging contract
         run: make check-packaging
 
   typecheck:
     name: Type Check (mypy)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: lockfile
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11"
       - name: Install Poetry
         uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
         with:
-          version: "1.8.2"
+          version: "2.4.2"
           virtualenvs-in-project: true
       - name: Install dependencies
         run: poetry install --no-interaction
@@ -63,6 +149,8 @@ jobs:
   test:
     name: Test (pytest)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: lockfile
     permissions:
       contents: read
     strategy:
@@ -76,13 +164,15 @@ jobs:
         python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install Poetry
         uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
         with:
-          version: "1.8.2"
+          version: "2.4.2"
           virtualenvs-in-project: true
       - name: Install dependencies
         run: poetry install --no-interaction
@@ -94,3 +184,85 @@ jobs:
         with:
           files: coverage.xml
           fail_ci_if_error: false
+
+  # ----------------------------------------------------------------
+  # Known vulnerabilities in the resolved dependency set
+  #
+  # Not redundant with Dependabot, for a structural reason rather than a
+  # data one: Dependabot alerts are a platform service that scans the
+  # default branch asynchronously. They cannot be invoked as a step and
+  # therefore cannot block anything. This can, and the same scan gates
+  # the release in publish.yml.
+  #
+  # osv-scanner rather than pip-audit: pip-audit does not read
+  # poetry.lock -- upstream closed that request as not planned -- so it
+  # would need a `poetry export` first, and a scan of an exported file
+  # is a scan of something other than the lock we ship.
+  # ----------------------------------------------------------------
+  vulnerabilities:
+    name: Known vulnerabilities (osv-scanner)
+    needs: lockfile
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@6e4298ebc4db23e847df9b2e2de2939d6f066c67 # v2.5.1
+    with:
+      scan-args: |-
+        --lockfile=poetry.lock
+
+  # ----------------------------------------------------------------
+  # Build reproducibility
+  #
+  # SOURCE_DATE_EPOCH is set here because, on the pinned Poetry 2.4.2, it
+  # is actually honoured: measured, wheel entry timestamps track the value
+  # exactly. It was deliberately *not* set while the pin was Poetry 1.8.2,
+  # where it is inert -- entries pinned to (1980, 1, 1) whatever the
+  # variable said, and setting it would have looked meaningful while doing
+  # nothing.
+  #
+  # The epoch is derived from the analysed commit, the same convention the
+  # `--deterministic` report flag uses, so a build and a report generated
+  # from one commit agree on what "now" means.
+  #
+  # The check still builds twice and compares rather than trusting the
+  # mechanism. Poetry falls back to a fixed date when the variable is
+  # absent, so a build can be reproducible for the wrong reason; only
+  # comparing two builds shows whether the property actually holds.
+  # ----------------------------------------------------------------
+  reproducible-build:
+    name: Reproducible build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: lockfile
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+      - name: Install Poetry
+        uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
+        with:
+          version: "2.4.2"
+          virtualenvs-in-project: true
+      - name: Derive SOURCE_DATE_EPOCH from the analysed commit
+        run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
+
+      - name: Build twice and compare
+        run: |
+          set -euo pipefail
+          rm -rf dist && poetry build -q && mkdir -p /tmp/b1 && cp dist/* /tmp/b1/
+          rm -rf dist && poetry build -q && mkdir -p /tmp/b2 && cp dist/* /tmp/b2/
+          (cd /tmp/b1 && sha256sum ./*) > /tmp/sums1
+          (cd /tmp/b2 && sha256sum ./*) > /tmp/sums2
+          if diff /tmp/sums1 /tmp/sums2; then
+            echo "Build is reproducible."
+          else
+            echo "::error::Two builds of the same commit produced different bytes."
+            exit 1
+          fi

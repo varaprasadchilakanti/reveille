@@ -19,9 +19,35 @@ on:
       - 'v*'
 
 jobs:
+  # ----------------------------------------------------------------
+  # Release-time vulnerability gate
+  #
+  # Not a duplicate of the CI scan. CI scans a commit when it merges; an
+  # advisory published between that merge and this tag did not exist
+  # then. This is the last point at which a known-vulnerable dependency
+  # set can be stopped from reaching PyPI, and it is the one thing
+  # Dependabot's asynchronous alerting structurally cannot do.
+  #
+  # Pinned to a SHA like every other action here. An earlier draft of
+  # this gate installed the scanner with an unpinned `curl | chmod`,
+  # which would have added a supply-chain hole to a supply-chain check.
+  # ----------------------------------------------------------------
+  vulnerabilities:
+    name: Known vulnerabilities (osv-scanner)
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@6e4298ebc4db23e847df9b2e2de2939d6f066c67 # v2.5.1
+    with:
+      scan-args: |-
+        --lockfile=poetry.lock
+
   publish:
     name: Build and publish to PyPI
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: vulnerabilities
     environment:
       name: pypi
       url: https://pypi.org/project/reveille/
@@ -30,6 +56,8 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -38,7 +66,7 @@ jobs:
       - name: Install Poetry
         uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
         with:
-          version: "1.8.2"
+          version: "2.4.2"
           virtualenvs-in-project: true
 
       - name: Build distribution packages
@@ -46,7 +74,7 @@ jobs:
 
       # PEP 740 attestations are produced by default from v1.11.0 onward
       # and require the `id-token: write` permission granted above. This
-      # pin is v1.14.1, so no `attestations:` input is needed -- adding
+      # pin is v1.14.2, so no `attestations:` input is needed -- adding
       # one would only be a way to turn them off.
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
@@ -62,14 +90,28 @@ jobs:
   sbom:
     name: Generate SBOM
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
+      # Required to attest the SBOM. `id-token` mints the Sigstore identity;
+      # `attestations` writes the resulting bundle. Both are scoped to this
+      # job, which runs no third-party code beyond the generator itself.
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11"
+
+      # The SBOM is only as trustworthy as the lock it is derived from,
+      # and SECURITY.md promises it is byte-reproducible for a given
+      # poetry.lock. Assert the lock is readable before claiming that.
+      - name: Validate poetry.lock
+        run: make check-lock
 
       # cyclonedx-py reads pyproject.toml and poetry.lock as files, so it
       # needs neither Poetry nor the project environment. Keeping it out
@@ -80,6 +122,18 @@ jobs:
           python -m pip install --quiet cyclonedx-bom==7.3.1
           cyclonedx-py poetry --no-dev --output-reproducible \
             --of JSON -o "reveille-${GITHUB_REF_NAME#v}-sbom.cdx.json" .
+
+      # A plain attached file has no cryptographic binding to the run that
+      # produced it, so it can be swapped for another. This binds the SBOM to
+      # this workflow's identity using the same Sigstore model the
+      # distributions already rely on through PEP 740 -- the trust model is
+      # not new here, only its application one step further.
+      - name: Attest the SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: reveille-*-sbom.cdx.json
+          predicate-type: https://cyclonedx.org/bom
+          predicate-path: reveille-*-sbom.cdx.json
 
       - name: Upload SBOM
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -96,6 +150,7 @@ jobs:
   attach-sbom:
     name: Attach SBOM to the GitHub Release
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: sbom
     permissions:
       contents: write

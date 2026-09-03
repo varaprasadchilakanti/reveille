@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti
+# SPDX-License-Identifier: Apache-2.0
+
 """Reveille -- Git Repository Intelligence.
 
 A CLI tool that generates self-contained HTML performance reports
@@ -15,7 +18,7 @@ import logging
 
 logging.getLogger(__name__).addHandler(logging.NullHandler())
 
-__version__ = "0.7.0"
-__author__ = "Varaprasad Chilakanti"
+__version__ = "0.8.0"
+__author__ = "Vara Prasad Chilakanti"
 __email__ = "varaprasadchilakanti@gmail.com"
-__licence__ = "MIT"
+__licence__ = "Apache-2.0"

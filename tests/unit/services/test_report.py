@@ -88,7 +88,7 @@ def sample_metadata() -> RepositoryMetadata:
     return RepositoryMetadata(
         name="test-repo",
         remote_url=None,
-        default_branch="main",
+        analysed_branch="main",
         total_commits=1,
         unique_contributors=1,
         analysis_since=datetime.date(2024, 1, 1),
@@ -274,11 +274,11 @@ class TestGenerateReport:
             reader_instance.read_metadata.return_value = sample_metadata
             mock_rank.return_value = [sample_ranked]
 
-            def capture(
-                data: ReportData,
-                path: Path,
-                heatmap_granularity: str = "monthly",
-            ) -> Path:
+            # Signature mirrors Renderer.render exactly. It previously carried
+            # a `heatmap_granularity` parameter the real method does not have,
+            # which survived only because it had a default -- the drift a mock
+            # without autospec cannot report.
+            def capture(data: ReportData, path: Path) -> Path:
                 captured.append(data)
                 return path
 

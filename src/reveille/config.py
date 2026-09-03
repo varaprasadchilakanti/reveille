@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti
+# SPDX-License-Identifier: Apache-2.0
+
 """Configuration model for Reveille report generation.
 
 ReportConfig is the single validated input object passed from the
@@ -99,9 +102,15 @@ class ReportConfig(BaseModel):
     until: datetime.date | None = Field(default=None)
     exclude_authors: list[str] = Field(default_factory=list)
     min_commits: int = Field(default=1, ge=1)
-    ranking_enabled: bool = Field(default=True)
+    # Off by default from 0.8.0. The ranking assigns named individuals a
+    # composite score, a percentile and a military tier designation, and a
+    # report that does that by default invites exactly the use its own
+    # documentation says it must not be put to. Opt in with --ranking or
+    # `[ranking] enabled = true`. See docs/adr/0010-ranking-is-opt-in.md.
+    ranking_enabled: bool = Field(default=False)
     ranking_weights: RankingWeights = Field(default_factory=RankingWeights)
     output_format: OutputFormat = Field(default="html")
+    deterministic: bool = Field(default=False)
 
     @model_validator(mode="after")
     def since_must_precede_until(self) -> ReportConfig:
@@ -142,6 +151,7 @@ class ReportConfigKwargs(TypedDict, total=False):
     ranking_enabled: bool
     ranking_weights: RankingWeights
     output_format: OutputFormat
+    deterministic: bool
 
 
 def load_config_from_toml(path: Path) -> ReportConfigKwargs:
@@ -190,12 +200,20 @@ def _parse_report_section(report: dict[str, Any]) -> dict[str, Any]:
         ConfigurationError: If a date field contains an invalid ISO 8601 string.
     """
     kwargs: dict[str, Any] = {}
-    if "title" in report:
-        kwargs["title"] = str(report["title"])
-    if "output" in report:
-        kwargs["output_path"] = Path(str(report["output"]))
-    if "branch" in report:
-        kwargs["branch"] = str(report["branch"])
+    # `str()` on a table or an array succeeds and produces nonsense: a title
+    # of "{'a': 1}", or an output path of "[1, 2]", written out with exit 0.
+    # The sibling type checks in `_parse_filters_section` exist for exactly
+    # this reason; these three keys were missing them.
+    for key, field in (("title", "title"), ("output", "output_path"), ("branch", "branch")):
+        if key not in report:
+            continue
+        value = report[key]
+        if not isinstance(value, str):
+            raise ConfigurationError(
+                f"Invalid '{key}' in the [report] section of the configuration "
+                f"file: expected a string, got {type(value).__name__}."
+            )
+        kwargs[field] = Path(value) if field == "output_path" else value
     for field in ("since", "until"):
         if field in report:
             try:
@@ -207,6 +225,8 @@ def _parse_report_section(report: dict[str, Any]) -> dict[str, Any]:
                 ) from exc
     if "format" in report:
         kwargs["output_format"] = cast(OutputFormat, str(report["format"]))
+    if "deterministic" in report:
+        kwargs["deterministic"] = bool(report["deterministic"])
     return kwargs
 
 
@@ -218,12 +238,32 @@ def _parse_filters_section(filters: dict[str, Any]) -> dict[str, Any]:
 
     Returns:
         A partial kwargs dict for ReportConfig construction.
+
+    Raises:
+        ConfigurationError: If a value has the wrong type. These were bare
+            `int()` and `list()` calls, so a mistyped key raised ValueError or
+            TypeError, escaped the CLI's ConfigurationError handler, printed a
+            traceback, and exited 1 -- which on this project's published
+            contract means "ran correctly, negative answer" rather than "could
+            not run".
     """
     kwargs: dict[str, Any] = {}
     if "min_commits" in filters:
-        kwargs["min_commits"] = int(filters["min_commits"])
+        value = filters["min_commits"]
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ConfigurationError(
+                f"[filters] min_commits must be a whole number, not {value!r}."
+            )
+        kwargs["min_commits"] = value
     if "exclude_authors" in filters:
-        kwargs["exclude_authors"] = list(filters["exclude_authors"])
+        authors = filters["exclude_authors"]
+        # A bare string would be split into characters by `list()`, silently
+        # excluding contributors named "a", "b", "c" and nobody the user meant.
+        if not isinstance(authors, list) or not all(isinstance(a, str) for a in authors):
+            raise ConfigurationError(
+                f"[filters] exclude_authors must be a list of strings, not {authors!r}."
+            )
+        kwargs["exclude_authors"] = list(authors)
     return kwargs
 
 
@@ -238,13 +278,40 @@ def _parse_ranking_section(ranking: dict[str, Any]) -> dict[str, Any]:
     """
     kwargs: dict[str, Any] = {}
     if "enabled" in ranking:
-        kwargs["ranking_enabled"] = bool(ranking["enabled"])
+        # Strict, not `bool(...)`. Any non-empty string is truthy, so
+        # `enabled = "false"` would have switched the ranking ON -- and the
+        # ranking is the one feature where an accidental enable names
+        # individuals. A config that reads as "off" must never produce tiers.
+        value = ranking["enabled"]
+        if not isinstance(value, bool):
+            raise ConfigurationError(
+                f"[ranking] enabled must be true or false, not {value!r}. "
+                'Quoted values such as "false" are strings, and every '
+                "non-empty string would count as true."
+            )
+        kwargs["ranking_enabled"] = value
     if "weights" in ranking:
         w = ranking["weights"]
-        kwargs["ranking_weights"] = RankingWeights(
-            commits=float(w.get("commits", 0.30)),
-            lines=float(w.get("lines", 0.25)),
-            consistency=float(w.get("consistency", 0.25)),
-            recency=float(w.get("recency", 0.20)),
-        )
+        if not isinstance(w, dict):
+            raise ConfigurationError(
+                f"[ranking] weights must be a table of named weights, not {w!r}."
+            )
+        # Both arms matter. `float()` raises ValueError on a non-numeric
+        # value, and RankingWeights raises pydantic's ValidationError when a
+        # weight is out of range or the four do not sum to one. Neither was
+        # caught, so a mistyped weight printed a raw traceback and exited 1 --
+        # which on this project's published contract means "ran correctly,
+        # negative answer" rather than "could not run".
+        try:
+            kwargs["ranking_weights"] = RankingWeights(
+                commits=float(w.get("commits", 0.30)),
+                lines=float(w.get("lines", 0.25)),
+                consistency=float(w.get("consistency", 0.25)),
+                recency=float(w.get("recency", 0.20)),
+            )
+        except (TypeError, ValueError) as exc:
+            raise ConfigurationError(
+                f"[ranking] weights is not valid: {exc}. Each weight must be a "
+                "number between 0 and 1, and the four must sum to 1.0."
+            ) from exc
     return kwargs

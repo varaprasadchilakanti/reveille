@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti
+# SPDX-License-Identifier: Apache-2.0
+
 """Application service for report generation.
 
 Orchestrates the full report generation pipeline:
@@ -29,10 +32,18 @@ from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
+from reveille import __version__
 from reveille.adapters.git_reader import GitReader
 from reveille.adapters.renderer import Renderer
 from reveille.config import ReportConfig
-from reveille.domain.models import ProgressEvent, RankedContributor, ReportData
+from reveille.domain.models import (
+    SCHEMA_VERSION,
+    AnalysisProvenance,
+    Commit,
+    ProgressEvent,
+    RankedContributor,
+    ReportData,
+)
 from reveille.domain.ranking import rank_contributors
 
 _logger = logging.getLogger(__name__)
@@ -64,8 +75,7 @@ def generate_report(
     reader = GitReader(config.repo_path)
     stage_start = time.monotonic()
 
-    if on_progress is not None:
-        on_progress(ProgressEvent(stage="Reading commit history", elapsed_seconds=0.0))
+    _emit(on_progress, "Reading commit history", 0.0)
     commits = reader.read_commits(
         branch=config.branch,
         since=config.since,
@@ -76,19 +86,12 @@ def generate_report(
     window_start = (
         config.since if config.since is not None else min(c.timestamp.date() for c in commits)
     )
-    window_end = config.until or datetime.date.today()
+    window_end = _resolve_window_end(config, commits)
 
     elapsed = time.monotonic() - stage_start
     stage_start = time.monotonic()
 
-    if on_progress is not None:
-        on_progress(
-            ProgressEvent(
-                stage="Aggregating contributor statistics",
-                elapsed_seconds=elapsed,
-                items_processed=len(commits),
-            )
-        )
+    _emit(on_progress, "Aggregating contributor statistics", elapsed, len(commits))
     contributor_stats = reader.aggregate_contributor_stats(
         commits=commits,
         min_commits=config.min_commits,
@@ -99,8 +102,7 @@ def generate_report(
 
     ranked_contributors: list[RankedContributor]
     if config.ranking_enabled and contributor_stats:
-        if on_progress is not None:
-            on_progress(ProgressEvent(stage="Ranking contributors", elapsed_seconds=elapsed))
+        _emit(on_progress, "Ranking contributors", elapsed)
         ranked_contributors = rank_contributors(
             contributors=contributor_stats,
             commits=commits,
@@ -121,22 +123,35 @@ def generate_report(
             for s in contributor_stats
         ]
 
-    if on_progress is not None:
-        on_progress(ProgressEvent(stage="Rendering report", elapsed_seconds=elapsed))
+    _emit(on_progress, "Rendering report", elapsed)
 
     metadata = reader.read_metadata(
         total_commits=len(commits),
         unique_contributors=len(contributor_stats),
         analysis_since=window_start,
         analysis_until=window_end,
+        branch=config.branch,
     )
     if config.title:
         metadata = replace(metadata, name=config.title)
 
+    head_sha = reader.resolve_head_sha(config.branch)
+
+    # Deterministic mode pins the timestamp to the analysed commit, the way a
+    # reproducible build pins to SOURCE_DATE_EPOCH: the value stays meaningful
+    # and stops being a function of when the command happened to run.
+    if config.deterministic:
+        head_commit_time = max(c.timestamp for c in commits)
+        metadata = replace(metadata, generated_at=head_commit_time)
+
+    provenance = _build_provenance(config, head_sha, reader.mailmap_applied)
+
     report_data = ReportData(
         metadata=metadata,
+        provenance=provenance,
         ranked_contributors=ranked_contributors,
         commits=commits,
+        file_stats=list(reader.file_stats),
     )
 
     _logger.debug(
@@ -154,3 +169,94 @@ def generate_report(
         paths.append(renderer.render_csv(report_data, config.output_path.with_suffix(".csv")))
     _logger.debug("wrote %d output file(s): %s", len(paths), [str(p) for p in paths])
     return paths
+
+
+def _emit(
+    on_progress: Callable[[ProgressEvent], None] | None,
+    stage: str,
+    elapsed_seconds: float,
+    items_processed: int | None = None,
+) -> None:
+    """Emit a progress event if anybody is listening.
+
+    Collapses the `if on_progress is not None` guard that otherwise repeats at
+    every stage boundary. The service holds no opinion about output devices --
+    whether these become a spinner, log lines, or nothing at all is the CLI's
+    decision.
+
+    Args:
+        on_progress: The optional callback supplied by the caller.
+        stage: Label of the stage now starting.
+        elapsed_seconds: Duration of the stage that just completed.
+        items_processed: Optional item count from the completed stage.
+    """
+    if on_progress is None:
+        return
+    on_progress(
+        ProgressEvent(
+            stage=stage,
+            elapsed_seconds=elapsed_seconds,
+            items_processed=items_processed,
+        )
+    )
+
+
+def _resolve_window_end(config: ReportConfig, commits: list[Commit]) -> datetime.date:
+    """Decide the closing date of the analysis window.
+
+    In deterministic mode the window must close on something the repository
+    itself determines. `date.today()` is an input from outside the repository
+    and it feeds the recency component of the ranking, so without this two runs
+    over an identical repository on different days produce different scores --
+    and the output is not reproducible in any useful sense.
+
+    Args:
+        config: The validated report configuration.
+        commits: The commits inside the window, used only for their timestamps.
+
+    Returns:
+        An explicit `--until` if given, otherwise the last commit date in
+        deterministic mode, otherwise today.
+    """
+    if config.until is not None:
+        return config.until
+    if config.deterministic:
+        return max(c.timestamp.date() for c in commits)
+    return datetime.date.today()
+
+
+def _build_provenance(
+    config: ReportConfig,
+    head_sha: str | None,
+    mailmap_applied: bool,
+) -> AnalysisProvenance:
+    """Record what produced this report, and over what.
+
+    Filters are recorded as *requested*, not as resolved. `analysis_since` says
+    where the window began; `requested_since` says whether anybody asked for
+    that, and only the pair distinguishes a filtered report from an unfiltered
+    one that happens to start on the same date.
+
+    Args:
+        config: The validated report configuration.
+        head_sha: SHA at the tip of the analysed ref, or None if unresolvable.
+        mailmap_applied: Whether a non-empty `.mailmap` was applied.
+
+    Returns:
+        A populated AnalysisProvenance instance.
+    """
+    return AnalysisProvenance(
+        reveille_version=__version__,
+        schema_version=SCHEMA_VERSION,
+        head_sha=head_sha,
+        requested_branch=config.branch,
+        requested_since=config.since,
+        requested_until=config.until,
+        exclude_authors_count=len(config.exclude_authors),
+        min_commits=config.min_commits,
+        ranking_enabled=config.ranking_enabled,
+        # Reporting weights that were never applied would be a false statement.
+        ranking_weights=(config.ranking_weights.model_dump() if config.ranking_enabled else None),
+        mailmap_applied=mailmap_applied,
+        deterministic=config.deterministic,
+    )

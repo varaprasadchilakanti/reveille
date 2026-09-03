@@ -2,7 +2,19 @@
 # Reveille -- Dependabot Configuration
 #
 # Weekly automated dependency update PRs for pip packages and
-# GitHub Actions. Five open PRs maximum per ecosystem.
+# GitHub Actions.
+#
+# Updates are grouped into one PR per ecosystem. Ungrouped, this opened up
+# to five PRs per ecosystem per week: 26 were merged between v0.7.0 and
+# 2026-09-02. Each merge is a chance to hand-resolve a conflict in
+# poetry.lock, and doing exactly that -- keeping both sides of a conflicted
+# `[package.extras]` table -- produced an invalid lock that broke `main`
+# for six consecutive builds. Fewer merges is fewer opportunities.
+#
+# Majors are grouped too rather than split out. The lock guards
+# (.gitattributes `-merge`, `make check-lock`, the `lockfile` CI job) now
+# catch the failure mode that made batching risky, and a single weekly PR
+# that CI must pass is easier to review than five.
 # ==================================================================
 
 version: 2
@@ -15,6 +27,10 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - dependencies
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
 
   - package-ecosystem: github-actions
     directory: "/"
@@ -24,3 +40,7 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - dependencies
+    groups:
+      github-actions:
+        patterns:
+          - "*"

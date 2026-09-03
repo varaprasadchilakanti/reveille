@@ -12,6 +12,8 @@ the [README](../README.md).
 - [How Reveille Works](#how-reveille-works)
 - [CLI Flags in Depth](#cli-flags-in-depth)
 - [Exit Codes](#exit-codes)
+- [The reveille capabilities Command](#the-reveille-capabilities-command)
+- [Structured Output](#structured-output)
 - [The reveille init Command](#the-reveille-init-command)
 - [TOML Configuration Reference](#toml-configuration-reference)
 - [Understanding the Report](#understanding-the-report)
@@ -48,9 +50,8 @@ accounts are mixed — is correctly treated as a single person, using the
 name from their most recent commit. If a `.mailmap` file is present at
 the repository root, email aliases are resolved to their canonical
 identity before aggregation. A contributor who has committed under
-multiple email addresses is unified under the canonical identity declared
-in `.mailmap`, ensuring that ranking and contribution metrics reflect
-actual individual output rather than the number of addresses used.
+multiple email addresses is counted once, under the canonical identity
+declared in `.mailmap`, rather than once per address.
 
 All four `.mailmap` forms defined by `gitmailmap(5)` are supported, and
 matching follows Git's own precedence: the most specific rule wins.
@@ -65,6 +66,17 @@ entry required. The legacy `username@users.noreply.github.com` and the
 post-2017 `12345678+username@users.noreply.github.com` forms both exist,
 and the same person frequently appears under both; the numeric prefix is
 stripped so the two collapse into one contributor.
+
+Folding the noreply forms into each other is not the same as folding them
+into your configured address. A commit made through the GitHub web
+interface records the noreply address, so it still reads as a second
+contributor until a `.mailmap` says otherwise — and the effect is easy to
+miss, because a one-commit identity is a sliver in a chart and a full row
+in the table.
+
+Reveille's own [`.mailmap`](https://github.com/varaprasadchilakanti/reveille/blob/main/.mailmap)
+is a worked example of exactly that case. `reveille init --mailmap`
+generates an annotated template covering all four forms.
 
 Third, each contributor is scored using the weighted composite ranking
 algorithm and assigned a tier designation relative to the other
@@ -170,17 +182,71 @@ with a human-readable or audience-specific heading.
 reveille generate --title "Platform Engineering — Q1 2025 Retrospective"
 ```
 
-### `--no-ranking`
+### `--ranking` and `--no-ranking`
 
-Omits the contributor ranking table from the output entirely. The
-heatmap, timeline, and contribution breakdown charts are still included.
-This is appropriate when sharing a report with an audience where the
-ranking context would be distracting or misinterpreted.
+**The contributor ranking is off by default from v0.8.0.** `--ranking` turns it
+on. `--no-ranking` still works and is still honoured; if both are given,
+`--no-ranking` wins, because between two contradictory instructions the one that
+produces less is the safer reading.
 
 ```bash
-reveille generate --no-ranking
+reveille generate --ranking
 ```
 
+With ranking off — the default — the report omits the scored contributor table,
+and the JSON omits `tier`, `tier_designation`, `composite_score` and `percentile`
+entirely rather than emitting them with placeholder values. A key reading
+`"tier": 0` is a number a consumer can mistake for data; an absent key cannot be.
+Check `provenance.ranking.enabled` to know which shape you have.
+
+Everything else stays: the contributor table with commits, lines and active days,
+the activity heatmap, the timelines, and the distribution chart.
+
+**Why it is off.** The ranking assigns named individuals a composite score, a
+percentile and a tier designation, weighted 30% commits and 25% lines changed.
+Those figures measure the volume and regularity of commits and nothing else — not
+contribution, not productivity, not value — and both DORA and SPACE state that
+such measures must not be used to assess individuals. The caveats were always
+documented, but documentation does not travel with the artefact: the HTML report
+is built to be forwarded, and the caveats stay in this repository. See
+[ADR 0010](adr/0010-ranking-is-opt-in.md).
+
+It is a legitimate thing to look at deliberately, for your own repository, having
+read what it does and does not mean. That is what the flag is for.
+
+You can also set it in `reveille.toml`:
+
+```toml
+[ranking]
+enabled = true
+```
+
+It must be a real boolean. `enabled = "false"` is a *string*, and would be
+rejected rather than quietly read as true.
+
+### `--deterministic`
+
+Produces byte-reproducible output: two runs over an unchanged repository give
+identical bytes, in every format.
+
+```bash
+reveille generate --deterministic
+```
+
+It does two things. It pins `generated_at` to the timestamp of the analysed
+commit rather than to the clock — the same idea as `SOURCE_DATE_EPOCH` in a
+reproducible build. And it closes the analysis window on the last commit rather
+than on today.
+
+**That second part changes the numbers, not only the bytes.** The ranking's
+recency component is measured against the window, so pinning the window pins the
+scores. Without it, two runs over an identical repository on different days would
+differ, and the output would not be reproducible in any useful sense. This is why
+the flag is opt-in, and why `provenance.deterministic` records that it was used —
+a deterministic report is never silently comparable with a normal one.
+
+Use it when a report needs to be re-checkable: attached to an audit, committed
+alongside a release, or compared against an earlier run to see what changed.
 
 ### `--config` / `-c`
 
@@ -257,6 +323,75 @@ therefore silent unless the host application configures logging itself.
 
 ---
 
+## The `reveille capabilities` Command
+
+Describes what Reveille can and cannot do, for a person or for a program.
+
+```bash
+reveille capabilities              # readable text
+reveille capabilities --format json
+```
+
+The JSON form is the one worth knowing about if you are wiring Reveille into a
+script or handing it to an agent. It carries `capabilities_version`, the tool
+version, the output schema version, the guarantees that hold on every run, a
+`can` list, a `cannot` list where each entry says what to use instead, the
+caveats that change how a number should be read, every command with its options,
+and the exit-code contract.
+
+The command surface and the exit codes are **read from the running program**
+rather than restated, so they cannot drift from it. The judgements — what the
+tool is for and what it refuses to claim — are written once and tested for
+completeness.
+
+The `cannot` list is the half worth reading. It states that Reveille does not
+measure productivity or contribution value, is not fit for performance review or
+hiring decisions, does not compute a bus factor, reads no source code, and does
+not aggregate a person across repositories.
+
+## Structured Output
+
+`--format json` emits a document whose first key is `schema_version`, so a
+consumer can decide whether it can parse the rest before trying.
+
+```json
+{
+  "schema_version": "1.0",
+  "metadata": { "name": "...", "analysed_branch": "main", "...": "..." },
+  "provenance": {
+    "reveille_version": "0.8.0",
+    "head_sha": "…",
+    "deterministic": false,
+    "mailmap_applied": true,
+    "filters": {
+      "requested_branch": "main",
+      "requested_since": null,
+      "requested_until": null,
+      "exclude_authors_count": 0,
+      "min_commits": 1
+    },
+    "ranking": { "enabled": false, "weights": null }
+  },
+  "contributors": [ "..." ],
+  "derived": { "commit_concentration": 2, "gini_coefficient": 0.46, "...": "..." }
+}
+```
+
+**`schema_version` changes when the shape changes**, not when the tool does.
+A major bump means a removal or a rename; a minor bump means a purely additive
+field. v0.7.0 renamed a key with no way for a consumer to detect it except a
+`KeyError` at runtime, which is why this field exists.
+
+**`provenance` records what produced the numbers**, so two reports that disagree
+can be reconciled. Note the distinction between `metadata.analysis_since` (where
+the window began) and `provenance.filters.requested_since` (whether anybody asked
+for it) — without both, "the full history, which starts in March" and "filtered
+to start in March" are the same document.
+
+`exclude_authors_count` is a count rather than the values. `--exclude-author`
+exists to keep somebody out of the report, so recording their address here would
+put it back.
+
 ## The `reveille init` Command
 
 `reveille init` scaffolds a fully annotated `reveille.toml` configuration
@@ -300,7 +435,7 @@ reveille init --force
 
 Generates a fully annotated `.mailmap` template at the repository root alongside `reveille.toml`. The template documents all four forms defined by `gitmailmap(5)` — name correction, email alias to canonical identity, email-only remapping, and the four-field form that disentangles several people sharing one address — each with concrete examples covering employer domain changes, GitHub noreply addresses, name corrections, and shared build-machine accounts. It also documents the matching precedence, so a rule that does not fire can be diagnosed from the template itself.
 
-`--force` applies to both generated files when `--mailmap` is set. If a `.mailmap` file already exists, it is silently skipped — `.mailmap` is a Git-native file and its presence is not treated as a conflict.
+`--force` applies to both generated files when `--mailmap` is set. Without it, an existing `.mailmap` is left alone and a message says so; with it, the existing file is overwritten by the template.
 
 ```bash
 reveille init --mailmap
@@ -366,6 +501,16 @@ that parameter applies. When the same parameter is set in both the
 configuration file and as a CLI flag, the CLI flag takes precedence.
 
 ---
+
+### `[report] deterministic`
+
+```toml
+[report]
+deterministic = true
+```
+
+Equivalent to `--deterministic`. Must be a real boolean; a quoted `"false"` is a
+string and is rejected rather than read as true.
 
 ## Understanding the Report
 
@@ -457,6 +602,35 @@ changed. Contributors beyond eight are aggregated into a single
 "Other Contributors" slice.
 
 ---
+
+### Contribution Distribution
+
+A Lorenz curve of how evenly commits are spread across contributors, with the
+Gini coefficient as a single-number summary. The dotted diagonal is perfect
+equality — every contributor with the same number of commits. The further the
+solid line bows beneath it, the more activity is concentrated in fewer people.
+
+**Read it as a description, not a score.** A high value is not a fault and a low
+one is not a target:
+
+- A single-maintainer repository has a Gini of **0** by definition. Equality is
+  trivially true in a population of one, which is the opposite of the intuitive
+  reading.
+- A project with one maintainer and many occasional contributors scores high for
+  entirely ordinary reasons.
+- The maximum for a sample of *n* contributors is `(n-1)/n`, never 1.0 — one
+  person holding everything among four gives 0.75. The ceiling rises with the
+  contributor count, so **the value is comparable against this repository over
+  time, not against a different repository.**
+
+Both instruments are borrowed rather than invented: the Lorenz curve (1905) and
+the Gini coefficient (1912) are the standard measures of concentration in a
+population, and a century of interpretation — and of documented weakness — comes
+with them. They replaced an ad-hoc "how many contributors make up a majority"
+count that had no defined range and jumped whenever somebody crossed half.
+
+Unlike the ranking, this names nobody, and the curve is unchanged by who sits
+where in it. That is why it stays in the default report.
 
 ## The Ranking Algorithm
 

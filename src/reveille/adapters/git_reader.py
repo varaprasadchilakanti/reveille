@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti
+# SPDX-License-Identifier: Apache-2.0
+
 """Git repository reader adapter.
 
 Translates raw GitPython data into typed domain models. This is the
@@ -23,27 +26,56 @@ from __future__ import annotations
 
 import datetime
 import logging
+import os
 import re
 from collections import defaultdict
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from git import InvalidGitRepositoryError, NoSuchPathError, Repo
 from git.exc import GitCommandError
 
-from reveille.domain.models import Commit, ContributorStats, RepositoryMetadata
+from reveille.domain.models import Commit, ContributorStats, FileStats, RepositoryMetadata
 from reveille.exceptions import EmptyRepositoryError, RepositoryError
 
 # Record and field delimiters for the single-pass `git log` read.
-# ASCII 0x1E (record separator) and 0x1F (unit separator) are control
-# characters that cannot appear in a commit header field, so they parse
-# unambiguously where a printable delimiter would not.
+# ASCII 0x1E (record separator) and 0x1F (unit separator) are chosen because
+# they are vanishingly rare in real commit metadata, not because they are
+# impossible there. Git's ident sanitiser strips `<`, `>` and newlines from an
+# author field, but it does NOT strip other C0 control characters, so a commit
+# object written directly with `git hash-object --literally` can embed these
+# separators in an author name or address and split one record into several.
+# Every field is therefore scrubbed after parsing -- see _strip_control_chars.
 _logger = logging.getLogger(__name__)
 
 _RECORD_SEP = "\x1e"
 _FIELD_SEP = "\x1f"
 
 _LOG_FORMAT = f"--format={_RECORD_SEP}%H{_FIELD_SEP}%an{_FIELD_SEP}%ae{_FIELD_SEP}%ct"
+
+# A well-formed record always opens with a 40-character object name. Checking it
+# is a cheap way to discard a record that separator injection has split.
+_SHA_RE = re.compile(r"[0-9a-f]{40}")
+
+# C0 controls and DEL. Tab, newline and carriage return are included: none of
+# them belongs in an author name, and all three break downstream formats.
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
+
+# Upper bounds on an identity field. Git imposes none, and the field is
+# attacker-controlled in the threat model this reader is written against: a
+# repository somebody else authored. Measured before capping, a single commit
+# with a 100,000-character author name turned a four-commit repository into a
+# 6.5 MB report, because the name is repeated in the table, two bar charts,
+# every tooltip, the heatmap contributor list, and the JSON and CSV. A
+# 1,000,000-character name reached 1.5 GB of resident memory.
+#
+# 256 is far past any real display name; 320 is the RFC 5321 maximum for an
+# address. Truncation is marked so a reader can see it happened rather than
+# wondering why a name looks wrong.
+_MAX_NAME_LENGTH = 256
+_MAX_EMAIL_LENGTH = 320
+_TRUNCATION_MARKER = "\u2026"
 
 # GitHub's prefixed private-commit address: 12345678+username@users.noreply.github.com.
 # The username is captured; the numeric account ID is discarded.
@@ -170,16 +202,89 @@ def _sum_numstat(block: str) -> tuple[int, int]:
     """
     added = 0
     deleted = 0
+    for _path, line_added, line_deleted in _iter_numstat(block):
+        added += line_added
+        deleted += line_deleted
+    return added, deleted
+
+
+def _iter_numstat(block: str) -> Iterator[tuple[str, int, int]]:
+    r"""Yield `(path, added, deleted)` for each file in one numstat block.
+
+    The paths were already being read and thrown away: `git log --numstat`
+    carries them on every line, and the totals were summed out of a
+    structure that had them. File-level analysis therefore costs no extra
+    Git work, only the parsing already being paid for.
+
+    A rename is reported by Git as `old => new` inside braces or as a
+    plain `old => new`; the destination is taken, since that is the path
+    the file has now.
+
+    Binary files report a literal `-` for both counts and contribute
+    zero, matching the per-commit diff this replaced.
+
+    Args:
+        block: The numstat lines belonging to a single commit. May be
+            empty for a commit that changed no files.
+
+    Yields:
+        One `(path, added, deleted)` triple per file.
+    """
     for line in block.splitlines():
         fields = line.split("\t")
         if len(fields) < 3:
             continue
-        raw_added, raw_deleted = fields[0], fields[1]
-        if raw_added.isdigit():
-            added += int(raw_added)
-        if raw_deleted.isdigit():
-            deleted += int(raw_deleted)
-    return added, deleted
+        raw_added, raw_deleted, path = fields[0], fields[1], fields[2]
+        added = int(raw_added) if raw_added.isdigit() else 0
+        deleted = int(raw_deleted) if raw_deleted.isdigit() else 0
+        yield _rename_destination(path), added, deleted
+
+
+def _rename_destination(path: str) -> str:
+    """Return the path a file has after a rename, or the path unchanged.
+
+    Git writes a rename in numstat as `dir/{old => new}/file.py` or as a
+    bare `old.py => new.py`. Counting both sides would double a file and
+    counting the source would attribute churn to a path that no longer
+    exists, so the destination is taken.
+
+    Args:
+        path: One numstat path field.
+
+    Returns:
+        The destination path, with any rename notation resolved.
+    """
+    if "=>" not in path:
+        return path
+    if "{" in path and "}" in path:
+        prefix, _, rest = path.partition("{")
+        inner, _, suffix = rest.partition("}")
+        _, _, destination = inner.partition("=>")
+        return f"{prefix}{destination.strip()}{suffix}".replace("//", "/")
+    _, _, destination = path.partition("=>")
+    return destination.strip()
+
+
+def _accumulate_file_totals(record: str, totals: dict[str, list[int]]) -> None:
+    """Fold one log record's numstat block into the running per-path totals.
+
+    Extracted from `read_commits` because inlining it pushed that method
+    past the complexity limit, which is the limit doing its job.
+
+    Args:
+        record: One `git log` record, header line then numstat block.
+        totals: Mutated in place, mapping path to
+            `[commits, lines_added, lines_deleted]`.
+    """
+    _, _, numstat_block = record.partition("\n")
+    for path, added, deleted in _iter_numstat(numstat_block):
+        entry = totals.get(path)
+        if entry is None:
+            totals[path] = [1, added, deleted]
+        else:
+            entry[0] += 1
+            entry[1] += added
+            entry[2] += deleted
 
 
 class GitReader:
@@ -202,9 +307,23 @@ class GitReader:
         Raises:
             RepositoryError: If the path is not a valid readable Git repository.
         """
+        self._mailmap_applied = False
+        self._file_stats: tuple[FileStats, ...] = ()
+        self.unmatched_exclusions: tuple[str, ...] = ()
         try:
             self._repo = Repo(str(repo_path), search_parent_directories=False)
         except InvalidGitRepositoryError as exc:
+            # A `.git` that exists but cannot be read raises the same
+            # exception as one that is not there, and the generic message --
+            # "ensure the path contains a .git directory" -- sends the reader
+            # to check something that is already true. Distinguish the two,
+            # since the fixes are entirely different.
+            git_dir = repo_path / ".git"
+            if git_dir.exists() and not os.access(git_dir, os.R_OK | os.X_OK):
+                raise RepositoryError(
+                    f"'{repo_path}' is a Git repository, but its .git directory "
+                    "cannot be read. Check the permissions on it."
+                ) from exc
             raise RepositoryError(
                 f"'{repo_path}' is not a valid Git repository. "
                 "Ensure the path contains a .git directory."
@@ -251,20 +370,37 @@ class GitReader:
             EmptyRepositoryError: If no commits match the specified window
                 after filtering.
         """
-        rev = branch or self._resolve_default_branch()
+        # Cleared at entry as well as assigned at the end, so a call that raises
+        # part-way through cannot leave the previous call's result readable.
+        self.unmatched_exclusions = ()
 
-        log_args: list[str] = ["--no-merges", "--numstat", _LOG_FORMAT]
-        if since is not None:
-            log_args.append(f"--after={since.isoformat()}")
-        if until is not None:
-            # Add one day to make the until boundary inclusive.
-            inclusive_until = until + datetime.timedelta(days=1)
-            log_args.append(f"--before={inclusive_until.isoformat()}")
-        # The trailing `--` disambiguates the revision from a path of the
-        # same name, which git would otherwise report as ambiguous.
-        log_args.extend([rev, "--"])
+        rev = branch or self._resolve_active_branch()
 
-        exclude_set = {entry.lower() for entry in exclude_authors}
+        # A revision beginning with `-` is parsed by git as an OPTION, not a
+        # ref. The trailing `--` below separates revisions from paths; it does
+        # not protect the revision slot. Without this guard, a branch value of
+        # `--output=/path/to/file` makes `git log` write its output over that
+        # file -- and `branch` can arrive from an auto-discovered reveille.toml
+        # sitting in a repository the attacker controls, so the victim needs
+        # only to run `reveille generate` inside a clone.
+        if rev.startswith("-"):
+            raise RepositoryError(
+                f"Refusing to use {rev!r} as a revision: a value beginning with "
+                "'-' is interpreted by git as a command-line option rather than "
+                "a branch. If a ref really has this name, rename it."
+            )
+
+        log_args, rev_list_args = _build_log_args(
+            rev, since, until, self._supports_since_as_filter()
+        )
+
+        # The mailmap is read first, because an exclusion has to be expanded
+        # through it: --exclude-author names a person, and a person with a
+        # mailmap has more than one identity.
+        mailmap = self._read_mailmap()
+        self._mailmap_applied = bool(mailmap.by_email or mailmap.by_name_and_email)
+
+        exclude_set = _expand_exclusions(exclude_authors, mailmap)
 
         # An unborn HEAD means the repository is readable but has no commits
         # at all. That is a negative answer, not a failure to read, so it
@@ -276,6 +412,29 @@ class GitReader:
                 "Make at least one commit before generating a report."
             )
 
+        # `git log --format` interpolates the author name verbatim, and a name
+        # can contain the separators this reader splits on -- so one crafted
+        # commit can inject an entire extra record and fabricate a contributor.
+        # Scrubbing the fields afterwards cannot help: by then the split has
+        # already happened.
+        #
+        # So take the object names from git itself, where the attacker has no
+        # say. `rev-list` computes each SHA rather than echoing text, and does
+        # no diff work, so it is cheap beside the --numstat read. A record whose
+        # SHA is not in this set did not come from a commit.
+        _logger.debug("git rev-list %s", " ".join(rev_list_args))
+        try:
+            authentic_shas = {
+                line.strip()
+                for line in str(self._repo.git.rev_list(*rev_list_args)).splitlines()
+                if line.strip()
+            }
+        except GitCommandError as exc:
+            raise RepositoryError(
+                f"Failed to enumerate commits on branch '{rev}'. "
+                "Verify the branch exists in this repository."
+            ) from exc
+
         _logger.debug("git log %s", " ".join(log_args))
         try:
             raw_log = self._repo.git.log(*log_args)
@@ -285,45 +444,39 @@ class GitReader:
                 f"Verify the branch name is correct. Detail: {exc}"
             ) from exc
 
-        mailmap = self._read_mailmap()
-
         commits: list[Commit] = []
+        matched: set[str] = set()
+        # Accumulated while streaming rather than stored per commit: the
+        # cost is bounded by the number of distinct paths, not by the
+        # number of commits multiplied by the files each touched. A
+        # 50,000-commit repository would otherwise hold a list of paths
+        # per commit for the whole run.
+        file_totals: dict[str, list[int]] = {}
         for record in raw_log.split(_RECORD_SEP):
-            if not record.strip():
+            commit = _parse_log_record(record, mailmap, exclude_set, authentic_shas, matched)
+            if commit is None:
                 continue
+            commits.append(commit)
+            # Only files from commits that survived filtering: an excluded
+            # author's churn must not reappear here.
+            _accumulate_file_totals(record, file_totals)
 
-            header, _, numstat_block = record.partition("\n")
-            fields = header.split(_FIELD_SEP)
-            if len(fields) != 4:
-                continue
+        self._file_stats = tuple(
+            FileStats(path=path, commits=n, lines_added=a, lines_deleted=d)
+            for path, (n, a, d) in file_totals.items()
+        )
 
-            sha, raw_name, raw_email, committed_at = fields
-
-            author_name, author_email = _resolve_identity(raw_name, raw_email, mailmap)
-
-            # The raw address is matched too so that an --exclude-author
-            # value copied from `git log` still works after normalisation.
-            if (
-                author_name.lower() in exclude_set
-                or author_email.lower() in exclude_set
-                or raw_email.lower() in exclude_set
-            ):
-                continue
-
-            lines_added, lines_deleted = _sum_numstat(numstat_block)
-            commits.append(
-                Commit(
-                    sha=sha,
-                    author_name=author_name,
-                    author_email=author_email,
-                    timestamp=datetime.datetime.fromtimestamp(
-                        int(committed_at),
-                        tz=datetime.UTC,
-                    ),
-                    lines_added=lines_added,
-                    lines_deleted=lines_deleted,
-                )
-            )
+        # A filter that matched nothing is almost always a typo, and silence
+        # makes it indistinguishable from one that worked. This matters most
+        # for the case the filter exists to serve: somebody asked to be left
+        # out, and the report was generated believing they had been.
+        # Assigned unconditionally. Setting it only when non-empty left a reader
+        # reused for a second call still reporting the first call's failed
+        # filter -- a public attribute on a public class, going stale silently.
+        unmatched = sorted(exclude_set - matched)
+        self.unmatched_exclusions = tuple(unmatched)
+        if unmatched:
+            _logger.warning("--exclude-author matched no commits for: %s", ", ".join(unmatched))
 
         if not commits:
             raise EmptyRepositoryError(
@@ -393,6 +546,7 @@ class GitReader:
         unique_contributors: int,
         analysis_since: datetime.date,
         analysis_until: datetime.date,
+        branch: str | None = None,
     ) -> RepositoryMetadata:
         """Read repository-level metadata.
 
@@ -405,6 +559,9 @@ class GitReader:
             unique_contributors: Unique contributor count after filtering.
             analysis_since: Start of the analysis window.
             analysis_until: End of the analysis window.
+            branch: The ref the analysis walked, as requested by the caller.
+                When omitted the active branch is used -- the same fallback
+                `read_commits` applies, so the two cannot disagree.
 
         Returns:
             A populated RepositoryMetadata instance.
@@ -414,7 +571,7 @@ class GitReader:
         return RepositoryMetadata(
             name=self._repo_path.name,
             remote_url=remote_url,
-            default_branch=self._resolve_default_branch(),
+            analysed_branch=branch or self._resolve_active_branch(),
             total_commits=total_commits,
             unique_contributors=unique_contributors,
             analysis_since=analysis_since,
@@ -426,7 +583,7 @@ class GitReader:
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _resolve_default_branch(self) -> str:
+    def _resolve_active_branch(self) -> str:
         """Return the current active branch name.
 
         Falls back to 'HEAD' when the repository is in a detached HEAD
@@ -439,6 +596,71 @@ class GitReader:
             return self._repo.active_branch.name
         except TypeError:
             return "HEAD"
+
+    def resolve_head_sha(self, branch: str | None = None) -> str | None:
+        """Return the full SHA at the tip of the ref that was analysed.
+
+        This is what pins a report to an exact repository state: the same SHA
+        with the same filters must reproduce the same numbers.
+
+        Args:
+            branch: The ref to resolve. Defaults to the active branch, matching
+                `read_commits` and `read_metadata`.
+
+        Returns:
+            The 40-character commit SHA, or None if the ref cannot be resolved
+            -- an empty repository or an unborn branch, neither of which is an
+            error worth failing a report over.
+        """
+        rev = branch or self._resolve_active_branch()
+        try:
+            return str(self._repo.commit(rev).hexsha)
+        except Exception:
+            return None
+
+    @property
+    def file_stats(self) -> tuple[FileStats, ...]:
+        """Per-path activity from the most recent `read_commits` call.
+
+        Empty before the first call, and replaced on every call rather
+        than appended to, so a reader reused for a second repository does
+        not report the first one's files.
+
+        Returns:
+            One `FileStats` per distinct path, in first-seen order.
+        """
+        return self._file_stats
+
+    @property
+    def mailmap_applied(self) -> bool:
+        """Whether a non-empty `.mailmap` was applied during aggregation.
+
+        False until `read_commits` has run, because that is where the file is
+        read. Identity merging materially changes contributor
+        counts, so a report that used one is not comparable with a report that
+        did not.
+        """
+        return self._mailmap_applied
+
+    def _supports_since_as_filter(self) -> bool:
+        """Whether the installed git understands `--since-as-filter`.
+
+        Added in git 2.37 (2022). Probed rather than assumed, because falling
+        back is better than failing: on an older git the window may
+        under-report over non-chronological history, which is the behaviour
+        every previous release had.
+
+        Returns:
+            True when git is 2.37 or newer.
+        """
+        try:
+            raw = str(self._repo.git.version())
+        except Exception:
+            return False
+        match = re.search(r"(\d+)\.(\d+)", raw)
+        if not match:
+            return False
+        return (int(match.group(1)), int(match.group(2))) >= (2, 37)
 
     def _resolve_remote_url(self) -> str | None:
         """Return the URL of the origin remote, or the first available remote.
@@ -512,3 +734,236 @@ class GitReader:
                 mailmap.by_email[email] = (m1.group(1).strip(), email)
 
         return mailmap
+
+
+def _truncate(value: str, limit: int) -> str:
+    """Bound an identity field's length, marking the cut.
+
+    Args:
+        value: The scrubbed field.
+        limit: Maximum characters to keep.
+
+    Returns:
+        The value, or its first `limit` characters followed by an ellipsis.
+    """
+    if len(value) <= limit:
+        return value
+    return value[:limit] + _TRUNCATION_MARKER
+
+
+def _strip_control_chars(value: str) -> str:
+    """Remove C0 control characters from a git identity field.
+
+    Git's ident sanitiser strips `<`, `>` and newlines but leaves other control
+    characters intact, so an author name written directly into a commit object
+    can contain the record and field separators this reader splits on. One such
+    commit was enough to fabricate three contributors and promote an invented
+    name to the top ranking tier.
+
+    Args:
+        value: A raw author name or address straight from `git log`.
+
+    Returns:
+        The value with every C0 control character and DEL removed.
+    """
+    return _CONTROL_CHARS_RE.sub("", value)
+
+
+def _parse_log_record(
+    record: str,
+    mailmap: _Mailmap,
+    exclude_set: set[str],
+    authentic_shas: set[str],
+    matched: set[str],
+) -> Commit | None:
+    """Turn one `git log` record into a Commit, or reject it.
+
+    Every rejection path here is a defence rather than a convenience. A commit
+    object written directly with `git hash-object --literally` can carry
+    control characters in its author fields and a timestamp that is not a
+    number, and Git will replay both faithfully. A record that survives all of
+    the checks below is one this reader is willing to attribute to a person.
+
+    Args:
+        record: One record from the split log output, without its separator.
+        mailmap: Parsed `.mailmap` lookup tables.
+        exclude_set: Lowercased names and addresses to drop.
+        authentic_shas: Object names git itself reported for this revision. A
+            record whose SHA is absent was not produced by a commit.
+        matched: Mutated in place with every exclusion value that matched, so
+            the caller can report the ones that never did.
+
+    Returns:
+        The parsed Commit, or None if the record is empty, malformed,
+        excluded by filter, or carries an unusable timestamp.
+    """
+    if not record.strip():
+        return None
+
+    header, _, numstat_block = record.partition("\n")
+    fields = header.split(_FIELD_SEP)
+    if len(fields) != 4:
+        return None
+
+    sha, raw_name, raw_email, committed_at = fields
+
+    # A crafted author name can produce a record that *looks* well formed --
+    # right field count, forty hex characters -- so shape alone is not enough.
+    # Membership in the set git computed is.
+    if not _SHA_RE.fullmatch(sha) or sha not in authentic_shas:
+        return None
+
+    # An author field carrying our own separators can split one commit into
+    # several fabricated contributors -- and the ranking then promotes an
+    # invented name into a tier. Scrub before trusting.
+    raw_name = _truncate(_strip_control_chars(raw_name), _MAX_NAME_LENGTH)
+    raw_email = _truncate(_strip_control_chars(raw_email), _MAX_EMAIL_LENGTH)
+
+    author_name, author_email = _resolve_identity(raw_name, raw_email, mailmap)
+
+    # Both the resolved and the raw identity are matched, so an
+    # --exclude-author value copied from `git log` still works after
+    # normalisation. The raw *name* matters as much as the raw address: with a
+    # .mailmap renaming "Bob Jones" to "Robert Jones", `git log --format=%an`
+    # shows the old name, so that is what a user copies -- and matching only
+    # the resolved name would leave the person in the report while exiting 0.
+    hits = exclude_set & {
+        author_name.lower(),
+        author_email.lower(),
+        raw_name.lower(),
+        raw_email.lower(),
+    }
+    if hits:
+        matched |= hits
+        return None
+
+    try:
+        timestamp = datetime.datetime.fromtimestamp(int(committed_at), tz=datetime.UTC)
+    except (ValueError, OverflowError, OSError):
+        # A hand-written commit object can carry a timestamp that is not a
+        # number, or one far outside the platform's range. That is one unusable
+        # record, not a reason to abandon the whole report.
+        _logger.debug("skipping commit %s: unparseable timestamp", sha[:12])
+        return None
+
+    lines_added, lines_deleted = _sum_numstat(numstat_block)
+    return Commit(
+        sha=sha,
+        author_name=author_name,
+        author_email=author_email,
+        timestamp=timestamp,
+        lines_added=lines_added,
+        lines_deleted=lines_deleted,
+    )
+
+
+def _build_log_args(
+    rev: str,
+    since: datetime.date | None,
+    until: datetime.date | None,
+    supports_since_as_filter: bool = True,
+) -> tuple[list[str], list[str]]:
+    """Build the argument lists for the numstat read and the SHA allowlist.
+
+    Returned as a pair because the two commands must agree on revision
+    selection and on the date window. `rev-list` shares those with `log` but
+    rejects diff-formatting options such as `--numstat`, so the lists are built
+    explicitly rather than one filtered from the other -- if the windows drifted
+    apart the allowlist would stop covering every record the log returns.
+
+    Args:
+        rev: The revision to walk. Already checked not to begin with `-`.
+        since: Inclusive start of the analysis window, if any.
+        until: Inclusive end of the analysis window, if any.
+        supports_since_as_filter: Whether the installed git understands
+            `--since-as-filter` (added in git 2.37). When it does not, the
+            greedy `--after` is used and a narrow window over non-chronological
+            history may under-report.
+
+    Returns:
+        A `(log_args, rev_list_args)` pair.
+    """
+    log_args: list[str] = ["--no-merges", "--numstat", _LOG_FORMAT]
+    rev_list_args: list[str] = ["--no-merges"]
+
+    # Boundaries are pinned to UTC. Git parses a bare `YYYY-MM-DD` in the
+    # machine's LOCAL timezone, while every timestamp this reader produces is
+    # rendered in UTC -- so the same repository and the same `--since` gave
+    # different answers on different machines. Measured with one commit at
+    # 2024-06-10T22:00Z and `--since 2024-06-11`: empty under UTC and under
+    # America/Los_Angeles, one commit under Pacific/Auckland.
+    #
+    # An explicit offset removes the machine from the answer, which is also
+    # what `--deterministic` needs in order to mean anything.
+    if since is not None:
+        boundary = f"{since.isoformat()}T00:00:00+00:00"
+        # `--since-as-filter`, not `--since`/`--after`. Git's `--since` is
+        # *greedy*: the walk stops at the first commit older than the boundary
+        # and does not resume, so anything reachable further down the parent
+        # chain is never examined -- even when it is squarely inside the
+        # window. Rebases, cherry-picks, merged old branches and ordinary clock
+        # skew between contributors all produce that shape.
+        #
+        # Measured on a three-commit chain dated 01-15, 01-01, 01-20 with
+        # `--since 2024-01-08`: `--after` returned one commit, silently losing
+        # the 01-20 one; `--since-as-filter` returned both. A silently short
+        # answer is the worst kind for a reporting tool.
+        #
+        # `--before`/`--until` needs no equivalent: the walk starts at the
+        # newest end, so a too-new commit does not terminate it.
+        flag = "--since-as-filter" if supports_since_as_filter else "--after"
+        log_args.append(f"{flag}={boundary}")
+        rev_list_args.append(f"{flag}={boundary}")
+    if until is not None:
+        # One day past the boundary, so `--until` is inclusive of its own date.
+        inclusive_until = (until + datetime.timedelta(days=1)).isoformat()
+        boundary = f"{inclusive_until}T00:00:00+00:00"
+        log_args.append(f"--before={boundary}")
+        rev_list_args.append(f"--before={boundary}")
+
+    # `--end-of-options` stops git parsing anything after it as an option; the
+    # trailing `--` disambiguates the revision from a path of the same name.
+    for args in (log_args, rev_list_args):
+        args.extend(["--end-of-options", rev, "--"])
+
+    return log_args, rev_list_args
+
+
+def _expand_exclusions(exclude_authors: list[str], mailmap: _Mailmap) -> set[str]:
+    """Expand each exclusion to every identity the `.mailmap` ties it to.
+
+    `--exclude-author` is documented as removing a *person*, and a person with
+    a `.mailmap` has more than one identity. Matching only the literal value
+    dropped the commits authored under the address the user named and left
+    every other alias in place -- so excluding somebody's old address removed
+    one commit and left them in the report under the new one, exit 0, no
+    diagnostic. For the one flag whose stated purpose is privacy, being
+    approximate in that direction is the wrong way round.
+
+    Args:
+        exclude_authors: Raw values as supplied, by name or by address.
+        mailmap: The parsed `.mailmap` for this repository.
+
+    Returns:
+        A lowercased set containing each supplied value plus, for any value the
+        mailmap recognises, the canonical name and address it maps to.
+    """
+    expanded = {entry.lower() for entry in exclude_authors}
+
+    for entry in list(expanded):
+        canonical = mailmap.by_email.get(entry)
+        if canonical is not None:
+            canonical_name, canonical_email = canonical
+            if canonical_name:
+                expanded.add(canonical_name.lower())
+            expanded.add(canonical_email.lower())
+
+        # The four-field form is keyed on (commit name, commit address), so a
+        # value naming either half expands to that entry's canonical identity.
+        for (commit_name, commit_email), (name, email) in mailmap.by_name_and_email.items():
+            if entry in (commit_name, commit_email):
+                if name:
+                    expanded.add(name.lower())
+                expanded.add(email.lower())
+
+    return expanded

@@ -30,3 +30,7 @@ Deprecated.
 | [0004](0004-single-pass-numstat-read.md) | History is read in a single `git log --numstat` pass | Accepted |
 | [0005](0005-commit-concentration-not-bus-factor.md) | The concentration metric is not called a bus factor | Accepted |
 | [0006](0006-offline-single-file-report.md) | The report is a single offline file | Accepted |
+| [0007](0007-apache-2-0-licence.md) | The licence moves from MIT to Apache-2.0 | Accepted |
+| [0008](0008-output-provenance-and-schema-version.md) | Output records its own provenance and declares a schema version | Accepted |
+| [0009](0009-contributor-licence-agreement.md) | Contributions are accepted under a Contributor Licence Agreement | Accepted |
+| [0010](0010-ranking-is-opt-in.md) | The contributor ranking is opt-in, and distribution is measured instead | Accepted |
