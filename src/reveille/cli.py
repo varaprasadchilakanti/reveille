@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2026 Varaprasad Chilakanti
+# SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti
 # SPDX-License-Identifier: Apache-2.0
 
 """CLI entry point for Reveille.

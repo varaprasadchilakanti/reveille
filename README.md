@@ -466,7 +466,7 @@ reasoning can be argued with instead of assumed.
 ## Licence
 
 Reveille is released under the [Apache Licence 2.0](https://github.com/varaprasadchilakanti/reveille/blob/main/LICENSE).
-Copyright 2026 Varaprasad Chilakanti.
+Copyright 2026 Vara Prasad Chilakanti.
 
 **Versions up to and including 0.7.0 were released under the MIT Licence.** That
 grant is unaffected: anything already obtained under MIT stays under MIT, and MIT

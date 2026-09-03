@@ -82,7 +82,7 @@ Thank you for your interest in contributing to **Reveille** (the "Project").
 
 This Contributor Licence Agreement (the "Agreement") records the permissions
 you give when you contribute to the Project. It is between you and
-**Varaprasad Chilakanti**, an individual (the "Maintainer", "We" or "Us"), who
+**Vara Prasad Chilakanti**, an individual (the "Maintainer", "We" or "Us"), who
 is the Project's maintainer and copyright holder. It is a legally binding
 document; please read it before accepting it.
 
@@ -458,7 +458,7 @@ part of it should be read as their statement.
   30A; the text of that Act is published by the Copyright Office at
   <https://copyright.gov.in/Documents/Copyright_Act_1957.pdf>.
 
-Copyright © 2026 Varaprasad Chilakanti. This document is made available under
+Copyright © 2026 Vara Prasad Chilakanti. This document is made available under
 the **Creative Commons Attribution 4.0 International Licence**
 (<https://creativecommons.org/licenses/by/4.0/>), which is compatible with the
 CC BY 3.0 terms of the Harmony material it incorporates.

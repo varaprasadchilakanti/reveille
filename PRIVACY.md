@@ -8,7 +8,7 @@ Reveille. It is short because there is very little of it.
 
 ## Who is responsible
 
-Varaprasad Chilakanti, an individual, based in India. He maintains Reveille
+Vara Prasad Chilakanti, an individual, based in India. He maintains Reveille
 personally; there is no company or organisation behind it.
 
 **Contact for anything on this page:** the address in
