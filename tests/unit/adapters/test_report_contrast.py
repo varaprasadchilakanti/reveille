@@ -72,7 +72,15 @@ def _tokens_for(theme: str) -> dict[str, str]:
 
 # Every foreground token that renders text, against both surfaces it can sit on.
 _TEXT_TOKENS = ["--color-text-primary", "--color-text-secondary", "--color-text-muted"]
-_BACKGROUNDS = ["--color-bg", "--color-surface"]
+# Every surface token the template declares, derived rather than listed.
+# It was previously ["--color-bg", "--color-surface"], omitting
+# --color-surface-raised. In the light theme that is #ffffff, identical to
+# --color-bg, so nothing looked wrong; in the dark theme it is a distinct
+# third surface, and muted text on it measured 4.08:1 -- below AA, on the
+# title of every chart, on every finding's evidence figure, and on every
+# empty state. A guard that lists its inputs stops covering the ones added
+# after it was written.
+_BACKGROUNDS = ["--color-bg", "--color-surface", "--color-surface-raised"]
 
 
 @pytest.mark.unit

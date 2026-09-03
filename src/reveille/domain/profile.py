@@ -49,7 +49,7 @@ _SMALL_COMMIT_LINES = 200
 
 #: Fixed axis order. Permuting these changes the drawn shape without
 #: changing any value, so the order is part of the contract.
-AXIS_ORDER = ("Spread", "Continuity", "Currency", "Revisiting", "Small steps")
+AXIS_ORDER = ("Spread", "Continuity", "Recent work", "Revisiting", "Small steps")
 
 
 @dataclass(frozen=True)
@@ -69,13 +69,34 @@ class ProfileAxis:
 
 
 def _spread(contributors: list[ContributorStats]) -> ProfileAxis:
-    """How evenly commits are distributed across contributors."""
+    """How evenly commits are distributed, relative to what is attainable.
+
+    The raw `1 - Gini` is not comparable across team sizes and was
+    therefore not the bounded share this module claims every axis to be.
+    Gini's maximum for a sample of n is (n-1)/n, so `1 - Gini` has a
+    floor of 1/n: adding a contributor who commits *nothing* moved the
+    axis from 0% to 50%, and ten people where one does everything scored
+    10% while two people where one does everything scored 50% -- the
+    more concentrated repository scoring five times higher.
+
+    Dividing by the attainable maximum fixes the range to a true 0..1 at
+    every team size, so the axis means the same thing before and after
+    the team grows.
+    """
     counts = [c.commit_count for c in contributors]
-    value = 1.0 - gini_coefficient(counts) if len(counts) > 1 else 0.0
+    size = len(counts)
+    if size < 2:
+        return ProfileAxis(
+            name="Spread",
+            value=0.0,
+            description="one contributor, so there is nothing to spread",
+        )
+    ceiling = (size - 1) / size
+    value = 1.0 - (gini_coefficient(counts) / ceiling)
     return ProfileAxis(
         name="Spread",
-        value=value,
-        description="1 minus the Gini over commits per contributor",
+        value=min(max(value, 0.0), 1.0),
+        description="evenness of commits, against the most uneven possible",
     )
 
 
@@ -98,18 +119,31 @@ def _continuity(
     )
 
 
-def _currency(
+def _recent_share(
     commits: list[Commit],
     since: datetime.date,
     until: datetime.date,
 ) -> ProfileAxis:
-    """How far through the window the most recent commit falls."""
+    """Share of commits falling in the most recent quarter of the window.
+
+    This replaces an axis that measured where the last commit sat inside
+    the window. Under `--deterministic` the window *ends* at the last
+    commit, so that axis was identically 100% for every repository ever
+    analysed -- in precisely the mode the Playbook tells consumers to
+    use. It carried no information and still occupied a fifth of a shape
+    the reader is invited to recognise.
+
+    A share of commits in the final quarter is bounded, is not degenerate
+    under any window, and answers the question the old axis was reaching
+    for: is the work recent, or was it all a while ago.
+    """
     span = max((until - since).days, 1)
-    last = max((c.timestamp.date() for c in commits), default=since)
+    cutoff = until - datetime.timedelta(days=span // 4)
+    recent = sum(1 for c in commits if c.timestamp.date() >= cutoff)
     return ProfileAxis(
-        name="Currency",
-        value=min(max((last - since).days / span, 0.0), 1.0),
-        description="position of the last commit within the window",
+        name="Recent work",
+        value=recent / len(commits) if commits else 0.0,
+        description="commits in the final quarter of the window",
     )
 
 
@@ -171,7 +205,7 @@ def repository_profile(
     axes = [
         _spread(contributors),
         _continuity(commits, since, until),
-        _currency(commits, since, until),
+        _recent_share(commits, since, until),
         _revisiting(files),
         _small_steps(commits),
     ]

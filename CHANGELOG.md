@@ -433,6 +433,70 @@ Nothing yet.
 
 ### Fixed
 
+- **The report was reorganised around what a reader looks for first.** The
+  findings block sat fourth, behind two charts and a radar, while
+  `docs/PLAYBOOK.md` promised "findings first, evidence after". It is now
+  first, followed by the distribution — the question with the highest stakes —
+  and then the evidence. Section headings were **10px uppercase**, which made
+  the document's structural landmarks its smallest text, about 7.5pt in print;
+  they are now 17px sentence case, since uppercase removes the word-shape cues
+  a reader scans by.
+
+- **Both donut charts were removed.** "Commit Share" sat directly beneath
+  "Commits by Contributor" and encoded the same vector; likewise the lines
+  pair. A donut encodes by angle and area, which Cleveland & McGill rank near
+  the bottom of graphical perception, and the bar above it already carried
+  value labels. The part-of-whole job was already done twice — by the Lorenz
+  curve, which encodes by position, and by the Gini figure.
+
+- **A dark-themed report printed as a near-blank page.** The theme persists in
+  `localStorage`, and browsers print text colour but not background colour by
+  default, so a reader who had ever pressed "Dark Mode" printed `#e6edf3` on
+  white paper: **1.18:1**. Printing now forces the light palette, and hides
+  controls that cannot be operated on paper.
+
+- **Muted text failed AA on the third surface, and the guard could not see
+  it.** `--color-text-muted` on `--color-surface-raised` measured **4.08:1** in
+  dark mode — the title of every chart, every finding's evidence figure, every
+  empty state. The contrast guard listed two of the three surface tokens the
+  template declares; in the light theme the third is identical to the first, so
+  nothing looked wrong. Raising the token then tripped a *different* existing
+  guard, which asserts muted text stays below secondary: the first fix
+  flattened the hierarchy it was meant to preserve. Settled at `#868f99`.
+
+- **The radar drew a white disc on the dark card.** `polar.bgcolor` defaults to
+  `#fff` and falls back to `paper_bgcolor`, never `plot_bgcolor` — and since
+  the default is fully opaque, the fallback never fires. Two guards passed over
+  it: the builder emits no colour, and the theme manager had no `polar` key.
+  The defect lived in the gap between them.
+
+- **Two axes of the repository profile did not mean what the module claimed.**
+  `Spread` was `1 − Gini`, but Gini's maximum for n contributors is (n−1)/n, so
+  the axis had a floor of 1/n rather than 0: adding a contributor who committed
+  *nothing* moved it from 0% to 50%, and ten people where one did everything
+  scored 10% while two people where one did everything scored 50% — the more
+  concentrated repository scoring five times higher. It is now normalised
+  against the attainable maximum. `Currency` measured where the last commit sat
+  in the window, which under `--deterministic` **is** the window end, making it
+  identically 100% for every repository — in the mode the Playbook tells
+  consumers to use. Replaced with the share of commits in the window's final
+  quarter.
+
+- **One fact, two numbers.** The summary card said "Max Inactive Days 13" and
+  the findings said "longest quiet run of 14 days". The card counted inactive
+  calendar days; the finding counted the gap between active days, which is
+  inactive plus one — a structural off-by-one that differed by exactly one on
+  every repository. Both now report inactive days.
+
+- **The Gini was shown against a scale that is false for its own sample.** The
+  report said "Gini runs 0 (even) to 1 (concentrated)". For two contributors
+  the attainable maximum is 0.50, so 0.23 is 46% of the achievable range, not
+  23%. The stated ceiling is now the real one.
+
+- **Two summary cards carried a bare number with no unit.** "Commit
+  Concentration 1" and "Max Inactive Days 13" now read "Hold Half the Commits"
+  and "Longest Quiet Run (days)".
+
 - **The default report named an individual and called them "Top Contributor".**
   Found by a legal review of the artefact, not of the documentation. The fifth
   summary card was never gated on `provenance.ranking_enabled`: `--no-ranking`

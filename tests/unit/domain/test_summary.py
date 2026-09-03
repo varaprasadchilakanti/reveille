@@ -245,3 +245,41 @@ class TestBehaviouralFindingsAreWithheldInSmallTeams:
         """A commit count describes the repository, not a person."""
         findings = summarise(_commits(40), _stats([40]))
         assert any("commits over" in f.headline for f in findings)
+
+
+@pytest.mark.unit
+class TestOneFactHasOneNumber:
+    """The report stated a quiet run twice, with two different values.
+
+    The summary card counts inactive calendar days; the finding took the
+    gap between two active days, which is inactive + 1. A structural
+    off-by-one, so the two disagreed by exactly one on every repository
+    ever analysed — "Max Inactive Days 13" beside "longest quiet run of
+    14 days", in one document, about one fact.
+    """
+
+    def test_the_finding_agrees_with_the_summary_card(self) -> None:
+        from reveille.adapters.renderer import _compute_longest_inactive_streak
+
+        commits = [
+            Commit(
+                sha=f"{index:040d}",
+                author_name="Dev",
+                author_email="d@example.com",
+                timestamp=_START + datetime.timedelta(days=offset),
+                lines_added=5,
+                lines_deleted=0,
+            )
+            # Enough commits to clear the cadence threshold, with one
+            # deliberate 14-day gap: 13 days carrying no commits.
+            for index, offset in enumerate([*range(20), 34, 35, 36, 40, 41, 42, 43])
+        ]
+        dates = [c.timestamp.date() for c in commits]
+        card = _compute_longest_inactive_streak(commits, min(dates), max(dates))
+
+        finding = next(f for f in summarise(commits, _stats([27])) if "quiet run" in f.headline)
+        quoted = int(finding.headline.split("quiet run of ")[1].split()[0].replace(",", ""))
+        assert quoted == card, (
+            f"the finding says {quoted} days and the card says {card}; "
+            "one fact, two numbers, in one document"
+        )

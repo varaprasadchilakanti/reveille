@@ -45,7 +45,7 @@
             --color-border-subtle:   #21262d;
             --color-text-primary:    #e6edf3;
             --color-text-secondary:  #8b949e;
-            --color-text-muted:      #7d8590;
+            --color-text-muted:      #868f99;
             --color-primary:         #58a6ff;
             --color-primary-dim:     #1f3458;
             --color-accent:          #79c0ff;
@@ -292,6 +292,36 @@
         /* The report is read on screen and printed to PDF. Splitting a chart
            or a table across a page break loses the axis with it. */
         @media print {
+            /* Browsers do not print background colours by default, but they
+               do print text colour. A reader who had ever pressed "Dark
+               Mode" printed #e6edf3 on white paper: 1.18:1, an effectively
+               blank page. The theme persists in localStorage, so it
+               survived a reload and every later report. Print is always
+               the light palette. */
+            :root,
+            [data-theme="dark"] {
+                --color-bg:             #ffffff;
+                --color-surface:        #f6f8fa;
+                --color-surface-raised: #ffffff;
+                --color-border:         #d1d9e0;
+                --color-border-subtle:  #eaeef2;
+                --color-text-primary:   #1c2128;
+                --color-text-secondary: #57606a;
+                --color-text-muted:     #5c636b;
+                --color-primary:        #1e40af;
+                --color-accent:         #2563eb;
+                --color-positive:       #1a7f37;
+                --color-negative:       #cf222e;
+            }
+
+            /* Controls that cannot be operated on paper, advertising views
+               the reader cannot reach. */
+            .theme-toggle,
+            .heatmap-controls,
+            .modebar {
+                display: none !important;
+            }
+
             .section,
             .chart-container,
             .stat-card,
@@ -308,11 +338,15 @@
             padding-bottom: 8px;
             margin-bottom: 20px;
             border-bottom: 1px solid var(--color-border);
-            font-size: 10px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            color: var(--color-text-secondary);
+            /* Was 10px uppercase, which made the document's structural
+               landmarks its smallest text -- about 7.5pt in a printed PDF.
+               Uppercase also removes the word-shape cues a reader uses to
+               scan, so it is kept only for short labels where scanning is
+               not the job. */
+            font-size: 17px;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+            color: var(--color-text-primary);
         }
 
         .section-title-qualifier {
@@ -671,14 +705,14 @@
             <div class="label" aria-hidden="true">Contributors</div>
         </div>
         <div class="summary-card">
-            <span class="visually-hidden">Commit Concentration: {{ derived.commit_concentration }}</span>
+            <span class="visually-hidden">Contributors holding half the commits: {{ derived.commit_concentration }}</span>
             <div class="value" aria-hidden="true">{{ derived.commit_concentration }}</div>
-            <div class="label" aria-hidden="true">Commit Concentration</div>
+            <div class="label" aria-hidden="true">Hold Half the Commits</div>
         </div>
         <div class="summary-card">
-            <span class="visually-hidden">Max Inactive Days: {{ derived.longest_inactive_streak }}</span>
+            <span class="visually-hidden">Longest run of days with no commits: {{ derived.longest_inactive_streak }}</span>
             <div class="value" aria-hidden="true">{{ derived.longest_inactive_streak }}</div>
-            <div class="label" aria-hidden="true">Max Inactive Days</div>
+            <div class="label" aria-hidden="true">Longest Quiet Run (days)</div>
         </div>
         {#
            The fifth card names a person only when the ranking was asked
@@ -715,6 +749,50 @@
         {% endif %}
     </div>
 
+    <!-- ============================================================
+         What the history shows -- generated from the figures below
+         ============================================================ -->
+    {% if derived.findings %}
+    <div class="section">
+        <h2 class="section-title">What the History Shows</h2>
+        <ul class="findings">
+            {% for finding in derived.findings %}
+            <li>
+                <span class="finding-head">{{ finding.headline }}</span>
+                <span class="finding-evidence">{{ finding.evidence }}</span>
+                {% if finding.detail %}<span class="finding-detail">{{ finding.detail }}</span>{% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+        <p class="chart-foot">
+            Generated from the figures in this report by fixed rules, offline
+            and without a language model. The same history always produces the
+            same sentences. No individual is named or assessed.
+        </p>
+    </div>
+    {% endif %}
+    <!-- ============================================================
+         Contribution Distribution (Lorenz curve)
+         ============================================================ -->
+    <div class="section">
+        <h2 class="section-title">Contribution Distribution<span class="section-metric">Gini <b>{{ '%.2f'|format(derived.gini_coefficient) }}</b></span></h2>
+        <p class="section-note">
+            Cumulative share of commits against cumulative share of
+            contributors. The further the curve bows below the diagonal, the
+            more concentrated the activity.
+        </p>
+        <div class="chart-container">
+            <div id="chart-lorenz" role="img" aria-label="Lorenz curve showing the cumulative share of commits held by the cumulative share of contributors, plotted against a line of perfect equality."></div>
+        </div>
+        <p class="chart-foot">
+            Gini runs 0 (even) to {{ '%.2f'|format(derived.gini_ceiling) }}, which is the most
+            concentrated {{ data.metadata.unique_contributors }} contributors can be — the maximum is (n-1)/n, not 1.
+            It describes the
+            repository, not the people in it: a single maintainer with
+            occasional contributors scores high for ordinary reasons.
+            Comparable against this repository over time, not against another.
+        </p>
+    </div>
     <!-- ============================================================
          Activity Heatmap
          ============================================================ -->
@@ -766,49 +844,7 @@
     </div>
     {% endif %}
 
-    <!-- ============================================================
-         What the history shows -- generated from the figures below
-         ============================================================ -->
-    {% if derived.findings %}
-    <div class="section">
-        <h2 class="section-title">What the History Shows</h2>
-        <ul class="findings">
-            {% for finding in derived.findings %}
-            <li>
-                <span class="finding-head">{{ finding.headline }}</span>
-                <span class="finding-evidence">{{ finding.evidence }}</span>
-                {% if finding.detail %}<span class="finding-detail">{{ finding.detail }}</span>{% endif %}
-            </li>
-            {% endfor %}
-        </ul>
-        <p class="chart-foot">
-            Generated from the figures in this report by fixed rules, offline
-            and without a language model. The same history always produces the
-            same sentences. No individual is named or assessed.
-        </p>
-    </div>
-    {% endif %}
 
-    <!-- ============================================================
-         Contribution Distribution (Lorenz curve)
-         ============================================================ -->
-    <div class="section">
-        <h2 class="section-title">Contribution Distribution<span class="section-metric">Gini <b>{{ '%.2f'|format(derived.gini_coefficient) }}</b></span></h2>
-        <p class="section-note">
-            Cumulative share of commits against cumulative share of
-            contributors. The further the curve bows below the diagonal, the
-            more concentrated the activity.
-        </p>
-        <div class="chart-container">
-            <div id="chart-lorenz" role="img" aria-label="Lorenz curve showing the cumulative share of commits held by the cumulative share of contributors, plotted against a line of perfect equality."></div>
-        </div>
-        <p class="chart-foot">
-            Gini runs 0 (even) to 1 (concentrated). It describes the
-            repository, not the people in it: a single maintainer with
-            occasional contributors scores high for ordinary reasons.
-            Comparable against this repository over time, not against another.
-        </p>
-    </div>
 
     <!-- ============================================================
          Commit Size Distribution
@@ -1004,17 +1040,6 @@
                 <div id="chart-contributor_lines" role="img" aria-label="Bar chart of lines changed per contributor. The same figures appear in the Lines Added and Lines Deleted columns of the contributor table."></div>
             </div>
         </div>
-
-        <div class="chart-row">
-            <div class="chart-container">
-                <p class="chart-label">Commit Share</p>
-                <div id="chart-pie_commits" role="img" aria-label="Donut chart of each contributor's share of total commits."></div>
-            </div>
-            <div class="chart-container">
-                <p class="chart-label">Lines Changed Share</p>
-                <div id="chart-pie_lines" role="img" aria-label="Donut chart of each contributor's share of total lines changed."></div>
-            </div>
-        </div>
     </div>
 
     <!-- ============================================================
@@ -1177,6 +1202,15 @@
             // hover. Pinning both ends the derivation, so the toolbar keeps
             // a fixed, checked contrast under either theme instead of one
             // computed from a background we change underneath it.
+            // A polar plot does not inherit plot_bgcolor. Plotly defaults
+            // polar.bgcolor to #fff, so the radar drew a white disc inside
+            // a dark card -- the same class of defect the cartesian axes
+            // were cleared of, living in the gap between two guards.
+            polar: {
+                bgcolor: '#f6f8fa',
+                radialaxis:  { gridcolor: '#e2e8f0', linecolor: '#e2e8f0', color: '#1c2128' },
+                angularaxis: { gridcolor: '#e2e8f0', linecolor: '#e2e8f0', color: '#1c2128' }
+            },
             modebar: {
                 bgcolor:     '#ffffff',
                 color:       '#57606a',
@@ -1196,6 +1230,15 @@
                 bgcolor:     '#21262d',
                 bordercolor: '#30363d',
                 font:        { color: '#e6edf3' }
+            },
+            // A polar plot does not inherit plot_bgcolor. Plotly defaults
+            // polar.bgcolor to #fff, so the radar drew a white disc inside
+            // a dark card -- the same class of defect the cartesian axes
+            // were cleared of, living in the gap between two guards.
+            polar: {
+                bgcolor: '#161b22',
+                radialaxis:  { gridcolor: '#30363d', linecolor: '#30363d', color: '#e6edf3' },
+                angularaxis: { gridcolor: '#30363d', linecolor: '#30363d', color: '#e6edf3' }
             },
             modebar: {
                 bgcolor:     '#21262d',
