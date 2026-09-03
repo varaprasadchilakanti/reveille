@@ -13,7 +13,23 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **The SBOM attestation failed on every release, and 0.8.0 was the first to
+  find out.** `actions/attest` expands globs in `subject-path` but not in
+  `predicate-path`, and both were given `reveille-*-sbom.cdx.json`. The step
+  failed with `predicate file not found` — after the distributions had already
+  reached PyPI, which is the half that cannot be retried. Both inputs now take
+  a filename resolved once, in one step, so a tag push and a manual re-run
+  cannot disagree about it.
+
+- **A failed SBOM job could not be retried.** The workflow ran only on a tag
+  push, and re-running it from the tag re-runs the workflow file *as it was at
+  that tag* — the same failure. With release immutability enabled the tag
+  cannot be moved, so that version would have been left permanently without an
+  attested SBOM. A `workflow_dispatch` trigger takes an existing tag, checks it
+  out, and regenerates. Publication is guarded off that path: a version number
+  is spent on first upload, so a second attempt would fail regardless.
 
 ---
 

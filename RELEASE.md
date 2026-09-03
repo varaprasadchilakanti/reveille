@@ -122,6 +122,14 @@ The tag push triggers `.github/workflows/publish.yml`, which:
    attestations. **There are no stored credentials**; nothing to rotate or leak;
 3. generates and attests a CycloneDX SBOM, and uploads it as a workflow artifact.
 
+**If the SBOM job fails, publication has already happened.** It runs after the
+upload, so a failure there costs the attestation, not the release. Re-running
+the job from the tag re-runs the workflow file *as it was at that tag*, which
+will fail the same way. Fix the workflow on `main`, then use the manual
+trigger: Actions → Publish → Run workflow → enter the tag. Only the SBOM jobs
+run that way; publication is guarded off, since a version number is spent on
+first upload.
+
 Watch the run. If it fails before the upload step, delete the tag
 (`git push --delete origin vX.Y.Z && git tag -d vX.Y.Z`), fix, and re-tag.
 This works only while no Release has been published for that tag: with
