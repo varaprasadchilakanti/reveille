@@ -128,3 +128,59 @@ class TestBothAreWiredIntoTheReport:
         from reveille.domain.models import ReportData
 
         assert "file_stats" in ReportData.__dataclass_fields__
+
+
+@pytest.mark.unit
+class TestTheRepositoryProfileChart:
+    """A radar has known weaknesses; these assert they are handled."""
+
+    def test_the_polygon_is_closed(self) -> None:
+        from reveille.adapters.renderer import _build_profile_chart
+        from reveille.domain.profile import AXIS_ORDER, ProfileAxis
+
+        # Distinct values per axis: with every axis equal, a closure
+        # assertion is true whether or not the loop was closed.
+        axes = [ProfileAxis(name, 0.2 + index * 0.15, "d") for index, name in enumerate(AXIS_ORDER)]
+        trace = json.loads(_build_profile_chart(axes))["data"][0]
+        assert len(trace["r"]) == len(trace["theta"]) == len(AXIS_ORDER) + 1, (
+            "an unclosed radar leaves a gap between the last axis and the first"
+        )
+        assert trace["theta"][0] == trace["theta"][-1]
+        assert trace["r"][0] == trace["r"][-1]
+
+    def test_every_vertex_is_labelled_with_its_value(self) -> None:
+        """The figure must be readable as numbers, not only as a shape."""
+        from reveille.adapters.renderer import _build_profile_chart
+        from reveille.domain.profile import AXIS_ORDER, ProfileAxis
+
+        axes = [ProfileAxis(name, 0.42, "d") for name in AXIS_ORDER]
+        trace = json.loads(_build_profile_chart(axes))["data"][0]
+        assert "text" in trace["mode"]
+        assert set(trace["text"]) == {"42%"}
+
+    def test_the_radial_axis_is_a_true_zero_to_one(self) -> None:
+        """No rescaling: a 40% axis must sit at 40% of the radius."""
+        from reveille.adapters.renderer import _build_profile_chart
+        from reveille.domain.profile import AXIS_ORDER, ProfileAxis
+
+        axes = [ProfileAxis(name, 0.4, "d") for name in AXIS_ORDER]
+        layout = json.loads(_build_profile_chart(axes))["layout"]
+        assert layout["polar"]["radialaxis"]["range"] == [0, 1]
+
+    def test_no_profile_produces_no_chart(self) -> None:
+        from reveille.adapters.renderer import _build_profile_chart
+
+        assert _build_profile_chart([]) == "null"
+
+    def test_it_is_wired_into_the_report(self) -> None:
+        template = _TEMPLATE.read_text(encoding="utf-8")
+        assert 'id="spec-profile"' in template
+        assert "charts.profile | safe" in template
+        assert 'id="chart-profile"' in template
+        assert "'profile'" in template
+
+    def test_the_caveat_about_area_is_stated_in_the_report(self) -> None:
+        """A radar that does not warn about its own form misleads."""
+        template = _TEMPLATE.read_text(encoding="utf-8")
+        assert "order of the axes" in template
+        assert "Cleveland" in template
