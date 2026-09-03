@@ -21,6 +21,42 @@ Nothing yet.
 
 ### Added
 
+- **File-level analysis: where change concentrates, and what kind of file it
+  lands in.** Two sections, both about paths and neither about people.
+
+  `git log --numstat` was already carrying a path on every line, and the
+  per-commit totals were being summed out of a structure that had them and
+  then discarded. **This costs no additional Git work** — only parsing already
+  paid for — so the single-pass read that 0.7.0 made 9.4× faster is untouched.
+  Totals accumulate while streaming, bounded by the number of distinct paths
+  rather than by commits multiplied by the files each touched; a
+  50,000-commit repository would otherwise hold a path list per commit for the
+  whole run.
+
+  *Where Change Concentrates* ranks paths by churn — added plus deleted, not
+  net, because a file that gains and loses a thousand lines has been worked
+  on. This is the churn axis of hotspot analysis (Tornhill, *Your Code as a
+  Crime Scene*, 2013), resting on relative code churn (Nagappan & Ball, ICSE
+  2005). The full method crosses churn with complexity; Reveille reads history
+  and never file content, so it reports the churn axis alone and says so. A
+  file that changes often is one to look at, not one that is wrong.
+  Machine-generated files are excluded — `poetry.lock` is the largest single
+  source of changed lines in this repository by a factor of three, and tells a
+  reader nothing they can act on — but their churn still counts in the type
+  breakdown, since excluding a file from a ranking is not the same as hiding
+  it.
+
+  *Change by File Type* totals churn by extension, so a window can be
+  described as source, tests, documentation or configuration without naming a
+  file or a person. Extensions beyond the largest eight are pooled rather than
+  dropped, so the total is preserved. A dotfile such as `.gitignore` is a file
+  called gitignore, not a gitignore-typed file, and is reported as having no
+  extension.
+
+  Renames resolve to their destination. Counting both sides would double a
+  file; counting the source would attribute churn to a path that no longer
+  exists.
+
 - **A change-size histogram.** How much each commit changed, pooled across the
   history, in log-spaced buckets — linear buckets over a range spanning one
   line to ten thousand put almost every commit in the first bar and state

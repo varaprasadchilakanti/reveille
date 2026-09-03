@@ -791,6 +791,45 @@
     </div>
 
     <!-- ============================================================
+         Where the change lands -- files, not people
+         ============================================================ -->
+    {% if charts.hotspots != 'null' %}
+    <div class="section">
+        <h2 class="section-title">Where Change Concentrates</h2>
+        <p class="section-note">
+            Paths absorbing the most change, pooled across everyone.
+        </p>
+        <div class="chart-container">
+            <div id="chart-hotspots" role="img" aria-label="Horizontal bar chart of the file paths with the most lines changed across the analysis window."></div>
+        </div>
+        <p class="chart-foot">
+            Churn is added plus deleted, not net. This is the churn axis of
+            hotspot analysis (Tornhill, 2013; Nagappan &amp; Ball, ICSE 2005) —
+            Reveille reads history and never file content, so it cannot cross
+            churn with complexity. A file that changes often is one to look
+            at, not one that is wrong. Machine-generated files such as lock
+            files are excluded; they dominate any churn ranking and tell you
+            nothing you can act on.
+        </p>
+    </div>
+
+    <div class="section">
+        <h2 class="section-title">Change by File Type</h2>
+        <p class="section-note">
+            What kind of work the window contained.
+        </p>
+        <div class="chart-container">
+            <div id="chart-extensions" role="img" aria-label="Bar chart of lines changed grouped by file extension."></div>
+        </div>
+        <p class="chart-foot">
+            Extensions beyond the largest eight are pooled rather than dropped,
+            so the total is preserved. Files without an extension, including
+            dotfiles, are reported together.
+        </p>
+    </div>
+    {% endif %}
+
+    <!-- ============================================================
          Per-Contributor Commit Frequency
          ============================================================ -->
     <div class="section">
@@ -975,6 +1014,14 @@
 {{ charts.commit_size | safe }}
 </script>
 
+<script type="application/json" id="spec-hotspots">
+{{ charts.hotspots | safe }}
+</script>
+
+<script type="application/json" id="spec-extensions">
+{{ charts.extensions | safe }}
+</script>
+
 <script type="application/json" id="spec-heatmap">
 {{ charts.heatmap | safe }}
 </script>
@@ -1008,7 +1055,9 @@
         'pie_commits',
         'pie_lines',
         'lorenz',
-        'commit_size'
+        'commit_size',
+        'hotspots',
+        'extensions'
     ];
 
     var PLOTLY_CONFIG = {

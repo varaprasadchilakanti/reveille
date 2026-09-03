@@ -53,8 +53,10 @@ from jinja2 import (
 )
 
 from reveille.domain.concentration import gini_coefficient, lorenz_curve
+from reveille.domain.files import extension_breakdown, hotspots
 from reveille.domain.models import (
     Commit,
+    FileStats,
     RankedContributor,
     ReportData,
 )
@@ -537,6 +539,8 @@ class Renderer:
             "pie_lines": _build_lines_share_pie(data.ranked_contributors),
             "lorenz": _build_lorenz_chart(data.ranked_contributors),
             "commit_size": _build_commit_size_chart(data.commits),
+            "hotspots": _build_hotspot_chart(data.file_stats),
+            "extensions": _build_extension_chart(data.file_stats),
         }
 
 
@@ -997,6 +1001,91 @@ def _build_commit_size_chart(commits: list[Commit]) -> str:
         **layout,
         xaxis_title="Lines changed in one commit",
         yaxis_title="Commits",
+        height=280,
+    )
+    return _to_json(fig)
+
+
+def _build_hotspot_chart(files: list[FileStats]) -> str:
+    """Build a horizontal bar chart of the paths absorbing the most change.
+
+    The churn axis of hotspot analysis (Tornhill, *Your Code as a Crime
+    Scene*, 2013), resting on relative code churn (Nagappan & Ball, ICSE
+    2005). Reveille reads history and never file content, so it reports
+    churn alone rather than crossing it with complexity -- a file that
+    changes often is one to look at, not one that is wrong.
+
+    Args:
+        files: Per-path activity for the analysis window.
+
+    Returns:
+        A Plotly figure JSON string, or 'null' if there is nothing to show.
+    """
+    ranked = hotspots(files, limit=12)
+    if not ranked:
+        return "null"
+
+    paths = [_sanitise_chart_label(f.path) for f in reversed(ranked)]
+    churn = [f.lines_changed for f in reversed(ranked)]
+    commits = [f.commits for f in reversed(ranked)]
+
+    fig = go.Figure(
+        go.Bar(
+            x=churn,
+            y=paths,
+            orientation="h",
+            marker_color=_CATEGORICAL_PALETTE[0],
+            customdata=commits,
+            hovertemplate=(
+                "%{y}<br>Lines changed: %{x:,}<br>Commits: %{customdata}<extra></extra>"
+            ),
+            text=[f"{value:,}" for value in churn],
+            textposition="outside",
+        )
+    )
+    fig.update_layout(
+        **_base_layout(),
+        xaxis_title="Lines changed (added + deleted)",
+        height=max(280, min(len(ranked) * 30 + 90, _MAX_CHART_HEIGHT)),
+    )
+    return _to_json(fig)
+
+
+def _build_extension_chart(files: list[FileStats]) -> str:
+    """Build a bar chart of churn totalled by file extension.
+
+    What kind of work a period contained -- source, tests, documentation,
+    configuration -- without naming a file or a person.
+
+    Args:
+        files: Per-path activity for the analysis window.
+
+    Returns:
+        A Plotly figure JSON string, or 'null' if there is nothing to show.
+    """
+    breakdown = extension_breakdown(files, limit=8)
+    if not breakdown:
+        return "null"
+
+    labels = [label for label, _ in breakdown]
+    values = [value for _, value in breakdown]
+
+    fig = go.Figure(
+        go.Bar(
+            x=labels,
+            y=values,
+            marker_color=_CATEGORICAL_PALETTE[2],
+            text=[f"{value:,}" for value in values],
+            textposition="outside",
+            hovertemplate="%{x}<br>Lines changed: %{y:,}<extra></extra>",
+        )
+    )
+    layout = _base_layout()
+    layout["xaxis"] = {"type": "category", "automargin": True}
+    fig.update_layout(
+        **layout,
+        xaxis_title="File type",
+        yaxis_title="Lines changed",
         height=280,
     )
     return _to_json(fig)

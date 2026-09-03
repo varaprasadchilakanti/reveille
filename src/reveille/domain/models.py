@@ -42,6 +42,32 @@ class Commit:
 
 
 @dataclass(frozen=True)
+class FileStats:
+    """Activity recorded against one path, pooled across contributors.
+
+    A file, not a person. Nothing here identifies who changed what, which
+    is why it is in the default report at all.
+
+    Attributes:
+        path: The file path, relative to the repository root, after any
+            rename has been resolved to its destination.
+        commits: Number of commits that touched this path.
+        lines_added: Lines added to this path across those commits.
+        lines_deleted: Lines deleted from this path across those commits.
+    """
+
+    path: str
+    commits: int
+    lines_added: int
+    lines_deleted: int
+
+    @property
+    def lines_changed(self) -> int:
+        """Total churn: added plus deleted, not net."""
+        return self.lines_added + self.lines_deleted
+
+
+@dataclass(frozen=True)
 class ContributorStats:
     """Aggregated activity metrics for a single contributor within an analysis window.
 
@@ -167,3 +193,7 @@ class ReportData:
     provenance: AnalysisProvenance
     ranked_contributors: list[RankedContributor]
     commits: list[Commit] = field(default_factory=list)
+    #: Per-path activity, pooled across contributors. Defaults to empty so
+    #: a caller constructing a report without it -- every existing test --
+    #: keeps working; the file sections are then simply absent.
+    file_stats: list[FileStats] = field(default_factory=list)
