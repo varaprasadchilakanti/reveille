@@ -75,10 +75,10 @@ what an installation of it contains.
 The SBOM is produced by a job that is independent of publishing, so a
 failure to generate one cannot withhold a release. It is uploaded as the
 `sbom` artifact of the workflow run and attached to the GitHub Release.
-If the Release is drafted after the tag is pushed — the usual order — the
-artifact is attached by hand when it is drafted, and **before the Release
-is published**: this repository enables release immutability, and a
-published release accepts no further assets.
+The Release itself is drafted by that workflow, with the SBOM already
+attached, so there is no step in which a human has to remember to attach
+one. It is created as a draft: a draft accepts assets and a published
+release does not, because this repository enables release immutability.
 
 Where that was missed, the SBOM is still obtainable. It remains the
 `sbom` artifact of the workflow run, and it can be regenerated from the

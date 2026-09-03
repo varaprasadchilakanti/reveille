@@ -188,50 +188,85 @@ jobs:
   # repository, and it runs no third-party code -- just the SBOM file
   # produced above. The generator itself never sees a write token.
   # ----------------------------------------------------------------
-  attach-sbom:
-    name: Attach SBOM to the GitHub Release
+  release:
+    name: Draft the GitHub Release with the SBOM attached
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: sbom
     permissions:
       contents: write
     steps:
+      - name: Resolve the release being described
+        id: release
+        env:
+          REQUESTED_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          tag="${REQUESTED_TAG:-$GITHUB_REF_NAME}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # CHANGELOG.md as it was at the tag, so the notes describe the
+          # release rather than whatever has landed since.
+          ref: ${{ steps.release.outputs.tag }}
+          persist-credentials: false
+
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: sbom
 
-      # The Release is normally drafted by hand after the tag is pushed,
-      # so it usually does not exist yet at this point. That is not a
-      # failure -- the SBOM remains available as a workflow artifact and
-      # the log says how to attach it.
-      - name: Attach to the Release if one already exists
+      # The title and body come from the CHANGELOG heading, which carries
+      # the version, the date and the theme for exactly this reason. Nothing
+      # is retyped at release time, so the Release and the changelog cannot
+      # disagree.
+      - name: Read the notes from the CHANGELOG
+        id: notes
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/release_notes.py "$TAG" --title > release-title.txt
+          python3 .github/scripts/release_notes.py "$TAG" --body > release-body.md
+          echo "title=$(cat release-title.txt)" >> "$GITHUB_OUTPUT"
+          echo "Release title: $(cat release-title.txt)"
+
+      # Created as a DRAFT, deliberately. A draft still accepts assets;
+      # a published release does not, once release immutability is on.
+      # Creating it here with the SBOM already attached closes the window
+      # in which a human had to remember to attach one -- and the human
+      # still reviews the notes and presses Publish.
+      - name: Create the draft Release, or attach to one that exists
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ inputs.tag || github.ref_name }}
+          TAG: ${{ steps.release.outputs.tag }}
+          TITLE: ${{ steps.notes.outputs.title }}
         run: |
           set -uo pipefail
           if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "No Release exists for $TAG yet."
-            echo "The SBOM is available as the 'sbom' artifact of this run."
-            echo "Attach it while drafting the Release, before publishing it."
+            gh release create "$TAG" reveille-*-sbom.cdx.json \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$TITLE" \
+              --notes-file release-body.md \
+              --draft
+            echo "Draft Release created for $TAG with the SBOM attached."
+            echo "Review the notes and press Publish."
             exit 0
           fi
 
           if gh release upload "$TAG" reveille-*-sbom.cdx.json \
                --repo "$GITHUB_REPOSITORY" --clobber; then
-            echo "SBOM attached to release $TAG."
+            echo "SBOM attached to the existing release $TAG."
             exit 0
           fi
 
-          # A published immutable release accepts no new assets. That is a
-          # setting working as intended, not a fault in this run, and it
-          # must not fail a pipeline whose security-relevant output -- the
-          # attestation -- has already succeeded. The SBOM stays available
-          # as this run's artifact, and `make sbom` at the tag reproduces
-          # it byte for byte.
+          # A published immutable release accepts no new assets. That is the
+          # setting working as intended, not a fault in this run, and it must
+          # not fail a pipeline whose security-relevant output -- the
+          # attestation -- has already succeeded.
           echo "::warning::could not attach the SBOM to release $TAG."
-          echo "If release immutability is enabled, a published release"
-          echo "accepts no new assets. Attach the SBOM while drafting the"
-          echo "Release next time, before publishing it."
-          echo "The SBOM remains downloadable as the 'sbom' artifact here."
+          echo "A published release accepts no new assets once release"
+          echo "immutability is enabled. The SBOM remains downloadable as"
+          echo "the 'sbom' artifact of this run, and `make sbom` at the tag"
+          echo "reproduces it byte for byte."
           exit 0

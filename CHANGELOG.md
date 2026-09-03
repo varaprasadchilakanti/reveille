@@ -23,6 +23,26 @@ before 0.8.0 predate the convention and are left as they were released.
   a filename resolved once, in one step, so a tag push and a manual re-run
   cannot disagree about it.
 
+- **The Release is now drafted by the workflow, with the SBOM already
+  attached.** The old design generated the SBOM, tried to attach it to a
+  Release that does not exist yet at tag time, and left a human to attach it
+  later — into a window that release immutability closes the moment Publish is
+  pressed. Requiring a person to remember a step that has one narrow window is
+  a design fault, not a discipline problem.
+
+  The `release` job now creates a **draft** Release with the SBOM attached, the
+  title read from the CHANGELOG heading and the body from that version's
+  section. A draft accepts assets; a published release does not. Nothing is
+  retyped, so the Release and the changelog cannot disagree — which is what the
+  heading convention introduced earlier in this release was for, now that it is
+  machine-read rather than merely copied by hand.
+
+  `.github/scripts/release_notes.py` does the reading, and is tested against
+  this repository's real CHANGELOG: every released version must be describable,
+  a heading missing its date or theme fails, and a missing version is an error
+  rather than an untitled release. That check runs on every commit, not at tag
+  time — by tag time the tag is immutable and too late to fix.
+
 - **The SBOM could not be attached to a published release, and the job failed
   trying.** This repository enables release immutability, so a published
   release accepts no further assets — by hand or by workflow. The attach step
