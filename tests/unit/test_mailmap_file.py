@@ -136,11 +136,15 @@ class TestGitItselfHonoursTheFile:
             f"git resolves the maintainer to {identities}, not to the "
             "canonical identity the .mailmap declares"
         )
-        stray = [
-            identity
-            for identity in identities
-            if "noreply.github.com" in identity and "dependabot" not in identity
-        ]
+        stray = []
+        for identity in identities:
+            if "dependabot" in identity.lower():
+                continue
+            lt = identity.rfind("<")
+            gt = identity.rfind(">")
+            email = identity[lt + 1 : gt].strip().lower() if lt != -1 and gt != -1 and lt < gt else ""
+            if email.endswith("@noreply.github.com"):
+                stray.append(identity)
         assert stray == [], (
             "git still counts a noreply address as its own contributor: "
             f"{stray}. Git does not strip the numeric prefix the way Reveille "
