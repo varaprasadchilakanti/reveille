@@ -358,6 +358,32 @@ Nothing yet.
   The scaffold now shows `enabled = false`, states that uncommenting turns it on,
   and points at the caveat.
 
+- **Three pairs of series colours were indistinguishable in normal vision.**
+  The eight-slot palette was replaced in this release with a "measured" one,
+  and it had not been measured against every pair. Recomputing all 28 pairs in
+  OKLab found 13 below target — and not only for colour-blind readers: orange
+  against red measured 7.1 in ordinary vision, magenta against red 7.8, blue
+  against violet 9.8. Two contributors drawn in colours nobody can separate is
+  a chart stating something false.
+
+  A series colour here has to clear three constraints at once, because one
+  fixed set is drawn on both themes: 3:1 against each plot surface, 15 OKLab
+  units from every other slot in normal vision, and 6 units under simulated
+  protanopia, deuteranopia and tritanopia. Searched over 29 candidates, **the
+  largest set satisfying all three is four.** The palette is now those four —
+  Okabe & Ito's Color Universal Design hues where they clear the dual-surface
+  requirement — and both `_MAX_SERIES` and `_PIE_MAX_SLICES` derive from its
+  length, so a fifth contributor aggregates rather than borrowing a hue.
+
+  `tests/unit/adapters/test_palette.py` carries the arithmetic and recomputes
+  all of it on every run, including two tests that check the colour-blindness
+  simulation still narrows a known red/green pair — a CVD check that cannot
+  see a confusable pair proves nothing. It immediately found a second defect:
+  the neutral used for the residual pie slice and the Lorenz reference line
+  now sat close to three of the new hues, so the aggregate would have read as
+  a person. It is a true neutral of zero chroma, which is the property that
+  actually separates scaffolding from identity.
+
 - **Axis titles were drawn over the tick labels, and contributor names were
   cut off.** Every chart used a fixed 50px bottom and 60px left margin. That
   is a guess, and it was wrong in both directions: the weekly timeline's

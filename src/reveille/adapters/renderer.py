@@ -60,11 +60,6 @@ from reveille.domain.models import (
 )
 from reveille.exceptions import OutputPathError, RenderError
 
-# Maximum individual slices in a pie chart. Contributors beyond this
-# threshold are aggregated into a single "Other Contributors" slice
-# to maintain readability at standard browser zoom levels.
-_PIE_MAX_SLICES: int = 8
-
 # Label of the aggregated residual slice, referenced where its colour is chosen.
 _OTHER_LABEL: str = "Other Contributors"
 
@@ -84,19 +79,41 @@ _OTHER_LABEL: str = "Other Contributors"
 # clearing both floors in each mode -- which is why one palette can serve both
 # themes and no colours need to change when the theme toggle is used.
 #
-# One slot sits just under a 3:1 contrast ratio on the light surface. That is
-# permitted only because identity is never carried by colour alone here: every
-# chart using these has a legend, the pies carry direct labels, and the
-# contributor table restates the same figures as text.
+# Four slots, and four is not a style choice -- it is the measured ceiling.
+#
+# A series colour here has to satisfy three constraints at once, because one
+# fixed set is drawn on both themes:
+#
+#   * >= 3:1 against BOTH plot surfaces (#f6f8fa light, #161b22 dark), since
+#     the theme toggle changes the surface and not the series;
+#   * >= 15 OKLab dE from every other slot in normal vision, below which two
+#     series are indistinguishable to everyone;
+#   * >= 6 OKLab dE from every other slot under simulated protanopia,
+#     deuteranopia and tritanopia (Vienot-Brettel-Mollon), the documented
+#     floor that is admissible only alongside secondary encoding.
+#
+# Searched over a pool of 29 candidates, the largest set satisfying all three
+# is four. The previous eight-slot palette failed 13 of its 28 pairs, and not
+# only for colour-blind readers: orange against red measured 7.1 in NORMAL
+# vision, magenta against red 7.8, blue against violet 9.8. Three pairs of
+# series that nobody could tell apart.
+#
+# Hues are Okabe & Ito's Color Universal Design set (2008) where they clear
+# the dual-surface contrast requirement; their sky blue, yellow and pink do
+# not, and are excluded rather than fixed, since darkening them collapses the
+# separation that made them worth having.
+#
+# Secondary encoding is present and load-bearing: every chart using these has
+# a legend, the pies carry direct labels, and the contributor table restates
+# every figure as text. Beyond four series the honest move is to aggregate,
+# not to invent a fifth colour -- `_MAX_SERIES` and `_PIE_MAX_SLICES` both do.
+# `tests/unit/adapters/test_palette.py` recomputes all three constraints, so
+# a future edit that breaks one fails the build rather than the reader.
 _CATEGORICAL_PALETTE: list[str] = [
-    "#3987e5",  # blue
-    "#d95926",  # orange
-    "#199e70",  # aqua
-    "#c98500",  # yellow
-    "#d55181",  # magenta
-    "#008300",  # green
-    "#9085e9",  # violet
-    "#e66767",  # red
+    "#0072B2",  # blue
+    "#D55E00",  # vermillion
+    "#009E73",  # bluish green
+    "#8E5572",  # muted plum
 ]
 
 # Series colours are assigned in fixed order and never cycled. A ninth
@@ -104,6 +121,14 @@ _CATEGORICAL_PALETTE: list[str] = [
 # the chart state something false. Charts that could exceed the palette cap
 # their series count instead; see _build_contributor_timeline_chart.
 _MAX_SERIES: int = len(_CATEGORICAL_PALETTE)
+
+# Maximum individual slices in a pie chart. A slice is an identity, so it
+# needs a distinguishable colour; beyond the palette, contributors aggregate
+# into a single "Other Contributors" slice rather than reusing a hue. Derived
+# from the palette so the two cannot drift: a pie once drew a ninth slice in
+# slot one, sharing a colour with the top contributor in the one chart where
+# every slice is visible at once.
+_PIE_MAX_SLICES: int = len(_CATEGORICAL_PALETTE)
 
 # Added and deleted lines are a semantic pair, not two arbitrary categories, so
 # they are named rather than taken from the categorical order. They are drawn
@@ -116,8 +141,10 @@ _LINES_DELETED_COLOUR: str = "#e66767"
 # ninth slice wrapped around to slot one and shared a colour with the
 # top-ranked contributor inside the same pie -- two different things drawn the
 # same way, in the one chart where every slice is visible at once.
-# Contrast: 3.89:1 on the light plot surface, 4.17:1 on the dark one.
-_OTHER_SLICE_COLOUR: str = "#7d7d76"
+# A true neutral: 4.27:1 on the light plot surface, 3.81:1 on the dark one,
+# and zero chroma, which is what makes it read as an aggregate rather than a
+# fifth person. Asserted in tests/unit/adapters/test_palette.py.
+_OTHER_SLICE_COLOUR: str = "#767676"
 
 
 def _translucent(hex_colour: str, alpha: float) -> str:
@@ -149,7 +176,7 @@ _MAX_CHART_HEIGHT: int = 2400
 # The Lorenz chart's reference diagonal. A reference line is not a series, so
 # it takes the same neutral as the residual slice rather than a categorical hue
 # -- it must read as scaffolding, not as a third contributor.
-_EQUALITY_LINE_COLOUR: str = "#7d7d76"
+_EQUALITY_LINE_COLOUR: str = "#767676"
 
 # Pre-compiled patterns for sanitising user-controlled strings.
 # _SCRIPT_BLOCK_RE removes script elements including their content before
