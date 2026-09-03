@@ -4,6 +4,11 @@ All notable changes to Reveille are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
+From 0.8.0 a release heading carries three things — the version, the release
+date, and the theme: `## [X.Y.Z] — YYYY-MM-DD — Theme`. The theme is reused
+verbatim as the GitHub Release title, so the two can never drift. Headings
+before 0.8.0 predate the convention and are left as they were released.
+
 ---
 
 ## [Unreleased]
@@ -12,7 +17,7 @@ Nothing yet.
 
 ---
 
-## [0.8.0] — 2026-09-02
+## [0.8.0] — 2026-09-03 — Security Hardening, Apache-2.0, and an Opt-In Ranking
 
 ### Added
 
