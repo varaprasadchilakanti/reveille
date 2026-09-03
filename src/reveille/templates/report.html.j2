@@ -638,7 +638,7 @@
     <header class="report-header">
         <div class="report-header-copy">
             <h1>{{ data.metadata.name }}</h1>
-            <p class="report-subtitle">Repository Performance Report</p>
+            <p class="report-subtitle">Repository History Report</p>
             <div class="report-meta">
                 {% if data.metadata.remote_url %}
                 <span><strong>Remote:</strong> {{ data.metadata.remote_url }}</span>
@@ -680,24 +680,39 @@
             <div class="value" aria-hidden="true">{{ derived.longest_inactive_streak }}</div>
             <div class="label" aria-hidden="true">Max Inactive Days</div>
         </div>
+        {#
+           The fifth card names a person only when the ranking was asked
+           for. It previously did so unconditionally: `--no-ranking`
+           removed the rank column, the designation and the score, and
+           still printed a named individual under the superlative "Top
+           Contributor" at the top of the page. ADR 0010 says the default
+           report describes the repository and names nobody; this card
+           was the one place it did not.
+
+           Off, the slot carries the Gini instead -- a repository-level
+           figure, and the one the distribution section is built on.
+        #}
+        {% if data.provenance.ranking_enabled and data.ranked_contributors %}
         <div class="summary-card">
             <span class="visually-hidden">
-                Top Contributor:
-                {% if data.ranked_contributors %}
-                    {{ data.ranked_contributors[0].stats.name }}
-                {% else %}
-                    none
-                {% endif %}
+                Top Contributor by commit volume:
+                {{ data.ranked_contributors[0].stats.name }}
             </span>
             <div class="value" aria-hidden="true">
-                {% if data.ranked_contributors %}
-                    {{ data.ranked_contributors[0].stats.name.split()[0] }}
-                {% else %}
-                    --
-                {% endif %}
+                {{ data.ranked_contributors[0].stats.name.split()[0] }}
             </div>
             <div class="label" aria-hidden="true">Top Contributor</div>
         </div>
+        {% else %}
+        <div class="summary-card">
+            <span class="visually-hidden">
+                Commit distribution, Gini coefficient:
+                {{ '%.2f'|format(derived.gini_coefficient) }}
+            </span>
+            <div class="value" aria-hidden="true">{{ '%.2f'|format(derived.gini_coefficient) }}</div>
+            <div class="label" aria-hidden="true">Distribution (Gini)</div>
+        </div>
+        {% endif %}
     </div>
 
     <!-- ============================================================
@@ -876,7 +891,7 @@
         <div class="table-wrapper">
             <table class="ranking-table">
                 <caption class="visually-hidden">
-                    Contributor rankings for {{ data.metadata.name }} between
+                    {% if ranked %}Contributor rankings{% else %}Contributors{% endif %} for {{ data.metadata.name }} between
                     {{ data.metadata.analysis_since }} and {{ data.metadata.analysis_until }}.
                     One row per contributor, ordered by {% if ranked %}composite score{% else %}commit count{% endif %}.
                     This table carries the same underlying data as the charts on
