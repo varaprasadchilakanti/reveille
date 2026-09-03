@@ -211,6 +211,51 @@
             line-height: 1.6;
         }
 
+        /* A single figure carried on the section heading, for a number that
+           belongs to the whole section rather than to one series. The Lorenz
+           curve's Gini used to be the chart's own title, anchored top-left,
+           which is where Plotly also anchors the legend -- the two overlapped
+           in every export. */
+        .section-metric {
+            margin-left: auto;
+            font-size: 12px;
+            font-weight: 400;
+            letter-spacing: 0.02em;
+            color: var(--color-text-secondary);
+            white-space: nowrap;
+        }
+
+        .section-metric b {
+            font-variant-numeric: tabular-nums;
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--color-text-primary);
+        }
+
+        /* Method and caveat, under the chart it qualifies rather than above
+           it. A reader looking for the finding should reach the chart first;
+           a reader questioning the finding needs this, and knows to look. */
+        .chart-foot {
+            margin: 10px 0 0;
+            padding-top: 9px;
+            border-top: 1px solid var(--color-border-subtle);
+            color: var(--color-text-muted);
+            font-size: 11.5px;
+            line-height: 1.55;
+        }
+
+        /* The report is read on screen and printed to PDF. Splitting a chart
+           or a table across a page break loses the axis with it. */
+        @media print {
+            .section,
+            .chart-container,
+            .stat-card,
+            .ranking-table {
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+        }
+
         .section-title {
             display: flex;
             align-items: baseline;
@@ -641,24 +686,21 @@
          Contribution Distribution (Lorenz curve)
          ============================================================ -->
     <div class="section">
-        <h2 class="section-title">Contribution Distribution</h2>
+        <h2 class="section-title">Contribution Distribution<span class="section-metric">Gini <b>{{ '%.2f'|format(derived.gini_coefficient) }}</b></span></h2>
         <p class="section-note">
-            How evenly commits are spread across contributors. The dotted
-            diagonal is perfect equality — every contributor with the same
-            number of commits. The further the solid line bows beneath it, the
-            more activity is concentrated in fewer people. The Gini coefficient
-            is the standard single-number summary of that gap, from 0 (equal)
-            towards 1 (concentrated).
-            <br>
-            This describes the repository, not the people in it. A high value
-            is not a fault and a low one is not a target: a project with one
-            maintainer and many occasional contributors scores high for
-            entirely ordinary reasons. It is comparable against this repository
-            over time, not against a different one.
+            Cumulative share of commits against cumulative share of
+            contributors. The further the curve bows below the diagonal, the
+            more concentrated the activity.
         </p>
         <div class="chart-container">
             <div id="chart-lorenz" role="img" aria-label="Lorenz curve showing the cumulative share of commits held by the cumulative share of contributors, plotted against a line of perfect equality."></div>
         </div>
+        <p class="chart-foot">
+            Gini runs 0 (even) to 1 (concentrated). It describes the
+            repository, not the people in it: a single maintainer with
+            occasional contributors scores high for ordinary reasons.
+            Comparable against this repository over time, not against another.
+        </p>
     </div>
 
     <!-- ============================================================

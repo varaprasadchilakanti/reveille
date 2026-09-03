@@ -358,6 +358,28 @@ Nothing yet.
   The scaffold now shows `enabled = false`, states that uncommenting turns it on,
   and points at the caveat.
 
+- **Axis titles were drawn over the tick labels, and contributor names were
+  cut off.** Every chart used a fixed 50px bottom and 60px left margin. That
+  is a guess, and it was wrong in both directions: the weekly timeline's
+  `-45°` date labels ran under the word "Week", and the contributor bar chart
+  truncated names to `dabot[bot]` and `Chilakanti`. Both axes now set
+  `automargin`, so Plotly measures what it has drawn and reserves the space
+  it needs.
+
+- **The Gini coefficient sat where the legend sits.** It was the Lorenz
+  chart's own title, anchored top-left; Plotly anchors the legend there too,
+  and the two overlapped in every export. It is now a figure on the section
+  heading. The test that held it to the domain calculation was repointed
+  rather than dropped, and a new one fails if it is put back inside the plot.
+
+- **The distribution caption was a two-paragraph essay above the chart.** A
+  reader looking for the finding had to read past the method to reach it. The
+  lead is now one sentence; the caveat — that this describes the repository
+  and not the people in it — is a short footnote under the chart, where a
+  reader who is questioning the finding will look for it. Printing rules were
+  added at the same time, so a chart or table is no longer split across a PDF
+  page break.
+
 - **This repository had no `.mailmap`, and its own report showed it.** One
   commit made through the GitHub web interface carried the account's noreply
   address, so the contributors table listed three people where there are two.
