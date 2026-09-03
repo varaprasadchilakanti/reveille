@@ -852,16 +852,20 @@
     <div class="section">
         <h2 class="section-title">Change Size per Commit</h2>
         <p class="section-note">
-            How much each commit changed, pooled across the history.
-            Log-spaced buckets, because change size is heavily skewed.
+            The size of a typical change, and how far the tail runs.
+            Buckets double in width at each step, because the distribution is
+            heavily skewed — on linear bins almost every commit lands in the
+            first bar.
         </p>
         <div class="chart-container">
             <div id="chart-commit_size" role="img" aria-label="Histogram of commits grouped by the number of lines changed in each, on a log-spaced scale."></div>
         </div>
         <p class="chart-foot">
-            Relative code churn, in the sense of Nagappan &amp; Ball (ICSE
-            2005). It describes the working rhythm of the repository — many
-            small steps or few large ones — and separates no contributor out.
+            Churn is added plus deleted, not net: a commit that removes five
+            hundred lines is a large change. Relative code churn in the sense
+            of Nagappan &amp; Ball (ICSE 2005). Because the bins widen, the
+            tallest bar is not the median — the median is marked. Describes the
+            working rhythm of the repository and separates no contributor out.
         </p>
     </div>
 
@@ -1030,14 +1034,30 @@
     <div class="section">
         <h2 class="section-title">Contribution Breakdown</h2>
 
+        {#
+           One chart per question, and the form chosen for the question.
+
+           Commit share is part-of-whole, which is the one job a pie does
+           well: "is this one person's repository, or a team's" is read
+           off a single wedge. Exact counts are in the table above, so
+           the pie is not asked to do the comparison a bar would do
+           better (Cleveland & McGill, JASA 1984, rank position above
+           angle). Slices are capped at the palette length with a
+           residual, so it never degrades into unreadable slivers.
+
+           Lines changed stays a grouped bar: added against deleted is
+           two series, which a pie cannot show at all. Its share was
+           dropped -- it duplicated the bar beside it, and a share of
+           lines changed is the least meaningful share in the report.
+        #}
         <div class="chart-row">
             <div class="chart-container">
-                <p class="chart-label">Commits by Contributor</p>
-                <div id="chart-contributor_commits" role="img" aria-label="Bar chart of total commits per contributor. The same figures appear in the Commits column of the contributor table."></div>
+                <p class="chart-label">Share of Commits</p>
+                <div id="chart-pie_commits" role="img" aria-label="Donut chart of each contributor's share of total commits. Exact counts appear in the Commits column of the contributor table above."></div>
             </div>
             <div class="chart-container">
                 <p class="chart-label">Lines Changed by Contributor</p>
-                <div id="chart-contributor_lines" role="img" aria-label="Bar chart of lines changed per contributor. The same figures appear in the Lines Added and Lines Deleted columns of the contributor table."></div>
+                <div id="chart-contributor_lines" role="img" aria-label="Grouped bar chart of lines added and lines deleted per contributor. The same figures appear in the Lines Added and Lines Deleted columns of the contributor table."></div>
             </div>
         </div>
     </div>
@@ -1102,10 +1122,6 @@
 <script type="application/json" id="spec-pie_commits">
 {{ charts.pie_commits | safe }}
 </script>
-<script type="application/json" id="spec-pie_lines">
-{{ charts.pie_lines | safe }}
-</script>
-
 <!-- ================================================================
      Theme manager and chart initialisation
      ================================================================ -->
@@ -1118,10 +1134,8 @@
     var CHART_IDS = [
         'timeline',
         'contributor_timeline',
-        'contributor_commits',
         'contributor_lines',
         'pie_commits',
-        'pie_lines',
         'lorenz',
         'commit_size',
         'hotspots',

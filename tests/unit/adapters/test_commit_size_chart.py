@@ -104,3 +104,31 @@ class TestItIsWiredIntoTheReport:
         figure = _figure([_commit(10), _commit(20)])
         assert "Dev" not in json.dumps(figure)
         assert "dev@example.com" not in json.dumps(figure)
+
+
+@pytest.mark.unit
+class TestTheMedianIsMarked:
+    """Widening bins mean the tallest bar is not the middle of the data.
+
+    Each bucket is roughly four times the width of the one before it, so
+    a bar's height is a count over a wider range, not a density. Without
+    the median a reader takes the tallest bar for the typical commit,
+    which it need not be.
+    """
+
+    def test_the_annotation_reports_the_real_median(self) -> None:
+        sizes = [1, 2, 3, 300, 400, 500, 20000]
+        figure = _figure([_commit(size) for size in sizes])
+        annotation = figure["layout"]["annotations"][0]
+        assert f"median {sorted(sizes)[len(sizes) // 2]:,} lines" == annotation["text"]
+
+    def test_the_annotation_sits_on_the_median_s_own_bucket(self) -> None:
+        figure = _figure([_commit(size) for size in (1, 1, 60, 900, 900)])
+        annotation = figure["layout"]["annotations"][0]
+        assert annotation["x"] == "50-199", (
+            "the marker must sit on the bucket the median falls in, not the tallest bar"
+        )
+
+    def test_the_median_counts_churn_not_net(self) -> None:
+        figure = _figure([_commit(0, 400), _commit(0, 400), _commit(0, 400)])
+        assert "median 400 lines" in figure["layout"]["annotations"][0]["text"]

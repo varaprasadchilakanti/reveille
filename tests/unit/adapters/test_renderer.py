@@ -24,11 +24,9 @@ from reveille.adapters.renderer import (
     Renderer,
     _aggregate_pie_data,
     _build_commit_share_pie,
-    _build_contributor_commits_chart,
     _build_contributor_lines_chart,
     _build_contributor_timeline_chart,
     _build_heatmap_data,
-    _build_lines_share_pie,
     _build_timeline_chart,
     _compute_commit_concentration,
     _compute_longest_inactive_streak,
@@ -627,52 +625,6 @@ class TestBuildHeatmapData:
 
 
 # ------------------------------------------------------------------
-# _build_contributor_commits_chart
-# ------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestBuildContributorCommitsChart:
-    """Tests for the horizontal commit count bar chart builder."""
-
-    def test_empty_ranked_returns_null_sentinel(self) -> None:
-        assert _build_contributor_commits_chart([]) == "null"
-
-    def test_single_contributor_returns_valid_chart_json(self) -> None:
-        ranked = [_make_ranked("Alice", commit_count=15)]
-        assert _is_valid_chart_json(_build_contributor_commits_chart(ranked))
-
-    def test_multiple_contributors_return_valid_chart_json(self) -> None:
-        ranked = [
-            _make_ranked("Alice", commit_count=30),
-            _make_ranked("Bob", commit_count=12),
-            _make_ranked("Carol", commit_count=5),
-        ]
-        assert _is_valid_chart_json(_build_contributor_commits_chart(ranked))
-
-    @pytest.mark.parametrize(
-        "injected_name,expected_absent",
-        [
-            ("<b>Alice</b>", "<b>"),
-            ("<script>alert(1)</script>Alice", "<script>"),
-            ("Alice\x00Smith", "\x00"),
-        ],
-    )
-    def test_html_injection_stripped_from_labels(
-        self,
-        injected_name: str,
-        expected_absent: str,
-    ) -> None:
-        """User-controlled strings containing HTML must not appear raw in chart output."""
-        ranked = [
-            _make_ranked(injected_name, commit_count=10),
-            _make_ranked("Bob", commit_count=5),
-        ]
-        result = _build_contributor_commits_chart(ranked)
-        assert expected_absent not in result
-
-
-# ------------------------------------------------------------------
 # _build_contributor_lines_chart
 # ------------------------------------------------------------------
 
@@ -711,15 +663,16 @@ class TestBuildContributorLinesChart:
 
 @pytest.mark.unit
 class TestBuildPieCharts:
-    """Tests for the commit share and lines share donut charts."""
+    """Tests for the commit share donut.
+
+    The lines-share donut was removed: it duplicated the grouped bar
+    beside it, and a share of lines changed is the least meaningful
+    share in the report.
+    """
 
     def test_single_contributor_commits_returns_null_sentinel(self) -> None:
         ranked = [_make_ranked("Alice", commit_count=10)]
         assert _build_commit_share_pie(ranked) == "null"
-
-    def test_single_contributor_lines_returns_null_sentinel(self) -> None:
-        ranked = [_make_ranked("Alice", commit_count=10)]
-        assert _build_lines_share_pie(ranked) == "null"
 
     def test_two_contributors_commits_returns_valid_chart_json(self) -> None:
         ranked = [
@@ -727,13 +680,6 @@ class TestBuildPieCharts:
             _make_ranked("Bob", commit_count=10),
         ]
         assert _is_valid_chart_json(_build_commit_share_pie(ranked))
-
-    def test_two_contributors_lines_returns_valid_chart_json(self) -> None:
-        ranked = [
-            _make_ranked("Alice", commit_count=20, lines_added=800, lines_deleted=100),
-            _make_ranked("Bob", commit_count=5, lines_added=200, lines_deleted=40),
-        ]
-        assert _is_valid_chart_json(_build_lines_share_pie(ranked))
 
     def test_pie_trace_has_hole_property(self) -> None:
         """Confirms the donut form: hole must be present and non-zero."""

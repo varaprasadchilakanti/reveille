@@ -184,3 +184,33 @@ class TestTheRepositoryProfileChart:
         template = _TEMPLATE.read_text(encoding="utf-8")
         assert "order of the axes" in template
         assert "Cleveland" in template
+
+
+@pytest.mark.unit
+class TestTheContributionBreakdownUsesOneFormPerQuestion:
+    """Part-of-whole gets the pie; two series get the bar."""
+
+    def test_the_share_pie_is_wired_and_the_duplicates_are_not(self) -> None:
+        template = _TEMPLATE.read_text(encoding="utf-8")
+        assert 'id="chart-pie_commits"' in template, (
+            "commit share is part-of-whole, which is what a pie is for"
+        )
+        assert 'id="chart-contributor_lines"' in template, (
+            "added against deleted is two series, which a pie cannot show"
+        )
+        for gone in ("chart-contributor_commits", "chart-pie_lines"):
+            assert gone not in template, f"{gone} duplicated the chart beside it"
+
+    def test_no_builder_is_left_unwired(self) -> None:
+        """A builder nothing renders is dead code."""
+        import inspect
+
+        from reveille.adapters import renderer as module
+
+        source = inspect.getsource(module.Renderer._build_charts)
+        for name, function in vars(module).items():
+            if not (name.startswith("_build_") and inspect.isfunction(function)):
+                continue
+            if name == "_build_heatmap_data":
+                continue  # consumed by the client script, not a chart spec
+            assert name in source, f"{name} is never called by _build_charts"

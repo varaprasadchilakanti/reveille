@@ -433,6 +433,25 @@ Nothing yet.
 
 ### Fixed
 
+- **The Contribution Breakdown now uses one form per question.** It carried
+  four charts in two pairs, each pair encoding the same vector twice: a bar and
+  a donut of commits, a bar and a donut of lines. Removing both donuts went too
+  far in the other direction — part-of-whole is the one job a pie does well,
+  and "is this one person's repository" is read off a single wedge. **Share of
+  Commits is a donut**, with exact counts in the table above so the pie is not
+  asked to do the comparison a bar does better. **Lines Changed stays a grouped
+  bar**, because added against deleted is two series and a pie cannot show it
+  at all. The commits bar and the lines-share donut are gone, along with their
+  builders — a builder nothing renders is dead code, and a test now fails if
+  one is left unwired.
+
+- **The change-size histogram did not read as a distribution.** Its bins widen
+  by roughly 4× at each step, so a bar's height is a count over a wider range
+  rather than a density, and the tallest bar need not contain the typical
+  commit. The median is now marked on the bucket it falls in, which is what
+  turns a row of bars into a shape a reader can describe. The caption says the
+  bins widen and why linear bins would not work.
+
 - **The report was reorganised around what a reader looks for first.** The
   findings block sat fourth, behind two charts and a radar, while
   `docs/PLAYBOOK.md` promised "findings first, evidence after". It is now

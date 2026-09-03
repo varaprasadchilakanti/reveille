@@ -34,11 +34,11 @@ from reveille.adapters.renderer import (
     _OTHER_SLICE_COLOUR,
     _PIE_MAX_SLICES,
     _build_commit_share_pie,
-    _build_contributor_commits_chart,
     _build_contributor_timeline_chart,
+    _build_hotspot_chart,
     _pie_colors,
 )
-from reveille.domain.models import Commit, ContributorStats, RankedContributor
+from reveille.domain.models import Commit, ContributorStats, FileStats, RankedContributor
 
 _TEMPLATE = Path(__file__).resolve().parents[3] / "src/reveille/templates/report.html.j2"
 
@@ -186,17 +186,33 @@ class TestHeatmapRamps:
 
 @pytest.mark.unit
 class TestChartHeightIsBounded:
-    """A chart taller than any browser will render is an unusable artefact."""
+    """A per-item chart grows with its data and must stop somewhere.
 
-    def test_height_is_capped_for_a_large_contributor_count(self) -> None:
-        """5,000 contributors produced a chart 220,080 pixels tall."""
-        spec = json.loads(_build_contributor_commits_chart(_ranked(5000)))
+    The ceiling exists because an unbounded height once produced a chart
+    220,080 pixels tall, which no browser renders usefully. The hotspot
+    ranking is the remaining chart whose height tracks its row count --
+    the contributor charts became fixed-height when the commits bar was
+    replaced by the share pie.
+    """
 
+    def _files(self, count: int) -> list[FileStats]:
+        return [
+            FileStats(
+                path=f"src/module_{index}.py",
+                commits=index + 1,
+                lines_added=1000 - index,
+                lines_deleted=index,
+            )
+            for index in range(count)
+        ]
+
+    def test_height_is_capped(self) -> None:
+        spec = json.loads(_build_hotspot_chart(self._files(5000)))
         assert spec["layout"]["height"] <= _MAX_CHART_HEIGHT
 
     def test_height_still_grows_for_ordinary_repositories(self) -> None:
         """The cap must not flatten every chart to one size."""
-        small = json.loads(_build_contributor_commits_chart(_ranked(3)))
-        larger = json.loads(_build_contributor_commits_chart(_ranked(12)))
+        small = json.loads(_build_hotspot_chart(self._files(3)))
+        larger = json.loads(_build_hotspot_chart(self._files(12)))
 
         assert small["layout"]["height"] < larger["layout"]["height"] <= _MAX_CHART_HEIGHT
