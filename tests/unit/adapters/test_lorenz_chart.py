@@ -113,11 +113,11 @@ class TestLorenzChartIsPresent:
         """The equality reference and the observed curve. Neither is optional."""
         assert len(_figure([10, 5, 1])["data"]) == 2
 
-    def test_axes_and_title_are_labelled(self) -> None:
+    def test_both_axes_are_labelled(self) -> None:
+        """An unlabelled axis on a share-against-share plot says nothing."""
         layout = _figure([10, 5, 1])["layout"]
         assert "contributors" in layout["xaxis"]["title"]["text"].lower()
         assert "commits" in layout["yaxis"]["title"]["text"].lower()
-        assert "Gini coefficient" in layout["title"]["text"]
 
 
 @pytest.mark.unit
@@ -168,19 +168,46 @@ class TestLorenzChartGeometry:
 
 
 @pytest.mark.unit
-class TestLorenzChartTitleReportsTheRealGini:
-    """The title is the only number a reader takes away. It must not drift."""
+class TestTheReportShowsTheRealGini:
+    """The figure a reader takes away must not drift from the calculation.
+
+    It used to be the chart's own title, anchored top-left -- which is
+    where Plotly also anchors the legend, so the two overlapped in every
+    export. It now sits on the section heading. What is asserted is
+    unchanged: whatever the report displays equals what the domain
+    computes.
+    """
 
     @pytest.mark.parametrize(
         "counts",
         [[10, 5, 1], [4, 4, 4, 4], [100, 1, 1, 1], [7, 3], [50, 20, 20, 5, 5]],
     )
-    def test_title_matches_the_domain_calculation(self, counts: list[int]) -> None:
-        title = _figure(counts)["layout"]["title"]["text"]
-        assert title == f"Gini coefficient: {gini_coefficient(counts):.2f}"
+    def test_displayed_gini_matches_the_domain_calculation(
+        self, counts: list[int], tmp_path: Path
+    ) -> None:
+        from reveille.adapters.renderer import Renderer
 
-    def test_equal_distribution_reports_zero(self) -> None:
-        assert _figure([4, 4, 4, 4])["layout"]["title"]["text"] == "Gini coefficient: 0.00"
+        out = tmp_path / "r.html"
+        Renderer().render(_report_data(counts), out)
+        html = out.read_text(encoding="utf-8")
+        expected = f"{gini_coefficient(counts):.2f}"
+        assert f"Gini <b>{expected}</b>" in html, (
+            f"the report does not display Gini {expected} for {counts}"
+        )
+
+    def test_the_figure_is_not_inside_the_plot_area(self, counts: None = None) -> None:
+        """Back in the layout title, it would collide with the legend again."""
+        layout = _figure([10, 5, 1])["layout"]
+        assert "title" not in layout or not layout["title"].get("text"), (
+            "the Gini is back in the chart title, where the legend also sits"
+        )
+
+    def test_equal_distribution_reports_zero(self, tmp_path: Path) -> None:
+        from reveille.adapters.renderer import Renderer
+
+        out = tmp_path / "r.html"
+        Renderer().render(_report_data([4, 4, 4, 4]), out)
+        assert "Gini <b>0.00</b>" in out.read_text(encoding="utf-8")
 
 
 @pytest.mark.unit
@@ -249,5 +276,5 @@ class TestLorenzChartReachesTheReport:
         Renderer().render(_report_data([10, 5, 1]), out)
         html = out.read_text(encoding="utf-8")
         assert 'id="spec-lorenz"' in html
-        assert "Gini coefficient" in html
+        assert "Gini <b>" in html
         assert "Perfect equality" in html

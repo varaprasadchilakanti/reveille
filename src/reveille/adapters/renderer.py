@@ -543,7 +543,7 @@ def _build_timeline_chart(commits: list[Commit]) -> str:
         )
     )
     layout = _base_layout()
-    layout["xaxis"] = {"type": "category", "tickangle": -45}
+    layout["xaxis"] = {"type": "category", "tickangle": -45, "automargin": True}
     fig.update_layout(
         **layout,
         xaxis_title="Week",
@@ -614,7 +614,7 @@ def _build_contributor_timeline_chart(
         )
 
     layout = _base_layout()
-    layout["xaxis"] = {"type": "category", "tickangle": -45}
+    layout["xaxis"] = {"type": "category", "tickangle": -45, "automargin": True}
     layout["showlegend"] = True
     layout["legend"] = {"orientation": "h", "y": 1.12, "x": 0}
     fig.update_layout(
@@ -864,8 +864,11 @@ def _build_lorenz_chart(ranked: list[RankedContributor]) -> str:
 
     The diagonal is perfect equality -- every contributor with the same number
     of commits. The plotted curve bows beneath it in proportion to how
-    concentrated activity actually is, and the Gini coefficient in the title is
-    the standard single-number summary of that gap.
+    concentrated activity actually is.
+
+    The Gini coefficient summarising that gap is rendered by the template on
+    the section heading, not here. As a chart title it was anchored top-left,
+    which is where Plotly also anchors the legend, so the two overlapped.
 
     This is a statement about the repository, not about any person in it. No
     contributor is named, and the curve is unchanged by who is where in it,
@@ -885,7 +888,6 @@ def _build_lorenz_chart(ranked: list[RankedContributor]) -> str:
 
     counts = [r.stats.commit_count for r in ranked]
     curve = lorenz_curve(counts)
-    gini = gini_coefficient(counts)
 
     xs = [round(x * 100, 4) for x, _ in curve]
     ys = [round(y * 100, 4) for _, y in curve]
@@ -923,7 +925,6 @@ def _build_lorenz_chart(ranked: list[RankedContributor]) -> str:
         **layout,
         xaxis_title="Share of contributors (%)",
         yaxis_title="Share of commits (%)",
-        title={"text": f"Gini coefficient: {gini:.2f}", "x": 0, "font": {"size": 13}},
         height=320,
     )
     return _to_json(fig)
@@ -1158,6 +1159,13 @@ def _base_layout() -> dict[str, Any]:
             "size": 12,
         },
         "margin": {"l": 60, "r": 30, "t": 20, "b": 50},
+        # Plotly measures the rendered tick labels and axis title and grows
+        # the margin to fit them. Without it the fixed bottom margin of 50px
+        # is a guess: it was too small for -45 degree date labels, so the
+        # "Week" title was drawn on top of them, and too small on the left
+        # for a contributor axis, which truncated names to "dabot[bot]".
+        "xaxis": {"automargin": True},
+        "yaxis": {"automargin": True},
         "showlegend": False,
         "modebar": {"remove": ["logo"]},
     }
