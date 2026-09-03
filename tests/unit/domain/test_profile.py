@@ -113,12 +113,23 @@ class TestTheExtremesLandWhereTheDefinitionSays:
     def test_one_commit_at_the_start_gives_almost_no_continuity(self) -> None:
         assert _profile([_commit(0)], [_contributor("a@x", 1)], [])["Continuity"] < 0.1
 
-    def test_work_up_to_the_window_end_gives_full_currency(self) -> None:
-        commits = [_commit((_UNTIL - _SINCE).days)]
-        assert _profile(commits, [_contributor("a@x", 1)], [])["Currency"] == pytest.approx(1.0)
+    def test_all_work_in_the_final_quarter_gives_full_recent_work(self) -> None:
+        span = (_UNTIL - _SINCE).days
+        commits = [_commit(span - offset) for offset in range(5)]
+        assert _profile(commits, [_contributor("a@x", 5)], [])["Recent work"] == 1.0
 
-    def test_work_only_at_the_start_gives_no_currency(self) -> None:
-        assert _profile([_commit(0)], [_contributor("a@x", 1)], [])["Currency"] == 0.0
+    def test_work_only_at_the_start_gives_no_recent_work(self) -> None:
+        assert _profile([_commit(0)], [_contributor("a@x", 1)], [])["Recent work"] == 0.0
+
+    def test_the_axis_is_not_degenerate_under_deterministic_windows(self) -> None:
+        """The axis it replaced was identically 1.0 whenever the window
+        ended at the last commit -- which is what `--deterministic` does,
+        and what the Playbook tells consumers to pass."""
+        early = [_commit(0), _commit(1)]
+        last = max(c.timestamp.date() for c in early)
+        axes = repository_profile(early, [_contributor("a@x", 2)], [], _SINCE, last)
+        recent = {a.name: a.value for a in axes}["Recent work"]
+        assert recent < 1.0, "the axis carries no information in this mode"
 
     def test_files_touched_once_give_no_revisiting(self) -> None:
         files = [_file(f"f{i}.py", 1) for i in range(5)]
@@ -162,3 +173,49 @@ class TestItNamesNobody:
         rendered = " ".join(f"{a.name} {a.description}" for a in axes)
         assert "someone@example.com" not in rendered
         assert "@" not in rendered
+
+
+@pytest.mark.unit
+class TestSpreadIsComparableAcrossTeamSizes:
+    """The raw `1 - Gini` was rescaled by headcount, and nothing caught it.
+
+    Gini's maximum for a sample of n is (n-1)/n, so `1 - Gini` has a
+    floor of 1/n rather than 0. Measured before the fix: adding a
+    contributor who committed *nothing* moved Spread from 0% to 50%, and
+    ten people where one did everything scored 10% while two people
+    where one did everything scored 50% — the more concentrated
+    repository scoring five times higher.
+
+    This contradicted the module's own stated design, that every axis is
+    a bounded share and none is rescaled. Eighteen tests passed over it,
+    one of which encoded the wrong value as intended behaviour.
+    """
+
+    def _spread_of(self, counts: list[int]) -> float:
+        people = [_contributor(f"c{i}@x", n) for i, n in enumerate(counts)]
+        return _profile([_commit(1)], people, [])["Spread"]
+
+    @pytest.mark.parametrize("size", [2, 3, 5, 10])
+    def test_maximum_concentration_scores_zero_at_every_team_size(self, size: int) -> None:
+        counts = [100] + [0] * (size - 1)
+        assert self._spread_of(counts) == pytest.approx(0.0, abs=1e-9), (
+            f"one person doing everything among {size} scores "
+            f"{self._spread_of(counts):.0%}; it must be 0% at any size"
+        )
+
+    @pytest.mark.parametrize("size", [2, 3, 5, 10])
+    def test_a_perfectly_even_team_scores_one_at_every_team_size(self, size: int) -> None:
+        assert self._spread_of([10] * size) == pytest.approx(1.0)
+
+    def test_adding_an_idle_contributor_does_not_raise_spread(self) -> None:
+        """The clearest form of the defect: a person who does nothing."""
+        before = self._spread_of([100])
+        after = self._spread_of([100, 0])
+        assert after <= before + 1e-9, (
+            f"adding a contributor with no commits moved Spread from {before:.0%} to {after:.0%}"
+        )
+
+    def test_a_more_concentrated_repository_never_scores_higher(self) -> None:
+        even = self._spread_of([10, 10, 10, 10])
+        lopsided = self._spread_of([37, 1, 1, 1])
+        assert lopsided < even

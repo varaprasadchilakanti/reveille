@@ -172,8 +172,13 @@ def _cadence_finding(commits: list[Commit]) -> Finding | None:
     if len(days) < 2:
         return None
     gaps = [(b - a).days for a, b in itertools.pairwise(days)]
-    longest = max(gaps)
     median = statistics.median(gaps)
+    # A gap of n days between two active days contains n-1 days with no
+    # commits. The summary card counts inactive calendar days; this once
+    # counted the gap, so the two disagreed by exactly one on every
+    # repository ever analysed -- "Max Inactive Days 13" beside "longest
+    # quiet run of 14 days", in one document, about one fact.
+    longest = max(gaps) - 1
 
     headline = (
         f"Typically {median:.0f} "

@@ -484,6 +484,16 @@ class Renderer:
             "gini_coefficient": round(
                 gini_coefficient([r.stats.commit_count for r in data.ranked_contributors]), 2
             ),
+            # Gini's maximum for a sample of n is (n-1)/n, so a report over
+            # two contributors can never exceed 0.50 however lopsided the
+            # split. Showing 0.23 against a stated 0-to-1 scale invites the
+            # reader to conclude "23% of the way to maximum concentration"
+            # when it is 46% of the achievable range.
+            "gini_ceiling": round(
+                (len(data.ranked_contributors) - 1) / len(data.ranked_contributors), 2
+            )
+            if len(data.ranked_contributors) > 1
+            else 0.0,
             "longest_inactive_streak": _compute_longest_inactive_streak(
                 data.commits,
                 data.metadata.analysis_since,
@@ -1142,6 +1152,9 @@ def _build_profile_chart(axes: list[ProfileAxis]) -> str:
             marker={"size": 8, "color": _CATEGORICAL_PALETTE[0]},
             text=[f"{value:.0%}" for value in [*values, values[0]]],
             textposition="top center",
+            # Left unset these take the trace colour, which is 3.34:1 on the
+            # dark polar surface. The theme manager supplies the value.
+            textfont={"size": 12},
             customdata=[*descriptions, descriptions[0]],
             hovertemplate="%{theta}: %{r:.0%}<br>%{customdata}<extra></extra>",
         )
