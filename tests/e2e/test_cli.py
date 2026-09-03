@@ -1158,3 +1158,61 @@ class TestReportAccessibility:
         assert not re.search(r"<link[^>]+href=[\"']https?://", default_report_content)
         assert not re.search(r"<script[^>]+src=[\"']https?://", default_report_content)
         assert not re.search(r"<img[^>]+src=[\"']https?://", default_report_content)
+
+    def test_no_markup_or_stylesheet_fetches_a_remote_resource(
+        self,
+        default_report_content: str,
+    ) -> None:
+        """The offline guarantee, asserted as a property rather than a tag list.
+
+        The test above names three tags. That list is only as good as
+        whoever remembers to extend it: an ``<iframe src>``, an ``<object
+        data>``, a ``poster=``, or a CSS ``@import`` would each forfeit
+        the guarantee while leaving it green.
+
+        ``<script>`` bodies are excluded because the vendored Plotly
+        bundle carries map-tile and attribution URLs as string literals,
+        for trace types Reveille never emits. ``<style>`` bodies are
+        deliberately *not* excluded: a stylesheet is applied, so its
+        ``url()`` and ``@import`` rules fetch.
+
+        ``href`` is checked on ``<link>`` only. An ``<a href>`` to a
+        remote page navigates on a click; it does not load anything into
+        the report, and flagging it would make this guard cry wolf.
+        """
+        markup = re.sub(
+            r"<script\b.*?</script>",
+            "",
+            default_report_content,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+        markup = re.sub(r"<style\b.*?</style>", "", markup, flags=re.DOTALL | re.IGNORECASE)
+
+        loaded = re.findall(
+            r"""\b(?:src|srcset|poster|data)\s*=\s*["'](?:https?:)?//[^"']*""",
+            markup,
+        )
+        assert loaded == [], f"report markup loads remote resources: {loaded}"
+
+        linked = re.findall(
+            r"""<link\b[^>]*\bhref\s*=\s*["'](?:https?:)?//[^"']*""",
+            markup,
+            re.IGNORECASE,
+        )
+        assert linked == [], f"report links remote stylesheets: {linked}"
+
+        stylesheets = re.findall(
+            r"<style\b[^>]*>(.*?)</style>",
+            default_report_content,
+            re.DOTALL | re.IGNORECASE,
+        )
+        assert stylesheets, "the report carries no inline stylesheet"
+        css = "\n".join(stylesheets)
+        assert "@import" not in css, "an @import in the report CSS fetches at render time"
+
+        remote = [
+            reference
+            for reference in re.findall(r"""url\(\s*["']?([^)"']+)""", css)
+            if reference.startswith(("http://", "https://", "//"))
+        ]
+        assert remote == [], f"report CSS references remote hosts: {remote}"

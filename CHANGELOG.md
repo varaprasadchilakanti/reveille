@@ -116,15 +116,19 @@ Nothing yet.
   and `docs/ARCHITECTURE.md` now names it alongside the other lineage this design
   borrows.
 
-  Seven properties, each written against the AST rather than a text search — a
+  Nine properties, each written against the AST rather than a text search — a
   structural check built on `grep` matches comments and docstrings, so it can
   pass while the property it names is false. The offline guarantee stated
   structurally (nothing capable of opening a socket is imported anywhere, which
-  is a stronger claim than "this run made no request"); the direction of
-  first-party imports; the read-only guarantee (only the renderer and `init` may
-  write to disk); the exit-code contract (no literal code, so a fourth cannot
-  widen a published contract unnoticed); and completeness of the configuration
-  surface.
+  is a stronger claim than "this run made no request"); no dynamic import or
+  subprocess, which would be a way back out to the network the import check
+  cannot see; the direction of first-party imports, resolved through relative
+  imports as well as absolute ones; the read-only guarantee (only the renderer
+  and `init` may write to disk, including through `Path.open` and GitPython's
+  dynamic command dispatch); the exit-code contract (no literal code, so a
+  fourth cannot widen a published contract unnoticed); that the exit-code enum
+  defines exactly the three published codes; and completeness of the
+  configuration surface.
 
   Ruff's `mccabe` complexity limit is now stated explicitly rather than inherited
   from the tool's default. It was already active and caught three genuine cases
@@ -268,9 +272,16 @@ Nothing yet.
 - **`.github/PULL_REQUEST_TEMPLATE.md`**, whose "Verified" section asks what was run
   and what it showed, and reminds the author to break any new guard and watch it fail.
 
-- **114 new tests**: four on lock integrity, six on licence declarations, twelve on
-  provenance, schema version and determinism, twelve on chart colour assignment, thirteen security regression tests, fifteen on the capability document, fourteen on the Lorenz curve and Gini coefficient checked against values the definitions fix, four on the ranking default, seven architectural fitness functions, and two on README structure. Each was observed failing against the
-  defect it guards before being trusted.
+- **182 new tests, taking the suite from 355 to 537.** Eleven new files carry 178
+  of them: thirty-one security regression tests, twenty-six on the capability
+  document, twenty-five on the Lorenz curve and Gini coefficient checked against
+  values the definitions fix, twenty-three on provenance, schema version and
+  determinism, seventeen on the ranking default across all three output formats,
+  fourteen on chart colour assignment, fourteen on commit concentration, nine
+  architectural fitness functions, nine on the CLA gate, six on licence
+  declarations, and four on lock integrity. The remaining four extend existing
+  files. Each was observed failing against the defect it guards before being
+  trusted.
 
 ### Changed
 
@@ -390,6 +401,20 @@ Nothing yet.
   removing three columns for the ranking opt-in failed it with nothing wrong. It
   now asserts the property it was proxying for: that no column header lacks a
   scope, whichever columns are present.
+
+- **The offline-guarantee test named three tags, and the guarantee has more than
+  three ways to lose.** It rejected a remote `<link href>`, `<script src>` and
+  `<img src>`. An `<iframe src>`, an `<object data>`, a `<video poster>`, a CSS
+  `@import` and a CSS `url()` each forfeit the offline guarantee, and all five
+  were confirmed to pass that test with the violation present. The property is
+  now asserted instead: nothing the browser fetches — in markup or in the inline
+  stylesheet — may name a remote host. `<script>` bodies stay excluded, because
+  the vendored Plotly bundle carries map-tile attribution URLs as string
+  literals for trace types Reveille never emits; `<style>` bodies are not
+  excluded, because a stylesheet is applied. `<a href>` is deliberately still
+  allowed: it navigates on a click and loads nothing, and flagging it would make
+  the guard cry wolf. All seven violations were observed failing the new test,
+  and a remote `<a href>` was confirmed not to trip it.
 
 - **Chart area fills were hardcoded `rgba(...)` literals** that happened to equal
   `_CATEGORICAL_PALETTE[0]`. Nothing coupled them, and the palette was replaced
@@ -656,10 +681,12 @@ interpolation into `run:` steps).
 
 - **The CLA acceptance check matched a tick on an unrelated line.** The pattern
   was unanchored with `re.DOTALL`, so any ticked box followed anywhere by the
-  agreement string counted — including one inside a code fence. Now anchored per
-  line, with the version required on the same line as the tick.
+  agreement string counted — including one inside a code fence. It is now scoped
+  to a single markdown list item. The first attempt anchored to a single physical
+  line, which could never match the wrapped template this repository ships; see
+  *Fixed*, above.
 
-- **23 security regression tests.** Each was observed failing against the
+- **31 security regression tests.** Each was observed failing against the
   reintroduced vulnerability. One of them did not, on first writing: the
   forgery payload was rejected by an unrelated field-count check rather than by
   the guard under test, so it proved nothing. It was rebuilt until removing the
