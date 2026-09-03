@@ -274,6 +274,35 @@ The trailer means you certify the
 you actually wrote the code, or have the right to submit it. The verbatim text
 is in [docs/cla/DCO.txt](docs/cla/DCO.txt).
 
+**Commits made in the GitHub web interface.** Applying a review suggestion,
+accepting a CodeQL autofix, or editing a file in the browser creates a commit
+with no way to add a trailer. Two of those landed on the 0.8.0 release branch,
+and rewriting already-pushed history to insert a trailer is worse than
+recording the certification separately. There are two answers, and you do not
+need both:
+
+- **Turn the setting on.** *Settings → Commits → "Require contributors to sign
+  off on web-based commits"* makes GitHub add the trailer to commits created
+  through the web interface. It is enabled on this repository, so this should
+  not arise again.
+- **Add a remediation commit** for anything already made without one. This is
+  the mechanism the DCO project documents for exactly this case:
+
+  ```
+  I, Your Name <you@example.com>, hereby add my
+  Signed-off-by to this commit: <the full 40-character SHA>
+
+  Signed-off-by: Your Name <you@example.com>
+  ```
+
+  The declaration must name the full SHA and must itself be signed off, so the
+  certification is still made by a person, in writing, against one commit. The
+  check prints this template when it fails, so you can copy it rather than
+  guess at the wording.
+
+Bot commits need no exemption: Dependabot signs off already, and every one of
+its 78 commits in this repository carries the trailer.
+
 **2. Tick the box in the pull request description.** The pull request template
 carries this line:
 

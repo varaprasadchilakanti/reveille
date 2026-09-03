@@ -92,16 +92,72 @@ jobs:
           set -euo pipefail
           # base.sha can be stale if the base branch moved; use the merge base.
           BASE="$(git merge-base "$BASE" "$HEAD")"
-          missing=0
-          while read -r sha; do
-            if ! git log -1 --format='%B' "$sha" | grep -qiE '^Signed-off-by: .+ <.+@.+>$'; then
-              echo "::error::missing Signed-off-by trailer: $(git log -1 --format='%h %s' "$sha")"
-              missing=1
-            fi
-          done < <(git rev-list --no-merges "$BASE".."$HEAD")
-          if [ "$missing" -ne 0 ]; then
-            echo "Sign off your commits with 'git commit --signoff'."
-            echo "To fix existing commits: git rebase --signoff ${BASE}"
-            exit 1
-          fi
-          echo "All commits are signed off."
+          python3 - <<'PY'
+          import os
+          import re
+          import subprocess
+          import sys
+
+          base, head = os.environ["BASE"], os.environ["HEAD"]
+
+          def git(*args: str) -> str:
+              return subprocess.run(
+                  ["git", *args], capture_output=True, text=True, check=True
+              ).stdout
+
+          shas = git("rev-list", "--no-merges", f"{base}..{head}").split()
+          messages = {sha: git("log", "-1", "--format=%B", sha) for sha in shas}
+
+          signed = re.compile(r"^Signed-off-by: .+ <.+@.+>$", re.MULTILINE | re.IGNORECASE)
+
+          # A remediation commit signs off on behalf of an earlier commit that
+          # cannot carry a trailer of its own. This is the mechanism the DCO
+          # app documents, and it exists for a real case: a commit made through
+          # the GitHub web interface -- applying a review suggestion, accepting
+          # a CodeQL autofix, editing a file in the browser -- has no way to add
+          # one, and rewriting pushed history to insert it is worse than
+          # recording the certification separately.
+          #
+          # The declaration must name the full SHA and must itself be signed
+          # off, so the certification is still made by a person, in writing,
+          # against a specific commit.
+          remediation = re.compile(
+              r"^I, .+ <.+@.+>, hereby add my Signed-off-by to this commit: ([0-9a-f]{40})$",
+              re.MULTILINE | re.IGNORECASE,
+          )
+          remediated = {
+              match.group(1).lower()
+              for message in messages.values()
+              if signed.search(message)
+              for match in remediation.finditer(message)
+          }
+
+          missing = [
+              sha
+              for sha in shas
+              if not signed.search(messages[sha]) and sha.lower() not in remediated
+          ]
+
+          for sha in missing:
+              subject = git("log", "-1", "--format=%h %s", sha).strip()
+              print(f"::error::missing Signed-off-by trailer: {subject}")
+
+          if missing:
+              print()
+              print("Sign off your commits with 'git commit --signoff'.")
+              print(f"To fix your own unpushed commits: git rebase --signoff {base}")
+              print()
+              print("For a commit made through the GitHub web interface, which")
+              print("cannot carry a trailer, add a remediation commit instead:")
+              print()
+              print("    I, Your Name <you@example.com>, hereby add my")
+              print(f"    Signed-off-by to this commit: {missing[0]}")
+              print()
+              print("    Signed-off-by: Your Name <you@example.com>")
+              print()
+              print("Turning on Settings > Commits > 'Require contributors to sign")
+              print("off on web-based commits' stops this recurring.")
+              sys.exit(1)
+
+          print(f"All {len(shas)} commits are signed off.")
+          PY
