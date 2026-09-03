@@ -378,6 +378,25 @@ Nothing yet.
 
 ### Fixed
 
+- **Two contributors sharing a display name collapsed into one, differently in
+  each chart.** ADR 0002 makes the lowercased email the identity key, but the
+  charts labelled by display name, which is not unique. Plotly then resolves a
+  repeated category label differently per trace type: a bar chart collapses
+  the bars onto one category, a pie sums the slices, a line chart draws two
+  legend entries a reader cannot tell apart. Measured against this repository
+  before its `.mailmap` existed — 201 commits under one address and 1 under
+  another — the table said 201 and 1, the bar chart said 201, and the pie said
+  202.
+
+  A `.mailmap` fixes the case of one person under two addresses. It is the
+  wrong tool for two genuinely different people who share a name, and most
+  repositories have no `.mailmap` at all, so the charts are now correct
+  without one: a name occurring once is drawn as it is, and a name occurring
+  more than once carries the address that distinguishes it. The map is built
+  over every contributor rather than the subset a given chart draws, so one
+  identity keeps one label across the legend, the bars, the pies and the
+  heatmap menu.
+
 - **The ranking opt-in was real only in JSON; the two formats people read still
   ranked them.** `--ranking` defaults off in this release, but the HTML template
   and the CSV writer both gated on `ranked_contributors` being non-empty — and
