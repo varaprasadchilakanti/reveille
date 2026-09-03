@@ -917,26 +917,90 @@
         ]
     };
 
+    // Every theme-dependent colour a chart needs, one entry per theme.
+    //
+    // These were once written as dotted attribute strings -- 'font.color',
+    // 'xaxis.gridcolor'. Plotly expands that form in relayout() and
+    // restyle() but NOT in newPlot() or react(), which take a plain layout
+    // object, so every dotted key here was silently dropped. Only the two
+    // undotted background keys ever applied. Under the dark theme that left
+    // axis text at Plotly's default #444 -- 1.78:1 against the plot area,
+    // where WCAG 2.1 AA requires 4.5:1 -- under a grid still painted in the
+    // light theme's #e2e8f0, which is 14:1 the wrong way round.
+    //
+    // Nested objects are the form newPlot() reads. mergeLayout() below is
+    // what makes them safe to apply.
     var THEME_LAYOUTS = {
         light: {
             paper_bgcolor: '#ffffff',
             plot_bgcolor:  '#f6f8fa',
-            'font.color':  '#1c2128',
-            'xaxis.gridcolor': '#e2e8f0',
-            'xaxis.linecolor': '#d1d9e0',
-            'yaxis.gridcolor': '#e2e8f0',
-            'yaxis.linecolor': '#d1d9e0'
+            font:   { color: '#1c2128' },
+            xaxis:  { gridcolor: '#e2e8f0', linecolor: '#d1d9e0',
+                      zerolinecolor: '#d1d9e0', tickcolor: '#d1d9e0' },
+            yaxis:  { gridcolor: '#e2e8f0', linecolor: '#d1d9e0',
+                      zerolinecolor: '#d1d9e0', tickcolor: '#d1d9e0' },
+            legend: { font: { color: '#1c2128' } },
+            hoverlabel: {
+                bgcolor:     '#ffffff',
+                bordercolor: '#d1d9e0',
+                font:        { color: '#1c2128' }
+            },
+            // Left to Plotly, these derive from paper_bgcolor: the icons are
+            // drawn at 30% of a contrast colour and repainted at 70% on
+            // hover. Pinning both ends the derivation, so the toolbar keeps
+            // a fixed, checked contrast under either theme instead of one
+            // computed from a background we change underneath it.
+            modebar: {
+                bgcolor:     '#ffffff',
+                color:       '#57606a',
+                activecolor: '#1e40af'
+            }
         },
         dark: {
             paper_bgcolor: '#21262d',
             plot_bgcolor:  '#161b22',
-            'font.color':  '#e6edf3',
-            'xaxis.gridcolor': '#30363d',
-            'xaxis.linecolor': '#30363d',
-            'yaxis.gridcolor': '#30363d',
-            'yaxis.linecolor': '#30363d'
+            font:   { color: '#e6edf3' },
+            xaxis:  { gridcolor: '#30363d', linecolor: '#30363d',
+                      zerolinecolor: '#30363d', tickcolor: '#30363d' },
+            yaxis:  { gridcolor: '#30363d', linecolor: '#30363d',
+                      zerolinecolor: '#30363d', tickcolor: '#30363d' },
+            legend: { font: { color: '#e6edf3' } },
+            hoverlabel: {
+                bgcolor:     '#21262d',
+                bordercolor: '#30363d',
+                font:        { color: '#e6edf3' }
+            },
+            modebar: {
+                bgcolor:     '#21262d',
+                color:       '#8b949e',
+                activecolor: '#58a6ff'
+            }
         }
     };
+
+    // Recursively merge the theme layout over a chart's own layout.
+    //
+    // Object.assign is shallow. Assigning { xaxis: { gridcolor } } over a
+    // layout whose xaxis carries { type, tickangle, title } would replace
+    // the axis wholesale and take the axis title with it.
+    function mergeLayout(base, overlay) {
+        var out = Object.assign({}, base);
+        Object.keys(overlay).forEach(function (key) {
+            var value = overlay[key];
+            var target = out[key];
+            if (value && typeof value === 'object' && !Array.isArray(value)) {
+                out[key] = mergeLayout(
+                    (target && typeof target === 'object' && !Array.isArray(target))
+                        ? target
+                        : {},
+                    value
+                );
+            } else {
+                out[key] = value;
+            }
+        });
+        return out;
+    }
 
     // Heatmap state — populated during DOMContentLoaded.
     var heatmapData = null;
@@ -997,8 +1061,12 @@
             return;
         }
 
-        var layout = Object.assign({}, spec.layout || {}, THEME_LAYOUTS[theme]);
-        Plotly.newPlot(divEl, spec.data, layout, PLOTLY_CONFIG);
+        var layout = mergeLayout(spec.layout || {}, THEME_LAYOUTS[theme]);
+        if (divEl._fullLayout) {
+            Plotly.react(divEl, spec.data, layout, PLOTLY_CONFIG);
+        } else {
+            Plotly.newPlot(divEl, spec.data, layout, PLOTLY_CONFIG);
+        }
     }
 
     function initAllCharts(theme) {
@@ -1108,7 +1176,7 @@
             hovertemplate: '%{customdata}<br>Commits: %{z}<extra></extra>'
         };
 
-        var layout = Object.assign({}, {
+        var layout = mergeLayout({
             font: {
                 family: "-apple-system, BlinkMacSystemFont, 'Segoe UI', " +
                         "Roboto, 'Helvetica Neue', Arial, sans-serif",
@@ -1214,12 +1282,13 @@
     // ------------------------------------------------------------------
 
     function applyThemeToCharts(theme) {
-        var overrides = THEME_LAYOUTS[theme];
-        CHART_IDS.forEach(function (id) {
-            var divEl = document.getElementById('chart-' + id);
-            if (!divEl || !divEl._fullLayout) return;
-            Plotly.relayout(divEl, overrides);
-        });
+        // Re-plot through the same path the first render uses, rather than
+        // Plotly.relayout. relayout would work -- it is the one entry point
+        // that expands dotted attribute strings, which is why the toggle
+        // appeared correct while the first paint was not -- but handing it a
+        // nested object replaces the container it names, so a themed xaxis
+        // would take the axis title with it. One path, one set of semantics.
+        CHART_IDS.forEach(function (id) { initChart(id, theme); });
         // The heatmap needs a full re-render rather than a relayout. Its
         // colour ramp is theme-specific -- see HEATMAP_SCALES -- and a
         // colorscale lives on the trace, which Plotly.relayout does not touch.
