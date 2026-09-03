@@ -17,7 +17,7 @@ Nothing yet.
 
 ---
 
-## [0.8.0] — 2026-09-03 — Security Hardening, Apache-2.0, and an Opt-In Ranking
+## [0.8.0] — 2026-09-03 — Security Hardening, Apache-2.0, and a Corrected Report
 
 ### Added
 

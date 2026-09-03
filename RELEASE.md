@@ -39,7 +39,7 @@ Fixed, Security.
 
 **The theme is part of the heading, from 0.8.0 onward.** It is a short noun
 phrase naming what the release is about — *"Security Hardening, Apache-2.0, and
-an Opt-In Ranking"* — and step 5 reuses it verbatim as the GitHub Release title.
+a Corrected Report"* — and step 5 reuses it verbatim as the GitHub Release title.
 Writing it here rather than at tag time is the point: the release title and the
 changelog cannot then say different things. The date is the day the tag is
 pushed, not the day the section was drafted.
@@ -104,7 +104,7 @@ gh release upload vX.Y.Z reveille-*-sbom.cdx.json
 
 **The title is not invented here.** It is `vX.Y.Z` followed by the theme already
 written into the CHANGELOG heading in step 1 — e.g. *"v0.8.0 — Security
-Hardening, Apache-2.0, and an Opt-In Ranking"*. Releases before 0.8.0 were
+Hardening, Apache-2.0, and a Corrected Report"*. Releases before 0.8.0 were
 titled the same way by hand; from 0.8.0 the changelog is the source. Body is the
 CHANGELOG section for that version, with the heading line dropped.
 
