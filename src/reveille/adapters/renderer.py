@@ -545,6 +545,47 @@ class Renderer:
 # ------------------------------------------------------------------
 
 
+def _contributor_labels(ranked: list[RankedContributor]) -> dict[str, str]:
+    """Map each contributor's email to a label unique within the report.
+
+    ADR 0002 makes the lowercased email the identity key. The display
+    name is not unique -- two people can share one, and so can one person
+    committing under two addresses before a `.mailmap` ties them
+    together. Charts keyed on the name inherit that ambiguity, and Plotly
+    resolves a repeated category label differently depending on the trace
+    type: a bar chart collapses the bars onto one category, a pie sums
+    the slices, and a line chart draws two legend entries a reader cannot
+    tell apart.
+
+    Measured against this repository before its `.mailmap` existed, with
+    201 commits under one address and 1 under another:
+
+        contributors table   201 and 1, listed separately
+        commits bar chart    201, the second bar drawn over the first
+        commit share pie     202, the two labels silently summed
+
+    Three views of one repository, three answers. A name that occurs once
+    is used as it is; a name that occurs more than once carries the
+    address that distinguishes it, and only then -- disambiguating every
+    label would clutter the common case for no reader benefit.
+
+    Args:
+        ranked: Every contributor in the report.
+
+    Returns:
+        A mapping from lowercased email to the label to draw.
+    """
+    sanitised = {r.stats.email.lower(): _sanitise_chart_label(r.stats.name) for r in ranked}
+    occurrences: dict[str, int] = defaultdict(int)
+    for label in sanitised.values():
+        occurrences[label] += 1
+
+    return {
+        email: (label if occurrences[label] == 1 else f"{label} <{_sanitise_chart_label(email)}>")
+        for email, label in sanitised.items()
+    }
+
+
 def _build_timeline_chart(commits: list[Commit]) -> str:
     """Build a weekly commit frequency line chart.
 
@@ -619,6 +660,9 @@ def _build_contributor_timeline_chart(
         return "null"
 
     shown = ranked[:_MAX_SERIES]
+    # Built over the full list, not just the drawn subset: a name is only
+    # ambiguous relative to every contributor in the report.
+    labels = _contributor_labels(ranked)
     weekly_per_email: dict[str, dict[str, int]] = {r.stats.email.lower(): {} for r in shown}
 
     for commit in commits:
@@ -643,7 +687,7 @@ def _build_contributor_timeline_chart(
                 x=all_weeks,
                 y=counts,
                 mode="lines",
-                name=_sanitise_chart_label(r.stats.name),
+                name=labels[r.stats.email.lower()],
                 line={"color": _CATEGORICAL_PALETTE[i], "width": 2},
                 hovertemplate="Week of %{x}<br>Commits: %{y}<extra></extra>",
             )
@@ -706,13 +750,14 @@ def _build_heatmap_data(
             per_email[email_key] = defaultdict(int)
         per_email[email_key][date_str] += 1
 
+    labels = _contributor_labels(ranked_contributors)
     contributors: list[dict[str, str]] = [{"email": "__aggregated__", "name": "All Contributors"}]
     daily_counts: dict[str, dict[str, int]] = {"__aggregated__": dict(agg_counts)}
 
     for r in ranked_contributors:
         email_key = r.stats.email.lower()
         if email_key in per_email:
-            contributors.append({"email": email_key, "name": _sanitise_chart_label(r.stats.name)})
+            contributors.append({"email": email_key, "name": labels[email_key]})
             daily_counts[email_key] = dict(per_email[email_key])
 
     payload: dict[str, object] = {
@@ -738,7 +783,8 @@ def _build_contributor_commits_chart(ranked: list[RankedContributor]) -> str:
     if not ranked:
         return "null"
 
-    names = [_sanitise_chart_label(r.stats.name) for r in reversed(ranked)]
+    labels = _contributor_labels(ranked)
+    names = [labels[r.stats.email.lower()] for r in reversed(ranked)]
     counts = [r.stats.commit_count for r in reversed(ranked)]
     tiers = [r.tier_designation for r in reversed(ranked)]
 
@@ -774,7 +820,8 @@ def _build_contributor_lines_chart(ranked: list[RankedContributor]) -> str:
     if not ranked:
         return "null"
 
-    names = [_sanitise_chart_label(r.stats.name) for r in ranked]
+    labels = _contributor_labels(ranked)
+    names = [labels[r.stats.email.lower()] for r in ranked]
     added = [r.stats.lines_added for r in ranked]
     deleted = [r.stats.lines_deleted for r in ranked]
 
@@ -825,9 +872,10 @@ def _build_commit_share_pie(ranked: list[RankedContributor]) -> str:
     if len(ranked) < 2:
         return "null"
 
+    display = _contributor_labels(ranked)
     sorted_r = sorted(ranked, key=lambda r: r.stats.commit_count, reverse=True)
     labels, values = _aggregate_pie_data(
-        [(_sanitise_chart_label(r.stats.name), r.stats.commit_count) for r in sorted_r]
+        [(display[r.stats.email.lower()], r.stats.commit_count) for r in sorted_r]
     )
 
     fig = go.Figure(
@@ -866,9 +914,10 @@ def _build_lines_share_pie(ranked: list[RankedContributor]) -> str:
     if len(ranked) < 2:
         return "null"
 
+    display = _contributor_labels(ranked)
     sorted_r = sorted(ranked, key=lambda r: r.stats.lines_changed, reverse=True)
     labels, values = _aggregate_pie_data(
-        [(_sanitise_chart_label(r.stats.name), r.stats.lines_changed) for r in sorted_r]
+        [(display[r.stats.email.lower()], r.stats.lines_changed) for r in sorted_r]
     )
 
     fig = go.Figure(
