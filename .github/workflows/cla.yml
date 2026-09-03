@@ -121,9 +121,17 @@ jobs:
           # The declaration must name the full SHA and must itself be signed
           # off, so the certification is still made by a person, in writing,
           # against a specific commit.
+          # Whitespace-tolerant, because a commit message wraps. Requiring
+          # the declaration on one physical line is the defect this release
+          # already fixed once in the checkbox check above: the template a
+          # contributor is told to copy did not fit on one line, so the gate
+          # could never match what it asked for. \s matches a newline, so
+          # the declaration may wrap anywhere between its words. The
+          # forty-character SHA terminates it, so no end anchor is needed.
           remediation = re.compile(
-              r"^I, .+ <.+@.+>, hereby add my Signed-off-by to this commit: ([0-9a-f]{40})$",
-              re.MULTILINE | re.IGNORECASE,
+              r"I,\s+.+?\s+<[^<>@\s]+@[^<>\s]+>,\s+hereby\s+add\s+my"
+              r"\s+Signed-off-by\s+to\s+this\s+commit:\s+([0-9a-f]{40})",
+              re.IGNORECASE,
           )
           remediated = {
               match.group(1).lower()
