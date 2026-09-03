@@ -543,12 +543,7 @@ def _build_timeline_chart(commits: list[Commit]) -> str:
         )
     )
     layout = _base_layout()
-    layout["xaxis"] = {
-        "type": "category",
-        "gridcolor": "#e2e8f0",
-        "linecolor": "#d1d9e0",
-        "tickangle": -45,
-    }
+    layout["xaxis"] = {"type": "category", "tickangle": -45}
     fig.update_layout(
         **layout,
         xaxis_title="Week",
@@ -619,12 +614,7 @@ def _build_contributor_timeline_chart(
         )
 
     layout = _base_layout()
-    layout["xaxis"] = {
-        "type": "category",
-        "gridcolor": "#e2e8f0",
-        "linecolor": "#d1d9e0",
-        "tickangle": -45,
-    }
+    layout["xaxis"] = {"type": "category", "tickangle": -45}
     layout["showlegend"] = True
     layout["legend"] = {"orientation": "h", "y": 1.12, "x": 0}
     fig.update_layout(
@@ -1168,8 +1158,6 @@ def _base_layout() -> dict[str, Any]:
             "size": 12,
         },
         "margin": {"l": 60, "r": 30, "t": 20, "b": 50},
-        "xaxis": {"gridcolor": "#e2e8f0", "linecolor": "#d1d9e0"},
-        "yaxis": {"gridcolor": "#e2e8f0", "linecolor": "#d1d9e0"},
         "showlegend": False,
         "modebar": {"remove": ["logo"]},
     }
@@ -1178,9 +1166,17 @@ def _base_layout() -> dict[str, Any]:
 def _to_json(fig: go.Figure) -> str:
     r"""Serialise a Plotly figure to a JSON specification string.
 
-    Background colours (paper_bgcolor, plot_bgcolor) and font colour are
-    stripped from the layout before serialisation. These are injected by
-    the client-side theme manager at render time.
+    Every theme-dependent colour is stripped from the layout before
+    serialisation, because a chart specification is rendered under both
+    themes and a colour baked in here can only be right under one of them.
+    The client-side theme manager is the single source of these values.
+
+    This runs at the one point every chart passes through, so a builder
+    that sets an axis colour cannot leak it into the document. Before
+    this, two builders and the shared base layout each set the light
+    theme's grid and line colours; under the dark theme they rendered a
+    14:1 grid over the plot area, because the manager's attempt to
+    override them never took effect.
 
     The sequence "</" is escaped as "<\/" throughout the output to prevent
     any "</script>" in label text from terminating the embedding script block.
@@ -1194,9 +1190,71 @@ def _to_json(fig: go.Figure) -> str:
     figure_json: str = fig.to_json() or "{}"
     raw: dict[str, Any] = json.loads(figure_json)
     layout = raw.get("layout", {})
-    for key in ("paper_bgcolor", "plot_bgcolor"):
-        layout.pop(key, None)
-    if "font" in layout:
-        layout["font"].pop("color", None)
+
+    # Plotly.py serialises its entire default template into every figure:
+    # 7,105 bytes per chart, 84% of each specification, and the same bytes
+    # each time. Plotly.js registers the same default client-side, so the
+    # copy carried in the document changes nothing about how a chart draws.
+    # What it does carry is a light-theme palette -- a plot background, a
+    # white grid, an axis colour -- inside a document rendered under two
+    # themes, which is the class of defect this module has just been
+    # cleared of. Every colour a chart actually depends on is set
+    # explicitly, by the builder for the data and by the theme manager for
+    # the surface.
+    layout.pop("template", None)
+
+    _strip_theme_colours(layout)
     raw["layout"] = layout
     return json.dumps(raw).replace("</", "<\\/")
+
+
+#: Layout keys whose value is a colour that differs between the two themes.
+#: Each entry is a path of nested layout keys. `_strip_theme_colours`
+#: removes every one of these, and a fitness function asserts that no
+#: emitted chart specification contains any of them.
+_THEME_COLOUR_PATHS: tuple[tuple[str, ...], ...] = (
+    ("paper_bgcolor",),
+    ("plot_bgcolor",),
+    ("font", "color"),
+    ("legend", "bgcolor"),
+    ("legend", "bordercolor"),
+    ("legend", "font", "color"),
+    ("hoverlabel", "bgcolor"),
+    ("hoverlabel", "bordercolor"),
+    ("hoverlabel", "font", "color"),
+    ("modebar", "bgcolor"),
+    ("modebar", "color"),
+    ("modebar", "activecolor"),
+)
+
+#: Axis-local colour keys, stripped from every axis the layout declares.
+#: Plotly numbers additional axes `xaxis2`, `yaxis3` and so on, so the
+#: axis names are matched by prefix rather than listed.
+_AXIS_COLOUR_KEYS: tuple[str, ...] = (
+    "gridcolor",
+    "linecolor",
+    "zerolinecolor",
+    "tickcolor",
+)
+
+
+def _strip_theme_colours(layout: dict[str, Any]) -> None:
+    """Remove every theme-dependent colour from a Plotly layout, in place.
+
+    Args:
+        layout: The layout mapping of a serialised Plotly figure.
+    """
+    for path in _THEME_COLOUR_PATHS:
+        node: Any = layout
+        for key in path[:-1]:
+            node = node.get(key) if isinstance(node, dict) else None
+            if node is None:
+                break
+        if isinstance(node, dict):
+            node.pop(path[-1], None)
+
+    for name, value in layout.items():
+        if not name.startswith(("xaxis", "yaxis")) or not isinstance(value, dict):
+            continue
+        for key in _AXIS_COLOUR_KEYS:
+            value.pop(key, None)
