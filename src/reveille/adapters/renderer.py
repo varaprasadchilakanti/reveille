@@ -536,6 +536,7 @@ class Renderer:
             "pie_commits": _build_commit_share_pie(data.ranked_contributors),
             "pie_lines": _build_lines_share_pie(data.ranked_contributors),
             "lorenz": _build_lorenz_chart(data.ranked_contributors),
+            "commit_size": _build_commit_size_chart(data.commits),
         }
 
 
@@ -892,6 +893,64 @@ def _build_lines_share_pie(ranked: list[RankedContributor]) -> str:
 # ------------------------------------------------------------------
 # Derived metric helpers
 # ------------------------------------------------------------------
+
+
+def _build_commit_size_chart(commits: list[Commit]) -> str:
+    """Build a histogram of change size per commit, on a log-spaced scale.
+
+    Relative code churn -- lines added plus deleted, per commit -- is the
+    measure Nagappan and Ball put on a formal footing in "Use of Relative
+    Code Churn Measures to Predict System Defect Density" (ICSE 2005).
+    What it shows here is the shape of the working rhythm: whether a
+    repository advances in many small steps or a few large ones.
+
+    Buckets are log-spaced because change size is heavily skewed. Linear
+    buckets over a range that spans one line to ten thousand put almost
+    every commit in the first bar, which states nothing.
+
+    This is a property of the history, not of anyone in it: the commits
+    are pooled, and no contributor is separated out.
+
+    Args:
+        commits: All commits in the analysis window.
+
+    Returns:
+        A Plotly figure JSON string, or 'null' if commits is empty.
+    """
+    if not commits:
+        return "null"
+
+    edges = [1, 10, 50, 200, 1000, 5000]
+    labels = ["1-9", "10-49", "50-199", "200-999", "1k-4,999", "5,000+"]
+    buckets = [0] * len(labels)
+    for commit in commits:
+        size = commit.lines_added + commit.lines_deleted
+        index = len(edges) - 1
+        for position, edge in enumerate(edges):
+            if size < edge:
+                index = max(position - 1, 0)
+                break
+        buckets[index] += 1
+
+    fig = go.Figure(
+        go.Bar(
+            x=labels,
+            y=buckets,
+            marker_color=_CATEGORICAL_PALETTE[0],
+            text=[str(count) if count else "" for count in buckets],
+            textposition="outside",
+            hovertemplate="%{x} lines changed<br>Commits: %{y}<extra></extra>",
+        )
+    )
+    layout = _base_layout()
+    layout["xaxis"] = {"type": "category", "automargin": True}
+    fig.update_layout(
+        **layout,
+        xaxis_title="Lines changed in one commit",
+        yaxis_title="Commits",
+        height=280,
+    )
+    return _to_json(fig)
 
 
 def _build_lorenz_chart(ranked: list[RankedContributor]) -> str:

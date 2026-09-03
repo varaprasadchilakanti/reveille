@@ -21,6 +21,16 @@ Nothing yet.
 
 ### Added
 
+- **A change-size histogram.** How much each commit changed, pooled across the
+  history, in log-spaced buckets — linear buckets over a range spanning one
+  line to ten thousand put almost every commit in the first bar and state
+  nothing. This is relative code churn in the sense of Nagappan & Ball, *Use
+  of Relative Code Churn Measures to Predict System Defect Density* (ICSE
+  2005), and it shows the working rhythm: many small steps or a few large
+  ones. Churn is added **plus** deleted, not net — a commit that deletes five
+  hundred lines is a large change. Like the Lorenz curve it pools the commits
+  and separates no contributor out.
+
 - **[`docs/PLAYBOOK.md`](docs/PLAYBOOK.md)** — one page on how to *read* a
   report, as distinct from how to produce one. The order to take the sections
   in, a table of what each measure supports and what it does not, three

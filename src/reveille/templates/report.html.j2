@@ -772,6 +772,25 @@
     </div>
 
     <!-- ============================================================
+         Commit Size Distribution
+         ============================================================ -->
+    <div class="section">
+        <h2 class="section-title">Change Size per Commit</h2>
+        <p class="section-note">
+            How much each commit changed, pooled across the history.
+            Log-spaced buckets, because change size is heavily skewed.
+        </p>
+        <div class="chart-container">
+            <div id="chart-commit_size" role="img" aria-label="Histogram of commits grouped by the number of lines changed in each, on a log-spaced scale."></div>
+        </div>
+        <p class="chart-foot">
+            Relative code churn, in the sense of Nagappan &amp; Ball (ICSE
+            2005). It describes the working rhythm of the repository — many
+            small steps or few large ones — and separates no contributor out.
+        </p>
+    </div>
+
+    <!-- ============================================================
          Per-Contributor Commit Frequency
          ============================================================ -->
     <div class="section">
@@ -952,6 +971,10 @@
 {{ charts.lorenz | safe }}
 </script>
 
+<script type="application/json" id="spec-commit_size">
+{{ charts.commit_size | safe }}
+</script>
+
 <script type="application/json" id="spec-heatmap">
 {{ charts.heatmap | safe }}
 </script>
@@ -984,7 +1007,8 @@
         'contributor_lines',
         'pie_commits',
         'pie_lines',
-        'lorenz'
+        'lorenz',
+        'commit_size'
     ];
 
     var PLOTLY_CONFIG = {
