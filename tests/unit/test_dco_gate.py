@@ -112,6 +112,55 @@ class TestRemediation:
         code, output = _run(tmp_path, ["web ui commit", _REMEDIATION + _SIGN_OFF])
         assert code == 0, output
 
+    @pytest.mark.parametrize(
+        "wrapped",
+        [
+            "I, Test Person <test@example.com>, hereby add my\nSigned-off-by to this commit: {sha}",
+            "I, Test Person <test@example.com>, hereby add my Signed-off-by\nto this commit: {sha}",
+            "I, Test Person\n<test@example.com>, hereby add my Signed-off-by to this commit: {sha}",
+        ],
+    )
+    def test_a_wrapped_declaration_still_counts(self, tmp_path: Path, wrapped: str) -> None:
+        """Commit messages wrap, and so does the template printed on failure.
+
+        Requiring the declaration on one physical line is the defect this
+        release already fixed once in the checkbox check above: the
+        wording a contributor was told to copy did not fit on a line, so
+        the gate could never match what it asked for. It was reintroduced
+        here, and caught by running the gate over this repository's own
+        branch rather than by any test.
+        """
+        code, output = _run(tmp_path, ["web ui commit", wrapped + _SIGN_OFF])
+        assert code == 0, output
+
+    def test_the_printed_template_satisfies_the_pattern_it_teaches(self, tmp_path: Path) -> None:
+        """Follow the instructions literally; the gate must then pass.
+
+        This is the guard that closes the class of defect, rather than
+        the instance: whatever the failure message tells a contributor to
+        write, writing exactly that has to work.
+        """
+        first = tmp_path / "first"
+        first.mkdir()
+        _, output = _run(first, ["web ui commit"])
+
+        # The template is the indented block of the failure message.
+        template = "\n".join(
+            line[4:] for line in output.splitlines() if line.startswith("    ")
+        ).strip()
+        assert "hereby add my" in template, f"no template in the output:\n{output}"
+
+        second = tmp_path / "second"
+        second.mkdir()
+        message = template.replace("Your Name", "Test Person").replace(
+            "you@example.com", "test@example.com"
+        )
+        code, second_output = _run(second, ["web ui commit", message])
+        assert code == 0, (
+            "copying the template the gate prints does not satisfy the gate:\n"
+            f"{message}\n---\n{second_output}"
+        )
+
     def test_an_unsigned_remediation_does_not_rescue_anything(self, tmp_path: Path) -> None:
         """Both commits fail, and the second cannot cover the first.
 
