@@ -19,6 +19,7 @@ import os
 import re
 import subprocess
 import sys
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
@@ -1180,13 +1181,49 @@ class TestReportAccessibility:
         remote page navigates on a click; it does not load anything into
         the report, and flagging it would make this guard cry wolf.
         """
-        markup = re.sub(
-            r"<script\b.*?</script>",
-            "",
-            default_report_content,
-            flags=re.DOTALL | re.IGNORECASE,
-        )
-        markup = re.sub(r"<style\b.*?</style>", "", markup, flags=re.DOTALL | re.IGNORECASE)
+        class _TagStripper(HTMLParser):
+            def __init__(self, blocked: set[str]) -> None:
+                super().__init__(convert_charrefs=False)
+                self._blocked = {name.lower() for name in blocked}
+                self._depth = 0
+                self.parts: list[str] = []
+
+            def handle_starttag(self, tag: str, attrs) -> None:
+                if tag.lower() in self._blocked:
+                    self._depth += 1
+                elif self._depth == 0:
+                    self.parts.append(self.get_starttag_text())
+
+            def handle_endtag(self, tag: str) -> None:
+                if tag.lower() in self._blocked and self._depth > 0:
+                    self._depth -= 1
+                elif self._depth == 0:
+                    self.parts.append(f"</{tag}>")
+
+            def handle_startendtag(self, tag: str, attrs) -> None:
+                if self._depth == 0 and tag.lower() not in self._blocked:
+                    self.parts.append(self.get_starttag_text())
+
+            def handle_data(self, data: str) -> None:
+                if self._depth == 0:
+                    self.parts.append(data)
+
+            def handle_comment(self, data: str) -> None:
+                if self._depth == 0:
+                    self.parts.append(f"<!--{data}-->")
+
+            def handle_decl(self, decl: str) -> None:
+                if self._depth == 0:
+                    self.parts.append(f"<!{decl}>")
+
+            def handle_pi(self, data: str) -> None:
+                if self._depth == 0:
+                    self.parts.append(f"<?{data}>")
+
+        stripper = _TagStripper({"script", "style"})
+        stripper.feed(default_report_content)
+        stripper.close()
+        markup = "".join(stripper.parts)
 
         loaded = re.findall(
             r"""\b(?:src|srcset|poster|data)\s*=\s*["'](?:https?:)?//[^"']*""",
