@@ -151,6 +151,7 @@ def generate_report(
         provenance=provenance,
         ranked_contributors=ranked_contributors,
         commits=commits,
+        file_stats=list(reader.file_stats),
     )
 
     _logger.debug(

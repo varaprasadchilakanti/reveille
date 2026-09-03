@@ -29,13 +29,14 @@ import logging
 import os
 import re
 from collections import defaultdict
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from git import InvalidGitRepositoryError, NoSuchPathError, Repo
 from git.exc import GitCommandError
 
-from reveille.domain.models import Commit, ContributorStats, RepositoryMetadata
+from reveille.domain.models import Commit, ContributorStats, FileStats, RepositoryMetadata
 from reveille.exceptions import EmptyRepositoryError, RepositoryError
 
 # Record and field delimiters for the single-pass `git log` read.
@@ -201,16 +202,89 @@ def _sum_numstat(block: str) -> tuple[int, int]:
     """
     added = 0
     deleted = 0
+    for _path, line_added, line_deleted in _iter_numstat(block):
+        added += line_added
+        deleted += line_deleted
+    return added, deleted
+
+
+def _iter_numstat(block: str) -> Iterator[tuple[str, int, int]]:
+    r"""Yield `(path, added, deleted)` for each file in one numstat block.
+
+    The paths were already being read and thrown away: `git log --numstat`
+    carries them on every line, and the totals were summed out of a
+    structure that had them. File-level analysis therefore costs no extra
+    Git work, only the parsing already being paid for.
+
+    A rename is reported by Git as `old => new` inside braces or as a
+    plain `old => new`; the destination is taken, since that is the path
+    the file has now.
+
+    Binary files report a literal `-` for both counts and contribute
+    zero, matching the per-commit diff this replaced.
+
+    Args:
+        block: The numstat lines belonging to a single commit. May be
+            empty for a commit that changed no files.
+
+    Yields:
+        One `(path, added, deleted)` triple per file.
+    """
     for line in block.splitlines():
         fields = line.split("\t")
         if len(fields) < 3:
             continue
-        raw_added, raw_deleted = fields[0], fields[1]
-        if raw_added.isdigit():
-            added += int(raw_added)
-        if raw_deleted.isdigit():
-            deleted += int(raw_deleted)
-    return added, deleted
+        raw_added, raw_deleted, path = fields[0], fields[1], fields[2]
+        added = int(raw_added) if raw_added.isdigit() else 0
+        deleted = int(raw_deleted) if raw_deleted.isdigit() else 0
+        yield _rename_destination(path), added, deleted
+
+
+def _rename_destination(path: str) -> str:
+    """Return the path a file has after a rename, or the path unchanged.
+
+    Git writes a rename in numstat as `dir/{old => new}/file.py` or as a
+    bare `old.py => new.py`. Counting both sides would double a file and
+    counting the source would attribute churn to a path that no longer
+    exists, so the destination is taken.
+
+    Args:
+        path: One numstat path field.
+
+    Returns:
+        The destination path, with any rename notation resolved.
+    """
+    if "=>" not in path:
+        return path
+    if "{" in path and "}" in path:
+        prefix, _, rest = path.partition("{")
+        inner, _, suffix = rest.partition("}")
+        _, _, destination = inner.partition("=>")
+        return f"{prefix}{destination.strip()}{suffix}".replace("//", "/")
+    _, _, destination = path.partition("=>")
+    return destination.strip()
+
+
+def _accumulate_file_totals(record: str, totals: dict[str, list[int]]) -> None:
+    """Fold one log record's numstat block into the running per-path totals.
+
+    Extracted from `read_commits` because inlining it pushed that method
+    past the complexity limit, which is the limit doing its job.
+
+    Args:
+        record: One `git log` record, header line then numstat block.
+        totals: Mutated in place, mapping path to
+            `[commits, lines_added, lines_deleted]`.
+    """
+    _, _, numstat_block = record.partition("\n")
+    for path, added, deleted in _iter_numstat(numstat_block):
+        entry = totals.get(path)
+        if entry is None:
+            totals[path] = [1, added, deleted]
+        else:
+            entry[0] += 1
+            entry[1] += added
+            entry[2] += deleted
 
 
 class GitReader:
@@ -234,6 +308,7 @@ class GitReader:
             RepositoryError: If the path is not a valid readable Git repository.
         """
         self._mailmap_applied = False
+        self._file_stats: tuple[FileStats, ...] = ()
         self.unmatched_exclusions: tuple[str, ...] = ()
         try:
             self._repo = Repo(str(repo_path), search_parent_directories=False)
@@ -371,10 +446,25 @@ class GitReader:
 
         commits: list[Commit] = []
         matched: set[str] = set()
+        # Accumulated while streaming rather than stored per commit: the
+        # cost is bounded by the number of distinct paths, not by the
+        # number of commits multiplied by the files each touched. A
+        # 50,000-commit repository would otherwise hold a list of paths
+        # per commit for the whole run.
+        file_totals: dict[str, list[int]] = {}
         for record in raw_log.split(_RECORD_SEP):
             commit = _parse_log_record(record, mailmap, exclude_set, authentic_shas, matched)
-            if commit is not None:
-                commits.append(commit)
+            if commit is None:
+                continue
+            commits.append(commit)
+            # Only files from commits that survived filtering: an excluded
+            # author's churn must not reappear here.
+            _accumulate_file_totals(record, file_totals)
+
+        self._file_stats = tuple(
+            FileStats(path=path, commits=n, lines_added=a, lines_deleted=d)
+            for path, (n, a, d) in file_totals.items()
+        )
 
         # A filter that matched nothing is almost always a typo, and silence
         # makes it indistinguishable from one that worked. This matters most
@@ -527,6 +617,19 @@ class GitReader:
             return str(self._repo.commit(rev).hexsha)
         except Exception:
             return None
+
+    @property
+    def file_stats(self) -> tuple[FileStats, ...]:
+        """Per-path activity from the most recent `read_commits` call.
+
+        Empty before the first call, and replaced on every call rather
+        than appended to, so a reader reused for a second repository does
+        not report the first one's files.
+
+        Returns:
+            One `FileStats` per distinct path, in first-seen order.
+        """
+        return self._file_stats
 
     @property
     def mailmap_applied(self) -> bool:
