@@ -358,6 +358,27 @@ Nothing yet.
   The scaffold now shows `enabled = false`, states that uncommenting turns it on,
   and points at the caveat.
 
+- **This repository had no `.mailmap`, and its own report showed it.** One
+  commit made through the GitHub web interface carried the account's noreply
+  address, so the contributors table listed three people where there are two.
+  The spare row was the smaller problem: the charts key on the display name,
+  and Plotly resolves a repeated label differently per trace type — a bar
+  chart collapses the bars onto one category, a pie sums the slices. The
+  table read 201 and 1, the bar chart read 201, and the pie read 202. Three
+  views of one repository, three answers. A `.mailmap` now maps the
+  identities; all three agree at 202, and the User Guide points at the file
+  as the worked example of the case that produces it. `git shortlog` and
+  GitHub's contributors graph agree too, which needed the prefixed noreply
+  address mapped literally — Reveille strips the numeric prefix before
+  resolving, and they do not.
+
+- **The User Guide still promised what ADR 0010 refuses.** Its identity
+  section said a `.mailmap` ensures "ranking and contribution metrics reflect
+  actual individual output". The generated scaffold was corrected earlier in
+  this release and the prose it was copied from was not. It now says what
+  `.mailmap` does: one person committing under several addresses is counted
+  once rather than once per address.
+
 - **The generated `.mailmap` made the claim this release exists to retract.** Its
   header said mappings ensure *"rankings reflect actual individual output"* —
   exactly the reading ADR 0010, `reveille capabilities` and the DORA/SPACE

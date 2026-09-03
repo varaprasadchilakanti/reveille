@@ -50,9 +50,8 @@ accounts are mixed — is correctly treated as a single person, using the
 name from their most recent commit. If a `.mailmap` file is present at
 the repository root, email aliases are resolved to their canonical
 identity before aggregation. A contributor who has committed under
-multiple email addresses is unified under the canonical identity declared
-in `.mailmap`, ensuring that ranking and contribution metrics reflect
-actual individual output rather than the number of addresses used.
+multiple email addresses is counted once, under the canonical identity
+declared in `.mailmap`, rather than once per address.
 
 All four `.mailmap` forms defined by `gitmailmap(5)` are supported, and
 matching follows Git's own precedence: the most specific rule wins.
@@ -67,6 +66,17 @@ entry required. The legacy `username@users.noreply.github.com` and the
 post-2017 `12345678+username@users.noreply.github.com` forms both exist,
 and the same person frequently appears under both; the numeric prefix is
 stripped so the two collapse into one contributor.
+
+Folding the noreply forms into each other is not the same as folding them
+into your configured address. A commit made through the GitHub web
+interface records the noreply address, so it still reads as a second
+contributor until a `.mailmap` says otherwise — and the effect is easy to
+miss, because a one-commit identity is a sliver in a chart and a full row
+in the table.
+
+Reveille's own [`.mailmap`](https://github.com/varaprasadchilakanti/reveille/blob/main/.mailmap)
+is a worked example of exactly that case. `reveille init --mailmap`
+generates an annotated template covering all four forms.
 
 Third, each contributor is scored using the weighted composite ranking
 algorithm and assigned a tier designation relative to the other
