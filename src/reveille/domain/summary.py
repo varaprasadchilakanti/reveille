@@ -53,6 +53,18 @@ _QUIET_PERIOD_DAYS = 30
 #: time zones, contract shapes and release windows all produce it.
 _WEEKEND_SHARE_THRESHOLD = 0.15
 
+#: Below this many contributors, findings that describe *behaviour* are
+#: withheld entirely.
+#:
+#: Omitting a name does not make a sentence non-personal. GDPR Recital 26
+#: asks whether a person can be singled out by any means reasonably likely
+#: to be used, and in a two-person repository "31% of commits were
+#: authored at a weekend" singles somebody out at zero cost -- to their
+#: own colleague, and to anyone the report is forwarded to. Volume and
+#: recency say something about the repository at any size; a working
+#: pattern does not.
+_MINIMUM_CONTRIBUTORS_FOR_BEHAVIOUR = 3
+
 
 @dataclass(frozen=True)
 class Finding:
@@ -108,6 +120,20 @@ def _distribution_finding(contributors: list[ContributorStats]) -> Finding | Non
     # over small counts produced "spread fairly evenly... the busiest holding
     # 73%" in one sentence. The leading share decides the wording; the
     # coefficient is reported as the evidence behind it.
+    if len(counts) < _MINIMUM_CONTRIBUTORS_FOR_BEHAVIOUR:
+        # With two contributors, a leading share is a statement about one
+        # named person in a table four sections below. The Gini describes
+        # the same distribution without singling anyone out.
+        return Finding(
+            headline=(f"Commits are distributed across {_plural(len(counts), 'contributor')}."),
+            detail=(
+                "The share held by each is in the table below. With so few "
+                "contributors a share is a statement about an identifiable "
+                "person, so it is not restated here."
+            ),
+            evidence=f"Gini {gini:.2f}",
+        )
+
     if leading_share > 0.50:
         headline = (
             f"One contributor authored {leading_share:.0%} of commits, of "
@@ -163,9 +189,19 @@ def _cadence_finding(commits: list[Commit]) -> Finding | None:
     return Finding(headline=headline, detail=detail, evidence=f"median gap {median:.0f}d")
 
 
-def _weekend_finding(commits: list[Commit]) -> Finding | None:
-    """State weekend activity as an observation, never as a judgement."""
+def _weekend_finding(
+    commits: list[Commit],
+    contributors: list[ContributorStats],
+) -> Finding | None:
+    """State weekend activity as an observation, never as a judgement.
+
+    Withheld below `_MINIMUM_CONTRIBUTORS_FOR_BEHAVIOUR`. This is the most
+    sensitive sentence the module can produce, and in a small repository
+    it is a sentence about one identifiable person's out-of-hours working.
+    """
     if len(commits) < _MINIMUM_COMMITS_FOR_SHAPE:
+        return None
+    if len(contributors) < _MINIMUM_CONTRIBUTORS_FOR_BEHAVIOUR:
         return None
     weekend = sum(1 for c in commits if c.timestamp.weekday() >= 5)
     share = weekend / len(commits)
@@ -224,7 +260,7 @@ def summarise(
         _span_finding(commits),
         _distribution_finding(contributors),
         _cadence_finding(commits),
-        _weekend_finding(commits),
+        _weekend_finding(commits, contributors),
         _recency_finding(commits, reference),
     ]
     return [finding for finding in candidates if finding is not None]

@@ -433,6 +433,39 @@ Nothing yet.
 
 ### Fixed
 
+- **The default report named an individual and called them "Top Contributor".**
+  Found by a legal review of the artefact, not of the documentation. The fifth
+  summary card was never gated on `provenance.ranking_enabled`: `--no-ranking`
+  removed the rank column, the designation and the score, and then printed a
+  named person under a superlative at the top of the page — the visible first
+  name, and the full name to assistive technology. ADR 0010 says the default
+  report describes the repository and names nobody, and this card was the one
+  place it did not. The slot now carries the Gini coefficient instead, which
+  is a repository-level figure and the one the distribution section is built
+  on.
+
+- **Screen-reader users were told the table was a ranking in both modes.** The
+  visible heading switched correctly between "Contributor Rankings" and
+  "Contributors"; the table's visually-hidden `<caption>` said "Contributor
+  rankings" unconditionally. One class of reader was told the opposite of
+  another.
+
+- **Every report was subtitled "Repository Performance Report".** The project
+  spends its documentation declining to call this a performance measure, and
+  then asserted it in the artefact, in the line directly under the repository
+  name. It now reads "Repository History Report".
+
+- **The generated findings described a working pattern in teams too small to
+  hide anyone.** Omitting a name does not make a sentence non-personal: GDPR
+  Recital 26 asks whether a person can be *singled out* by any means
+  reasonably likely to be used, and in a two-person repository "31% of commits
+  were authored at a weekend" identifies somebody at zero cost — to their own
+  colleague, and to anyone the report is forwarded to, with the contributor
+  table four sections below completing it. Behavioural findings are now
+  withheld below three contributors: the weekend finding entirely, and the
+  leading-share clause of the distribution finding, which keeps the Gini.
+  Volume and recency describe the repository at any size and are unchanged.
+
 - **Two contributors sharing a display name collapsed into one, differently in
   each chart.** ADR 0002 makes the lowercased email the identity key, but the
   charts labelled by display name, which is not unique. Plotly then resolves a

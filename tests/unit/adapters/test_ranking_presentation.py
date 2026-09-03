@@ -227,3 +227,56 @@ class TestJsonRemainsConsistent:
         assert "composite_score" not in csv_row
         assert "composite_score" not in json_row
         assert 'class="score-bar-fill"' not in html
+
+
+@pytest.mark.unit
+class TestTheDefaultReportNamesNobodyInItsSummary:
+    """The one place the default report still named an individual.
+
+    `--no-ranking` removed the rank column, the designation and the
+    score, and then printed a named person under the superlative "Top
+    Contributor" at the top of the page. Both the visible first name and
+    the full name given to assistive technology. ADR 0010 says the
+    default report describes the repository and names nobody; this card
+    was where it did not.
+    """
+
+    def test_no_top_contributor_card_by_default(self, tmp_path: Path) -> None:
+        html = _html(tmp_path, ranking=False)
+        assert "Top Contributor" not in html, (
+            "the default report labels an individual with a superlative"
+        )
+
+    def test_the_slot_carries_a_repository_level_figure_instead(self, tmp_path: Path) -> None:
+        """Removing the card must not leave a gap in the summary row."""
+        html = _html(tmp_path, ranking=False)
+        assert "Distribution (Gini)" in html
+
+    def test_the_card_returns_when_the_ranking_is_asked_for(self, tmp_path: Path) -> None:
+        assert "Top Contributor" in _html(tmp_path, ranking=True)
+
+    def test_no_contributor_name_reaches_the_summary_row(self, tmp_path: Path) -> None:
+        """Asserted over the markup, not over a single label string."""
+        html = _html(tmp_path, ranking=False)
+        start = html.index('class="summary-grid"')
+        summary = html[start : html.index("</div>\n\n", start)]
+        for name in ("Alice", "Bob", "Carol"):
+            assert name not in summary, f"{name} appears in the summary cards"
+
+
+@pytest.mark.unit
+class TestAssistiveTechnologyIsToldTheSameThing:
+    """A screen-reader user was told the table was a ranking in both modes."""
+
+    def test_the_table_caption_follows_the_mode(self, tmp_path: Path) -> None:
+        assert "Contributor rankings" not in _html(tmp_path, ranking=False)
+        assert "Contributor rankings" in _html(tmp_path, ranking=True)
+
+
+@pytest.mark.unit
+class TestTheReportDoesNotCallItselfAPerformanceReport:
+    """The subtitle asserted the framing the documentation disclaims."""
+
+    def test_the_subtitle_is_neutral(self, tmp_path: Path) -> None:
+        for enabled in (False, True):
+            assert "Performance Report" not in _html(tmp_path, ranking=enabled)

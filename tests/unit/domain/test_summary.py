@@ -116,13 +116,13 @@ class TestTheDistributionSentenceMatchesTheNumbers:
     """The wording once contradicted its own evidence."""
 
     def test_an_even_split_is_not_called_a_majority(self) -> None:
-        """`[5, 5]` is exactly even; 50% is not "one contributor authored"."""
-        findings = summarise(_commits(40), _stats([20, 20]))
+        """Exactly even is not "one contributor authored"."""
+        findings = summarise(_commits(40), _stats([20, 20, 20, 20]))
         headline = next(f.headline for f in findings if "contributor" in f.headline)
         assert "no single majority" in headline, headline
 
     def test_a_dominant_share_is_stated_plainly(self) -> None:
-        findings = summarise(_commits(40), _stats([202, 78]))
+        findings = summarise(_commits(40), _stats([202, 40, 38]))
         headline = next(f.headline for f in findings if "contributor" in f.headline)
         assert "72%" in headline or "73%" in headline
 
@@ -177,3 +177,71 @@ class TestEveryFindingCarriesItsEvidence:
         """Counts here are lower than raw `git log`, and that must be said."""
         span = summarise(_commits(60), _stats([60]))[0]
         assert "Merge commits are excluded" in span.detail
+
+
+@pytest.mark.unit
+class TestBehaviouralFindingsAreWithheldInSmallTeams:
+    """Omitting a name does not make a sentence non-personal.
+
+    GDPR Recital 26 asks whether a person can be singled out by any
+    means reasonably likely to be used. In a two-person repository,
+    "31% of commits were authored at a weekend" singles somebody out at
+    zero cost -- to their own colleague, and to anyone the report is
+    forwarded to. The contributor table four sections below completes
+    the identification for them.
+
+    Volume and recency describe the repository at any size. A working
+    pattern does not.
+    """
+
+    def _weekend_heavy(self, count: int = 60) -> list[Commit]:
+        """Commits deliberately weighted onto Saturdays and Sundays."""
+        commits: list[Commit] = []
+        for index in range(count):
+            day = _START + datetime.timedelta(days=index)
+            if day.weekday() < 5 and index % 3:
+                continue
+            commits.append(
+                Commit(
+                    sha=f"{index:040d}",
+                    author_name="Ada Lovelace",
+                    author_email="a@example.com",
+                    timestamp=day,
+                    lines_added=10,
+                    lines_deleted=1,
+                )
+            )
+        return commits + _commits(40)
+
+    def test_weekend_working_is_not_reported_for_two_contributors(self) -> None:
+        findings = summarise(self._weekend_heavy(), _stats([30, 10]))
+        assert not any("weekend" in f.headline.lower() for f in findings), (
+            "a weekend-working finding over two people describes one of them"
+        )
+
+    def test_weekend_working_is_reported_once_the_team_is_larger(self) -> None:
+        findings = summarise(self._weekend_heavy(), _stats([30, 10, 8, 5]))
+        assert any("weekend" in f.headline.lower() for f in findings), (
+            "the guard must not suppress the finding for a real team"
+        )
+
+    def test_a_leading_share_is_not_quoted_for_two_contributors(self) -> None:
+        findings = summarise(_commits(40), _stats([202, 78]))
+        headline = next(f.headline for f in findings if "contributor" in f.headline)
+        assert "%" not in headline, (
+            f"{headline!r} quotes a share that belongs to one identifiable person"
+        )
+
+    def test_the_distribution_is_still_described_for_two_contributors(self) -> None:
+        """Withholding the share must not withhold the finding."""
+        findings = summarise(_commits(40), _stats([202, 78]))
+        finding = next(f for f in findings if "contributor" in f.headline)
+        assert "distributed across 2 contributors" in finding.headline
+        assert finding.evidence.startswith("Gini"), (
+            "the repository-level measure should still be reported"
+        )
+
+    def test_volume_is_reported_at_any_size(self) -> None:
+        """A commit count describes the repository, not a person."""
+        findings = summarise(_commits(40), _stats([40]))
+        assert any("commits over" in f.headline for f in findings)
