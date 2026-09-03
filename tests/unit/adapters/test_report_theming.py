@@ -38,6 +38,7 @@ from reveille.domain.models import (
     FileStats,
     RankedContributor,
 )
+from reveille.domain.profile import AXIS_ORDER, ProfileAxis
 
 _TEMPLATE = (
     Path(__file__).resolve().parents[3] / "src" / "reveille" / "templates" / "report.html.j2"
@@ -235,6 +236,8 @@ class TestNoChartSpecificationCarriesAThemeColour:
             for i in range(4)
         ]
 
+        profile_axes = [ProfileAxis(name, 0.5, "d") for name in AXIS_ORDER]
+
         files = [
             FileStats(
                 path=f"src/module_{index}.py",
@@ -258,7 +261,9 @@ class TestNoChartSpecificationCarriesAThemeColour:
             parameter = next(iter(inspect.signature(function).parameters), None)
             if parameter is None:
                 continue
-            if "file" in parameter:
+            if "axes" in parameter:
+                argument = profile_axes
+            elif "file" in parameter:
                 argument = files
             elif "commit" in parameter:
                 argument = commits
@@ -278,7 +283,7 @@ class TestNoChartSpecificationCarriesAThemeColour:
                 if path and path[-1] in _COLOUR_KEYS
             )
 
-        assert checked >= 6, f"only {checked} builders produced a figure to check"
+        assert checked >= 7, f"only {checked} builders produced a figure to check"
         assert offences == [], (
             "a chart specification is displayed under both themes, so a "
             f"colour baked into one can only be right under one: {offences}"

@@ -21,6 +21,25 @@ Nothing yet.
 
 ### Added
 
+- **A five-axis repository profile.** Spread, Continuity, Currency,
+  Revisiting and Small steps, each a **naturally bounded share** — a count of
+  something out of a count of something — so no axis is rescaled by a constant
+  chosen to make the shape look right. That constraint is the design: a radar
+  whose axes are normalised by invented factors can be given any silhouette
+  its author wants, and a reader has no way to tell.
+
+  The form is used with its weaknesses stated rather than hidden. A radar
+  encodes by **area**, which Cleveland & McGill (*Graphical Perception*, JASA
+  1984) rank far below position and length for accuracy, and the enclosed area
+  depends on the **order** of the axes, which carries no meaning — permuting
+  two changes the silhouette without changing a number. So the order is fixed
+  in `AXIS_ORDER` and never data-dependent, every vertex carries its own value
+  as text so the figure reads as five numbers, the radial axis is a true 0–1,
+  and the report says all of this under the chart.
+
+  No axis is a target and none measures a person. A finished library scores
+  low on most of them, for entirely ordinary reasons.
+
 - **File-level analysis: where change concentrates, and what kind of file it
   lands in.** Two sections, both about paths and neither about people.
 

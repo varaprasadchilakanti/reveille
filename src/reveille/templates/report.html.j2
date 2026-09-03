@@ -728,6 +728,30 @@
     </div>
 
     <!-- ============================================================
+         Repository profile -- five bounded shares, fixed axis order
+         ============================================================ -->
+    {% if charts.profile != 'null' %}
+    <div class="section">
+        <h2 class="section-title">Repository Profile</h2>
+        <p class="section-note">
+            Five shares of the analysis window, each between 0% and 100%.
+        </p>
+        <div class="chart-container">
+            <div id="chart-profile" role="img" aria-label="Radar chart of five repository measures: spread of commits across contributors, continuity of weeks with activity, currency of the last commit, share of files revisited, and share of small commits."></div>
+        </div>
+        <p class="chart-foot">
+            Read it as five numbers, not as a shape. The enclosed area depends
+            on the order of the axes, which carries no meaning, and area is
+            read far less accurately than position or length (Cleveland &amp;
+            McGill, JASA 1984) — so the order is fixed and every vertex is
+            labelled. Each axis is a naturally bounded share, never rescaled to
+            fit. None of them is a target: a finished library scores low on
+            most, for entirely ordinary reasons. No axis measures a person.
+        </p>
+    </div>
+    {% endif %}
+
+    <!-- ============================================================
          What the history shows -- generated from the figures below
          ============================================================ -->
     {% if derived.findings %}
@@ -1022,6 +1046,10 @@
 {{ charts.extensions | safe }}
 </script>
 
+<script type="application/json" id="spec-profile">
+{{ charts.profile | safe }}
+</script>
+
 <script type="application/json" id="spec-heatmap">
 {{ charts.heatmap | safe }}
 </script>
@@ -1057,7 +1085,8 @@
         'lorenz',
         'commit_size',
         'hotspots',
-        'extensions'
+        'extensions',
+        'profile'
     ];
 
     var PLOTLY_CONFIG = {
