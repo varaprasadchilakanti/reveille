@@ -21,6 +21,34 @@ Nothing yet.
 
 ### Added
 
+- **A written summary of what the history shows**, at the top of the report.
+  Five rules over figures that already appear further down — the size and span
+  of the history, how commits are distributed, the rhythm of committing,
+  weekend share, and dormancy — each a sentence carrying the figure it rests
+  on.
+
+  This is data-to-text generation in the sense of Reiter and Dale, *Building
+  Natural Language Generation Systems* (2000): content selected by thresholds
+  and realised through fixed templates. **There is no model and no network
+  call**, and the same history always produces the same sentences, so
+  `--deterministic` still holds — recency measures against the last commit
+  rather than the wall clock for exactly that reason.
+
+  What it refuses to do is the point. It names no one and quotes no address,
+  asserted by a test that searches the generated prose for every contributor's
+  name and email. It carries no evaluative vocabulary: a second test fails the
+  build if *healthy*, *risk*, *productive*, *concerning* or a dozen others
+  appear. And it withholds rather than computes — below twenty commits there
+  is no cadence finding, because a median over a handful of days is arithmetic
+  and not evidence.
+
+  One rule was wrong as first written and the tests caught it. The Gini
+  coefficient is bounded by (n−1)/n, so over two contributors it cannot exceed
+  0.50 however lopsided the split; a raw threshold produced "commits are spread
+  fairly evenly… the busiest holding 73%" in a single sentence. The wording now
+  follows the leading share, with the coefficient reported as the evidence
+  behind it.
+
 - **The pinned Poetry moves from 1.8.2 to 2.4.2**, closing a mismatch that
   contributed to the incident this release opened with. Tested before adopting:
   all 452 tests pass, and the lock regenerates with **zero package version
