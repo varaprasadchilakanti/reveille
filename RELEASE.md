@@ -122,6 +122,14 @@ The tag push triggers `.github/workflows/publish.yml`, which:
    attestations. **There are no stored credentials**; nothing to rotate or leak;
 3. generates and attests a CycloneDX SBOM, and uploads it as a workflow artifact.
 
+**If the SBOM job fails, publication has already happened.** It runs after the
+upload, so a failure there costs the attestation, not the release. Re-running
+the job from the tag re-runs the workflow file *as it was at that tag*, which
+will fail the same way. Fix the workflow on `main`, then use the manual
+trigger: Actions → Publish → Run workflow → enter the tag. Only the SBOM jobs
+run that way; publication is guarded off, since a version number is spent on
+first upload.
+
 Watch the run. If it fails before the upload step, delete the tag
 (`git push --delete origin vX.Y.Z && git tag -d vX.Y.Z`), fix, and re-tag.
 This works only while no Release has been published for that tag: with
@@ -129,36 +137,32 @@ release immutability enabled, publishing a Release freezes the tag, and
 the recovery becomes X.Y.Z+1 rather than a re-tag.
 **Once the upload succeeds, that version number is spent** — see step 6.
 
-## 5. Draft the GitHub Release
+## 5. Publish the GitHub Release
 
-**Publication has already happened by this point.** Pushing the tag is what
-uploads to PyPI; the GitHub Release is a separate, human-readable page. If
-you never create one, the package is still published. Nothing here is a
-prerequisite for anything.
+**The workflow has already drafted it.** After the tag push, the `release`
+job creates a **draft** Release with the SBOM attached, the title taken from
+the CHANGELOG heading and the body taken from that version's section. Nothing
+is retyped, so the Release and the changelog cannot disagree.
 
-The Release is normally written after the tag, so the SBOM job has usually
-finished and its artifact can be attached.
+All that is left is to read it and press **Publish**.
 
-In the web interface — Releases → Draft a new release — choose the existing
-tag, paste the title and body, and attach the `sbom` artifact downloaded
-from the workflow run. This is the ordinary path and needs no tooling.
+The draft matters. A draft accepts assets; a published release does not, once
+release immutability is enabled. Creating it with the SBOM already attached
+removes the step a human previously had to remember, and the only window in
+which it could be done.
 
-With the GitHub CLI, if you have it installed and authenticated:
+If a Release already exists for the tag when the job runs — because you
+drafted one by hand first — the job attaches the SBOM to it instead. If that
+release is already published and immutable, the job says so and does not fail:
+the attestation has already succeeded, and the SBOM stays downloadable as the
+run's `sbom` artifact.
+
+Should you need the notes outside the workflow:
 
 ```bash
-gh run download --repo varaprasadchilakanti/reveille --name sbom
-gh release create vX.Y.Z --title "vX.Y.Z — <headline>" --notes-file notes.md
-gh release upload vX.Y.Z reveille-*-sbom.cdx.json
+python3 .github/scripts/release_notes.py vX.Y.Z --title
+python3 .github/scripts/release_notes.py vX.Y.Z --body
 ```
-
-`gh` is a convenience, not a requirement, and it is not installed by
-default. The two paths produce the same Release.
-
-**The title is not invented here.** It is `vX.Y.Z` followed by the theme already
-written into the CHANGELOG heading in step 1 — e.g. *"v0.8.0 — Security
-Hardening, Apache-2.0, and a Rebuilt Report"*. Releases before 0.8.0 were
-titled the same way by hand; from 0.8.0 the changelog is the source. Body is the
-CHANGELOG section for that version, with the heading line dropped.
 
 ## 6. Verify from the published artefact
 

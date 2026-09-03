@@ -46,45 +46,69 @@ def _gate_script() -> str:
     return textwrap.dedent(match.group(1))
 
 
-def _run(tmp_path: Path, messages: list[str]) -> tuple[int, str]:
-    """Build a repository with these commit messages and run the gate.
+class _Repository:
+    """A throwaway repository the gate can be run against, repeatedly.
 
-    `{sha}` in a message is replaced with the full SHA of the commit
-    before it, so a remediation can name its target.
+    Commits are added one at a time and the gate re-run in place, so a
+    remediation can name a SHA that exists in the repository it is
+    checked against.
     """
 
-    def git(*args: str) -> str:
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._git("init", "-q", "-b", "main")
+        self._git("config", "user.name", "Test Person")
+        self._git("config", "user.email", "test@example.com")
+        (path / "seed").write_text("0", encoding="utf-8")
+        self._git("add", "-A")
+        self._git("commit", "-q", "-m", f"seed{_SIGN_OFF}")
+        self.base = self._git("rev-parse", "HEAD")
+        self._files = 0
+
+    def _git(self, *args: str) -> str:
         return subprocess.run(
-            ["git", "-C", str(tmp_path), *args],
+            ["git", "-C", str(self.path), *args],
             capture_output=True,
             text=True,
             check=True,
         ).stdout.strip()
 
-    git("init", "-q", "-b", "main")
-    git("config", "user.name", "Test Person")
-    git("config", "user.email", "test@example.com")
-    (tmp_path / "seed").write_text("0", encoding="utf-8")
-    git("add", "-A")
-    git("commit", "-q", "-m", f"seed{_SIGN_OFF}")
-    base = git("rev-parse", "HEAD")
+    @property
+    def head(self) -> str:
+        """The current tip."""
+        return self._git("rev-parse", "HEAD")
 
-    previous = ""
-    for index, message in enumerate(messages):
-        (tmp_path / f"file{index}").write_text(str(index), encoding="utf-8")
-        git("add", "-A")
-        git("commit", "-q", "-m", message.format(sha=previous))
-        previous = git("rev-parse", "HEAD")
+    def commit(self, message: str) -> str:
+        """Add one commit and return its full SHA.
 
-    completed = subprocess.run(
-        [sys.executable, "-c", _gate_script()],
-        cwd=tmp_path,
-        capture_output=True,
-        text=True,
-        env={**os.environ, "BASE": base, "HEAD": previous},
-        timeout=60,
-    )
-    return completed.returncode, completed.stdout + completed.stderr
+        `{sha}` in the message is replaced with the current tip, so a
+        remediation can name the commit before it.
+        """
+        (self.path / f"file{self._files}").write_text(str(self._files), encoding="utf-8")
+        self._files += 1
+        self._git("add", "-A")
+        self._git("commit", "-q", "-m", message.format(sha=self.head))
+        return self.head
+
+    def check(self) -> tuple[int, str]:
+        """Run the shipped gate over base..HEAD."""
+        completed = subprocess.run(
+            [sys.executable, "-c", _gate_script()],
+            cwd=self.path,
+            capture_output=True,
+            text=True,
+            env={**os.environ, "BASE": self.base, "HEAD": self.head},
+            timeout=60,
+        )
+        return completed.returncode, completed.stdout + completed.stderr
+
+
+def _run(tmp_path: Path, messages: list[str]) -> tuple[int, str]:
+    """Build a repository with these commit messages and run the gate."""
+    repository = _Repository(tmp_path)
+    for message in messages:
+        repository.commit(message)
+    return repository.check()
 
 
 @pytest.mark.unit
@@ -136,29 +160,41 @@ class TestRemediation:
     def test_the_printed_template_satisfies_the_pattern_it_teaches(self, tmp_path: Path) -> None:
         """Follow the instructions literally; the gate must then pass.
 
-        This is the guard that closes the class of defect, rather than
-        the instance: whatever the failure message tells a contributor to
-        write, writing exactly that has to work.
-        """
-        first = tmp_path / "first"
-        first.mkdir()
-        _, output = _run(first, ["web ui commit"])
+        This closes the class of defect rather than an instance of it:
+        whatever the failure message tells a contributor to write,
+        writing exactly that has to work.
 
-        # The template is the indented block of the failure message.
+        It runs in **one** repository. An earlier version lifted the
+        template from a failure in one throwaway repository and applied
+        it in a second, where the SHA it named did not exist. That passed
+        locally and on three Python versions and failed on the fourth,
+        because two identical commits made in the same second hash
+        identically and in different seconds do not. A test that passes
+        for the wrong reason is worse than one that fails.
+        """
+        repository = _Repository(tmp_path)
+        repository.commit("web ui commit")
+
+        code, output = repository.check()
+        assert code == 1, "the unsigned commit should have failed the gate"
+
+        # The template is the indented block of the failure message, and
+        # it names this repository's own commit.
         template = "\n".join(
             line[4:] for line in output.splitlines() if line.startswith("    ")
         ).strip()
         assert "hereby add my" in template, f"no template in the output:\n{output}"
+        assert repository.head in template, "the template names some other commit"
 
-        second = tmp_path / "second"
-        second.mkdir()
-        message = template.replace("Your Name", "Test Person").replace(
-            "you@example.com", "test@example.com"
+        repository.commit(
+            template.replace("Your Name", "Test Person").replace(
+                "you@example.com", "test@example.com"
+            )
         )
-        code, second_output = _run(second, ["web ui commit", message])
+        code, after = repository.check()
         assert code == 0, (
             "copying the template the gate prints does not satisfy the gate:\n"
-            f"{message}\n---\n{second_output}"
+            f"{template}\n---\n{after}"
         )
 
     def test_an_unsigned_remediation_does_not_rescue_anything(self, tmp_path: Path) -> None:
