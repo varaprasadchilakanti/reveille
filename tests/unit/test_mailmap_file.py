@@ -19,6 +19,7 @@ makes all three agree at 202.
 
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -31,6 +32,45 @@ _MAILMAP = _REPO_ROOT / ".mailmap"
 
 _CANONICAL_NAME = "Vara Prasad Chilakanti"
 _CANONICAL_EMAIL = "varaprasadchilakanti@gmail.com"
+
+
+def _address_of(identity: str) -> str:
+    """Return the address from a `Name <address>` line, lowercased.
+
+    Args:
+        identity: One `git shortlog -sne` identity line.
+
+    Returns:
+        The address, or an empty string if the line carries none.
+    """
+    match = re.search(r"<([^<>]*)>\s*$", identity)
+    return match.group(1).strip().lower() if match else ""
+
+
+def _is_github_noreply(address: str) -> bool:
+    """Whether an address is in GitHub's private-commit domain.
+
+    Matched on the domain, not as a substring. A substring test for
+    `noreply.github.com` also matches `noreply.github.com.example.net`,
+    which is a different host entirely -- that is the unsoundness the
+    original form was flagged for.
+
+    The domain is `users.noreply.github.com` for both the legacy
+    `username@` and the post-2017 `12345678+username@` forms. An earlier
+    automated correction tested `endswith("@noreply.github.com")`, which
+    no real GitHub address can satisfy: the `@` never lines up, because
+    `users.` sits between. That silently retired this guard -- verified
+    by deleting the `.mailmap` line it protects and watching the test
+    still pass.
+
+    Args:
+        address: An email address, lowercased.
+
+    Returns:
+        True if the address is a GitHub noreply address.
+    """
+    _, _, domain = address.partition("@")
+    return domain == "users.noreply.github.com"
 
 
 @pytest.fixture(scope="module")
@@ -136,15 +176,11 @@ class TestGitItselfHonoursTheFile:
             f"git resolves the maintainer to {identities}, not to the "
             "canonical identity the .mailmap declares"
         )
-        stray = []
-        for identity in identities:
-            if "dependabot" in identity.lower():
-                continue
-            lt = identity.rfind("<")
-            gt = identity.rfind(">")
-            email = identity[lt + 1 : gt].strip().lower() if lt != -1 and gt != -1 and lt < gt else ""
-            if email.endswith("@noreply.github.com"):
-                stray.append(identity)
+        stray = [
+            identity
+            for identity in identities
+            if _is_github_noreply(_address_of(identity)) and "dependabot" not in identity.lower()
+        ]
         assert stray == [], (
             "git still counts a noreply address as its own contributor: "
             f"{stray}. Git does not strip the numeric prefix the way Reveille "

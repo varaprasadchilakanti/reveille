@@ -32,6 +32,71 @@ from reveille.cli import ExitCode, app
 runner = CliRunner()
 
 
+class _ElementStripper(HTMLParser):
+    """Remove named elements, and their content, from an HTML document.
+
+    A regular expression was used for this until CodeQL objected, rightly:
+    `<script\b.*?</script>` is not a sound way to find the end of an
+    element. The parser that replaced it was written inside the test that
+    used it, where its seven handlers pushed that test to a cyclomatic
+    complexity of 18 against a limit of 10. It belongs out here.
+    """
+
+    def __init__(self, blocked: set[str]) -> None:
+        super().__init__(convert_charrefs=False)
+        self._blocked = {name.lower() for name in blocked}
+        self._depth = 0
+        self.parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: object) -> None:
+        if tag.lower() in self._blocked:
+            self._depth += 1
+        elif self._depth == 0:
+            self.parts.append(self.get_starttag_text() or "")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() in self._blocked and self._depth > 0:
+            self._depth -= 1
+        elif self._depth == 0:
+            self.parts.append(f"</{tag}>")
+
+    def handle_startendtag(self, tag: str, attrs: object) -> None:
+        if self._depth == 0 and tag.lower() not in self._blocked:
+            self.parts.append(self.get_starttag_text() or "")
+
+    def handle_data(self, data: str) -> None:
+        if self._depth == 0:
+            self.parts.append(data)
+
+    def handle_comment(self, data: str) -> None:
+        if self._depth == 0:
+            self.parts.append(f"<!--{data}-->")
+
+    def handle_decl(self, decl: str) -> None:
+        if self._depth == 0:
+            self.parts.append(f"<!{decl}>")
+
+    def handle_pi(self, data: str) -> None:
+        if self._depth == 0:
+            self.parts.append(f"<?{data}>")
+
+
+def _strip_elements(document: str, blocked: set[str]) -> str:
+    """Return `document` with the `blocked` elements and their content gone.
+
+    Args:
+        document: An HTML document.
+        blocked: Lowercase element names to remove.
+
+    Returns:
+        The remaining markup.
+    """
+    stripper = _ElementStripper(blocked)
+    stripper.feed(document)
+    stripper.close()
+    return "".join(stripper.parts)
+
+
 # ------------------------------------------------------------------
 # Fixtures
 # ------------------------------------------------------------------
@@ -1181,49 +1246,7 @@ class TestReportAccessibility:
         remote page navigates on a click; it does not load anything into
         the report, and flagging it would make this guard cry wolf.
         """
-        class _TagStripper(HTMLParser):
-            def __init__(self, blocked: set[str]) -> None:
-                super().__init__(convert_charrefs=False)
-                self._blocked = {name.lower() for name in blocked}
-                self._depth = 0
-                self.parts: list[str] = []
-
-            def handle_starttag(self, tag: str, attrs) -> None:
-                if tag.lower() in self._blocked:
-                    self._depth += 1
-                elif self._depth == 0:
-                    self.parts.append(self.get_starttag_text())
-
-            def handle_endtag(self, tag: str) -> None:
-                if tag.lower() in self._blocked and self._depth > 0:
-                    self._depth -= 1
-                elif self._depth == 0:
-                    self.parts.append(f"</{tag}>")
-
-            def handle_startendtag(self, tag: str, attrs) -> None:
-                if self._depth == 0 and tag.lower() not in self._blocked:
-                    self.parts.append(self.get_starttag_text())
-
-            def handle_data(self, data: str) -> None:
-                if self._depth == 0:
-                    self.parts.append(data)
-
-            def handle_comment(self, data: str) -> None:
-                if self._depth == 0:
-                    self.parts.append(f"<!--{data}-->")
-
-            def handle_decl(self, decl: str) -> None:
-                if self._depth == 0:
-                    self.parts.append(f"<!{decl}>")
-
-            def handle_pi(self, data: str) -> None:
-                if self._depth == 0:
-                    self.parts.append(f"<?{data}>")
-
-        stripper = _TagStripper({"script", "style"})
-        stripper.feed(default_report_content)
-        stripper.close()
-        markup = "".join(stripper.parts)
+        markup = _strip_elements(default_report_content, {"script", "style"})
 
         loaded = re.findall(
             r"""\b(?:src|srcset|poster|data)\s*=\s*["'](?:https?:)?//[^"']*""",
