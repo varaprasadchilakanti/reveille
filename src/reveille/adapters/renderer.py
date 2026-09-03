@@ -126,6 +126,12 @@ _CATEGORICAL_PALETTE: list[str] = [
 # their series count instead; see _build_contributor_timeline_chart.
 _MAX_SERIES: int = len(_CATEGORICAL_PALETTE)
 
+#: Dash patterns paired with the palette, in the same fixed order. Colour
+#: alone cannot carry identity: a reader with a colour vision deficiency,
+#: a greyscale print and a photocopied page all lose it, and a legend is
+#: a key to the colour rather than a substitute for it.
+_LINE_DASHES: tuple[str, ...] = ("solid", "dash", "dot", "dashdot")
+
 # Maximum individual slices in a pie chart. A slice is an identity, so it
 # needs a distinguishable colour; beyond the palette, contributors aggregate
 # into a single "Other Contributors" slice rather than reusing a hue. Derived
@@ -257,6 +263,10 @@ class Renderer:
             html = self._template.render(
                 data=data,
                 charts=charts,
+                chart_tables={
+                    name: _accessible_table(name, specification)
+                    for name, specification in charts.items()
+                },
                 derived=derived,
                 plotly_js=plotly_js,
                 generated_at=generated_at,
@@ -499,6 +509,13 @@ class Renderer:
                 data.metadata.analysis_since,
                 data.metadata.analysis_until,
             ),
+            # A text alternative for the heatmap. Its payload is a daily
+            # grid rather than a Plotly figure, so `_accessible_table` has
+            # nothing to read, and a day-by-day table would run to
+            # hundreds of rows per contributor. These are the figures a
+            # reader takes from the picture: how much, over how many days,
+            # and where the peak is.
+            "heatmap_summary": _summarise_activity(data.commits),
             # Written findings, generated from these same numbers by rules.
             # See domain/summary.py: no model, no network, and the same
             # history always produces the same sentences.
@@ -608,6 +625,141 @@ def _contributor_labels(ranked: list[RankedContributor]) -> dict[str, str]:
     }
 
 
+#: Axis pairs to read a table from, per Plotly trace type. A chart is
+#: drawn from arrays, so its text alternative can be read back out of the
+#: same arrays rather than assembled a second time and left to drift.
+_TABLE_AXES: dict[str, tuple[str, str]] = {
+    "bar": ("x", "y"),
+    "scatter": ("x", "y"),
+    "scatterpolar": ("theta", "r"),
+    "pie": ("labels", "values"),
+}
+
+#: Column headings for each chart's tabular equivalent. Stated rather
+#: than derived: a polar plot and a pie have no axis titles to read, and
+#: a horizontal bar's titles are the wrong way round. The first entry
+#: names the category column; where a chart has several series, their
+#: names supply the remaining columns.
+_TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
+    "timeline": ("Week", "Commits"),
+    "contributor_timeline": ("Week",),
+    "lorenz": ("Share of contributors (%)",),
+    "commit_size": ("Lines changed in one commit", "Commits"),
+    "hotspots": ("File", "Lines changed"),
+    "extensions": ("File type", "Lines changed"),
+    "profile": ("Measure", "Share"),
+    "contributor_lines": ("Contributor",),
+    "pie_commits": ("Contributor", "Commits"),
+}
+
+
+def _summarise_activity(commits: list[Commit]) -> str:
+    """Describe a commit heatmap in one sentence, for assistive technology.
+
+    A heatmap encodes magnitude by colour across a calendar, and its
+    payload is a daily grid rather than a figure specification, so there
+    is nothing to read a table out of and a day-by-day one would run to
+    hundreds of rows. This states what a sighted reader takes from the
+    picture instead.
+
+    Args:
+        commits: All commits in the analysis window.
+
+    Returns:
+        A sentence, or a statement that there is nothing to describe.
+    """
+    if not commits:
+        return "No commits fall within the analysis window."
+
+    per_day: dict[datetime.date, int] = defaultdict(int)
+    for commit in commits:
+        per_day[commit.timestamp.date()] += 1
+    busiest, peak = max(per_day.items(), key=lambda item: (item[1], item[0]))
+    return (
+        f"{len(commits):,} commits across {len(per_day):,} active days, "
+        f"between {min(per_day).isoformat()} and {max(per_day).isoformat()}. "
+        f"The busiest day was {busiest.isoformat()} with {peak:,}."
+    )
+
+
+def _series_from_spec(specification: str) -> list[tuple[str, list[Any], list[Any]]]:
+    """Read each trace's categories and values out of a chart specification.
+
+    Args:
+        specification: A chart's Plotly JSON, or the string 'null'.
+
+    Returns:
+        One `(series name, categories, values)` triple per usable trace.
+    """
+    if not specification or specification == "null":
+        return []
+    try:
+        figure = json.loads(specification)
+    except json.JSONDecodeError:  # pragma: no cover - _to_json emits valid JSON
+        return []
+
+    series: list[tuple[str, list[Any], list[Any]]] = []
+    for trace in figure.get("data") or []:
+        axes = _TABLE_AXES.get(trace.get("type", "scatter"))
+        if axes is None:
+            continue
+        categories, values = trace.get(axes[0]), trace.get(axes[1])
+        # A horizontal bar puts its categories on y.
+        if trace.get("orientation") == "h":
+            categories, values = values, categories
+        if not categories or not values:
+            continue
+        series.append((str(trace.get("name") or ""), list(categories), list(values)))
+    return series
+
+
+def _accessible_table(chart: str, specification: str) -> dict[str, Any]:
+    """Return a tabular equivalent of a chart, for assistive technology.
+
+    `role="img"` makes an SVG's children presentational, so the
+    `aria-label` is the *only* alternative a screen-reader user gets. A
+    label naming the chart type conveys no data, and WCAG 2.1 SC 1.1.1
+    asks for an alternative that serves the equivalent purpose. Seven of
+    the report's ten charts had nothing else.
+
+    The rows are read back out of the emitted specification, so the table
+    cannot come to describe a chart the report is not drawing.
+
+    Args:
+        chart: The chart's id, used to look up its column headings.
+        specification: That chart's Plotly JSON.
+
+    Returns:
+        A mapping with `columns` and `rows`, or an empty mapping when
+        there is nothing to describe.
+    """
+    series = _series_from_spec(specification)
+    headings = _TABLE_COLUMNS.get(chart)
+    if not series or headings is None:
+        return {}
+
+    if len(series) == 1:
+        _name, categories, values = series[0]
+        columns = list(headings[:2]) or ["Item", "Value"]
+        return {
+            "columns": columns,
+            "rows": [list(pair) for pair in zip(categories, values, strict=False)],
+        }
+
+    ordered: list[Any] = []
+    for _name, categories, _values in series:
+        ordered.extend(c for c in categories if c not in ordered)
+    lookup = [
+        (name, dict(zip(categories, values, strict=False))) for name, categories, values in series
+    ]
+    return {
+        "columns": [headings[0], *(name or "Value" for name, _ in lookup)],
+        "rows": [
+            [category, *(values.get(category, "") for _n, values in lookup)] for category in ordered
+        ],
+    }
+
+
 def _build_timeline_chart(commits: list[Commit]) -> str:
     """Build a weekly commit frequency line chart.
 
@@ -710,7 +862,16 @@ def _build_contributor_timeline_chart(
                 y=counts,
                 mode="lines",
                 name=labels[r.stats.email.lower()],
-                line={"color": _CATEGORICAL_PALETTE[i], "width": 2},
+                line={
+                    "color": _CATEGORICAL_PALETTE[i],
+                    "width": 2,
+                    # A legend is a colour key, not a second encoding:
+                    # resolving it still needs the colour discrimination it
+                    # is meant to substitute for. WCAG 1.4.1 asks for
+                    # something other than colour, so each series takes its
+                    # own dash as well as its own hue.
+                    "dash": _LINE_DASHES[i % len(_LINE_DASHES)],
+                },
                 hovertemplate="Week of %{x}<br>Commits: %{y}<extra></extra>",
             )
         )
