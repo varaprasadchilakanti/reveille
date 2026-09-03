@@ -17,14 +17,26 @@ Nothing yet.
 
 ---
 
-## [0.8.0] — 2026-09-03 — Security Hardening, Apache-2.0, and a Corrected Report
+## [0.8.0] — 2026-09-03 — Security Hardening, Apache-2.0, and a Rebuilt Report
 
 ### Added
 
-- **A five-axis repository profile.** Spread, Continuity, Currency,
+- **A five-axis repository profile.** Spread, Continuity, Recent work,
   Revisiting and Small steps, each a **naturally bounded share** — a count of
   something out of a count of something — so no axis is rescaled by a constant
-  chosen to make the shape look right. That constraint is the design: a radar
+  chosen to make the shape look right.
+
+  Two of them had to be rebuilt before release to hold that line, both found by
+  review rather than by the tests. *Spread* was `1 − Gini`, but Gini's maximum
+  for n contributors is (n−1)/n, so the axis had a floor of 1/n rather than 0:
+  adding a contributor who committed *nothing* moved it from 0% to 50%, and ten
+  people where one did everything scored 10% while two people where one did
+  everything scored 50% — the more concentrated repository scoring five times
+  higher. It is normalised against the attainable maximum, and guarded by
+  monotonicity tests that did not exist before. *Recent work* replaced an axis
+  measuring where the last commit sat in the window: under `--deterministic`
+  the window **ends** at the last commit, so it was identically 100% for every
+  repository, in the mode the Playbook tells consumers to use. That constraint is the design: a radar
   whose axes are normalised by invented factors can be given any silhouette
   its author wants, and a reader has no way to tell.
 
@@ -375,17 +387,26 @@ Nothing yet.
 - **`.github/PULL_REQUEST_TEMPLATE.md`**, whose "Verified" section asks what was run
   and what it showed, and reminds the author to break any new guard and watch it fail.
 
-- **182 new tests, taking the suite from 355 to 537.** Eleven new files carry 178
-  of them: thirty-one security regression tests, twenty-six on the capability
-  document, twenty-five on the Lorenz curve and Gini coefficient checked against
-  values the definitions fix, twenty-three on provenance, schema version and
-  determinism, seventeen on the ranking default across all three output formats,
-  fourteen on chart colour assignment, fourteen on commit concentration, nine
-  architectural fitness functions, nine on the CLA gate, six on licence
-  declarations, and four on lock integrity. The remaining four extend existing
-  files. Each was observed failing against the defect it guards before being
-  trusted.
+- **403 new tests, taking the suite from 355 to 758.** Twenty-one new files
+  carry 401 of them: fifty-four on the chart palette, which recompute OKLab
+  distance, dichromat simulation and WCAG contrast on every run rather than
+  trusting a comment; thirty-one security regression tests; twenty-nine on
+  file-level analysis and twenty-nine on the repository profile; twenty-six
+  each on the Lorenz curve and the capability document; twenty-five on
+  per-path churn; twenty-three each on provenance and on the ranking default
+  across all three output formats; twenty-two on the change-size histogram;
+  twenty on the generated findings; fourteen each on commit concentration and
+  chart colour assignment; twelve on report theming; nine each on
+  architectural fitness functions, the CLA gate and chart label collisions;
+  eight each on the report's inline JavaScript, executed under Node, and on
+  this repository's own `.mailmap`; six on licence declarations; and four on
+  lock integrity. The remaining two extend existing files.
 
+  Each was observed failing against the defect it guards before being trusted.
+  Several were written *because* a mutation survived: the first Lorenz tests
+  passed with the chart deleted from the report, and the first repository
+  profile tests passed with the radar's polygon left open, because the fixture
+  used the same value on every axis.
 ### Changed
 
 - **The contributor ranking is off by default.** `--ranking` turns it on;
@@ -461,13 +482,6 @@ Nothing yet.
   they are now 17px sentence case, since uppercase removes the word-shape cues
   a reader scans by.
 
-- **Both donut charts were removed.** "Commit Share" sat directly beneath
-  "Commits by Contributor" and encoded the same vector; likewise the lines
-  pair. A donut encodes by angle and area, which Cleveland & McGill rank near
-  the bottom of graphical perception, and the bar above it already carried
-  value labels. The part-of-whole job was already done twice — by the Lorenz
-  curve, which encodes by position, and by the Gini figure.
-
 - **A dark-themed report printed as a near-blank page.** The theme persists in
   `localStorage`, and browsers print text colour but not background colour by
   default, so a reader who had ever pressed "Dark Mode" printed `#e6edf3` on
@@ -488,18 +502,6 @@ Nothing yet.
   the default is fully opaque, the fallback never fires. Two guards passed over
   it: the builder emits no colour, and the theme manager had no `polar` key.
   The defect lived in the gap between them.
-
-- **Two axes of the repository profile did not mean what the module claimed.**
-  `Spread` was `1 − Gini`, but Gini's maximum for n contributors is (n−1)/n, so
-  the axis had a floor of 1/n rather than 0: adding a contributor who committed
-  *nothing* moved it from 0% to 50%, and ten people where one did everything
-  scored 10% while two people where one did everything scored 50% — the more
-  concentrated repository scoring five times higher. It is now normalised
-  against the attainable maximum. `Currency` measured where the last commit sat
-  in the window, which under `--deterministic` **is** the window end, making it
-  identically 100% for every repository — in the mode the Playbook tells
-  consumers to use. Replaced with the share of commits in the window's final
-  quarter.
 
 - **One fact, two numbers.** The summary card said "Max Inactive Days 13" and
   the findings said "longest quiet run of 14 days". The card counted inactive
@@ -752,14 +754,14 @@ Nothing yet.
   development tools moved — `coverage` and `python-discovery` by a minor release,
   `filelock`, `platformdirs`, `ruff` and `virtualenv` by a patch.
 
-- **The chart palette was replaced with a measured one.** The previous set put
+- **The chart palette was rebuilt around measurement.** The pre-0.8.0 set put
   `#22c55e` next to `#14b8a6` at a normal-vision perceptual distance of ΔE 11.3 —
-  below the 15 floor at which two adjacent series stop being reliably separable by a
-  reader with full colour vision — and they were adjacent, so the second- and
-  third-ranked contributors were the pair that collided. The replacement was
-  validated against both report surfaces before adoption: worst adjacent pair is
-  ΔE 19.3 normal vision and 8.4 under protanopia, clearing both floors in each mode.
-  One palette now serves both themes, so no colour changes when the theme is toggled.
+  below the 15 floor at which two adjacent series stop being reliably separable —
+  and they were adjacent, so the second- and third-ranked contributors were the
+  pair that collided. One palette now serves both themes, so no colour changes
+  when the theme is toggled. What it was replaced *with* is described under
+  **Fixed**: the first replacement was itself measured pairwise only after the
+  fact, and four colours is where the constraints actually land.
 
 - **The activity heatmap read backwards in dark mode.** Its colour ramp was fixed
   across themes and ended at a near-black blue: 9.73:1 against the light plot
