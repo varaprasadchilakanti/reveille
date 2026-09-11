@@ -2,8 +2,10 @@
 #
 # Verifies two things on every pull request, and stores nothing:
 #   1. the contributor-agreement checkbox in the PR body is ticked, and names
-#      the CLA version this repository currently requires;
-#   2. every commit in the PR carries a Signed-off-by trailer (DCO 1.1).
+#      the CLA version this repository currently requires -- skipped when the
+#      pull request was opened by an app rather than a person, see below;
+#   2. every commit in the PR carries a Signed-off-by trailer (DCO 1.1), with
+#      no exemption for anyone.
 #
 # It writes no file, commits nothing, and calls no third-party service. The
 # evidence of acceptance is the pull request and the commit trailers
@@ -35,7 +37,25 @@ jobs:
       contents: read
       pull-requests: read
     steps:
+      # A licence agreement is accepted by a person. Dependabot and any
+      # other app installed on this repository cannot read CLA.md, cannot
+      # hold copyright in what it opens, and cannot tick a box: its pull
+      # request body is generated from a template that has no box in it.
+      # The gate therefore failed every Dependabot pull request
+      # unconditionally, which is not a finding about the contribution --
+      # it is the gate asking a question of something that cannot answer.
+      #
+      # Keyed on the account type rather than on the literal login
+      # `dependabot[bot]`, because the property that matters is "not a
+      # person", not "is this one bot". Only a repository admin can install
+      # an app, so `type` is not something an outside contributor can claim.
+      #
+      # The sign-off check below is NOT skipped. A trailer is mechanical,
+      # Dependabot writes one -- `Signed-off-by: dependabot[bot]
+      # <support@github.com>` -- and a bot-authored commit that lost it
+      # should still be caught.
       - name: Checkbox is ticked for the current CLA version
+        if: github.event.pull_request.user.type != 'Bot'
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |

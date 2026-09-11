@@ -159,6 +159,32 @@ class TestGitItselfHonoursTheFile:
         if not (_REPO_ROOT / ".git").exists():
             pytest.skip("not a git checkout")
 
+        # A shallow checkout is not a weaker version of this check -- it is a
+        # different one. At depth 1 the only reachable commit is HEAD, so
+        # `shortlog` reports its author and nothing else, and the assertions
+        # below then describe whoever opened the pull request rather than the
+        # repository's history. On a maintainer-authored branch that passes
+        # for the wrong reason; on a Dependabot branch it fails for the wrong
+        # reason. Neither outcome is evidence about the `.mailmap`.
+        #
+        # `fail`, not `skip`: this file exists because deleting a `.mailmap`
+        # line left every other assertion here passing, and a skip that fires
+        # on every CI run would retire the guard in exactly that silent way.
+        shallow = subprocess.run(
+            ["git", "rev-parse", "--is-shallow-repository"],
+            cwd=_REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        if shallow.stdout.strip() == "true":
+            pytest.fail(
+                "the checkout is shallow, so `git shortlog` can only see HEAD "
+                "and this check would report on the branch author rather than "
+                "on the .mailmap. Give the job `fetch-depth: 0`."
+            )
+
         completed = subprocess.run(
             ["git", "shortlog", "-sne", "--no-merges", "HEAD"],
             cwd=_REPO_ROOT,
