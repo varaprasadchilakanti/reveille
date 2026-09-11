@@ -13,7 +13,17 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **A tagged release now carries its SBOM's Sigstore attestation as a second
+  asset**, named `<sbom filename>.sigstore.json`. The attestation itself is not
+  new — it has been written to GitHub's attestation store since the SBOM job
+  existed — but that store is reachable only through the API, so an SBOM
+  downloaded from a Release could be checked only by asking the host that
+  served it. The bundle beside the file makes `gh attestation verify
+  --bundle` sufficient. `SECURITY.md` carries the command; note that
+  `--predicate-type https://cyclonedx.org/bom` is required, because the flag
+  defaults to SLSA provenance.
 
 ---
 

@@ -190,6 +190,7 @@ jobs:
       # distributions already rely on through PEP 740 -- the trust model is
       # not new here, only its application one step further.
       - name: Attest the SBOM
+        id: attest
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           # Both are the resolved filename, not a glob. `subject-path`
@@ -201,11 +202,46 @@ jobs:
           predicate-type: https://cyclonedx.org/bom
           predicate-path: ${{ steps.release.outputs.file }}
 
+      # The attestation above is written to GitHub's attestation store,
+      # which is reachable only through the API. That is a fine place for
+      # it and a poor only place: someone who downloads the SBOM from the
+      # Release gets no way to check it without calling back to the host
+      # that served it, and OpenSSF Scorecard's Signed-Releases check --
+      # which reads release assets -- sees an unsigned release. The
+      # provenance already existed; it was simply not where either a
+      # person or a scanner would look.
+      #
+      # `.sigstore.json` is the Sigstore bundle convention and is what the
+      # file actually is. It is NOT renamed to `.intoto.jsonl`, which
+      # Scorecard scores two points higher: that name means a SLSA
+      # provenance document, this is a CycloneDX attestation, and relabelling
+      # a file to match a string test is the move this project refuses
+      # elsewhere in SECURITY.md over `atheris`. Eight and accurate.
+      - name: Keep the attestation bundle beside the SBOM
+        env:
+          BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
+          SBOM_FILE: ${{ steps.release.outputs.file }}
+        run: |
+          set -euo pipefail
+          test -s "$BUNDLE_PATH"
+          cp "$BUNDLE_PATH" "$SBOM_FILE.sigstore.json"
+          # An empty or truncated copy would attach a file that looks like
+          # a signature and verifies nothing, which is worse than attaching
+          # none. `verificationMaterial` is the bundle's certificate chain.
+          python3 - "$SBOM_FILE.sigstore.json" <<'PY'
+          import json, sys
+          bundle = json.load(open(sys.argv[1]))
+          assert "verificationMaterial" in bundle, "not a Sigstore bundle"
+          print("media type:", bundle.get("mediaType", "<unset>"))
+          PY
+
       - name: Upload SBOM
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sbom
-          path: ${{ steps.release.outputs.file }}
+          path: |
+            ${{ steps.release.outputs.file }}
+            ${{ steps.release.outputs.file }}.sigstore.json
           if-no-files-found: error
 
   # ----------------------------------------------------------------
@@ -257,20 +293,34 @@ jobs:
         run: |
           set -uo pipefail
           TITLE="$(cat release-title.txt)"
+          # Two globs, because they are disjoint: `*-sbom.cdx.json` does
+          # NOT match `*-sbom.cdx.json.sigstore.json`, since the literal
+          # tail has to reach the end of the name. Checked rather than
+          # assumed -- v0.8.0 lost its SBOM to a glob that looked right.
+          ASSETS=(reveille-*-sbom.cdx.json reveille-*-sbom.cdx.json.sigstore.json)
+          # An unmatched glob stays literal, and `gh` would then upload a
+          # file named `reveille-*-...`. Fail here instead.
+          for asset in "${ASSETS[@]}"; do
+            if [ ! -s "$asset" ]; then
+              echo "::error::expected release asset is missing: $asset"
+              exit 1
+            fi
+          done
+
           if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release create "$TAG" reveille-*-sbom.cdx.json \
+            gh release create "$TAG" "${ASSETS[@]}" \
               --repo "$GITHUB_REPOSITORY" \
               --title "$TITLE" \
               --notes-file release-body.md \
               --draft
-            echo "Draft Release created for $TAG with the SBOM attached."
+            echo "Draft Release created for $TAG with the SBOM and its attestation attached."
             echo "Review the notes and press Publish."
             exit 0
           fi
 
-          if gh release upload "$TAG" reveille-*-sbom.cdx.json \
+          if gh release upload "$TAG" "${ASSETS[@]}" \
                --repo "$GITHUB_REPOSITORY" --clobber; then
-            echo "SBOM attached to the existing release $TAG."
+            echo "SBOM and its attestation bundle attached to release $TAG."
             exit 0
           fi
 
