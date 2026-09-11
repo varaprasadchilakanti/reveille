@@ -74,10 +74,33 @@ what an installation of it contains.
 
 The SBOM is produced by a job that is independent of publishing, so a
 failure to generate one cannot withhold a release. It is uploaded as the
-`sbom` artifact of the workflow run and attached to the GitHub Release.
-The Release itself is drafted by that workflow, with the SBOM already
+`sbom` artifact of the workflow run and attached to the GitHub Release,
+together with its Sigstore attestation bundle as a second asset named
+`<sbom filename>.sigstore.json`.
+
+That bundle is the same attestation the workflow writes to GitHub's
+attestation store, kept next to the file it describes. The store is
+reachable only through the API, which makes an SBOM downloaded from the
+Release checkable only by asking the host that served it. With the bundle
+alongside, it can be verified from the two files alone:
+
+```console
+$ gh attestation verify reveille-X.Y.Z-sbom.cdx.json \
+    --bundle reveille-X.Y.Z-sbom.cdx.json.sigstore.json \
+    --repo varaprasadchilakanti/reveille \
+    --predicate-type https://cyclonedx.org/bom
+```
+
+`--predicate-type` is not optional here: the flag defaults to SLSA
+provenance, and this attestation is a CycloneDX one.
+
+Releases from v0.8.1 and earlier carry no such bundle; the attestation
+for those exists in the attestation store and is reachable with the same
+command minus `--bundle`.
+
+The Release itself is drafted by that workflow, with both files already
 attached, so there is no step in which a human has to remember to attach
-one. It is created as a draft: a draft accepts assets and a published
+them. It is created as a draft: a draft accepts assets and a published
 release does not, because this repository enables release immutability.
 
 Where that was missed, the SBOM is still obtainable. It remains the
