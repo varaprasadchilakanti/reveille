@@ -15,6 +15,31 @@
 # (.gitattributes `-merge`, `make check-lock`, the `lockfile` CI job) now
 # catch the failure mode that made batching risky, and a single weekly PR
 # that CI must pass is easier to review than five.
+#
+# Both ecosystems declare a seven-day `cooldown`, so a release is only
+# proposed once it has been public that long. The threat is a
+# publish-then-withdraw: a hijacked maintainer account ships a release and
+# it is yanked once someone notices.
+#
+# This is not a gap being closed -- it is a platform default being pinned.
+# GitHub made three days the implicit default for version updates on
+# 2026-07-14, so the previous behaviour was three, not zero. Declaring the
+# value here does two things that inheriting it does not: zizmor's audit
+# asks for at least seven and reports anything less (alerts #41, #42), and
+# the number stops moving underneath the repository. That default has
+# already changed once, from none to three, and can change again.
+#
+# Seven over three is not free. The schedule is weekly, so a release
+# published on a Thursday is eligible under the default on the following
+# Monday but waits a further week under this setting. That is accepted:
+# the PR is a grouped batch reviewed as a unit, so a week's lag on one
+# member of it costs little, and the incidents this guards against are
+# usually caught within days -- but not reliably within three.
+#
+# Security updates are unaffected. GitHub's reference is explicit that
+# `cooldown` "is only available for version updates, not security
+# updates", so a dependency with a known vulnerability is still raised
+# immediately. `make ci`'s osv-scanner job is the backstop regardless.
 # ==================================================================
 
 version: 2
@@ -24,6 +49,8 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     labels:
       - dependencies
@@ -37,6 +64,8 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     labels:
       - dependencies
