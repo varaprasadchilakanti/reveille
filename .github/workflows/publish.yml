@@ -169,11 +169,20 @@ jobs:
       # needs neither Poetry nor the project environment. Keeping it out
       # of the project's own dependency graph means the tool that
       # describes that graph is not a member of it.
+      #
+      # The filename reaches the shell through the environment rather than
+      # through `${{ }}`, which pastes its value into the script before a
+      # shell ever sees it: a value containing a quote or a `$(...)` would
+      # then be script, not an argument. Here the value is derived from a
+      # tag name, so producing a hostile one needs push access -- but the
+      # expansion is unsafe on its own terms, and the env form costs a line.
       - name: Generate CycloneDX SBOM
+        env:
+          SBOM_FILE: ${{ steps.release.outputs.file }}
         run: |
           python -m pip install --quiet cyclonedx-bom==7.3.1
           cyclonedx-py poetry --no-dev --output-reproducible \
-            --of JSON -o "${{ steps.release.outputs.file }}" .
+            --of JSON -o "$SBOM_FILE" .
 
       # A plain attached file has no cryptographic binding to the run that
       # produced it, so it can be swapped for another. This binds the SBOM to
