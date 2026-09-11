@@ -47,6 +47,40 @@ def _address_of(identity: str) -> str:
     return match.group(1).strip().lower() if match else ""
 
 
+def _is_app_account(identity: str) -> bool:
+    """Whether an identity is a GitHub App rather than a person.
+
+    GitHub gives every app account a login suffixed `[bot]` --
+    `dependabot[bot]`, `renovate[bot]`, `github-actions[bot]` -- and Git
+    records that login as the author name. The suffix is therefore the
+    general form of "not a person", and the shipped `reveille.toml`
+    template already uses it as such in its `exclude_authors` example.
+
+    This matters because the stray check below tested the literal string
+    `dependabot`. The first commit any *second* bot landed on `main` would
+    have failed that assertion, with a message instructing the maintainer
+    to add a `.mailmap` entry -- the one remedy that is wrong, because a
+    `.mailmap` states who is the same *person* and a bot is not one of us.
+    Verified by replaying it: a `renovate[bot]` commit in a clone of this
+    repository failed the old form of this check.
+
+    Both the author name and the address local part are tested. They
+    normally agree, and either alone would do; two cheap signals is worth
+    more than picking one and being wrong about an app that sets an
+    unusual display name.
+
+    Args:
+        identity: One `git shortlog -sne` identity line.
+
+    Returns:
+        True if the identity belongs to a GitHub App account.
+    """
+    name = re.sub(r"\s*<[^<>]*>\s*$", "", identity).strip().lower()
+    # `12345678+login@...` and `login@...` are both issued; take the login.
+    local = _address_of(identity).partition("@")[0].rpartition("+")[2]
+    return name.endswith("[bot]") or local.endswith("[bot]")
+
+
 def _is_github_noreply(address: str) -> bool:
     """Whether an address is in GitHub's private-commit domain.
 
@@ -141,6 +175,50 @@ class TestTheRepositoryMailmapFoldsItsOwnAliases:
 
 
 @pytest.mark.unit
+class TestAnAppAccountIsNotAStrayPerson:
+    """The exemption the stray check applies, tested in both directions.
+
+    An exemption that is too narrow blocks `main` the first time a new bot
+    commits. One that is too broad silently stops counting a real
+    contributor. Both directions are asserted, because only the first is
+    noticeable in practice.
+    """
+
+    @pytest.mark.parametrize(
+        "identity",
+        [
+            "dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
+            "renovate[bot] <29139614+renovate[bot]@users.noreply.github.com>",
+            "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>",
+            "pre-commit-ci[bot] <66853113+pre-commit-ci[bot]@users.noreply.github.com>",
+            # The unprefixed address form, still issued for older accounts.
+            "renovate[bot] <renovate[bot]@users.noreply.github.com>",
+        ],
+    )
+    def test_an_app_account_is_recognised(self, identity: str) -> None:
+        assert _is_app_account(identity), (
+            f"{identity} would be counted as a stray human contributor, "
+            "failing the build the first time this bot commits to main"
+        )
+
+    @pytest.mark.parametrize(
+        "identity",
+        [
+            # The exact case the .mailmap exists to fold. If the exemption
+            # swallowed this, the guard would pass with its line deleted.
+            "Vara Prasad Chilakanti <140685918+varaprasadchilakanti@users.noreply.github.com>",
+            "Someone Else <someone@example.com>",
+            "Robert Bottington <robert@example.com>",
+        ],
+    )
+    def test_a_person_is_not(self, identity: str) -> None:
+        assert not _is_app_account(identity), (
+            f"{identity} is a person and would be exempted from the stray "
+            "check, which is how this guard stops guarding"
+        )
+
+
+@pytest.mark.unit
 class TestGitItselfHonoursTheFile:
     """Reveille is not the only consumer, and it is the most forgiving one.
 
@@ -158,6 +236,32 @@ class TestGitItselfHonoursTheFile:
     def test_shortlog_sees_one_identity_per_person(self) -> None:
         if not (_REPO_ROOT / ".git").exists():
             pytest.skip("not a git checkout")
+
+        # A shallow checkout is not a weaker version of this check -- it is a
+        # different one. At depth 1 the only reachable commit is HEAD, so
+        # `shortlog` reports its author and nothing else, and the assertions
+        # below then describe whoever opened the pull request rather than the
+        # repository's history. On a maintainer-authored branch that passes
+        # for the wrong reason; on a Dependabot branch it fails for the wrong
+        # reason. Neither outcome is evidence about the `.mailmap`.
+        #
+        # `fail`, not `skip`: this file exists because deleting a `.mailmap`
+        # line left every other assertion here passing, and a skip that fires
+        # on every CI run would retire the guard in exactly that silent way.
+        shallow = subprocess.run(
+            ["git", "rev-parse", "--is-shallow-repository"],
+            cwd=_REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        if shallow.stdout.strip() == "true":
+            pytest.fail(
+                "the checkout is shallow, so `git shortlog` can only see HEAD "
+                "and this check would report on the branch author rather than "
+                "on the .mailmap. Give the job `fetch-depth: 0`."
+            )
 
         completed = subprocess.run(
             ["git", "shortlog", "-sne", "--no-merges", "HEAD"],
@@ -179,7 +283,7 @@ class TestGitItselfHonoursTheFile:
         stray = [
             identity
             for identity in identities
-            if _is_github_noreply(_address_of(identity)) and "dependabot" not in identity.lower()
+            if _is_github_noreply(_address_of(identity)) and not _is_app_account(identity)
         ]
         assert stray == [], (
             "git still counts a noreply address as its own contributor: "

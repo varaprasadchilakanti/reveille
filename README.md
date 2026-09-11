@@ -2,6 +2,12 @@
 
 **A CLI tool that generates performance reports from local Git repositories — as self-contained HTML, structured JSON, and CSV.**
 
+[![PyPI](https://img.shields.io/pypi/v/reveille)](https://pypi.org/project/reveille/)
+[![Python](https://img.shields.io/pypi/pyversions/reveille)](https://pypi.org/project/reveille/)
+[![Licence: Apache-2.0](https://img.shields.io/badge/licence-Apache--2.0-blue)](https://github.com/varaprasadchilakanti/reveille/blob/main/LICENSE)
+[![CI](https://github.com/varaprasadchilakanti/reveille/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/varaprasadchilakanti/reveille/actions/workflows/ci.yml)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14502/badge)](https://www.bestpractices.dev/projects/14502)
+
 Reveille reads your repository's Git history and produces a single portable `.html` file containing interactive visualisations of contributor activity, commit trends, code volume, and repository health — with no server, no external API calls, and no configuration beyond the command itself. Open the output in any browser, share it over email, or drop it into a Confluence page without modification.
 
 ---

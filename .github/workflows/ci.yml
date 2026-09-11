@@ -165,6 +165,20 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # tests/unit/test_mailmap_file.py runs `git shortlog` over this
+          # repository's real history, to assert that Git itself -- not just
+          # Reveille's more forgiving parser -- folds the maintainer's
+          # aliases. At the default depth of 1 the only visible commit is the
+          # merge ref, whose parents are grafted away, so the check sees
+          # exactly one author: whoever wrote the head commit. For a human
+          # pull request that happens to be the maintainer and the assertion
+          # passes by accident; for a Dependabot pull request it is
+          # `dependabot[bot]` and the assertion fails, blocking a bot pull
+          # request on a property of the repository it did not change.
+          #
+          # The full history is 505 commits in a 1.5 MiB pack, so this is a
+          # few hundred milliseconds per leg, not a tradeoff.
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
