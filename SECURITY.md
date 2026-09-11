@@ -98,6 +98,15 @@ regenerated SBOM can be compared directly against a published one.
 
 ## Project Posture
 
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/varaprasadchilakanti/reveille/badge)](https://scorecard.dev/viewer/?uri=github.com/varaprasadchilakanti/reveille)
+
+That score is live, and it sits here rather than on the README on purpose.
+It is a composite, and several of the checks under it score zero for
+reasons this section states plainly -- one of them because the work has
+genuinely not been done. A bare number at the top of a README carries none
+of that, and a reader is better served by the number next to its account
+than by the number alone.
+
 Reveille has a **single maintainer**. That is a real limitation and it is stated
 here rather than left to be discovered, because two of the checks a security
 scanner applies to this repository cannot honestly be satisfied by one person,
