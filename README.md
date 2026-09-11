@@ -2,6 +2,8 @@
 
 **A CLI tool that generates performance reports from local Git repositories — as self-contained HTML, structured JSON, and CSV.**
 
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14502/badge)](https://www.bestpractices.dev/projects/14502)
+
 Reveille reads your repository's Git history and produces a single portable `.html` file containing interactive visualisations of contributor activity, commit trends, code volume, and repository health — with no server, no external API calls, and no configuration beyond the command itself. Open the output in any browser, share it over email, or drop it into a Confluence page without modification.
 
 ---
