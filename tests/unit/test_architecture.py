@@ -341,6 +341,21 @@ class TestFilesystemWrites:
     # here fails the guard until a human adds it with a reason.
     _READ_ONLY_GIT = frozenset({"log", "rev_list", "rev_parse", "version"})
 
+    # Members of a GitPython `Repo` the package may touch at all. Measured
+    # from the source, not guessed: `git_reader.py` uses exactly these.
+    #
+    # `_READ_ONLY_GIT` above only matches the shape `repo.git.<cmd>()`. Of
+    # seven ways to write through GitPython, it saw two:
+    # `repo.config_writer()`, `repo.index.commit()`, `repo.create_tag()`,
+    # an aliased `g = repo.git; g.gc()` and `getattr(repo.git, "gc")()` all
+    # passed it. An allowlist on the first member after `_repo` closes the
+    # three direct shapes in one rule; aliases and `getattr` are closed
+    # separately below.
+    #
+    # Aliasing any repository member trips this deliberately. It is rare,
+    # and the decision to hold a mutable handle should be visible.
+    _READ_ONLY_REPO_MEMBERS = frozenset({"active_branch", "commit", "git", "head", "remotes"})
+
     def test_only_designated_modules_write_to_disk(self) -> None:
         """A write from the reader or the domain would break the read-only claim.
 
@@ -369,6 +384,111 @@ class TestFilesystemWrites:
         assert not offenders, "filesystem writes outside the permitted modules: " + "; ".join(
             offenders
         )
+
+    def test_only_read_only_repository_members_are_touched(self) -> None:
+        """The runtime form of this is in `tests/integration/test_security.py`.
+
+        That one hashes every byte of a repository before and after
+        analysis, so it does not care how a write was dispatched -- but it
+        only covers the paths a test exercises. This one covers every line
+        of the package and only the shapes it knows. Neither is sufficient
+        alone, which is why both exist.
+        """
+        offenders: list[str] = []
+        for module in _modules():
+            tree = _tree(module)
+            aliases = self._repository_aliases(tree)
+            for node in ast.walk(tree):
+                finding = self._non_read_only_access(node, aliases)
+                if finding is not None:
+                    offenders.append(f"{_rel(module)}:{node.lineno} {finding}")
+
+        assert not offenders, (
+            "repository members touched outside the read-only allowlist: " + "; ".join(offenders)
+        )
+
+    @staticmethod
+    def _repository_aliases(tree: ast.AST) -> frozenset[str]:
+        """Names bound to a repository object or one of its members.
+
+        Only a bare member access counts. `raw_log = self._repo.git.log(...)`
+        binds the *result* of a read -- a string -- not a handle, and an
+        earlier version of this helper flagged every later use of that
+        string. The discriminator is that the assigned value is an
+        attribute access, not a call or an expression.
+        """
+        aliases: set[str] = set()
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Assign):
+                continue
+            if not isinstance(node.value, ast.Attribute):
+                continue
+            if not ast.unparse(node.value).startswith("self._repo"):
+                continue
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    aliases.add(target.id)
+        return frozenset(aliases)
+
+    @staticmethod
+    def _repo_member(node: ast.Attribute) -> str | None:
+        """Return the member name if `node` is `self._repo.<member>`, else None.
+
+        Resolved structurally rather than by splitting an unparsed chain on
+        dots. A chain containing a call or a subscript --
+        `self._repo.commit(rev).author`, `self._repo.remotes['origin'].url`
+        -- does not split into member names, and an earlier version read
+        `commit(rev)` as the member and reported a violation on correct
+        code. Walking the tree has no such failure mode, and every
+        intermediate attribute is visited in its own right.
+        """
+        receiver = node.value
+        if (
+            isinstance(receiver, ast.Attribute)
+            and receiver.attr == "_repo"
+            and isinstance(receiver.value, ast.Name)
+            and receiver.value.id == "self"
+        ):
+            return node.attr
+        return None
+
+    @classmethod
+    def _touches_repository(cls, node: ast.AST, aliases: frozenset[str]) -> bool:
+        """True if the expression reaches a repository object."""
+        if isinstance(node, ast.Name):
+            return node.id in aliases
+        if isinstance(node, ast.Attribute):
+            if node.attr == "_repo":
+                return True
+            return cls._touches_repository(node.value, aliases)
+        if isinstance(node, ast.Subscript):
+            return cls._touches_repository(node.value, aliases)
+        if isinstance(node, ast.Call):
+            return cls._touches_repository(node.func, aliases)
+        return False
+
+    @classmethod
+    def _non_read_only_access(cls, node: ast.AST, aliases: frozenset[str]) -> str | None:
+        """Describe a repository access outside the allowlist, else None."""
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "getattr"
+            and node.args
+            and cls._touches_repository(node.args[0], aliases)
+        ):
+            return f"getattr({ast.unparse(node.args[0])}, ...) bypasses the allowlist"
+
+        if not isinstance(node, ast.Attribute):
+            return None
+
+        if isinstance(node.value, ast.Name) and node.value.id in aliases:
+            return f"{node.value.id}.{node.attr} through an alias of self._repo"
+
+        member = cls._repo_member(node)
+        if member is not None and member not in cls._READ_ONLY_REPO_MEMBERS:
+            return f"self._repo.{member} is not a read-only member"
+        return None
 
     @classmethod
     def _on_fs_module(cls, func: ast.Attribute) -> bool:

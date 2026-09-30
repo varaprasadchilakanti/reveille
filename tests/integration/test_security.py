@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import csv
 import datetime
+import hashlib
 import os
 import re
 import subprocess
@@ -630,3 +631,130 @@ class TestIdentityFieldsAreBounded:
 
         assert commits[0].author_name == "Ada Lovelace"
         assert commits[0].author_email == "ada@example.com"
+
+
+def _repository_manifest(root: Path) -> dict[str, str]:
+    """Map every file under `root`, including `.git`, to its SHA-256.
+
+    Args:
+        root: Repository root to walk.
+
+    Returns:
+        Relative POSIX path to hex digest. Symlinks are skipped: their
+        target's bytes are not the link's identity, and following them
+        could walk outside the repository.
+    """
+    manifest: dict[str, str] = {}
+    for path in sorted(root.rglob("*")):
+        if path.is_symlink() or not path.is_file():
+            continue
+        manifest[path.relative_to(root).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return manifest
+
+
+class TestAnalysisNeverModifiesTheRepository:
+    """`reveille capabilities` publishes this, so it is asserted here.
+
+    The claim, verbatim: "Analysis never modifies the repository it reads.
+    `reveille init` is the one command that writes into a repository, and
+    only the files you ask it for." The refusal beside it is stronger
+    still: Reveille will not "alter the contents, history, index or refs
+    of a repository".
+
+    Asserted at runtime, over the whole repository including `.git`,
+    because the static guard in `tests/unit/test_architecture.py` can only
+    see the dispatch shapes it knows. Measured: of seven ways to write
+    through GitPython, that guard saw two. `repo.config_writer()`,
+    `repo.index.commit()`, `repo.create_tag()`, an aliased
+    `g = repo.git; g.gc()` and `getattr(repo.git, "gc")()` all passed it.
+    A hash of every byte before and after does not care how the write was
+    dispatched.
+
+    What this cannot do is cover a path the test never exercises, which is
+    why the static guard stays. Two guards, neither sufficient alone.
+    """
+
+    @pytest.mark.parametrize(
+        ("output_format", "ranking", "deterministic"),
+        [
+            ("html", False, False),
+            ("html", True, False),
+            ("html", False, True),
+            ("json", False, False),
+            ("csv", False, False),
+        ],
+    )
+    def test_analysis_leaves_the_repository_byte_identical(
+        self,
+        tmp_path: Path,
+        output_format: str,
+        ranking: bool,
+        deterministic: bool,
+    ) -> None:
+        """With the output written outside it, nothing in the repository moves."""
+        repo = _init_repo(tmp_path / "victim")
+        before = _repository_manifest(repo)
+        assert before, "the manifest is empty; it would pass whatever happened"
+
+        generate_report(
+            ReportConfig(
+                repo_path=repo,
+                output_path=tmp_path / f"out.{output_format}",
+                output_format=output_format,
+                ranking_enabled=ranking,
+                deterministic=deterministic,
+            )
+        )
+
+        after = _repository_manifest(repo)
+        changed = sorted(
+            path for path in before.keys() & after.keys() if before[path] != after[path]
+        )
+        assert changed == [], f"analysis modified tracked or git files: {changed}"
+        assert sorted(before.keys() - after.keys()) == [], "analysis removed files"
+        assert sorted(after.keys() - before.keys()) == [], "analysis added files"
+
+    def test_the_only_new_path_is_the_report_you_asked_for(self, tmp_path: Path) -> None:
+        """Writing the report into the repository is the documented exception.
+
+        The default output path is the working directory, which is usually
+        the repository being read. That is the one write analysis makes, it
+        is the file the caller named, and nothing else may change.
+        """
+        repo = _init_repo(tmp_path / "victim")
+        before = _repository_manifest(repo)
+
+        generate_report(
+            ReportConfig(
+                repo_path=repo,
+                output_path=repo / "reveille-report.html",
+                output_format="html",
+            )
+        )
+
+        after = _repository_manifest(repo)
+        assert sorted(after.keys() - before.keys()) == ["reveille-report.html"]
+        changed = sorted(
+            path for path in before.keys() & after.keys() if before[path] != after[path]
+        )
+        assert changed == [], f"analysis also modified: {changed}"
+
+    def test_the_manifest_notices_a_change(self, tmp_path: Path) -> None:
+        """Positive control. Without it the assertions above prove nothing.
+
+        A manifest that silently returned the same value for a changed
+        file, or skipped `.git` entirely, would pass every test in this
+        class. So write into `.git/config` -- the exact thing
+        `repo.config_writer()` does -- and require the manifest to see it.
+        """
+        repo = _init_repo(tmp_path / "victim")
+        before = _repository_manifest(repo)
+
+        config = repo / ".git" / "config"
+        config.write_text(config.read_text() + "\n[reveille]\n\tprobe = true\n")
+
+        after = _repository_manifest(repo)
+        assert ".git/config" in before, "the manifest does not cover .git"
+        assert before[".git/config"] != after[".git/config"], (
+            "the manifest did not notice a write into .git/config"
+        )
