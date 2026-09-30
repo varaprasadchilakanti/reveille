@@ -6,7 +6,7 @@
 
 [tool.poetry]
 name = "reveille"
-version = "0.8.1"
+version = "0.9.0"
 description = "A CLI tool that reports a local Git repository's commit activity as self-contained HTML, JSON, or CSV."
 authors = ["Vara Prasad Chilakanti <varaprasadchilakanti@gmail.com>"]
 license = "Apache-2.0"
