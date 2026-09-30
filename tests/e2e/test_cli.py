@@ -73,6 +73,32 @@ _BUNDLE_HOSTS = frozenset(
 # tiles from endpoints inside the bundle.
 _ALLOWED_TRACE_TYPES = frozenset({"bar", "pie", "scatter", "scatterpolar"})
 
+# Byte budgets for the generated artefact, measured on the e2e fixture
+# repository. The product is "one file you can email, embed and attach",
+# which makes size a product property -- and it was the only product
+# property with no guard: Plotly 7.0.0 -> 7.1.0 added 522,418 bytes to
+# every report and the whole suite stayed green.
+#
+# Three budgets rather than one, so a breach says which term grew: the
+# vendored bundle (98% of the artefact, and not ours), the content
+# Reveille authors, and the total the reader actually receives.
+# Measured on 2026-09-30 with Plotly 7.1.0: the bundle is 4,815,814 bytes,
+# the authored content 74,811, the whole artefact 4,890,625 -- and the two
+# terms sum to the total exactly, so a breach is always attributable.
+#
+# The headroom is a documented judgement, not a derived limit. The bundle
+# budget absorbs patch-level drift and fires on anything like the 12.2%
+# jump of 7.0.0 -> 7.1.0, because a jump that size should be a decision
+# someone takes. The authored budget allows real growth -- new charts,
+# new tables -- while catching a doubling.
+#
+# These are drift tripwires, not a claim about what any mail gateway or
+# wiki accepts. Nobody has measured that yet; until someone does, no
+# document may state a supported attachment size.
+_BUNDLE_BUDGET_BYTES = 5_000_000
+_AUTHORED_BUDGET_BYTES = 100_000
+_ARTEFACT_BUDGET_BYTES = 5_100_000
+
 
 class _RemoteReferenceCollector(HTMLParser):
     """Collect every attribute value that would make the report fetch.
@@ -1434,4 +1460,52 @@ class TestOfflineGuarantee:
             "A map or geo trace fetches tiles from the bundle's own "
             "endpoints. Add a type here only after confirming it fetches "
             "nothing."
+        )
+
+
+class TestArtefactBudget:
+    """The report stays small enough to email, embed and attach.
+
+    Size is a product property here, not an implementation detail: the
+    pitch is a single portable file. It was also the only product
+    property with no guard, which is how a dependency bump grew the
+    artefact by 12% without anything remarking on it.
+    """
+
+    def test_the_vendored_bundle_stays_within_its_budget(self) -> None:
+        """The term that is 98% of the artefact, and is not ours."""
+        import plotly.offline
+
+        measured = len(plotly.offline.get_plotlyjs().encode("utf-8"))
+        assert measured <= _BUNDLE_BUDGET_BYTES, (
+            f"the vendored Plotly bundle is {measured:,} bytes, over the "
+            f"{_BUNDLE_BUDGET_BYTES:,} byte budget. It is not ours to shrink, so "
+            "either raise the budget deliberately and record why, or reconsider "
+            "the dependency."
+        )
+
+    def test_the_authored_report_stays_within_its_budget(
+        self,
+        default_report_content: str,
+    ) -> None:
+        """The term that is ours: markup, styles, chart specifications."""
+        import plotly.offline
+
+        authored = default_report_content.replace(plotly.offline.get_plotlyjs(), "")
+        measured = len(authored.encode("utf-8"))
+        assert measured <= _AUTHORED_BUDGET_BYTES, (
+            f"the content Reveille authors is {measured:,} bytes, over the "
+            f"{_AUTHORED_BUDGET_BYTES:,} byte budget."
+        )
+
+    def test_the_whole_artefact_stays_within_its_budget(
+        self,
+        default_report_content: str,
+    ) -> None:
+        """What the reader receives, which is the number that gets attached."""
+        measured = len(default_report_content.encode("utf-8"))
+        assert measured <= _ARTEFACT_BUDGET_BYTES, (
+            f"the report is {measured:,} bytes, over the "
+            f"{_ARTEFACT_BUDGET_BYTES:,} byte budget. Check which term grew: "
+            "the vendored bundle or the content Reveille authors."
         )
