@@ -34,3 +34,4 @@ Deprecated.
 | [0008](0008-output-provenance-and-schema-version.md) | Output records its own provenance and declares a schema version | Accepted |
 | [0009](0009-contributor-licence-agreement.md) | Contributions are accepted under a Contributor Licence Agreement | Accepted |
 | [0010](0010-ranking-is-opt-in.md) | The contributor ranking is opt-in, and distribution is measured instead | Accepted |
+| [0011](0011-filters-choose-the-listing-not-the-analysis.md) | A filter chooses who is listed, not what the figures are about | Accepted |

@@ -718,6 +718,25 @@
                     {{ data.metadata.analysis_since }} to {{ data.metadata.analysis_until }}
                 </span>
                 <span><strong>Generated:</strong> {{ generated_at }}</span>
+                {% if derived.contributors_below_threshold %}
+                {#
+                   Stated, not left to arithmetic. Without this line the table
+                   listed some contributors while Total Commits counted all of
+                   them, and the difference -- one suppressed contributor's
+                   exact commit count -- was a subtraction away with nothing
+                   saying why the numbers disagreed.
+                #}
+                <span class="filter-note">
+                    <strong>Listing:</strong>
+                    {{ data.metadata.unique_contributors }} of
+                    {{ derived.population_size }} contributors.
+                    {{ derived.contributors_below_threshold }}
+                    {{ 'contributor is' if derived.contributors_below_threshold == 1 else 'contributors are' }}
+                    below the min-commits threshold of
+                    {{ data.provenance.min_commits }} and not listed; their commits
+                    are still counted in every figure here.
+                </span>
+                {% endif %}
             </div>
         </div>
         <button id="theme-toggle" class="theme-toggle" type="button">
@@ -821,8 +840,13 @@
 {{ chart_table("lorenz", "Cumulative share of commits against cumulative share of contributors") }}
         </div>
         <p class="chart-foot">
+            {% if derived.population_size > 1 %}
             Gini runs 0 (even) to {{ '%.2f'|format(derived.gini_ceiling) }}, which is the most
-            concentrated {{ data.metadata.unique_contributors }} contributors can be — the maximum is (n-1)/n, not 1.
+            concentrated {{ derived.population_size }} contributors can be — the maximum is (n-1)/n, not 1.
+            {% else %}
+            With a single contributor there is no distribution to measure: the Gini is 0 by
+            definition, not because activity is evenly shared.
+            {% endif %}
             It describes the
             repository, not the people in it: a single maintainer with
             occasional contributors scores high for ordinary reasons.

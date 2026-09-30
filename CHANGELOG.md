@@ -15,6 +15,30 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Changed
 
+- **`--min-commits` no longer changes the figures it is not supposed to change.**
+  A filter chooses who is *listed*; every figure describes the whole repository.
+  Measured on this repository, split 238/84 between two contributors,
+  `--min-commits 100` reported `gini_coefficient: 0.00` — perfect equality — for
+  a repository that is 74/26, because the contributor who made the split uneven
+  had been removed from the population before the coefficient was taken. It now
+  reports the same 0.24 with the filter on or off. The Gini ceiling, commit
+  concentration and the written findings all move to the full population for the
+  same reason. See [ADR 0011](docs/adr/0011-filters-choose-the-listing-not-the-analysis.md).
+- **The report states what it is not showing you.** `total_commits` counted every
+  commit while the table listed a subset, and nothing said why the two disagreed:
+  the HTML contained no occurrence of `min_commits`, `minimum`, `threshold` or
+  `filter`. The header now states how many of how many contributors are listed,
+  the threshold that held the rest back, and that their commits are still counted
+  in every figure. `--exclude-author` keeps its existing behaviour, which answers
+  a different question, and the difference is now documented rather than accidental.
+- **`schema_version` is `1.1`.** Additive, per ADR 0008: `derived` gains
+  `population_size` and `contributors_below_threshold`, so a consumer can
+  reconcile the contributor rows against `total_commits` without arithmetic.
+- **A single-contributor report no longer contradicts itself.** The distribution
+  caption rendered as "Gini runs 0 (even) to 0.00, which is the most concentrated
+  1 contributors can be" — a vacuous range and a grammatical error in shipped
+  output. It now says that one contributor has no distribution to measure.
+
 - **A tagged release now carries its SBOM's Sigstore attestation as a second
   asset**, named `<sbom filename>.sigstore.json`. The attestation itself is not
   new — it has been written to GitHub's attestation store since the SBOM job

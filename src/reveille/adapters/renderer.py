@@ -391,6 +391,13 @@ class Renderer:
                 "commit_concentration": derived["commit_concentration"],
                 "gini_coefficient": derived["gini_coefficient"],
                 "longest_inactive_streak": derived["longest_inactive_streak"],
+                # Added at schema 1.1. Without these, a consumer seeing
+                # `min_commits` in the filters cannot tell what population the
+                # figures above describe, and the rows will not sum to
+                # `total_commits`. Both are stated rather than left to
+                # arithmetic.
+                "population_size": derived["population_size"],
+                "contributors_below_threshold": derived["contributors_below_threshold"],
             },
         }
 
@@ -488,24 +495,31 @@ class Renderer:
         Returns:
             A dict of derived metric names to values for template use.
         """
+        # `min_commits` filters the listing, not the analysis, so every figure
+        # here is computed over the whole repository. See ADR 0011.
+        population = [r.stats.commit_count for r in data.ranked_contributors] + [
+            stats.commit_count for stats in data.suppressed_contributors
+        ]
         return {
-            "commit_concentration": _compute_commit_concentration(data.ranked_contributors),
+            "commit_concentration": _compute_commit_concentration(population),
             # Rounded to two places: the third decimal of a Gini over a handful
             # of contributors is noise, and printing it implies a precision the
             # sample does not carry.
-            "gini_coefficient": round(
-                gini_coefficient([r.stats.commit_count for r in data.ranked_contributors]), 2
-            ),
+            "gini_coefficient": round(gini_coefficient(population), 2),
             # Gini's maximum for a sample of n is (n-1)/n, so a report over
             # two contributors can never exceed 0.50 however lopsided the
             # split. Showing 0.23 against a stated 0-to-1 scale invites the
             # reader to conclude "23% of the way to maximum concentration"
             # when it is 46% of the achievable range.
-            "gini_ceiling": round(
-                (len(data.ranked_contributors) - 1) / len(data.ranked_contributors), 2
-            )
-            if len(data.ranked_contributors) > 1
+            "gini_ceiling": round((len(population) - 1) / len(population), 2)
+            if len(population) > 1
             else 0.0,
+            # The population the figures above describe, which is not the
+            # number of rows in the table when `min_commits` is in use. The
+            # template states it beside the Gini so the reader is never left
+            # to infer it from a row count.
+            "population_size": len(population),
+            "contributors_below_threshold": len(data.suppressed_contributors),
             "longest_inactive_streak": _compute_longest_inactive_streak(
                 data.commits,
                 data.metadata.analysis_since,
@@ -523,7 +537,7 @@ class Renderer:
             # history always produces the same sentences.
             "findings": summarise(
                 data.commits,
-                [r.stats for r in data.ranked_contributors],
+                [r.stats for r in data.ranked_contributors] + list(data.suppressed_contributors),
             ),
         }
 
@@ -1353,7 +1367,7 @@ def _build_lorenz_chart(ranked: list[RankedContributor]) -> str:
     return _to_json(fig)
 
 
-def _compute_commit_concentration(ranked: list[RankedContributor]) -> int:
+def _compute_commit_concentration(counts: list[int]) -> int:
     """Count the contributors who between them authored half the commits.
 
     The minimum number of contributors whose combined commit volume
@@ -1361,32 +1375,36 @@ def _compute_commit_concentration(ranked: list[RankedContributor]) -> int:
     indicates a more concentrated history.
 
     This is deliberately not called a bus factor. Bus factor is a measure
-    of knowledge concentration — how much of the surviving code only one
-    person understands — which is a property of line ownership, obtained
+    of knowledge concentration -- how much of the surviving code only one
+    person understands -- which is a property of line ownership, obtained
     from `git blame`, not of commit counts. Commit volume is a weak proxy
     for it: a contributor with many small commits outranks one who wrote
     a subsystem in a handful of large ones. The honest name is the one
     that describes what is actually measured.
 
+    Takes commit counts rather than ranked contributors because the
+    population it must describe includes contributors held back from the
+    listing by `min_commits`, who have no rank.
+
     Args:
-        ranked: Ranked contributor list.
+        counts: Commit count per contributor, in any order.
 
     Returns:
-        An integer in the range [1, len(ranked)]. Returns 0 if ranked is empty.
+        An integer in the range [1, len(counts)]. Returns 0 when `counts`
+        is empty or sums to zero.
     """
-    if not ranked:
+    if not counts:
         return 0
-    total = sum(r.stats.commit_count for r in ranked)
+    total = sum(counts)
     if total == 0:
         return 0
     threshold = total * 0.5
-    sorted_by_commits = sorted(ranked, key=lambda r: r.stats.commit_count, reverse=True)
     cumulative = 0
-    for i, contributor in enumerate(sorted_by_commits, start=1):
-        cumulative += contributor.stats.commit_count
+    for position, count in enumerate(sorted(counts, reverse=True), start=1):
+        cumulative += count
         if cumulative >= threshold:
-            return i
-    return len(ranked)
+            return position
+    return len(counts)
 
 
 def _compute_longest_inactive_streak(
