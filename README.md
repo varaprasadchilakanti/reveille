@@ -1,6 +1,6 @@
 # Reveille
 
-**A CLI tool that generates performance reports from local Git repositories — as self-contained HTML, structured JSON, and CSV.**
+**A CLI tool that reports a local Git repository's commit activity — as self-contained HTML, structured JSON, and CSV.**
 
 [![PyPI](https://img.shields.io/pypi/v/reveille)](https://pypi.org/project/reveille/)
 [![Python](https://img.shields.io/pypi/pyversions/reveille)](https://pypi.org/project/reveille/)
@@ -154,7 +154,7 @@ reveille generate --repo /path/to/repository
 
 ### `reveille generate`
 
-Generates the HTML performance report for the target repository.
+Generates the HTML activity report for the target repository.
 
 | Flag | Short | Type | Default | Description |
 |---|---|---|---|---|
@@ -344,7 +344,7 @@ A fully commented `reveille.toml` is equivalent to no configuration file: all bu
 
 ```toml
 [report]
-title = "Engineering Performance Report — Q4 2024"
+title = "Repository Activity — Q4 2024"
 output = "./reports/q4-2024.html"
 branch = "main"
 since = "2024-10-01"

@@ -18,8 +18,9 @@ Chart rendering strategy: each chart is serialised as a Plotly JSON
 specification and embedded in the document as an application/json
 script block. Client-side initialisation renders all charts via
 Plotly.newPlot() at page load, applying the active colour theme at
-that time. On theme toggle, Plotly.relayout() updates each chart's
-background, axis, and font properties without re-fetching trace data.
+that time. On theme toggle every chart is re-plotted through that same
+path, deliberately not through Plotly.relayout(); the template records
+why, and the short version is one path, one set of semantics.
 
 The activity heatmap uses a compact daily-count payload rather than
 a pre-built Plotly spec. The client builds the GitHub-style 7-row
@@ -199,7 +200,7 @@ _SCRIPT_BLOCK_RE: re.Pattern[str] = re.compile(
 _HTML_TAG_RE: re.Pattern[str] = re.compile(r"<[^>]+>")
 
 # Module-level cache for the Plotly JS bundle.
-# plotly.offline.get_plotlyjs() reads ~3.5 MB of minified JavaScript from
+# plotly.offline.get_plotlyjs() reads ~4.8 MB of minified JavaScript from
 # disk on every call. Caching at module load time means each worker process
 # pays the cost once, regardless of how many reports are rendered in that
 # process. This is the primary driver of e2e test suite runtime.
@@ -1583,10 +1584,13 @@ def _pie_colors(n: int, has_other: bool = False) -> list[str]:
 def _base_layout() -> dict[str, Any]:
     """Return shared Plotly layout configuration for all charts.
 
-    Background colours and font colour are intentionally absent. They
-    are injected by the client-side theme manager at render time via
-    Plotly.relayout(), allowing charts to respond correctly to
-    dark/light mode toggles without re-fetching trace data.
+    Background colours and font colour are intentionally absent. The
+    client-side theme manager supplies them at render time, and on a
+    theme toggle re-plots each chart through the same path as the first
+    paint. Not Plotly.relayout(): handed a nested object it replaces the
+    container it names, so a themed xaxis would take the axis title with
+    it, and it does not touch the trace-level colorscale the heatmap
+    needs. The template carries the full reasoning.
 
     Returns:
         A dict of Plotly layout keyword arguments.

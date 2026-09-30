@@ -53,7 +53,7 @@ def generate_report(
     config: ReportConfig,
     on_progress: Callable[[ProgressEvent], None] | None = None,
 ) -> list[Path]:
-    """Generate a self-contained HTML performance report.
+    """Generate a self-contained HTML report of repository activity.
 
     Args:
         config: Validated report configuration produced by the CLI layer.

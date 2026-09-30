@@ -3,7 +3,7 @@
 
 """Reveille -- Git Repository Intelligence.
 
-A CLI tool that generates self-contained HTML performance reports
+A CLI tool that reports a local Git repository's commit activity
 from local Git repositories.
 
 Reveille's modules emit diagnostics through the standard `logging`

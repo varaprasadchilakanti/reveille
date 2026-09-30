@@ -782,14 +782,21 @@
         #}
         {% if data.provenance.ranking_enabled and data.ranked_contributors %}
         <div class="summary-card">
+            {#
+               Labelled by what it is ordered by. `rank_contributors` sorts on
+               composite_score, so "by commit volume" was false whenever the
+               two disagree -- and it was false only in the visually-hidden
+               text, which is to say only for the readers who cannot see the
+               table to check it.
+            #}
             <span class="visually-hidden">
-                Top Contributor by commit volume:
+                Highest composite score:
                 {{ data.ranked_contributors[0].stats.name }}
             </span>
             <div class="value" aria-hidden="true">
                 {{ data.ranked_contributors[0].stats.name.split()[0] }}
             </div>
-            <div class="label" aria-hidden="true">Top Contributor</div>
+            <div class="label" aria-hidden="true">Highest Score</div>
         </div>
         {% else %}
         <div class="summary-card">

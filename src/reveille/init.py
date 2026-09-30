@@ -31,7 +31,7 @@ _DEFAULT_CONFIG_TEMPLATE: str = """\
 
 # Override the report title displayed in the HTML output.
 # Defaults to the repository directory name.
-# title = "Engineering Performance Report"
+# title = "Repository Activity Report"
 
 # Output path for the generated HTML file.
 # The parent directory must exist at generation time.

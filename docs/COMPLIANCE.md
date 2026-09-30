@@ -17,8 +17,11 @@ Every conclusion here depends on these facts, so they are stated first:
 - It runs **entirely on the user's own machine**. No network call at runtime, no
   telemetry, no server, no account. The maintainer never receives anything.
 - It reads Git commit metadata — object name, author name, author email,
-  timestamp — and writes one report. It reads **no source code**, no commit
-  messages, no diffs.
+  timestamp — and, per file in each commit, the **path and the number of lines
+  added and deleted**, which is what `git log --numstat` reports and what the
+  file sections of the report are built from. It reads **no source code**, no
+  commit messages, and no diff content: the figures say how many lines changed
+  in a file, never which lines, and never what they contained.
 - It contains **no machine learning and no model**. Every number it produces is
   deterministic arithmetic over commit counts.
 - It is supplied **free of charge and outside any commercial activity**. There is
