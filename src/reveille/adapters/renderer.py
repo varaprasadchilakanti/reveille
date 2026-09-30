@@ -58,6 +58,7 @@ from reveille.domain.concentration import gini_coefficient, lorenz_curve
 from reveille.domain.files import extension_breakdown, hotspots
 from reveille.domain.models import (
     Commit,
+    ContributorStats,
     FileStats,
     RankedContributor,
     ReportData,
@@ -498,9 +499,7 @@ class Renderer:
         """
         # `min_commits` filters the listing, not the analysis, so every figure
         # here is computed over the whole repository. See ADR 0011.
-        population = [r.stats.commit_count for r in data.ranked_contributors] + [
-            stats.commit_count for stats in data.suppressed_contributors
-        ]
+        population = [stats.commit_count for stats in _population(data)]
         return {
             "commit_concentration": _compute_commit_concentration(population),
             # Rounded to two places: the third decimal of a Gini over a handful
@@ -536,10 +535,7 @@ class Renderer:
             # Written findings, generated from these same numbers by rules.
             # See domain/summary.py: no model, no network, and the same
             # history always produces the same sentences.
-            "findings": summarise(
-                data.commits,
-                [r.stats for r in data.ranked_contributors] + list(data.suppressed_contributors),
-            ),
+            "findings": summarise(data.commits, _population(data)),
         }
 
     # ------------------------------------------------------------------
@@ -580,14 +576,14 @@ class Renderer:
             ),
             "contributor_lines": _build_contributor_lines_chart(data.ranked_contributors),
             "pie_commits": _build_commit_share_pie(data.ranked_contributors),
-            "lorenz": _build_lorenz_chart(data.ranked_contributors),
+            "lorenz": _build_lorenz_chart([stats.commit_count for stats in _population(data)]),
             "commit_size": _build_commit_size_chart(data.commits),
             "hotspots": _build_hotspot_chart(data.file_stats),
             "extensions": _build_extension_chart(data.file_stats),
             "profile": _build_profile_chart(
                 repository_profile(
                     data.commits,
-                    [r.stats for r in data.ranked_contributors],
+                    _population(data),
                     data.file_stats,
                     data.metadata.analysis_since,
                     data.metadata.analysis_until,
@@ -599,6 +595,33 @@ class Renderer:
 # ------------------------------------------------------------------
 # Chart construction functions
 # ------------------------------------------------------------------
+
+
+def _population(data: ReportData) -> list[ContributorStats]:
+    """Every contributor in the repository, listed or not.
+
+    ADR 0011: `min_commits` chooses who is *listed*; every figure describes the
+    whole repository. The Gini honoured that and the Lorenz curve and the
+    profile did not, because each caller assembled the population for itself
+    and two of the three assembled it wrongly. Under `--min-commits 100` this
+    repository printed a Gini of 0.25 over two contributors, a Lorenz
+    specification of `null`, and a profile axis of 0.0 described as "one
+    contributor, so there is nothing to spread" -- three statements about one
+    population, in one document, disagreeing with each other.
+
+    One definition, used by everything that describes the repository, so they
+    cannot diverge again. Per-contributor charts deliberately do not use it: a
+    chart that names people must show only the people who are listed.
+
+    Args:
+        data: The complete report dataset.
+
+    Returns:
+        Listed contributors followed by those held back by `min_commits`.
+    """
+    return [ranked.stats for ranked in data.ranked_contributors] + list(
+        data.suppressed_contributors
+    )
 
 
 def _contributor_labels(ranked: list[RankedContributor]) -> dict[str, str]:
@@ -726,7 +749,21 @@ def _series_from_spec(specification: str) -> list[tuple[str, list[Any], list[Any
             categories, values = values, categories
         if not categories or not values:
             continue
-        series.append((str(trace.get("name") or ""), list(categories), list(values)))
+        categories, values = list(categories), list(values)
+        # A radar closes its polygon by repeating the first vertex, so the
+        # arrays carry one more entry than there are measures. Read back
+        # faithfully, that put six rows under a caption reading "The five
+        # repository profile measures", with the first measure appearing
+        # twice -- and the table is the only form a screen-reader user gets.
+        # The repeat is geometry, not data.
+        if (
+            trace.get("type") == "scatterpolar"
+            and len(categories) > 1
+            and categories[0] == categories[-1]
+            and values[0] == values[-1]
+        ):
+            categories, values = categories[:-1], values[:-1]
+        series.append((str(trace.get("name") or ""), categories, values))
     return series
 
 
@@ -1297,7 +1334,7 @@ def _build_profile_chart(axes: list[ProfileAxis]) -> str:
     return _to_json(fig)
 
 
-def _build_lorenz_chart(ranked: list[RankedContributor]) -> str:
+def _build_lorenz_chart(counts: list[int]) -> str:
     """Build a Lorenz curve of commit distribution across contributors.
 
     The diagonal is perfect equality -- every contributor with the same number
@@ -1314,17 +1351,19 @@ def _build_lorenz_chart(ranked: list[RankedContributor]) -> str:
     does not.
 
     Args:
-        ranked: Contributor list. Only the commit counts are used.
+        counts: Commit count per contributor, in any order. Counts rather
+            than ranked contributors, because the population this describes
+            includes contributors held back by `min_commits`, who have no
+            rank. See `_population`.
 
     Returns:
         A Plotly figure JSON string, or 'null' if there are fewer than two
         contributors -- a Lorenz curve over one person is the diagonal, which
         conveys nothing.
     """
-    if len(ranked) < 2:
+    if len(counts) < 2:
         return "null"
 
-    counts = [r.stats.commit_count for r in ranked]
     curve = lorenz_curve(counts)
 
     xs = [round(x * 100, 4) for x, _ in curve]
@@ -1401,11 +1440,15 @@ def _compute_commit_concentration(counts: list[int]) -> int:
         return 0
     threshold = total * 0.5
     cumulative = 0
-    for position, count in enumerate(sorted(counts, reverse=True), start=1):
+    # `no branch`/`no cover`: the loop always returns. `counts` is non-empty and
+    # `total` is positive, both guarded above, so `cumulative` reaches `total`,
+    # which is >= total * 0.5. The tail exists because mypy --strict cannot
+    # prove that and requires a return on every path.
+    for position, count in enumerate(sorted(counts, reverse=True), start=1):  # pragma: no branch
         cumulative += count
         if cumulative >= threshold:
             return position
-    return len(counts)
+    return len(counts)  # pragma: no cover - unreachable, see above
 
 
 def _compute_longest_inactive_streak(

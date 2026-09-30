@@ -15,6 +15,28 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Changed
 
+- **ADR 0011 now applies to the charts, not only to the printed figures.** The
+  first pass fixed the derived figures and missed the chart builders, so a
+  report using `--min-commits` contradicted itself: over a two-contributor
+  repository it printed a Gini of 0.25 over two contributors, a Lorenz
+  specification of `null`, and a profile axis of 0.0 described as "one
+  contributor, so there is nothing to spread". All three now agree. The cause
+  was that each caller assembled the population for itself; there is now one
+  definition that everything describing the repository uses, so they cannot
+  diverge again. Per-contributor charts deliberately keep the listed set: a
+  chart that names people must show only the people who are listed.
+- **The profile's text alternative no longer reports six of five measures.** A
+  radar closes its polygon by repeating the first vertex, and the table is read
+  back out of the trace arrays, so the first measure appeared twice under a
+  caption reading "The five repository profile measures". The repeat is
+  geometry, not data.
+- **The profile's `aria-label` no longer names an axis that was removed.** It
+  described "currency of the last commit", which `_recent_share` replaced. A
+  sighted reader saw the real names in the table below it; for a screen-reader
+  user the label is the whole of what `role="img"` provides. Both the label and
+  the table are now pinned to `AXIS_ORDER`, so changing the axis set without
+  updating the prose fails.
+
 - **The output is no longer called a "performance report".** Removed from eleven
   places: the PyPI description, the README tagline and CLI reference, the
   `--help` text of both the application and `generate`, the package and service

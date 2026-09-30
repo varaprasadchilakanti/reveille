@@ -99,7 +99,7 @@ def _ranked(counts: list[int]) -> list[RankedContributor]:
 
 def _figure(counts: list[int]) -> dict:
     """The chart as a parsed Plotly figure."""
-    return json.loads(_build_lorenz_chart(_ranked(counts)))
+    return json.loads(_build_lorenz_chart(counts))
 
 
 @pytest.mark.unit
@@ -107,7 +107,7 @@ class TestLorenzChartIsPresent:
     """Deleting the chart must fail a test. Previously it did not."""
 
     def test_chart_is_built_for_two_or_more_contributors(self) -> None:
-        assert _build_lorenz_chart(_ranked([5, 3])) != "null"
+        assert _build_lorenz_chart([5, 3]) != "null"
 
     def test_figure_has_both_traces(self) -> None:
         """The equality reference and the observed curve. Neither is optional."""
@@ -125,7 +125,7 @@ class TestLorenzChartDegenerateCases:
     """A curve over one person is the diagonal, which states nothing."""
 
     def test_single_contributor_yields_null(self) -> None:
-        assert _build_lorenz_chart(_ranked([7])) == "null"
+        assert _build_lorenz_chart([7]) == "null"
 
     def test_empty_yields_null(self) -> None:
         assert _build_lorenz_chart([]) == "null"
@@ -240,7 +240,23 @@ class TestLorenzChartNamesNobody:
     per-person ranking does not: it characterises the repository."""
 
     def test_no_contributor_name_or_email_appears_in_the_figure(self) -> None:
-        payload = _build_lorenz_chart(_ranked([10, 5, 1]))
+        """Asserted over the wired path, because the builder cannot leak.
+
+        This used to call `_build_lorenz_chart` with named contributors and
+        check the names did not survive. The builder now takes commit counts
+        -- it has to, because the population it describes includes
+        contributors held back by `min_commits`, who have no rank -- so it
+        receives no names and the old assertion could no longer fail.
+
+        The property still matters, so it is asserted where names are
+        genuinely present: `_build_charts` is given a full `ReportData`
+        carrying "Dev 0" and "dev0@example.com", and the emitted
+        specification must contain neither.
+        """
+        from reveille.adapters.renderer import Renderer
+
+        payload = Renderer()._build_charts(_report_data([10, 5, 1]))["lorenz"]
+        assert payload != "null", "an empty spec would pass whatever leaked"
         assert "Dev 0" not in payload
         assert "@example.com" not in payload
 

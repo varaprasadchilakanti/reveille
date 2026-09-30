@@ -247,3 +247,44 @@ class TestIdentityIsNotCarriedByColourAlone:
         assert len(set(dashes)) == len(dashes), (
             f"series share a dash pattern, so only colour separates them: {dashes}"
         )
+
+
+@pytest.mark.unit
+class TestTheProfileTableAndLabelMatchTheAxes:
+    """Both were wrong, and both were wrong only for screen-reader users.
+
+    The table read six rows under a caption saying "The five repository
+    profile measures", with the first measure repeated -- a radar closes its
+    polygon by repeating the first vertex, and the table is read back out of
+    the trace arrays. The `aria-label` named "currency of the last commit", an
+    axis `_recent_share` documents as having replaced it; the sighted reader
+    saw the real names in the table, so nobody noticed.
+
+    Both are pinned to `AXIS_ORDER` here, so adding, removing or renaming an
+    axis without updating the prose fails.
+    """
+
+    def test_the_table_has_one_row_per_axis(self, rendered: str) -> None:
+        from reveille.domain.profile import AXIS_ORDER
+
+        start = rendered.index("The five repository profile measures")
+        section = rendered[start - 400 : start + 2000]
+        body = re.findall(r"<tbody>(.*?)</tbody>", section, re.DOTALL)
+        assert body, "the profile table has no body to read"
+        rows = re.findall(r"<tr>", body[0])
+        assert len(rows) == len(AXIS_ORDER), (
+            f"the profile table has {len(rows)} rows for {len(AXIS_ORDER)} measures; "
+            "a repeated closing vertex is geometry, not a measure"
+        )
+
+    def test_the_label_names_every_axis(self, rendered: str) -> None:
+        from reveille.domain.profile import AXIS_ORDER
+
+        label = re.search(r'id="chart-profile"[^>]*aria-label="([^"]*)"', rendered).group(1)
+        missing = [name for name in AXIS_ORDER if name.lower() not in label.lower()]
+        assert not missing, f"the profile aria-label does not name {missing}"
+
+    def test_the_label_does_not_name_an_axis_that_is_gone(self, rendered: str) -> None:
+        """The specific wording that shipped, so its return is noticed."""
+        label = re.search(r'id="chart-profile"[^>]*aria-label="([^"]*)"', rendered).group(1)
+        assert "currency" not in label.lower(), "the label names the axis `_recent_share` replaced"
