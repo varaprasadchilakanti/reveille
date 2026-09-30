@@ -137,8 +137,11 @@ _NOT_CAPABILITIES: tuple[dict[str, str], ...] = (
         "id": "code-analysis",
         "description": (
             "Read, parse, lint, or evaluate source code, commit messages, "
-            "diffs, or file contents. Only commit metadata is read: object "
-            "name, author name, author email, and timestamp."
+            "diff content, or file contents. What is read is commit metadata "
+            "-- object name, author name, author email, timestamp -- and, per "
+            "file in each commit, the path and the number of lines added and "
+            "deleted, as reported by `git log --numstat`. How many lines "
+            "changed in a file, never which lines."
         ),
         "instead": "Use a static analysis tool or a code search tool.",
     },

@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 #
 # Bump the major on any removal or rename; bump the minor on a purely additive
 # field. See docs/adr/0008-output-provenance-and-schema-version.md.
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
 
 
 @dataclass(frozen=True)
@@ -197,3 +197,9 @@ class ReportData:
     #: a caller constructing a report without it -- every existing test --
     #: keeps working; the file sections are then simply absent.
     file_stats: list[FileStats] = field(default_factory=list)
+    #: Contributors held back from the listing by `min_commits`. They are
+    #: still part of the repository, so every derived figure is computed
+    #: over these as well as the listed ones -- `min_commits` filters the
+    #: listing, not the analysis. Defaults to empty, so a caller
+    #: constructing a report without it keeps working.
+    suppressed_contributors: list[ContributorStats] = field(default_factory=list)

@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import csv
 import datetime
+import hashlib
 import os
 import re
 import subprocess
@@ -76,6 +77,15 @@ def _init_repo(path: Path, author: str = "Real", email: str = "real@example.com"
     _run(["git", "init", "-q", "-b", "main"], path)
     _run(["git", "config", "user.name", author], path)
     _run(["git", "config", "user.email", email], path)
+    # Git spawns `git maintenance run --auto` in the background after commands
+    # such as `commit`. It creates `.git/objects/maintenance.lock` and removes
+    # it on completion, so a snapshot of `.git` taken while it runs disagrees
+    # with one taken after. That raced `_repository_manifest` and failed
+    # `test_analysis_leaves_the_repository_byte_identical[csv-False-False]` on
+    # one CI worker, reporting "analysis removed files" for a file analysis had
+    # never touched.
+    _run(["git", "config", "maintenance.auto", "false"], path)
+    _run(["git", "config", "gc.auto", "0"], path)
     (path / "a.txt").write_text("x\n", encoding="utf-8")
     _run(["git", "add", "-A"], path)
     _run(
@@ -630,3 +640,257 @@ class TestIdentityFieldsAreBounded:
 
         assert commits[0].author_name == "Ada Lovelace"
         assert commits[0].author_email == "ada@example.com"
+
+
+def _is_transient_git_lock(relative: str) -> bool:
+    """True for a git lock file, which is machinery rather than content.
+
+    `.git/index.lock`, `.git/objects/maintenance.lock`, `.git/config.lock` and
+    the per-ref `*.lock` files exist only while some git process holds them. A
+    lock is none of the four things the guarantee names -- contents, history,
+    index or refs -- and whether one is present at snapshot time is a function
+    of timing, not of what analysis did.
+
+    Git spawns `git maintenance run --auto` in the background after commands
+    such as `commit`, so a lock created by the fixture's own setup can vanish
+    between the two snapshots. That is exactly what happened: one CI worker
+    reported "analysis removed files: ['.git/objects/maintenance.lock']" for a
+    file analysis never touched. The fixtures now disable that maintenance,
+    which removes the cause; this removes the guard's sensitivity to it, so a
+    future environment that reintroduces background housekeeping does not make
+    the suite flaky again.
+
+    A lock still *present after* analysis is a different matter and a real
+    defect -- a stale `.git/index.lock` blocks every subsequent git command in
+    the user's repository -- so it is asserted separately rather than excluded
+    silently.
+
+    Args:
+        relative: A repository-relative POSIX path.
+
+    Returns:
+        Whether the path is one of git's own lock files.
+    """
+    return relative.startswith(".git/") and relative.endswith(".lock")
+
+
+def _git_locks(root: Path) -> list[str]:
+    """Return any git lock files currently present under `root`."""
+    return sorted(
+        path.relative_to(root).as_posix()
+        for path in root.rglob("*.lock")
+        if path.is_file() and _is_transient_git_lock(path.relative_to(root).as_posix())
+    )
+
+
+def _content_manifest(root: Path) -> dict[str, str]:
+    """The repository's content: every file except git's transient locks.
+
+    Args:
+        root: Repository root to walk.
+
+    Returns:
+        Relative POSIX path to hex digest, locks excluded.
+    """
+    return {
+        path: digest
+        for path, digest in _repository_manifest(root).items()
+        if not _is_transient_git_lock(path)
+    }
+
+
+def _repository_manifest(root: Path) -> dict[str, str]:
+    """Map every file under `root`, including `.git`, to its SHA-256.
+
+    Args:
+        root: Repository root to walk.
+
+    Returns:
+        Relative POSIX path to hex digest. Symlinks are skipped: their
+        target's bytes are not the link's identity, and following them
+        could walk outside the repository.
+    """
+    manifest: dict[str, str] = {}
+    for path in sorted(root.rglob("*")):
+        if path.is_symlink() or not path.is_file():
+            continue
+        manifest[path.relative_to(root).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return manifest
+
+
+class TestAnalysisNeverModifiesTheRepository:
+    """`reveille capabilities` publishes this, so it is asserted here.
+
+    The claim, verbatim: "Analysis never modifies the repository it reads.
+    `reveille init` is the one command that writes into a repository, and
+    only the files you ask it for." The refusal beside it is stronger
+    still: Reveille will not "alter the contents, history, index or refs
+    of a repository".
+
+    Asserted at runtime, over the whole repository including `.git`,
+    because the static guard in `tests/unit/test_architecture.py` can only
+    see the dispatch shapes it knows. Measured: of seven ways to write
+    through GitPython, that guard saw two. `repo.config_writer()`,
+    `repo.index.commit()`, `repo.create_tag()`, an aliased
+    `g = repo.git; g.gc()` and `getattr(repo.git, "gc")()` all passed it.
+    A hash of every byte before and after does not care how the write was
+    dispatched.
+
+    What this cannot do is cover a path the test never exercises, which is
+    why the static guard stays. Two guards, neither sufficient alone.
+    """
+
+    @pytest.mark.parametrize(
+        ("output_format", "ranking", "deterministic"),
+        [
+            ("html", False, False),
+            ("html", True, False),
+            ("html", False, True),
+            ("json", False, False),
+            ("csv", False, False),
+        ],
+    )
+    def test_analysis_leaves_the_repository_byte_identical(
+        self,
+        tmp_path: Path,
+        output_format: str,
+        ranking: bool,
+        deterministic: bool,
+    ) -> None:
+        """With the output written outside it, nothing in the repository moves."""
+        repo = _init_repo(tmp_path / "victim")
+        before = _content_manifest(repo)
+        assert before, "the manifest is empty; it would pass whatever happened"
+
+        generate_report(
+            ReportConfig(
+                repo_path=repo,
+                output_path=tmp_path / f"out.{output_format}",
+                output_format=output_format,
+                ranking_enabled=ranking,
+                deterministic=deterministic,
+            )
+        )
+
+        assert _git_locks(repo) == [], "analysis left a git lock behind"
+        after = _content_manifest(repo)
+        changed = sorted(
+            path for path in before.keys() & after.keys() if before[path] != after[path]
+        )
+        assert changed == [], f"analysis modified tracked or git files: {changed}"
+        assert sorted(before.keys() - after.keys()) == [], "analysis removed files"
+        assert sorted(after.keys() - before.keys()) == [], "analysis added files"
+
+    def test_the_only_new_path_is_the_report_you_asked_for(self, tmp_path: Path) -> None:
+        """Writing the report into the repository is the documented exception.
+
+        The default output path is the working directory, which is usually
+        the repository being read. That is the one write analysis makes, it
+        is the file the caller named, and nothing else may change.
+        """
+        repo = _init_repo(tmp_path / "victim")
+        before = _content_manifest(repo)
+
+        generate_report(
+            ReportConfig(
+                repo_path=repo,
+                output_path=repo / "reveille-report.html",
+                output_format="html",
+            )
+        )
+
+        assert _git_locks(repo) == [], "analysis left a git lock behind"
+        after = _content_manifest(repo)
+        assert sorted(after.keys() - before.keys()) == ["reveille-report.html"]
+        changed = sorted(
+            path for path in before.keys() & after.keys() if before[path] != after[path]
+        )
+        assert changed == [], f"analysis also modified: {changed}"
+
+    def test_the_manifest_notices_a_change(self, tmp_path: Path) -> None:
+        """Positive control. Without it the assertions above prove nothing.
+
+        A manifest that silently returned the same value for a changed
+        file, or skipped `.git` entirely, would pass every test in this
+        class. So write into `.git/config` -- the exact thing
+        `repo.config_writer()` does -- and require the manifest to see it.
+        """
+        repo = _init_repo(tmp_path / "victim")
+        before = _repository_manifest(repo)
+
+        config = repo / ".git" / "config"
+        config.write_text(config.read_text() + "\n[reveille]\n\tprobe = true\n")
+
+        after = _repository_manifest(repo)
+        assert ".git/config" in before, "the manifest does not cover .git"
+        assert before[".git/config"] != after[".git/config"], (
+            "the manifest did not notice a write into .git/config"
+        )
+
+
+class TestTheManifestIsNotFooledByGitHousekeeping:
+    """The race that made the guard above flaky, reproduced deterministically.
+
+    `test_analysis_leaves_the_repository_byte_identical[csv-False-False]` failed
+    on one CI worker with "analysis removed files:
+    ['.git/objects/maintenance.lock']". Analysis had not removed anything: git
+    had spawned `git maintenance run --auto` in the background after the
+    fixture's own commit, the lock existed when the first snapshot was taken,
+    and the background process had finished and removed it by the second.
+
+    The fixtures now set `maintenance.auto=false` and `gc.auto=0`, which removes
+    the cause. These tests remove the guard's sensitivity to it, so the suite
+    does not become flaky again if some future environment reintroduces
+    background housekeeping.
+    """
+
+    def test_a_lock_that_comes_and_goes_does_not_look_like_a_change(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """The exact shape of the CI failure, without the timing."""
+        repo = _init_repo(tmp_path / "victim")
+        lock = repo / ".git" / "objects" / "maintenance.lock"
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        lock.write_text("", encoding="utf-8")
+
+        before = _content_manifest(repo)
+        raw_before = _repository_manifest(repo)
+
+        lock.unlink()  # the background maintenance finishes
+
+        after = _content_manifest(repo)
+        raw_after = _repository_manifest(repo)
+
+        assert before == after, "a transient git lock still perturbs the content manifest"
+        assert raw_before != raw_after, (
+            "the unfiltered manifest no longer sees the lock, so this test is "
+            "not exercising the exclusion it exists to check"
+        )
+
+    def test_a_lock_left_behind_is_still_reported(self, tmp_path: Path) -> None:
+        """Excluding locks from the comparison must not hide a stale one.
+
+        A stale `.git/index.lock` blocks every subsequent git command in the
+        user's repository. That is a real defect, so it is asserted on its own
+        rather than swallowed by the exclusion.
+        """
+        repo = _init_repo(tmp_path / "victim")
+        assert _git_locks(repo) == []
+
+        stale = repo / ".git" / "index.lock"
+        stale.write_text("", encoding="utf-8")
+
+        assert _git_locks(repo) == [".git/index.lock"]
+
+    def test_a_lock_outside_git_is_not_treated_as_housekeeping(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """`poetry.lock` is content. The exclusion is scoped to `.git/`."""
+        repo = _init_repo(tmp_path / "victim")
+        (repo / "poetry.lock").write_text("x\n", encoding="utf-8")
+
+        assert _git_locks(repo) == []
+        assert "poetry.lock" in _content_manifest(repo)
+        assert not _is_transient_git_lock("poetry.lock")

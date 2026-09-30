@@ -30,7 +30,7 @@ command. Anything that would change repository state is out of scope by
 construction, not by omission.
 
 **It is offline.** Nothing is transmitted anywhere. The generated report
-loads no CDN, no web font, and no remote image — the ~4.1 MB Plotly
+loads no CDN, no web font, and no remote image — the ~4.8 MB Plotly
 bundle is embedded in the file itself. This is what makes the output
 safe to attach to an email or embed in Confluence, and it is enforced by
 a test asserting no `<link>`, `<script>`, or `<img>` in the template
@@ -289,12 +289,15 @@ on (`select_autoescape(["html", "j2"])`), but it does not apply inside a
 JSON script block — that is why the escaping is explicit.
 
 `_to_json` strips `paper_bgcolor`, `plot_bgcolor`, and `font.color`
-from the serialised layout. Theme colours are injected client-side via
-`Plotly.relayout()` when the toggle flips, so the charts recolour
-without a re-render.
+from the serialised layout. Theme colours are supplied client-side, and
+when the toggle flips every chart is re-plotted through the same path as
+the first paint — deliberately *not* `Plotly.relayout()`, which replaces
+any nested container it is handed and does not touch the trace-level
+colorscale the heatmap's two ramps depend on. One path, one set of
+semantics.
 
 `_PLOTLY_JS_BUNDLE` is read once at module import. `get_plotlyjs()`
-reads ~4.1 MB from disk per call; caching it took the e2e suite from
+reads ~4.8 MB from disk per call; caching it took the e2e suite from
 roughly forty minutes to two.
 
 ---

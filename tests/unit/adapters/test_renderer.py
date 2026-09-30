@@ -281,42 +281,35 @@ class TestRenderCsv:
 
 @pytest.mark.unit
 class TestComputeCommitConcentration:
-    """Tests for the commit concentration derived metric helper."""
+    """Tests for the commit concentration derived metric helper.
 
-    def test_empty_ranked_returns_zero(self) -> None:
+    Takes commit counts rather than ranked contributors, because the
+    population it describes includes contributors held back from the
+    listing by `min_commits`, who have no rank.
+    """
+
+    def test_empty_population_returns_zero(self) -> None:
         assert _compute_commit_concentration([]) == 0
 
     def test_single_contributor_returns_one(self) -> None:
-        ranked = [_make_ranked("Alice", commit_count=20)]
-        assert _compute_commit_concentration(ranked) == 1
+        assert _compute_commit_concentration([20]) == 1
 
     def test_two_equal_contributors_returns_one(self) -> None:
-        ranked = [
-            _make_ranked("Alice", commit_count=10),
-            _make_ranked("Bob", commit_count=10),
-        ]
-        assert _compute_commit_concentration(ranked) == 1
+        assert _compute_commit_concentration([10, 10]) == 1
 
     def test_skewed_distribution_returns_one(self) -> None:
-        ranked = [
-            _make_ranked("Alice", commit_count=90),
-            _make_ranked("Bob", commit_count=5),
-            _make_ranked("Carol", commit_count=5),
-        ]
-        assert _compute_commit_concentration(ranked) == 1
+        assert _compute_commit_concentration([90, 5, 5]) == 1
 
     def test_even_distribution_across_four_returns_two(self) -> None:
-        ranked = [
-            _make_ranked("Alice", commit_count=25),
-            _make_ranked("Bob", commit_count=25),
-            _make_ranked("Carol", commit_count=25),
-            _make_ranked("Dan", commit_count=25),
-        ]
-        assert _compute_commit_concentration(ranked) == 2
+        assert _compute_commit_concentration([25, 25, 25, 25]) == 2
 
     def test_zero_total_commits_returns_zero(self) -> None:
-        ranked = [_make_ranked("Alice", commit_count=0)]
-        assert _compute_commit_concentration(ranked) == 0
+        assert _compute_commit_concentration([0]) == 0
+
+    def test_order_does_not_matter(self) -> None:
+        """The helper sorts internally, so a caller need not."""
+        assert _compute_commit_concentration([5, 90, 5]) == 1
+        assert _compute_commit_concentration([5, 5, 90]) == 1
 
 
 # ------------------------------------------------------------------

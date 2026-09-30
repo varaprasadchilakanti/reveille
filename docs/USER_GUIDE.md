@@ -457,7 +457,7 @@ optional.
 ```toml
 [report]
 # Override the report title. Equivalent to --title.
-title = "Engineering Performance Report — Q4 2024"
+title = "Repository Activity — Q4 2024"
 
 # Output path for the HTML file. Equivalent to --output.
 output = "./reports/q4-2024.html"

@@ -53,7 +53,7 @@ def generate_report(
     config: ReportConfig,
     on_progress: Callable[[ProgressEvent], None] | None = None,
 ) -> list[Path]:
-    """Generate a self-contained HTML performance report.
+    """Generate a self-contained HTML report of repository activity.
 
     Args:
         config: Validated report configuration produced by the CLI layer.
@@ -92,10 +92,21 @@ def generate_report(
     stage_start = time.monotonic()
 
     _emit(on_progress, "Aggregating contributor statistics", elapsed, len(commits))
-    contributor_stats = reader.aggregate_contributor_stats(
+    # Aggregated once over everybody, then split. `min_commits` decides who
+    # is *listed*; it does not decide what the figures are about. Computing
+    # the Gini over the survivors reported 0.00 -- perfect equality -- for a
+    # repository split 238/84, because the contributor who made the split
+    # uneven had been filtered out of the population first.
+    every_contributor = reader.aggregate_contributor_stats(
         commits=commits,
-        min_commits=config.min_commits,
+        min_commits=1,
     )
+    contributor_stats = [
+        stats for stats in every_contributor if stats.commit_count >= config.min_commits
+    ]
+    suppressed_contributors = [
+        stats for stats in every_contributor if stats.commit_count < config.min_commits
+    ]
 
     elapsed = time.monotonic() - stage_start
     stage_start = time.monotonic()
@@ -152,6 +163,7 @@ def generate_report(
         ranked_contributors=ranked_contributors,
         commits=commits,
         file_stats=list(reader.file_stats),
+        suppressed_contributors=suppressed_contributors,
     )
 
     _logger.debug(

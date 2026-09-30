@@ -127,7 +127,7 @@ def _configure_logging(verbose: bool) -> None:
 
 app = typer.Typer(
     name="reveille",
-    help="Generate self-contained HTML performance reports from local Git repositories.",
+    help="Report a local Git repository's commit activity as self-contained HTML, JSON, or CSV.",
     add_completion=False,
     no_args_is_help=True,
     context_settings={"help_option_names": ["-h", "--help"]},
@@ -533,7 +533,7 @@ def generate(
         ),
     ] = False,
 ) -> None:
-    """Generate an HTML performance report for the target repository."""
+    """Generate an HTML activity report for the target repository."""
     from reveille.config import load_config_from_toml
     from reveille.services.report import generate_report
 

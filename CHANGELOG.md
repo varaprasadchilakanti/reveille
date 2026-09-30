@@ -15,6 +15,63 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Changed
 
+- **The output is no longer called a "performance report".** Removed from eleven
+  places: the PyPI description, the README tagline and CLI reference, the
+  `--help` text of both the application and `generate`, the package and service
+  docstrings, the scaffolded `reveille.toml`, and the sample configuration in the
+  README and the User Guide. The tool reports the volume and regularity of
+  commits, and `reveille capabilities` already refused to support performance
+  review, compensation, promotion, redundancy or hiring — so the promotional
+  material was advertising what the machine-readable refusals disclaim. The
+  phrase is also the vocabulary of Annex III point 4(b) of Regulation (EU)
+  2024/1689, and Art. 3(12) makes a provider's own promotional material evidence
+  of intended purpose. 0.8.0 removed it from the report's subtitle for the same
+  reason; a test now keeps it out of every surface a reader is given.
+- **The statement of what Reveille reads was incomplete.** `docs/COMPLIANCE.md`
+  and `reveille capabilities` both listed object name, author name, author email
+  and timestamp. `git log --numstat` also yields the path and changed-line counts
+  of each file in a commit, which the report's file sections are built from and
+  which name repository paths in the output. Both now say so, and both still say
+  what remains true: no source code, no commit messages, no diff content — how
+  many lines changed in a file, never which.
+- **A summary card was labelled by something it was not ordered by.** With
+  `--ranking`, the card read "Top Contributor by commit volume" over a list
+  sorted by composite score. It was wrong only in the visually hidden text —
+  that is, only for readers who cannot see the table to check it — and is now
+  "Highest composite score", labelled "Highest Score".
+- **Three docstrings described a `Plotly.relayout()` call that does not exist.**
+  Theme changes re-plot each chart through the same path as the first paint; the
+  template explains why relayout is deliberately not used, and the two renderer
+  docstrings and `docs/ARCHITECTURE.md` now agree with it. The stale bundle
+  figures beside them are corrected too: ~4.8 MB, measured, not ~3.5 or ~4.1.
+- **`PRIVACY.md` pointed to a contact address that does not exist.** It directed
+  readers to "the address in SECURITY.md"; SECURITY.md publishes no address, only
+  GitHub's private reporting form. It now names the two routes that exist.
+
+- **`--min-commits` no longer changes the figures it is not supposed to change.**
+  A filter chooses who is *listed*; every figure describes the whole repository.
+  Measured on this repository, split 238/84 between two contributors,
+  `--min-commits 100` reported `gini_coefficient: 0.00` — perfect equality — for
+  a repository that is 74/26, because the contributor who made the split uneven
+  had been removed from the population before the coefficient was taken. It now
+  reports the same 0.24 with the filter on or off. The Gini ceiling, commit
+  concentration and the written findings all move to the full population for the
+  same reason. See [ADR 0011](docs/adr/0011-filters-choose-the-listing-not-the-analysis.md).
+- **The report states what it is not showing you.** `total_commits` counted every
+  commit while the table listed a subset, and nothing said why the two disagreed:
+  the HTML contained no occurrence of `min_commits`, `minimum`, `threshold` or
+  `filter`. The header now states how many of how many contributors are listed,
+  the threshold that held the rest back, and that their commits are still counted
+  in every figure. `--exclude-author` keeps its existing behaviour, which answers
+  a different question, and the difference is now documented rather than accidental.
+- **`schema_version` is `1.1`.** Additive, per ADR 0008: `derived` gains
+  `population_size` and `contributors_below_threshold`, so a consumer can
+  reconcile the contributor rows against `total_commits` without arithmetic.
+- **A single-contributor report no longer contradicts itself.** The distribution
+  caption rendered as "Gini runs 0 (even) to 0.00, which is the most concentrated
+  1 contributors can be" — a vacuous range and a grammatical error in shipped
+  output. It now says that one contributor has no distribution to measure.
+
 - **A tagged release now carries its SBOM's Sigstore attestation as a second
   asset**, named `<sbom filename>.sigstore.json`. The attestation itself is not
   new — it has been written to GitHub's attestation store since the SBOM job

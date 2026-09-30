@@ -11,9 +11,14 @@ Reveille. It is short because there is very little of it.
 Vara Prasad Chilakanti, an individual, based in India. He maintains Reveille
 personally; there is no company or organisation behind it.
 
-**Contact for anything on this page:** the address in
-[SECURITY.md](SECURITY.md), or open a GitHub issue. Either reaches the same
-person. Questions and requests get a substantive answer.
+**Contact for anything on this page:** open a
+[GitHub issue](https://github.com/varaprasadchilakanti/reveille/issues) for
+anything you are content to discuss in public, or use
+[GitHub's private reporting form](https://github.com/varaprasadchilakanti/reveille/security/advisories/new)
+if you are not — it reaches the same person privately, and you do not have to be
+reporting a vulnerability to use it. No email address is published; there is one
+maintainer and both routes reach him. Questions and requests get a substantive
+answer.
 
 ## What is held, and where
 

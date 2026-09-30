@@ -241,11 +241,20 @@ class TestTheDefaultReportNamesNobodyInItsSummary:
     was where it did not.
     """
 
-    def test_no_top_contributor_card_by_default(self, tmp_path: Path) -> None:
+    def test_no_individual_is_singled_out_by_default(self, tmp_path: Path) -> None:
+        """Checks the label the card actually carries.
+
+        This asserted the absence of "Top Contributor" until that label
+        was corrected to "Highest Score" -- the card is ordered by
+        composite score, not by commit volume. The moment the string
+        disappeared from the template, the assertion began passing
+        whatever the card did. A guard that cannot fail is the failure
+        mode CLAUDE.md names, so it is pinned to the live label and the
+        superlative is checked as well.
+        """
         html = _html(tmp_path, ranking=False)
-        assert "Top Contributor" not in html, (
-            "the default report labels an individual with a superlative"
-        )
+        for label in ("Highest Score", "Top Contributor"):
+            assert label not in html, f"the default report singles out an individual: {label}"
 
     def test_the_slot_carries_a_repository_level_figure_instead(self, tmp_path: Path) -> None:
         """Removing the card must not leave a gap in the summary row."""
@@ -253,7 +262,8 @@ class TestTheDefaultReportNamesNobodyInItsSummary:
         assert "Distribution (Gini)" in html
 
     def test_the_card_returns_when_the_ranking_is_asked_for(self, tmp_path: Path) -> None:
-        assert "Top Contributor" in _html(tmp_path, ranking=True)
+        """The positive control: without it the test above proves nothing."""
+        assert "Highest Score" in _html(tmp_path, ranking=True)
 
     def test_no_contributor_name_reaches_the_summary_row(self, tmp_path: Path) -> None:
         """Asserted over the markup, not over a single label string."""
