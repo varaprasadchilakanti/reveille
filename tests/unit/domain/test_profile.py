@@ -78,9 +78,27 @@ class TestTheAxisOrderIsFixed:
     """Permuting axes changes the drawn shape without changing a number."""
 
     def test_order_matches_the_declared_contract(self) -> None:
+        """Compared against a literal, not against `AXIS_ORDER`.
+
+        `repository_profile` ends with `[ordered[name] for name in
+        AXIS_ORDER]`, so asserting that the returned order equals
+        `AXIS_ORDER` compares the tuple with the thing built from it. It
+        cannot fail. Reversing `AXIS_ORDER` changes the drawn shape --
+        which the module docstring says is exactly why the order is part
+        of the contract -- and left this test green.
+
+        The contract is therefore written out here independently. Changing
+        the axis set is then a deliberate act in two places rather than a
+        silent one in a single tuple.
+        """
+        contract = ("Spread", "Continuity", "Recent work", "Revisiting", "Small steps")
+        assert list(AXIS_ORDER) == list(contract), (
+            "AXIS_ORDER changed; the drawn shape changed with it, so this "
+            "literal must be updated deliberately"
+        )
         commits = [_commit(1)]
         axes = repository_profile(commits, [_contributor("a@x", 1)], [], _SINCE, _UNTIL)
-        assert [a.name for a in axes] == list(AXIS_ORDER)
+        assert [a.name for a in axes] == list(contract)
 
     def test_order_does_not_depend_on_the_values(self) -> None:
         low = repository_profile([_commit(1)], [_contributor("a@x", 1)], [], _SINCE, _UNTIL)

@@ -136,6 +136,72 @@ class TestFiltersDoNotChangeTheFigures:
         assert unfiltered["_rows"] == unfiltered["_total_commits"] == 12
 
 
+class TestEveryRepositoryLevelFigureUsesTheSamePopulation:
+    """ADR 0011 applied to the charts, not only to the printed figures.
+
+    The first pass at ADR 0011 fixed `_compute_derived_stats` and missed
+    `_build_charts`. The result was a report that contradicted itself: with
+    `--min-commits 100` over a two-contributor repository it printed a Gini of
+    0.25 over two contributors, a Lorenz specification of `null`, and a profile
+    axis of 0.0 described as "one contributor, so there is nothing to spread".
+
+    Nothing failed. Correcting the profile's population was measured against
+    the whole suite and changed no result, because the guards read prose and
+    JSON keys and the profile axes are in neither. These are those guards.
+    """
+
+    def _profile(self, repo: Path, out: Path, min_commits: int) -> dict[str, float]:
+        """Render and return the profile axes, by name."""
+        generate_report(
+            ReportConfig(
+                repo_path=repo,
+                output_path=out,
+                min_commits=min_commits,
+                deterministic=True,
+            )
+        )
+        html = out.read_text(encoding="utf-8")
+        match = re.search(r'id="spec-profile">(.*?)</script>', html, re.DOTALL)
+        assert match is not None, "the report carries no profile specification"
+        trace = json.loads(match.group(1))["data"][0]
+        return dict(zip(trace["theta"], trace["r"], strict=True))
+
+    def test_min_commits_does_not_change_the_profile(self, tmp_path: Path) -> None:
+        repo = _repo_with_two_contributors(tmp_path / "repo", major=9, minor=3)
+        unfiltered = self._profile(repo, tmp_path / "all.html", 1)
+        filtered = self._profile(repo, tmp_path / "some.html", 5)
+
+        assert unfiltered["Spread"] > 0.0, "the fixture has no spread to preserve"
+        assert filtered == unfiltered, (
+            "a filter changed what the profile is about, not just who is listed"
+        )
+
+    def test_min_commits_does_not_remove_the_lorenz_curve(self, tmp_path: Path) -> None:
+        """The curve describes the repository, so a listing filter cannot empty it."""
+        repo = _repo_with_two_contributors(tmp_path / "repo", major=9, minor=3)
+        out = tmp_path / "filtered.html"
+        generate_report(
+            ReportConfig(repo_path=repo, output_path=out, min_commits=5, deterministic=True)
+        )
+        spec = re.search(
+            r'id="spec-lorenz">(.*?)</script>', out.read_text(encoding="utf-8"), re.DOTALL
+        )
+        assert spec is not None
+        assert spec.group(1).strip() != "null", (
+            "the Lorenz curve went empty under a listing filter, while its Gini "
+            "still printed beside it"
+        )
+
+    def test_the_profile_does_not_claim_a_lone_contributor(self, tmp_path: Path) -> None:
+        """The exact sentence that shipped, so its return is noticed."""
+        repo = _repo_with_two_contributors(tmp_path / "repo", major=9, minor=3)
+        out = tmp_path / "filtered.html"
+        generate_report(
+            ReportConfig(repo_path=repo, output_path=out, min_commits=5, deterministic=True)
+        )
+        assert "nothing to spread" not in out.read_text(encoding="utf-8")
+
+
 class TestTheReportSaysWhichPopulationItDescribes:
     """A number whose population is left to inference is not disclosed."""
 
