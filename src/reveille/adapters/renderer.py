@@ -1401,11 +1401,15 @@ def _compute_commit_concentration(counts: list[int]) -> int:
         return 0
     threshold = total * 0.5
     cumulative = 0
-    for position, count in enumerate(sorted(counts, reverse=True), start=1):
+    # `no branch`/`no cover`: the loop always returns. `counts` is non-empty and
+    # `total` is positive, both guarded above, so `cumulative` reaches `total`,
+    # which is >= total * 0.5. The tail exists because mypy --strict cannot
+    # prove that and requires a return on every path.
+    for position, count in enumerate(sorted(counts, reverse=True), start=1):  # pragma: no branch
         cumulative += count
         if cumulative >= threshold:
             return position
-    return len(counts)
+    return len(counts)  # pragma: no cover - unreachable, see above
 
 
 def _compute_longest_inactive_streak(
