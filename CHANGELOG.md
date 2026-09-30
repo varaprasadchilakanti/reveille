@@ -149,6 +149,36 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ---
 
+### Fixed
+
+- **The README asserted the opposite of the file it cited, about the GDPR.** It
+  said `docs/COMPLIANCE.md` "records why GDPR ... do not engage"; that file says
+  the Regulation plainly engages, because commit author names and addresses are
+  personal data under Art. 4(1), and that what does not attach is a controller or
+  processor role for the maintainer. It is the first thing a data protection
+  officer or a procurement reviewer reads, and it was contradicted by its own
+  citation in the same sentence. `docs/COMPLIANCE.md`'s summary line carried the
+  same sweep and is carved accordingly.
+- **`SECURITY.md` made a false, checkable claim about Scorecard's Fuzzing check.**
+  It said the check credits `atheris` for Python and that an `atheris` stub would
+  satisfy a string match. `ossf/scorecard/docs/checks.md` mentions neither Python
+  nor `atheris`: it supports Go, Haskell, JavaScript and TypeScript, Erlang, C#
+  and F#. So for this project the check can be satisfied only by joining OSS-Fuzz
+  or deploying ClusterFuzzLite, and the passage now says so. The correction is
+  recorded in the file rather than made quietly, because the passage is about
+  refusing to game a metric in a document that asks you to verify its claims.
+- **The README sent users to a notice written for contributors.** It said the
+  report contains personal data and pointed at `PRIVACY.md` for "who is
+  responsible for what"; that answer is in `docs/COMPLIANCE.md`, and `PRIVACY.md`
+  covers contributor data on GitHub. A reader following the signpost did not
+  arrive.
+- **`PRIVACY.md` stated contested conclusions without their conditions.** The
+  Cyber Resilience Act and Product Liability Directive conclusions rest entirely
+  on the project not being monetised, which the notice did not say.
+- **The Cyber Resilience Act timeline read as forthcoming.** Art. 14 has applied
+  since 11 September 2026 and Chapter IV since 11 June 2026, so "do not
+  monetise" is an operational instruction rather than a precaution.
+
 ## [0.8.1] — 2026-09-03 — Charts a Screen Reader Can Read
 
 0.8.0 states that the report targets WCAG 2.1 AA. It shipped four

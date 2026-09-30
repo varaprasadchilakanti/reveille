@@ -157,9 +157,17 @@ What compensates for it, none of which is a substitute:
   agreement between the capability document and the program it describes.
 
 **Fuzzing.** Scorecard's Fuzzing check credits OSS-Fuzz membership,
-ClusterFuzzLite, or a recognised native harness — for Python, `atheris` and
-nothing else. Adding an `atheris` stub would satisfy the string match without
-fuzzing anything, and this project does not do that.
+ClusterFuzzLite, or a user-defined harness in one of the languages it
+recognises — Go, Haskell, JavaScript and TypeScript, Erlang, C# and F#. Python
+is not among them, so for this project the check can be satisfied only by
+joining OSS-Fuzz or deploying ClusterFuzzLite. Neither has been done.
+
+This paragraph previously said the check credited `atheris` for Python and that
+an `atheris` stub would satisfy a string match. Both were wrong, checked against
+`ossf/scorecard/docs/checks.md`, which mentions neither Python nor `atheris`.
+It is recorded rather than quietly corrected because the passage it sat in is
+about refusing to game a metric, in a document that asks you to verify its
+claims.
 
 The honest position is that fuzzing *would* be worthwhile here and has not been
 done. Reveille parses untrusted input — author names, addresses and `.mailmap`

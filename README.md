@@ -458,14 +458,18 @@ Participation is governed by the [Code of Conduct](https://github.com/varaprasad
 
 Reveille runs entirely on your machine and sends nothing anywhere. The report it
 writes contains contributor names and email addresses, so circulating it means
-handling personal data — [PRIVACY.md](https://github.com/varaprasadchilakanti/reveille/blob/main/PRIVACY.md) sets out who is responsible
-for what, and `--exclude-author` removes a person, matching the value you give plus every
+handling personal data. [docs/COMPLIANCE.md](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/COMPLIANCE.md)
+sets out who is responsible for what when you run it; [PRIVACY.md](https://github.com/varaprasadchilakanti/reveille/blob/main/PRIVACY.md)
+is a notice for *contributors to this project*, not for users of the tool.
+`--exclude-author` removes a person, matching the value you give plus every
 identity a `.mailmap` ties it to.
 
-[docs/COMPLIANCE.md](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/COMPLIANCE.md) records why GDPR, the EU Cyber
-Resilience Act, the Product Liability Directive, the AI Act, US export control
-and the EU accessibility rules do not engage, citing the provision each
-conclusion rests on. It is research rather than legal advice, written so the
+[docs/COMPLIANCE.md](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/COMPLIANCE.md) records why the maintainer is neither
+controller nor processor under the GDPR — which plainly does engage, since commit
+author names and addresses are personal data — and why the EU Cyber Resilience
+Act, the Product Liability Directive, the AI Act, US export control and the EU
+accessibility rules do not engage, citing the provision each conclusion rests
+on. It is research rather than legal advice, written so the
 reasoning can be argued with instead of assumed.
 
 ---

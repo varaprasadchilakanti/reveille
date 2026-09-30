@@ -5,7 +5,9 @@ lawyer.** It exists so that the reasoning is visible and can be argued with,
 rather than left implicit. Every conclusion below is stated with the provision it
 rests on, so a reader who disagrees knows exactly where to push.
 
-The short version: **Reveille is out of scope for every regime examined**, and
+The short version: **the GDPR engages and the maintainer is neither controller
+nor processor under it; Reveille is out of scope for every other regime
+examined**, and
 the single thing that would change that is taking money for it.
 
 ---
@@ -74,8 +76,11 @@ The Act's lighter "open-source software steward" regime (Art. 3(14)) does not
 apply either, and cannot: a steward must be a **legal person**, which excludes an
 individual maintainer.
 
-**Timeline:** Art. 14 reporting obligations apply from 11 September 2026;
-Chapter IV from 11 June 2026; full application 11 December 2027.
+**Timeline:** Art. 14 reporting obligations have applied **since 11 September
+2026** and Chapter IV **since 11 June 2026**; full application is 11 December
+2027. The first two are live now, so if the non-commerciality conclusion above
+were ever wrong the exposure would be current rather than prospective — which is
+what makes "do not monetise" an operational instruction and not a precaution.
 
 ## Product Liability Directive — Directive (EU) 2024/2853
 
