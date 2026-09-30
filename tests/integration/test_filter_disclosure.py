@@ -50,6 +50,9 @@ def _repo_with_two_contributors(root: Path, major: int, minor: int) -> Path:
     root.mkdir(parents=True)
     _run(["git", "init", "-q", "-b", "main"], root)
     _run(["git", "config", "commit.gpgsign", "false"], root)
+    # No background housekeeping: see `_init_repo` in test_security.py.
+    _run(["git", "config", "maintenance.auto", "false"], root)
+    _run(["git", "config", "gc.auto", "0"], root)
     for index in range(major + minor):
         busy = index < major
         name, email = ("Major", "major@example.com") if busy else ("Minor", "minor@example.com")
