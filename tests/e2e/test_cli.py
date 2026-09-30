@@ -15,6 +15,7 @@ for tests that only inspect default output structure.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -32,69 +33,121 @@ from reveille.cli import ExitCode, app
 runner = CliRunner()
 
 
-class _ElementStripper(HTMLParser):
-    """Remove named elements, and their content, from an HTML document.
+_FETCHING_ATTRIBUTES = frozenset({"src", "srcset", "poster", "data", "xlink:href"})
 
-    A regular expression was used for this until CodeQL objected, rightly:
-    `<script\b.*?</script>` is not a sound way to find the end of an
-    element. The parser that replaced it was written inside the test that
-    used it, where its seven handlers pushed that test to a cyclomatic
-    complexity of 18 against a limit of 10. It belongs out here.
+# Remote hosts appearing as string literals inside the vendored Plotly
+# bundle, measured from `plotly.offline.get_plotlyjs()`. Every one belongs
+# to a trace type Reveille never emits -- map tiles, basemap attribution,
+# WebGL diagnostics, and the library's own documentation. None is fetched.
+# The set is frozen so that a Plotly upgrade adding an endpoint is a
+# decision someone takes, not a change nobody notices: the 7.0.0 -> 7.1.0
+# bump added 522,418 bytes to this file with no test remarking on it.
+_BUNDLE_HOSTS = frozenset(
+    {
+        "basemaps.cartocdn.com",
+        "cdn.jsdelivr.net",
+        "cdn.plot.ly",
+        "cloud.plotly.com",
+        "feross.org",
+        "fonts.openmaptiles.org",
+        "geoserveis.icgc.cat",
+        "get.webgl.org",
+        "getify.mit-license.org",
+        "github.com",
+        "maplibre.org",
+        "plotly.com",
+        "server.arcgisonline.com",
+        "syntheti.cc",
+        "tile.openstreetmap.org",
+        "tilemaps.icgc.cat",
+        "tiles.basemaps.cartocdn.com",
+        "wiki.openstreetmap.org",
+        "www.esri.com",
+        "www.openstreetmap.org",
+        "www.w3.org",
+    }
+)
+
+# Plotly trace types the report is permitted to emit. Every one renders
+# from data already in the document. Map and geo traces do not: they fetch
+# tiles from endpoints inside the bundle.
+_ALLOWED_TRACE_TYPES = frozenset({"bar", "pie", "scatter", "scatterpolar"})
+
+
+class _RemoteReferenceCollector(HTMLParser):
+    """Collect every attribute value that would make the report fetch.
+
+    A parser rather than a regular expression because CodeQL objected to
+    the regular expression, rightly: `<script\\b.*?</script>` is not a
+    sound way to find the end of an element.
+
+    `HTMLParser` puts `script` and `style` content into CDATA mode, so the
+    vendored Plotly bundle's string literals are never parsed as markup and
+    need no stripping. The helper this replaced *did* strip them -- and
+    discarded the `<script>` start tag along with its body, throwing away
+    the `src` attribute it existed to check. A remote script tag passed all
+    798 tests. Do not reintroduce stripping.
+
+    `href` is collected on every element except `<a>`. An `<a href>` to a
+    remote page navigates on a click and loads nothing into the report, so
+    flagging it would make this guard cry wolf. `<use href>` and
+    `<image href>` inside SVG *do* fetch, and were missed for as long as
+    only `<link href>` was checked.
     """
 
-    def __init__(self, blocked: set[str]) -> None:
-        super().__init__(convert_charrefs=False)
-        self._blocked = {name.lower() for name in blocked}
-        self._depth = 0
-        self.parts: list[str] = []
+    def __init__(self) -> None:
+        super().__init__()
+        self.references: list[tuple[str, str, str]] = []
 
-    def handle_starttag(self, tag: str, attrs: object) -> None:
-        if tag.lower() in self._blocked:
-            self._depth += 1
-        elif self._depth == 0:
-            self.parts.append(self.get_starttag_text() or "")
-
-    def handle_endtag(self, tag: str) -> None:
-        if tag.lower() in self._blocked and self._depth > 0:
-            self._depth -= 1
-        elif self._depth == 0:
-            self.parts.append(f"</{tag}>")
-
-    def handle_startendtag(self, tag: str, attrs: object) -> None:
-        if self._depth == 0 and tag.lower() not in self._blocked:
-            self.parts.append(self.get_starttag_text() or "")
-
-    def handle_data(self, data: str) -> None:
-        if self._depth == 0:
-            self.parts.append(data)
-
-    def handle_comment(self, data: str) -> None:
-        if self._depth == 0:
-            self.parts.append(f"<!--{data}-->")
-
-    def handle_decl(self, decl: str) -> None:
-        if self._depth == 0:
-            self.parts.append(f"<!{decl}>")
-
-    def handle_pi(self, data: str) -> None:
-        if self._depth == 0:
-            self.parts.append(f"<?{data}>")
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        element = tag.lower()
+        for name, value in attrs:
+            if value is None:
+                continue
+            attribute = name.lower()
+            if attribute in _FETCHING_ATTRIBUTES or (attribute == "href" and element != "a"):
+                self.references.append((element, attribute, value))
 
 
-def _strip_elements(document: str, blocked: set[str]) -> str:
-    """Return `document` with the `blocked` elements and their content gone.
+def _remote_references(document: str) -> list[tuple[str, str, str]]:
+    """Return the fetching attributes in `document` that name a remote host.
 
     Args:
         document: An HTML document.
-        blocked: Lowercase element names to remove.
 
     Returns:
-        The remaining markup.
+        Triples of element name, attribute name and attribute value, for
+        values that are absolute or protocol-relative URLs. A
+        protocol-relative `//host` counts: it inherits the page's scheme
+        and fetches. Requiring `https?://` is how one guard missed it.
     """
-    stripper = _ElementStripper(blocked)
-    stripper.feed(document)
-    stripper.close()
-    return "".join(stripper.parts)
+    collector = _RemoteReferenceCollector()
+    collector.feed(document)
+    collector.close()
+    return [
+        reference
+        for reference in collector.references
+        if reference[2].strip().lower().startswith(("http://", "https://", "//"))
+    ]
+
+
+def _chart_specifications(document: str) -> dict[str, str]:
+    """Return the report's authored chart specifications, by id.
+
+    Args:
+        document: An HTML document.
+
+    Returns:
+        A mapping of chart id to the raw body of its `application/json`
+        script block. These blocks are written by Reveille itself, not by
+        Plotly.
+    """
+    found = re.findall(
+        r"""<script type="application/json" id="spec-([^"]+)">(.*?)</script>""",
+        document,
+        re.DOTALL,
+    )
+    return dict(found)
 
 
 # ------------------------------------------------------------------
@@ -1214,53 +1267,40 @@ class TestReportAccessibility:
         """WCAG 2.1 SC 2.3.3, set at the OS level by affected readers."""
         assert "prefers-reduced-motion" in default_report_content
 
-    def test_report_still_loads_no_external_resources(self, default_report_content: str) -> None:
-        """The offline guarantee must survive every accessibility change.
 
-        No stylesheet link, script src, or image src may reference a
-        remote host. Attribution URLs inside the vendored Plotly bundle
-        are inert string literals for chart types Reveille never renders.
-        """
-        assert not re.search(r"<link[^>]+href=[\"']https?://", default_report_content)
-        assert not re.search(r"<script[^>]+src=[\"']https?://", default_report_content)
-        assert not re.search(r"<img[^>]+src=[\"']https?://", default_report_content)
+class TestOfflineGuarantee:
+    """The report fetches nothing. That is the product, not a detail.
 
-    def test_no_markup_or_stylesheet_fetches_a_remote_resource(
+    CLAUDE.md states it as product behaviour and names the failure mode:
+    a single remote `<script>` in the report forfeits it.
+
+    Every guard here has been observed to fail: the property was broken,
+    the test was watched failing, and the property was restored. The two
+    guards these replace had never been watched, and both passed with
+    `<script src="//evil.test/x.js"></script>` in a generated report. One
+    required `https?://` and missed the protocol-relative form; the other
+    stripped the start tag it was meant to be checking.
+    """
+
+    def test_no_markup_attribute_fetches_a_remote_resource(
         self,
         default_report_content: str,
     ) -> None:
-        """The offline guarantee, asserted as a property rather than a tag list.
+        """Asserted over every element and every fetching attribute.
 
-        The test above names three tags. That list is only as good as
-        whoever remembers to extend it: an ``<iframe src>``, an ``<object
-        data>``, a ``poster=``, or a CSS ``@import`` would each forfeit
-        the guarantee while leaving it green.
-
-        ``<script>`` bodies are excluded because the vendored Plotly
-        bundle carries map-tile and attribution URLs as string literals,
-        for trace types Reveille never emits. ``<style>`` bodies are
-        deliberately *not* excluded: a stylesheet is applied, so its
-        ``url()`` and ``@import`` rules fetch.
-
-        ``href`` is checked on ``<link>`` only. An ``<a href>`` to a
-        remote page navigates on a click; it does not load anything into
-        the report, and flagging it would make this guard cry wolf.
+        Naming tags one at a time is only as good as whoever remembers to
+        extend the list: an `<iframe src>`, an `<object data>`, a
+        `poster=`, a `<use href>` or an `<image href>` would each forfeit
+        the guarantee while leaving a tag-list guard green.
         """
-        markup = _strip_elements(default_report_content, {"script", "style"})
+        remote = _remote_references(default_report_content)
+        assert remote == [], f"report markup fetches remote resources: {remote}"
 
-        loaded = re.findall(
-            r"""\b(?:src|srcset|poster|data)\s*=\s*["'](?:https?:)?//[^"']*""",
-            markup,
-        )
-        assert loaded == [], f"report markup loads remote resources: {loaded}"
-
-        linked = re.findall(
-            r"""<link\b[^>]*\bhref\s*=\s*["'](?:https?:)?//[^"']*""",
-            markup,
-            re.IGNORECASE,
-        )
-        assert linked == [], f"report links remote stylesheets: {linked}"
-
+    def test_no_inline_stylesheet_fetches_a_remote_resource(
+        self,
+        default_report_content: str,
+    ) -> None:
+        """A stylesheet is applied, so its `url()` and `@import` rules fetch."""
         stylesheets = re.findall(
             r"<style\b[^>]*>(.*?)</style>",
             default_report_content,
@@ -1276,3 +1316,122 @@ class TestReportAccessibility:
             if reference.startswith(("http://", "https://", "//"))
         ]
         assert remote == [], f"report CSS references remote hosts: {remote}"
+
+    def test_no_chart_specification_contains_a_url(
+        self,
+        default_report_content: str,
+    ) -> None:
+        """The specifications are ours, so a URL in one was put there.
+
+        The markup guard cannot see these: `HTMLParser` treats `script`
+        content as CDATA, and the guard this replaces excluded `<script>`
+        bodies outright in order to skip the vendored bundle. That
+        exclusion covered the eleven specifications Reveille authors as
+        well, so a remote layout image added to a chart would have been
+        invisible to every offline guard in the suite.
+        """
+        offenders = {
+            name: re.findall(r"(?:https?:)?//[A-Za-z0-9._-]+", body)
+            for name, body in _chart_specifications(default_report_content).items()
+        }
+        found = {name: urls for name, urls in offenders.items() if urls}
+        assert found == {}, f"chart specifications contain URLs: {found}"
+
+    def test_every_chart_specification_parses(
+        self,
+        default_report_content: str,
+    ) -> None:
+        """An `application/json` block that is not JSON is a defect by definition.
+
+        `_build_charts` returns the string `null` for a chart with too
+        little data, which is valid JSON and is handled by the client. An
+        *empty* block is neither: it means the template names a chart key
+        the renderer does not produce. This guard found exactly that on
+        its first run -- a dead `spec-contributor_commits` block that had
+        shipped in every report, invisible because Jinja rendered the
+        undefined value as nothing. The environment now uses
+        `StrictUndefined`, which closes the class; this closes the
+        instance.
+        """
+        specs = _chart_specifications(default_report_content)
+        assert specs, "the report carries no chart specifications"
+        broken: dict[str, str] = {}
+        for name, body in specs.items():
+            try:
+                json.loads(body)
+            except json.JSONDecodeError as error:
+                broken[name] = f"{error.msg} (body is {len(body.strip())} chars stripped)"
+        assert broken == {}, f"chart specifications are not valid JSON: {broken}"
+
+    def test_the_vendored_bundle_is_plotlys_own_and_its_hosts_are_known(
+        self,
+        default_report_content: str,
+    ) -> None:
+        """The bundle's remote hosts are inert, and a new one must be noticed.
+
+        The bundle carries map-tile, attribution and documentation URLs as
+        string literals, for trace types Reveille never emits. They are
+        never fetched -- but a reviewer greps the report, finds vendor
+        endpoints in a tool sold as offline, and asks. Being right is not
+        the same as not having to explain, so the set is frozen and an
+        addition fails until someone records why it is there.
+
+        Asserting the bundle is byte-identical to what Plotly ships is the
+        other half: hosts read from a modified bundle prove nothing.
+        """
+        import plotly.offline
+
+        bundle = plotly.offline.get_plotlyjs()
+        assert bundle in default_report_content, (
+            "the embedded bundle is not the one Plotly ships; "
+            "the host inventory below cannot be trusted"
+        )
+        hosts = set(re.findall(r"https?://([A-Za-z0-9._-]+)", bundle))
+        unexpected = sorted(hosts - _BUNDLE_HOSTS)
+        assert unexpected == [], (
+            f"the vendored bundle gained remote hosts: {unexpected}. "
+            "They are inert literals, but confirm that and add them to "
+            "_BUNDLE_HOSTS with the reason."
+        )
+
+    def test_only_allowlisted_trace_types_are_emitted(
+        self,
+        default_report_content: str,
+    ) -> None:
+        """The only guard that can cover a map trace, because no text can.
+
+        A `scattermap` specification contains no URL at all: the tile
+        endpoints come wholly from the bundle, which every other guard
+        excludes. Adding one map chart would forfeit the guarantee at
+        render time with every text-based check still green. So the guard
+        is on what we emit, not on what the output happens to say.
+        """
+        emitted: dict[str, set[str]] = {}
+        for name, body in _chart_specifications(default_report_content).items():
+            try:
+                specification = json.loads(body)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(specification, dict):
+                continue
+            traces = specification.get("data")
+            if not isinstance(traces, list):
+                continue
+            emitted[name] = {
+                str(trace.get("type", "(undeclared)"))
+                for trace in traces
+                if isinstance(trace, dict)
+            }
+
+        assert emitted, "no Plotly figure specifications were found to check"
+        offenders = {
+            name: sorted(kinds - _ALLOWED_TRACE_TYPES)
+            for name, kinds in emitted.items()
+            if kinds - _ALLOWED_TRACE_TYPES
+        }
+        assert offenders == {}, (
+            f"charts emit trace types outside the allowlist: {offenders}. "
+            "A map or geo trace fetches tiles from the bundle's own "
+            "endpoints. Add a type here only after confirming it fetches "
+            "nothing."
+        )

@@ -47,6 +47,7 @@ import plotly.offline
 from jinja2 import (
     Environment,
     PackageLoader,
+    StrictUndefined,
     TemplateNotFound,
     TemplatesNotFound,
     select_autoescape,
@@ -219,6 +220,7 @@ class Renderer:
             self._env = Environment(
                 loader=PackageLoader("reveille", "templates"),
                 autoescape=select_autoescape(["html", "j2"]),
+                undefined=StrictUndefined,
             )
             self._template = self._env.get_template("report.html.j2")
         except (TemplateNotFound, TemplatesNotFound, OSError) as exc:
