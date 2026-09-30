@@ -13,6 +13,20 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ## [Unreleased]
 
+### Added
+
+- **The release path is tested.** `publish.yml` had no tests, and its failure
+  mode is a broken release — not hypothetical: v0.8.0 shipped without its SBOM
+  because a glob that looked right matched nothing, and PR #179 then added an
+  attestation step, a bundle copy and an asset array to the same untested
+  workflow. Three of its embedded scripts are now extracted and executed: the
+  one that decides which release is being described, including the refusal of a
+  tag carrying a newline that would forge a second `GITHUB_OUTPUT` entry; the
+  one that copies the Sigstore bundle, including the refusal to leave a
+  zero-byte file that looks like a signature; and the one that attaches assets,
+  including the disjointness of the two globs that cost v0.8.0 its SBOM. `gh` is
+  stubbed, so nothing reaches the network.
+
 ### Changed
 
 - **The repository profile is three measures in a table, not five on a radar.**
