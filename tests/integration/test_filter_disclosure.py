@@ -161,17 +161,32 @@ class TestEveryRepositoryLevelFigureUsesTheSamePopulation:
             )
         )
         html = out.read_text(encoding="utf-8")
-        match = re.search(r'id="spec-profile">(.*?)</script>', html, re.DOTALL)
-        assert match is not None, "the report carries no profile specification"
-        trace = json.loads(match.group(1))["data"][0]
-        return dict(zip(trace["theta"], trace["r"], strict=True))
+        table = html[html.index('<table class="profile">') :]
+        table = table[: table.index("</table>")]
+        rows = re.findall(
+            r'<th scope="row" class="profile-name">\s*([^<]+?)\s*<.*?'
+            r'class="profile-value">(\d+)%<',
+            table,
+            re.DOTALL,
+        )
+        assert rows, "the report carries no profile table"
+        return {name: float(value) for name, value in rows}
 
     def test_min_commits_does_not_change_the_profile(self, tmp_path: Path) -> None:
+        """Now guaranteed by construction, and still asserted end to end.
+
+        `Spread` was the only axis that read contributor data, and it was
+        removed at 0.9.0 (ADR 0012), so `repository_profile` no longer takes a
+        contributor argument at all. A listing filter therefore cannot reach
+        the profile even in principle. This stays because the property the
+        reader cares about is about the rendered report, not about a
+        signature: a future axis that did read people would fail here.
+        """
         repo = _repo_with_two_contributors(tmp_path / "repo", major=9, minor=3)
         unfiltered = self._profile(repo, tmp_path / "all.html", 1)
         filtered = self._profile(repo, tmp_path / "some.html", 5)
 
-        assert unfiltered["Spread"] > 0.0, "the fixture has no spread to preserve"
+        assert unfiltered, "no profile rendered; this would pass whatever happened"
         assert filtered == unfiltered, (
             "a filter changed what the profile is about, not just who is listed"
         )

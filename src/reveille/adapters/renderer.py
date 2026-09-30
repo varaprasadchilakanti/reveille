@@ -63,7 +63,7 @@ from reveille.domain.models import (
     RankedContributor,
     ReportData,
 )
-from reveille.domain.profile import ProfileAxis, repository_profile
+from reveille.domain.profile import repository_profile
 from reveille.domain.summary import summarise
 from reveille.exceptions import OutputPathError, RenderError
 
@@ -267,6 +267,14 @@ class Renderer:
             html = self._template.render(
                 data=data,
                 charts=charts,
+                # The profile is rendered from these by the template, in HTML
+                # and CSS. It was a Plotly radar until 0.9.0; see ADR 0012.
+                profile=repository_profile(
+                    data.commits,
+                    data.file_stats,
+                    data.metadata.analysis_since,
+                    data.metadata.analysis_until,
+                ),
                 chart_tables={
                     name: _accessible_table(name, specification)
                     for name, specification in charts.items()
@@ -580,15 +588,6 @@ class Renderer:
             "commit_size": _build_commit_size_chart(data.commits),
             "hotspots": _build_hotspot_chart(data.file_stats),
             "extensions": _build_extension_chart(data.file_stats),
-            "profile": _build_profile_chart(
-                repository_profile(
-                    data.commits,
-                    _population(data),
-                    data.file_stats,
-                    data.metadata.analysis_since,
-                    data.metadata.analysis_until,
-                )
-            ),
         }
 
 
@@ -671,7 +670,6 @@ def _contributor_labels(ranked: list[RankedContributor]) -> dict[str, str]:
 _TABLE_AXES: dict[str, tuple[str, str]] = {
     "bar": ("x", "y"),
     "scatter": ("x", "y"),
-    "scatterpolar": ("theta", "r"),
     "pie": ("labels", "values"),
 }
 
@@ -687,7 +685,6 @@ _TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
     "commit_size": ("Lines changed in one commit", "Commits"),
     "hotspots": ("File", "Lines changed"),
     "extensions": ("File type", "Lines changed"),
-    "profile": ("Measure", "Share"),
     "contributor_lines": ("Contributor",),
     "pie_commits": ("Contributor", "Commits"),
 }
@@ -749,21 +746,7 @@ def _series_from_spec(specification: str) -> list[tuple[str, list[Any], list[Any
             categories, values = values, categories
         if not categories or not values:
             continue
-        categories, values = list(categories), list(values)
-        # A radar closes its polygon by repeating the first vertex, so the
-        # arrays carry one more entry than there are measures. Read back
-        # faithfully, that put six rows under a caption reading "The five
-        # repository profile measures", with the first measure appearing
-        # twice -- and the table is the only form a screen-reader user gets.
-        # The repeat is geometry, not data.
-        if (
-            trace.get("type") == "scatterpolar"
-            and len(categories) > 1
-            and categories[0] == categories[-1]
-            and values[0] == values[-1]
-        ):
-            categories, values = categories[:-1], values[:-1]
-        series.append((str(trace.get("name") or ""), categories, values))
+        series.append((str(trace.get("name") or ""), list(categories), list(values)))
     return series
 
 
@@ -1258,78 +1241,6 @@ def _build_extension_chart(files: list[FileStats]) -> str:
         xaxis_title="File type",
         yaxis_title="Lines changed",
         height=280,
-    )
-    return _to_json(fig)
-
-
-def _build_profile_chart(axes: list[ProfileAxis]) -> str:
-    """Build the five-axis repository profile as a radar chart.
-
-    The form is used deliberately and with its weaknesses handled rather
-    than hidden. A radar encodes by area, which Cleveland and McGill
-    (JASA, 1984) rank far below position and length for accuracy, and the
-    enclosed area depends on the arbitrary order of the axes -- permuting
-    two changes the silhouette without changing a number. So the order is
-    fixed in `AXIS_ORDER`, every vertex carries its own value as text, and
-    the fill is kept faint so the shape reads as a guide rather than as
-    the measurement.
-
-    Every axis is a naturally bounded share, so the radial axis is a true
-    0 to 1 with no rescaling.
-
-    Args:
-        axes: The profile axes, already in their documented order.
-
-    Returns:
-        A Plotly figure JSON string, or 'null' if there is no profile.
-    """
-    if not axes:
-        return "null"
-
-    labels = [axis.name for axis in axes]
-    values = [round(axis.value, 3) for axis in axes]
-    descriptions = [axis.description for axis in axes]
-
-    # Closing the loop: a radar trace must return to its first vertex or
-    # Plotly leaves the polygon open between the last axis and the first.
-    fig = go.Figure(
-        go.Scatterpolar(
-            r=[*values, values[0]],
-            theta=[*labels, labels[0]],
-            mode="lines+markers+text",
-            fill="toself",
-            fillcolor=_translucent(_CATEGORICAL_PALETTE[0], 0.12),
-            line={"color": _CATEGORICAL_PALETTE[0], "width": 2},
-            marker={"size": 8, "color": _CATEGORICAL_PALETTE[0]},
-            text=[f"{value:.0%}" for value in [*values, values[0]]],
-            textposition="top center",
-            # Left unset these take the trace colour, which is 3.34:1 on the
-            # dark polar surface. The theme manager supplies the value.
-            textfont={"size": 12},
-            customdata=[*descriptions, descriptions[0]],
-            hovertemplate="%{theta}: %{r:.0%}<br>%{customdata}<extra></extra>",
-        )
-    )
-    layout = _base_layout()
-    # A polar plot has no cartesian axes; carrying them through would emit
-    # xaxis/yaxis keys Plotly ignores here and a reader would puzzle over.
-    layout.pop("xaxis", None)
-    layout.pop("yaxis", None)
-    # A radar needs room for the outer axis labels, which the shared
-    # margin does not allow for.
-    layout["margin"] = {"l": 70, "r": 70, "t": 40, "b": 40}
-    fig.update_layout(
-        **layout,
-        polar={
-            "radialaxis": {
-                "range": [0, 1],
-                "tickformat": ".0%",
-                "tickvals": [0.25, 0.5, 0.75, 1.0],
-                "angle": 90,
-            },
-            "angularaxis": {"direction": "clockwise"},
-        },
-        height=380,
     )
     return _to_json(fig)
 

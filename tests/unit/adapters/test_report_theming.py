@@ -283,7 +283,10 @@ class TestNoChartSpecificationCarriesAThemeColour:
                 if path and path[-1] in _COLOUR_KEYS
             )
 
-        assert checked >= 7, f"only {checked} builders produced a figure to check"
+        # Six, not seven, since 0.9.0: the repository profile stopped being a
+        # Plotly chart and became a table with CSS bars, which takes its
+        # colours from the theme variables like the rest of the markup.
+        assert checked >= 6, f"only {checked} builders produced a figure to check"
         assert offences == [], (
             "a chart specification is displayed under both themes, so a "
             f"colour baked into one can only be right under one: {offences}"

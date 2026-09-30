@@ -1,36 +1,47 @@
 # SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti
 # SPDX-License-Identifier: Apache-2.0
 
-"""A five-axis profile of a repository's working pattern.
+"""A three-axis profile of a repository's working pattern.
 
-Every axis here is a **naturally bounded ratio** -- a share of something
-out of something -- so nothing is rescaled by a constant chosen to make
-the shape look right. That constraint is the whole design. A radar chart
-whose axes are normalised by invented scaling factors can be given any
-silhouette its author wants, and the reader has no way to tell.
+Every axis is a **naturally bounded ratio** -- a share of something out of
+something -- so nothing is rescaled by a constant chosen to make a figure
+look right. That constraint is the whole design.
 
-The chart form is contentious and deserves its caveats stated rather than
-hidden. A radar encodes by **area**, which sits near the bottom of
-Cleveland and McGill's ranking of graphical perception (*Graphical
-Perception: Theory, Experimentation, and Application to the Development
-of Graphical Methods*, JASA 1984) -- position and length are read far
-more accurately. Worse, the enclosed area depends on the **order** of the
-axes, which carries no meaning: permuting two axes changes the shape
-without changing a single number. So:
+**Why three and not five.** Two axes were removed at 0.9.0 because each
+restated a number the report already prints elsewhere:
 
-* the axis order is fixed and documented here, never data-dependent;
-* every vertex is labelled with its own value, so the figure can be read
-  as five numbers rather than as a silhouette;
-* the report states that the area means nothing.
+* `Spread` was exactly ``1 - Gini / ((n-1)/n)``, a monotone transform of the
+  Gini coefficient shown in the Contribution Distribution section a few
+  hundred pixels above, with better caveats attached to it there. It also
+  returned a hard-coded 0.0 for a single contributor, described as "nothing
+  to spread", which plotted *undefined* at the same position as *worst
+  possible*.
+* `Small steps` was exactly the first three buckets of the change-size
+  histogram summed -- the threshold was chosen to match that boundary -- so
+  it could not tell a different story, only the same one twice.
 
-What it is good at is the thing it is used for here: showing at a glance
-which axes are high and which are low, and being recognisable against the
-same repository at a later date.
+A consequence worth stating: the profile no longer reads contributor data at
+all. It describes the repository's working pattern and cannot name, rank or
+count people even accidentally.
 
-None of these axes is a target. A repository can score low on all five
+**Expected values are computed, never chosen.** Two of the three axes have an
+expectation that follows from their own arithmetic, and the report shows it so
+a reader can tell an ordinary value from a notable one:
+
+* `Continuity` under commits placed uniformly at random across the window is
+  ``1 - (1 - 1/W)**C`` for C commits over W weeks.
+* `Recent work` measures the share of commits in the window's final quarter,
+  so its expectation under even activity is the share of days that quarter
+  occupies -- close to 0.25, and computed exactly rather than assumed,
+  because the cut-off is inclusive.
+* `Revisiting` has no such expectation. It is shown without one rather than
+  given an invented figure.
+
+That distinction is load-bearing. A computed expectation is a fact about how
+the measure is built. A number somebody thinks is *good* would be a target,
+and none of these axes is a target: a repository can score low on all three
 for entirely ordinary reasons -- a finished library, a spike, a
-single-maintainer tool -- and this is a description, not a scorecard. No
-axis measures a person.
+single-maintainer tool -- and this is a description, not a scorecard.
 """
 
 from __future__ import annotations
@@ -38,18 +49,12 @@ from __future__ import annotations
 import datetime
 from dataclasses import dataclass
 
-from reveille.domain.concentration import gini_coefficient
 from reveille.domain.files import is_generated
-from reveille.domain.models import Commit, ContributorStats, FileStats
+from reveille.domain.models import Commit, FileStats
 
-#: Change size, in lines, at or below which a commit counts as a small
-#: step. Chosen to match the third bucket boundary of the change-size
-#: histogram so the two sections cannot tell different stories.
-_SMALL_COMMIT_LINES = 200
-
-#: Fixed axis order. Permuting these changes the drawn shape without
-#: changing any value, so the order is part of the contract.
-AXIS_ORDER = ("Spread", "Continuity", "Recent work", "Revisiting", "Small steps")
+#: Fixed axis order. Part of the contract: a reader comparing two reports of
+#: the same repository should find the measures in the same places.
+AXIS_ORDER = ("Continuity", "Recent work", "Revisiting")
 
 
 @dataclass(frozen=True)
@@ -61,43 +66,15 @@ class ProfileAxis:
         value: A share between 0.0 and 1.0.
         description: What the share is of, in one clause, so a reader can
             check the number rather than trust it.
+        expected: The value this axis takes under evenly spread activity,
+            where that follows from the measure's own arithmetic, else
+            None. Never a target, and never a figure anyone chose.
     """
 
     name: str
     value: float
     description: str
-
-
-def _spread(contributors: list[ContributorStats]) -> ProfileAxis:
-    """How evenly commits are distributed, relative to what is attainable.
-
-    The raw `1 - Gini` is not comparable across team sizes and was
-    therefore not the bounded share this module claims every axis to be.
-    Gini's maximum for a sample of n is (n-1)/n, so `1 - Gini` has a
-    floor of 1/n: adding a contributor who commits *nothing* moved the
-    axis from 0% to 50%, and ten people where one does everything scored
-    10% while two people where one does everything scored 50% -- the
-    more concentrated repository scoring five times higher.
-
-    Dividing by the attainable maximum fixes the range to a true 0..1 at
-    every team size, so the axis means the same thing before and after
-    the team grows.
-    """
-    counts = [c.commit_count for c in contributors]
-    size = len(counts)
-    if size < 2:
-        return ProfileAxis(
-            name="Spread",
-            value=0.0,
-            description="one contributor, so there is nothing to spread",
-        )
-    ceiling = (size - 1) / size
-    value = 1.0 - (gini_coefficient(counts) / ceiling)
-    return ProfileAxis(
-        name="Spread",
-        value=min(max(value, 0.0), 1.0),
-        description="evenness of commits, against the most uneven possible",
-    )
+    expected: float | None = None
 
 
 def _continuity(
@@ -105,17 +82,24 @@ def _continuity(
     since: datetime.date,
     until: datetime.date,
 ) -> ProfileAxis:
-    """Share of the window's weeks containing at least one commit."""
+    """Share of the window's weeks containing at least one commit.
+
+    The expectation is the share of weeks that would contain a commit if the
+    same number of commits were placed uniformly at random: one minus the
+    chance that a given week is missed by all of them. Without it a reader
+    has no way to tell a high-looking number from an ordinary one -- this
+    repository reads 0.913 against an expectation of about 0.99, so the
+    figure that looks strong is in fact below par.
+    """
     total_weeks = max(((until - since).days // 7) + 1, 1)
-    active = {
-        (c.timestamp.date() - since).days // 7
-        for c in commits
-        if since <= c.timestamp.date() <= until
-    }
+    in_window = [c for c in commits if since <= c.timestamp.date() <= until]
+    active = {(c.timestamp.date() - since).days // 7 for c in in_window}
+    expected = 1.0 - (1.0 - 1.0 / total_weeks) ** len(in_window)
     return ProfileAxis(
         name="Continuity",
         value=min(len(active) / total_weeks, 1.0),
         description="weeks in the window with at least one commit",
+        expected=min(expected, 1.0),
     )
 
 
@@ -126,24 +110,24 @@ def _recent_share(
 ) -> ProfileAxis:
     """Share of commits falling in the most recent quarter of the window.
 
-    This replaces an axis that measured where the last commit sat inside
-    the window. Under `--deterministic` the window *ends* at the last
-    commit, so that axis was identically 100% for every repository ever
-    analysed -- in precisely the mode the Playbook tells consumers to
-    use. It carried no information and still occupied a fifth of a shape
-    the reader is invited to recognise.
+    This replaced an axis that measured where the last commit sat inside the
+    window. Under `--deterministic` the window *ends* at the last commit, so
+    that axis was identically 100% for every repository ever analysed -- in
+    precisely the mode the Playbook tells consumers to use.
 
-    A share of commits in the final quarter is bounded, is not degenerate
-    under any window, and answers the question the old axis was reaching
-    for: is the work recent, or was it all a while ago.
+    The expectation is the share of the window's days that the final quarter
+    occupies. It is computed rather than assumed to be 0.25: the cut-off is
+    inclusive, so the quarter is one day longer than a quarter.
     """
     span = max((until - since).days, 1)
     cutoff = until - datetime.timedelta(days=span // 4)
-    recent = sum(1 for c in commits if c.timestamp.date() >= cutoff)
+    in_window = [c for c in commits if since <= c.timestamp.date() <= until]
+    recent = sum(1 for c in in_window if c.timestamp.date() >= cutoff)
     return ProfileAxis(
         name="Recent work",
-        value=recent / len(commits) if commits else 0.0,
+        value=recent / len(in_window) if in_window else 0.0,
         description="commits in the final quarter of the window",
+        expected=(span // 4 + 1) / (span + 1),
     )
 
 
@@ -153,10 +137,18 @@ def _revisiting(files: list[FileStats]) -> ProfileAxis:
     A repository whose files are written once and never returned to looks
     different from one being iterated on. Generated files are excluded
     because a lock file's revision count reflects tooling, not work.
+
+    No expectation is offered. One would depend on how long the repository
+    has existed and how many files it has, neither of which this measure
+    knows, and a figure invented to fill the gap would read as a target.
     """
     written = [f for f in files if not is_generated(f.path)]
     if not written:
-        return ProfileAxis(name="Revisiting", value=0.0, description="files touched more than once")
+        return ProfileAxis(
+            name="Revisiting",
+            value=0.0,
+            description="files touched by more than one commit",
+        )
     revisited = sum(1 for f in written if f.commits > 1)
     return ProfileAxis(
         name="Revisiting",
@@ -165,49 +157,34 @@ def _revisiting(files: list[FileStats]) -> ProfileAxis:
     )
 
 
-def _small_steps(commits: list[Commit]) -> ProfileAxis:
-    """Share of commits changing fewer than `_SMALL_COMMIT_LINES` lines."""
-    if not commits:
-        return ProfileAxis(
-            name="Small steps", value=0.0, description="commits under 200 lines changed"
-        )
-    small = sum(1 for c in commits if c.lines_added + c.lines_deleted < _SMALL_COMMIT_LINES)
-    return ProfileAxis(
-        name="Small steps",
-        value=small / len(commits),
-        description=f"commits changing fewer than {_SMALL_COMMIT_LINES} lines",
-    )
-
-
 def repository_profile(
     commits: list[Commit],
-    contributors: list[ContributorStats],
     files: list[FileStats],
     since: datetime.date,
     until: datetime.date,
 ) -> list[ProfileAxis]:
-    """Return the five profile axes, always in `AXIS_ORDER`.
+    """Return the three profile axes, always in `AXIS_ORDER`.
+
+    Takes no contributor data: since `Spread` was removed the profile
+    describes the repository's working pattern and never looks at people.
 
     Args:
         commits: Every commit in the analysis window.
-        contributors: Aggregated per-contributor statistics.
         files: Per-path activity for the window.
         since: First day of the analysis window.
         until: Last day of the analysis window.
 
     Returns:
-        Five axes in the fixed documented order. Empty if there are no
-        commits, since a profile of nothing is a shape that says nothing.
+        Three axes in the fixed documented order. Empty if there are no
+        commits, since a profile of nothing says nothing.
     """
     if not commits:
         return []
 
     axes = [
-        _spread(contributors),
         _continuity(commits, since, until),
         _recent_share(commits, since, until),
         _revisiting(files),
-        _small_steps(commits),
     ]
     ordered = {axis.name: axis for axis in axes}
     return [ordered[name] for name in AXIS_ORDER]
