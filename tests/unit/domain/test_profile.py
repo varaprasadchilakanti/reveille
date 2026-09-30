@@ -1,13 +1,22 @@
 # SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti
 # SPDX-License-Identifier: Apache-2.0
 
-"""The repository profile: five naturally bounded shares.
+"""The repository profile: three naturally bounded shares.
 
-The design constraint is that no axis is rescaled by a constant. A radar
-whose axes are normalised by invented factors can be given any silhouette
-its author wants, and a reader has no way to tell. These tests hold that
-line: every axis stays inside 0..1 by construction, the order is fixed,
-and the extremes land where the definition says they should.
+The design constraint is that no axis is rescaled by a constant. A figure
+whose axes are normalised by invented factors can be given any shape its
+author wants, and a reader has no way to tell. These tests hold that line:
+every axis stays inside 0..1 by construction, the order is fixed, and the
+extremes land where the definition says they should.
+
+Two axes were removed at 0.9.0 and their absence is asserted here, because
+each restated a figure the report prints elsewhere and both could be
+reintroduced by someone who had not read ADR 0012.
+
+The `expected` values are the other subject. They exist so a reader can tell
+an ordinary figure from a notable one, and they are computed from each
+measure's own arithmetic. A number somebody *chose* would be a target, and
+these tests pin the formulas so that distinction cannot quietly erode.
 """
 
 from __future__ import annotations
@@ -16,11 +25,15 @@ import datetime
 
 import pytest
 
-from reveille.domain.models import Commit, ContributorStats, FileStats
+from reveille.domain.models import Commit, FileStats
 from reveille.domain.profile import AXIS_ORDER, repository_profile
 
 _SINCE = datetime.date(2026, 1, 1)
 _UNTIL = datetime.date(2026, 3, 31)
+
+#: The window above: 89 days, so 13 whole-or-partial weeks.
+_SPAN_DAYS = (_UNTIL - _SINCE).days
+_WEEKS = _SPAN_DAYS // 7 + 1
 
 
 def _commit(day: int, added: int = 10, deleted: int = 0, email: str = "a@x") -> Commit:
@@ -34,206 +47,198 @@ def _commit(day: int, added: int = 10, deleted: int = 0, email: str = "a@x") -> 
     )
 
 
-def _contributor(email: str, commits: int) -> ContributorStats:
-    return ContributorStats(
-        name=email,
-        email=email,
-        commit_count=commits,
-        lines_added=1,
-        lines_deleted=0,
-        active_days=1,
-        first_commit_date=_SINCE,
-        last_commit_date=_UNTIL,
-    )
-
-
 def _file(path: str, commits: int) -> FileStats:
     return FileStats(path=path, commits=commits, lines_added=10, lines_deleted=0)
 
 
-def _profile(commits, contributors, files):
-    return {
-        a.name: a.value for a in repository_profile(commits, contributors, files, _SINCE, _UNTIL)
-    }
+def _profile(commits: list[Commit], files: list[FileStats]) -> dict[str, float]:
+    return {a.name: a.value for a in repository_profile(commits, files, _SINCE, _UNTIL)}
+
+
+def _expected(commits: list[Commit], files: list[FileStats]) -> dict[str, float | None]:
+    return {a.name: a.expected for a in repository_profile(commits, files, _SINCE, _UNTIL)}
 
 
 @pytest.mark.unit
 class TestEveryAxisIsABoundedShare:
-    """Nothing is rescaled, so nothing can leave 0..1."""
+    """No axis may leave 0..1, whatever the input."""
 
     def test_all_axes_stay_within_range_on_extreme_input(self) -> None:
-        commits = [_commit(day, added=99999) for day in range(90)]
-        contributors = [_contributor(f"c{i}@x", 1000) for i in range(50)]
-        files = [_file(f"f{i}.py", 99) for i in range(200)]
-        for name, value in _profile(commits, contributors, files).items():
-            assert 0.0 <= value <= 1.0, f"{name} is {value}, outside 0..1"
+        commits = [_commit(d) for d in range(0, 400)]
+        values = _profile(commits, [_file("a.py", 99)])
+        assert values, "no axes produced"
+        for name, value in values.items():
+            assert 0.0 <= value <= 1.0, f"{name} left the range at {value}"
 
     def test_a_commit_outside_the_window_cannot_push_continuity_over_one(self) -> None:
-        commits = [_commit(day) for day in range(400)]
-        assert _profile(commits, [_contributor("a@x", 400)], [])["Continuity"] <= 1.0
+        commits = [_commit(d) for d in range(0, 400)]
+        assert _profile(commits, [])["Continuity"] <= 1.0
+
+    def test_a_commit_outside_the_window_is_not_counted_as_recent(self) -> None:
+        """`_recent_share` bounds its numerator by `until`, as `_continuity` does."""
+        inside = [_commit(0)]
+        outside = [_commit(0), _commit(_SPAN_DAYS + 40)]
+        assert _profile(inside, [])["Recent work"] == _profile(outside, [])["Recent work"]
 
 
 @pytest.mark.unit
 class TestTheAxisOrderIsFixed:
-    """Permuting axes changes the drawn shape without changing a number."""
+    """A reader comparing two reports should find measures in the same places."""
 
     def test_order_matches_the_declared_contract(self) -> None:
         """Compared against a literal, not against `AXIS_ORDER`.
 
         `repository_profile` ends with `[ordered[name] for name in
-        AXIS_ORDER]`, so asserting that the returned order equals
-        `AXIS_ORDER` compares the tuple with the thing built from it. It
-        cannot fail. Reversing `AXIS_ORDER` changes the drawn shape --
-        which the module docstring says is exactly why the order is part
-        of the contract -- and left this test green.
-
-        The contract is therefore written out here independently. Changing
-        the axis set is then a deliberate act in two places rather than a
-        silent one in a single tuple.
+        AXIS_ORDER]`, so asserting the returned order equals `AXIS_ORDER`
+        compares the tuple with the thing built from it. It cannot fail.
+        The contract is written out here independently, so changing the
+        axis set is a deliberate act in two places.
         """
-        contract = ("Spread", "Continuity", "Recent work", "Revisiting", "Small steps")
+        contract = ("Continuity", "Recent work", "Revisiting")
         assert list(AXIS_ORDER) == list(contract), (
-            "AXIS_ORDER changed; the drawn shape changed with it, so this "
-            "literal must be updated deliberately"
+            "AXIS_ORDER changed; update this literal deliberately"
         )
-        commits = [_commit(1)]
-        axes = repository_profile(commits, [_contributor("a@x", 1)], [], _SINCE, _UNTIL)
+        axes = repository_profile([_commit(1)], [], _SINCE, _UNTIL)
         assert [a.name for a in axes] == list(contract)
 
     def test_order_does_not_depend_on_the_values(self) -> None:
-        low = repository_profile([_commit(1)], [_contributor("a@x", 1)], [], _SINCE, _UNTIL)
+        low = repository_profile([_commit(1)], [], _SINCE, _UNTIL)
         high = repository_profile(
-            [_commit(d) for d in range(90)],
-            [_contributor(f"c{i}@x", 10) for i in range(5)],
-            [_file(f"f{i}.py", 5) for i in range(10)],
-            _SINCE,
-            _UNTIL,
+            [_commit(d) for d in range(0, _SPAN_DAYS)], [_file("a.py", 9)], _SINCE, _UNTIL
         )
-        assert [a.name for a in low] == [a.name for a in high] == list(AXIS_ORDER)
+        assert [a.name for a in low] == [a.name for a in high]
+
+
+@pytest.mark.unit
+class TestTheDroppedAxesStayDropped:
+    """ADR 0012. Each restated a figure printed elsewhere in the report."""
+
+    def test_spread_is_gone(self) -> None:
+        """It was `1 - Gini/((n-1)/n)`, the Gini section's number again."""
+        assert "Spread" not in AXIS_ORDER
+        assert "Spread" not in _profile([_commit(1)], [])
+
+    def test_small_steps_is_gone(self) -> None:
+        """It was the first three change-size histogram buckets, summed."""
+        assert "Small steps" not in AXIS_ORDER
+        assert "Small steps" not in _profile([_commit(1)], [])
+
+    def test_the_profile_cannot_see_contributors_at_all(self) -> None:
+        """Spread was the only axis that read people; its removal is structural.
+
+        `repository_profile` takes commits, files and a window. There is no
+        contributor argument to pass, so the profile cannot name, rank or
+        count people even by accident.
+        """
+        import inspect
+
+        parameters = list(inspect.signature(repository_profile).parameters)
+        assert parameters == ["commits", "files", "since", "until"]
 
 
 @pytest.mark.unit
 class TestTheExtremesLandWhereTheDefinitionSays:
-    """Each axis is checked against a case with a known answer."""
-
-    def test_perfectly_even_contributors_give_full_spread(self) -> None:
-        contributors = [_contributor(f"c{i}@x", 10) for i in range(4)]
-        assert _profile([_commit(1)], contributors, [])["Spread"] == pytest.approx(1.0)
-
-    def test_a_single_contributor_gives_no_spread(self) -> None:
-        """A Gini over one person is undefined; the honest answer is zero."""
-        assert _profile([_commit(1)], [_contributor("a@x", 5)], [])["Spread"] == 0.0
+    """Each axis, driven to both ends of its range."""
 
     def test_a_commit_every_week_gives_full_continuity(self) -> None:
-        commits = [_commit(day) for day in range(0, 90, 7)]
-        assert _profile(commits, [_contributor("a@x", 13)], [])["Continuity"] > 0.9
+        commits = [_commit(d) for d in range(0, _SPAN_DAYS, 7)]
+        assert _profile(commits, [])["Continuity"] == pytest.approx(1.0, abs=0.08)
 
     def test_one_commit_at_the_start_gives_almost_no_continuity(self) -> None:
-        assert _profile([_commit(0)], [_contributor("a@x", 1)], [])["Continuity"] < 0.1
+        assert _profile([_commit(0)], [])["Continuity"] == pytest.approx(1 / _WEEKS)
 
     def test_all_work_in_the_final_quarter_gives_full_recent_work(self) -> None:
-        span = (_UNTIL - _SINCE).days
-        commits = [_commit(span - offset) for offset in range(5)]
-        assert _profile(commits, [_contributor("a@x", 5)], [])["Recent work"] == 1.0
+        commits = [_commit(d) for d in range(_SPAN_DAYS - 5, _SPAN_DAYS)]
+        assert _profile(commits, [])["Recent work"] == 1.0
 
     def test_work_only_at_the_start_gives_no_recent_work(self) -> None:
-        assert _profile([_commit(0)], [_contributor("a@x", 1)], [])["Recent work"] == 0.0
+        assert _profile([_commit(0), _commit(1)], [])["Recent work"] == 0.0
 
     def test_the_axis_is_not_degenerate_under_deterministic_windows(self) -> None:
-        """The axis it replaced was identically 1.0 whenever the window
-        ended at the last commit -- which is what `--deterministic` does,
-        and what the Playbook tells consumers to pass."""
-        early = [_commit(0), _commit(1)]
-        last = max(c.timestamp.date() for c in early)
-        axes = repository_profile(early, [_contributor("a@x", 2)], [], _SINCE, last)
-        recent = {a.name: a.value for a in axes}["Recent work"]
-        assert recent < 1.0, "the axis carries no information in this mode"
+        """The defect that retired the axis this one replaced.
+
+        The old axis measured where the last commit sat in the window. Under
+        `--deterministic` the window ends at the last commit, so it read 100%
+        for every repository ever analysed.
+        """
+        commits = [_commit(d) for d in range(0, _SPAN_DAYS, 3)]
+        assert _profile(commits, [])["Recent work"] < 0.5
 
     def test_files_touched_once_give_no_revisiting(self) -> None:
-        files = [_file(f"f{i}.py", 1) for i in range(5)]
-        assert _profile([_commit(1)], [_contributor("a@x", 1)], files)["Revisiting"] == 0.0
+        assert _profile([_commit(1)], [_file("a.py", 1), _file("b.py", 1)])["Revisiting"] == 0.0
 
     def test_generated_files_do_not_count_towards_revisiting(self) -> None:
-        """A lock file's revision count reflects tooling, not work."""
-        files = [_file("poetry.lock", 50), _file("a.py", 1)]
-        assert _profile([_commit(1)], [_contributor("a@x", 1)], files)["Revisiting"] == 0.0
+        files = [_file("poetry.lock", 40), _file("a.py", 1)]
+        assert _profile([_commit(1)], files)["Revisiting"] == 0.0
 
-    def test_all_small_commits_give_full_small_steps(self) -> None:
-        commits = [_commit(day, added=10) for day in range(5)]
-        assert _profile(commits, [_contributor("a@x", 5)], [])["Small steps"] == 1.0
 
-    def test_all_large_commits_give_none(self) -> None:
-        commits = [_commit(day, added=5000) for day in range(5)]
-        assert _profile(commits, [_contributor("a@x", 5)], [])["Small steps"] == 0.0
+@pytest.mark.unit
+class TestTheExpectedValuesAreComputedNotChosen:
+    """An expectation follows from the measure. A target is picked by a person.
 
-    def test_churn_not_net_decides_small_steps(self) -> None:
-        """A commit that adds 150 and deletes 150 changed 300 lines."""
-        commits = [_commit(1, added=150, deleted=150)]
-        assert _profile(commits, [_contributor("a@x", 1)], [])["Small steps"] == 0.0
+    The distinction is the reason these exist at all: marking a value someone
+    considered *good* would turn a description into a scorecard, which the
+    module says it is not.
+    """
+
+    def test_continuity_expects_the_chance_a_week_is_hit(self) -> None:
+        """One minus the chance every commit misses a given week."""
+        commits = [_commit(d) for d in range(0, 20)]
+        expected = _expected(commits, [])["Continuity"]
+        assert expected == pytest.approx(1.0 - (1.0 - 1.0 / _WEEKS) ** 20)
+
+    def test_continuity_expectation_rises_with_the_commit_count(self) -> None:
+        """More commits, more weeks hit by chance -- so a high value means less."""
+        few = _expected([_commit(d) for d in range(3)], [])["Continuity"]
+        many = _expected([_commit(d) for d in range(60)], [])["Continuity"]
+        assert few is not None and many is not None
+        assert many > few
+
+    def test_recent_work_expects_the_share_of_days_in_the_final_quarter(self) -> None:
+        """Computed, not assumed to be 0.25: the cut-off is inclusive.
+
+        The window is 89 days, so the quarter spans `89 // 4 + 1 = 23` of the
+        90 days in it -- 0.2556, not 0.25. Assuming a quarter is a quarter
+        would be wrong by a day.
+        """
+        expected = _expected([_commit(1)], [])["Recent work"]
+        assert expected == pytest.approx((_SPAN_DAYS // 4 + 1) / (_SPAN_DAYS + 1))
+        assert expected == pytest.approx(23 / 90)
+
+    def test_revisiting_offers_no_expectation(self) -> None:
+        """It would depend on repository age and file count, which it cannot see."""
+        assert _expected([_commit(1)], [_file("a.py", 2)])["Revisiting"] is None
+
+    def test_a_value_may_fall_either_side_of_its_expectation(self) -> None:
+        """Proof that it is not a floor, a ceiling or a goal."""
+        sparse = repository_profile([_commit(0), _commit(1)], [], _SINCE, _UNTIL)[0]
+        regular = repository_profile(
+            [_commit(d) for d in range(0, _SPAN_DAYS, 7)], [], _SINCE, _UNTIL
+        )[0]
+        assert sparse.name == regular.name == "Continuity"
+        assert sparse.expected is not None and regular.expected is not None
+        assert sparse.value < sparse.expected, "no case below expectation"
+        assert regular.value > regular.expected, "no case above expectation"
 
 
 @pytest.mark.unit
 class TestItRefusesToProfileNothing:
     def test_no_commits_yields_no_axes(self) -> None:
-        assert repository_profile([], [], [], _SINCE, _UNTIL) == []
+        assert repository_profile([], [], _SINCE, _UNTIL) == []
 
     def test_a_zero_length_window_does_not_divide_by_zero(self) -> None:
-        axes = repository_profile([_commit(0)], [_contributor("a@x", 1)], [], _SINCE, _SINCE)
-        assert len(axes) == len(AXIS_ORDER)
+        day = datetime.date(2026, 1, 1)
+        axes = repository_profile([_commit(0)], [], day, day)
+        assert [a.name for a in axes] == list(AXIS_ORDER)
+        for axis in axes:
+            assert 0.0 <= axis.value <= 1.0
 
 
 @pytest.mark.unit
 class TestItNamesNobody:
     def test_no_axis_carries_an_identity(self) -> None:
-        axes = repository_profile(
-            [_commit(1)], [_contributor("someone@example.com", 1)], [], _SINCE, _UNTIL
-        )
+        commits = [_commit(1, email="alice@example.com")]
+        axes = repository_profile(commits, [_file("a.py", 2)], _SINCE, _UNTIL)
         rendered = " ".join(f"{a.name} {a.description}" for a in axes)
-        assert "someone@example.com" not in rendered
+        assert "alice" not in rendered
         assert "@" not in rendered
-
-
-@pytest.mark.unit
-class TestSpreadIsComparableAcrossTeamSizes:
-    """The raw `1 - Gini` was rescaled by headcount, and nothing caught it.
-
-    Gini's maximum for a sample of n is (n-1)/n, so `1 - Gini` has a
-    floor of 1/n rather than 0. Measured before the fix: adding a
-    contributor who committed *nothing* moved Spread from 0% to 50%, and
-    ten people where one did everything scored 10% while two people
-    where one did everything scored 50% — the more concentrated
-    repository scoring five times higher.
-
-    This contradicted the module's own stated design, that every axis is
-    a bounded share and none is rescaled. Eighteen tests passed over it,
-    one of which encoded the wrong value as intended behaviour.
-    """
-
-    def _spread_of(self, counts: list[int]) -> float:
-        people = [_contributor(f"c{i}@x", n) for i, n in enumerate(counts)]
-        return _profile([_commit(1)], people, [])["Spread"]
-
-    @pytest.mark.parametrize("size", [2, 3, 5, 10])
-    def test_maximum_concentration_scores_zero_at_every_team_size(self, size: int) -> None:
-        counts = [100] + [0] * (size - 1)
-        assert self._spread_of(counts) == pytest.approx(0.0, abs=1e-9), (
-            f"one person doing everything among {size} scores "
-            f"{self._spread_of(counts):.0%}; it must be 0% at any size"
-        )
-
-    @pytest.mark.parametrize("size", [2, 3, 5, 10])
-    def test_a_perfectly_even_team_scores_one_at_every_team_size(self, size: int) -> None:
-        assert self._spread_of([10] * size) == pytest.approx(1.0)
-
-    def test_adding_an_idle_contributor_does_not_raise_spread(self) -> None:
-        """The clearest form of the defect: a person who does nothing."""
-        before = self._spread_of([100])
-        after = self._spread_of([100, 0])
-        assert after <= before + 1e-9, (
-            f"adding a contributor with no commits moved Spread from {before:.0%} to {after:.0%}"
-        )
-
-    def test_a_more_concentrated_repository_never_scores_higher(self) -> None:
-        even = self._spread_of([10, 10, 10, 10])
-        lopsided = self._spread_of([37, 1, 1, 1])
-        assert lopsided < even

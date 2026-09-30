@@ -71,7 +71,12 @@ _BUNDLE_HOSTS = frozenset(
 # Plotly trace types the report is permitted to emit. Every one renders
 # from data already in the document. Map and geo traces do not: they fetch
 # tiles from endpoints inside the bundle.
-_ALLOWED_TRACE_TYPES = frozenset({"bar", "pie", "scatter", "scatterpolar"})
+#
+# `scatterpolar` was removed at 0.9.0 with the repository profile, which was
+# its only user and is now a table with CSS bars (ADR 0012). Three types
+# rather than four is a smaller surface for this guard to permit, and one
+# fewer part of the vendored bundle the report depends on.
+_ALLOWED_TRACE_TYPES = frozenset({"bar", "pie", "scatter"})
 
 # Byte budgets for the generated artefact, measured on the e2e fixture
 # repository. The product is "one file you can email, embed and attach",

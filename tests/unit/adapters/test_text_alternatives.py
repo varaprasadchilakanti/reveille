@@ -250,41 +250,34 @@ class TestIdentityIsNotCarriedByColourAlone:
 
 
 @pytest.mark.unit
-class TestTheProfileTableAndLabelMatchTheAxes:
-    """Both were wrong, and both were wrong only for screen-reader users.
+class TestTheProfileNeedsNoTextAlternative:
+    """Because it is text. That is the point of the change.
 
-    The table read six rows under a caption saying "The five repository
-    profile measures", with the first measure repeated -- a radar closes its
-    polygon by repeating the first vertex, and the table is read back out of
-    the trace arrays. The `aria-label` named "currency of the last commit", an
-    axis `_recent_share` documents as having replaced it; the sighted reader
-    saw the real names in the table, so nobody noticed.
+    Until 0.9.0 the profile was a Plotly radar carrying `role="img"`, which
+    makes an SVG's children presentational, so its `aria-label` was the whole
+    of what a screen-reader user received. That label named "currency of the
+    last commit", an axis `_recent_share` had replaced; the figures themselves
+    lived in a `visually-hidden` table that sighted readers never saw. Two
+    populations, two different wrong answers.
 
-    Both are pinned to `AXIS_ORDER` here, so adding, removing or renaming an
-    axis without updating the prose fails.
+    The section is now a table. There is no image, so there is nothing to
+    caption, and both audiences read the same markup. This guards that it
+    stays that way: a future change that turns it back into a picture would
+    need a text alternative again, and this fails until it has one.
     """
 
-    def test_the_table_has_one_row_per_axis(self, rendered: str) -> None:
+    def test_the_profile_is_not_an_image(self, rendered: str) -> None:
+        assert 'id="chart-profile"' not in rendered
+        assert 'id="spec-profile"' not in rendered
+
+    def test_the_measures_are_visible_not_only_announced(self, rendered: str) -> None:
+        """The radar's numbers were in a visually-hidden table."""
         from reveille.domain.profile import AXIS_ORDER
 
-        start = rendered.index("The five repository profile measures")
-        section = rendered[start - 400 : start + 2000]
-        body = re.findall(r"<tbody>(.*?)</tbody>", section, re.DOTALL)
-        assert body, "the profile table has no body to read"
-        rows = re.findall(r"<tr>", body[0])
-        assert len(rows) == len(AXIS_ORDER), (
-            f"the profile table has {len(rows)} rows for {len(AXIS_ORDER)} measures; "
-            "a repeated closing vertex is geometry, not a measure"
+        table = rendered[rendered.index('<table class="profile">') :]
+        table = table[: table.index("</table>")]
+        assert "visually-hidden" not in table.split("</caption>")[1], (
+            "the measures are hidden from sight again"
         )
-
-    def test_the_label_names_every_axis(self, rendered: str) -> None:
-        from reveille.domain.profile import AXIS_ORDER
-
-        label = re.search(r'id="chart-profile"[^>]*aria-label="([^"]*)"', rendered).group(1)
-        missing = [name for name in AXIS_ORDER if name.lower() not in label.lower()]
-        assert not missing, f"the profile aria-label does not name {missing}"
-
-    def test_the_label_does_not_name_an_axis_that_is_gone(self, rendered: str) -> None:
-        """The specific wording that shipped, so its return is noticed."""
-        label = re.search(r'id="chart-profile"[^>]*aria-label="([^"]*)"', rendered).group(1)
-        assert "currency" not in label.lower(), "the label names the axis `_recent_share` replaced"
+        for name in AXIS_ORDER:
+            assert name in table, f"{name} is missing from the profile table"

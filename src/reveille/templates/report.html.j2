@@ -315,6 +315,88 @@
             .finding-evidence { grid-column: 1; }
         }
 
+        /* Repository profile. A table with bars in its cells, not a chart:
+           length from a common baseline is the most accurately read encoding
+           (Cleveland & McGill, JASA 1984), and unlike the radar it survives
+           JavaScript being off. One neutral fill throughout -- a severity ramp
+           would say some values are bad, and none of these measures is a
+           target. */
+        .profile {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 4px;
+        }
+        .profile th,
+        .profile td {
+            padding: 9px 8px;
+            border-bottom: 1px solid var(--color-border-subtle);
+            text-align: left;
+            vertical-align: middle;
+        }
+        .profile thead th {
+            font-size: 11.5px;
+            font-weight: 600;
+            color: var(--color-text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .profile-name {
+            width: 27%;
+            font-weight: 600;
+            color: var(--color-text-primary);
+        }
+        .profile-of {
+            display: block;
+            margin-top: 2px;
+            font-weight: 400;
+            font-size: 11.5px;
+            color: var(--color-text-muted);
+        }
+        .profile-meter {
+            width: 58%;
+            white-space: nowrap;
+        }
+        .profile-expected {
+            width: 15%;
+            color: var(--color-text-secondary);
+            font-variant-numeric: tabular-nums;
+        }
+        .meter {
+            position: relative;
+            display: inline-block;
+            width: calc(100% - 52px);
+            height: 10px;
+            border-radius: 5px;
+            background: var(--color-surface);
+            border: 1px solid var(--color-border-subtle);
+            vertical-align: middle;
+        }
+        .meter-fill {
+            position: absolute;
+            inset: 0 auto 0 0;
+            border-radius: 5px;
+            background: var(--color-primary);
+        }
+        /* The expectation, marked on the track rather than stated only in the
+           cell, so an ordinary value reads as ordinary at a glance. */
+        .meter-tick {
+            position: absolute;
+            top: -3px;
+            bottom: -3px;
+            width: 2px;
+            margin-left: -1px;
+            background: var(--color-text-secondary);
+        }
+        .profile-value {
+            display: inline-block;
+            width: 44px;
+            margin-left: 8px;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+            color: var(--color-text-primary);
+            vertical-align: middle;
+        }
+
         .chart-foot {
             margin: 10px 0 0;
             padding-top: 9px;
@@ -889,30 +971,90 @@
     </div>
 
     <!-- ============================================================
-         Repository profile -- five bounded shares, fixed axis order
+         Repository profile
          ============================================================ -->
-    {% if charts.profile != 'null' %}
+    {#
+       A table, not a chart. It was a Plotly radar until 0.9.0: area is read
+       far less accurately than length (Cleveland & McGill, JASA 1984), the
+       shape depended on an axis order carrying no meaning, and the report had
+       to instruct the reader to treat the figure as numbers rather than as a
+       silhouette -- an admission that the form was wrong, not a mitigation of
+       it. Numbers presented accurately is a table with bars in it. Two of the
+       five measures were dropped because each restated a figure printed
+       elsewhere in this report; see ADR 0012.
+
+       Consequences, all deliberate: it renders with JavaScript off, where the
+       radar drew nothing; it is visible to sighted readers, where the radar's
+       figures lived only in a visually-hidden table; and it needs no
+       role="img" and no aria-label, because it is text.
+
+       A Jinja comment rather than an HTML one: this is for whoever edits the
+       template, and has no business shipping inside every report.
+    #}
+    {% if profile %}
     <div class="section">
         <h2 class="section-title">Repository Profile</h2>
         <p class="section-note">
-            Five shares of the analysis window, each between 0% and 100%.
+            Three shares of the analysis window, each between 0% and 100%.
         </p>
-        <div class="chart-container">
-            <div id="chart-profile" role="img" aria-label="Radar chart of five repository measures — spread, continuity, recent work, revisiting and small steps — each a share between 0% and 100%. The same figures follow as a table."></div>
-{{ chart_table("profile", "The five repository profile measures") }}
-        </div>
+        <table class="profile">
+            <caption class="visually-hidden">
+                The three repository profile measures, each with its value and,
+                where one can be computed, the value expected under evenly
+                spread activity.
+            </caption>
+            <thead>
+                <tr>
+                    <th scope="col">Measure</th>
+                    <th scope="col">Share</th>
+                    <th scope="col">Expected by chance</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for axis in profile %}
+                <tr>
+                    <th scope="row" class="profile-name">
+                        {{ axis.name }}
+                        <span class="profile-of">{{ axis.description }}</span>
+                    </th>
+                    <td class="profile-meter">
+                        {#
+                           The bar is decorative: every figure it encodes is in
+                           the two cells beside it, so it carries aria-hidden
+                           rather than a label that would be read twice.
+                        #}
+                        <span class="meter" aria-hidden="true">
+                            <span class="meter-fill" style="width: {{ '%.1f'|format(axis.value * 100) }}%"></span>
+                            {% if axis.expected is not none %}
+                            <span class="meter-tick" style="left: {{ '%.1f'|format(axis.expected * 100) }}%"></span>
+                            {% endif %}
+                        </span>
+                        <span class="profile-value">{{ '%.0f'|format(axis.value * 100) }}%</span>
+                    </td>
+                    <td class="profile-expected">
+                        {% if axis.expected is not none %}
+                        {{ '%.0f'|format(axis.expected * 100) }}%
+                        {% else %}
+                        <span aria-label="no expected value">&#8212;</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
         <p class="chart-foot">
-            Read it as five numbers, not as a shape. The enclosed area depends
-            on the order of the axes, which carries no meaning, and area is
-            read far less accurately than position or length (Cleveland &amp;
-            McGill, JASA 1984) — so the order is fixed and every vertex is
-            labelled. Each axis is a naturally bounded share, never rescaled to
-            fit. None of them is a target: a finished library scores low on
-            most, for entirely ordinary reasons. No axis measures a person.
+            Each measure is a naturally bounded share, never rescaled to fit.
+            <strong>Expected</strong> is what the measure would read under evenly
+            spread activity, computed from its own arithmetic — not a target, and
+            not a figure anyone chose. Continuity's expectation is the share of
+            weeks a commit would land in by chance; Recent work's is the share of
+            days the final quarter occupies. Revisiting has no such expectation,
+            so none is shown rather than one invented.
+            None of these is a goal: a finished library scores low on all three
+            for entirely ordinary reasons, and no measure here describes a person.
         </p>
     </div>
     {% endif %}
-
 
 
     <!-- ============================================================
@@ -1181,9 +1323,6 @@
 {{ charts.extensions | safe }}
 </script>
 
-<script type="application/json" id="spec-profile">
-{{ charts.profile | safe }}
-</script>
 
 <script type="application/json" id="spec-heatmap">
 {{ charts.heatmap | safe }}
@@ -1211,8 +1350,7 @@
         'lorenz',
         'commit_size',
         'hotspots',
-        'extensions',
-        'profile'
+        'extensions'
     ];
 
     var PLOTLY_CONFIG = {

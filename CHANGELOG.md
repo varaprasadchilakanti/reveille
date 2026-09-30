@@ -15,6 +15,35 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Changed
 
+- **The repository profile is three measures in a table, not five on a radar.**
+  The radar's own caption told the reader "read it as five numbers, not as a
+  shape", which is an admission that the form was wrong rather than a
+  mitigation of it — area is read far less accurately than length, and the
+  enclosed area depended on an axis order carrying no meaning. `Spread` and
+  `Small steps` are gone: the first was exactly `1 - Gini/((n-1)/n)`, the Gini
+  section's figure again, and the second was exactly the first three bars of the
+  change-size histogram, summed. See
+  [ADR 0012](docs/adr/0012-the-repository-profile-is-a-table.md).
+- **Each measure now shows what it would read under evenly spread activity.** A
+  bounded share with no reference point cannot be read as high or low:
+  Continuity on this repository is 0.913, which looks strong and is in fact
+  *below* the 0.99 that random placement would give. The column is headed
+  "Expected by chance" and is computed from each measure's own arithmetic —
+  never chosen, and never a target. `Revisiting` has no derivable expectation,
+  so it shows none rather than an invented one.
+- **The profile renders without JavaScript, and is visible.** It was a Plotly
+  chart carrying `role="img"`, so its `aria-label` was the whole of what a
+  screen-reader user got — and that label named an axis that had been removed —
+  while the figures themselves sat in a `visually-hidden` table sighted readers
+  never saw, and the section drew nothing at all with scripting off. All three
+  audiences now read the same markup.
+- **The profile no longer reads contributor data.** `Spread` was the only axis
+  that did, so `repository_profile` takes commits, files and a window. It cannot
+  name, rank or count people even by accident.
+- **`scatterpolar` is no longer emitted.** The profile was its only user, so the
+  report now draws `bar`, `pie` and `scatter` only, and the offline guarantee's
+  trace-type allowlist is one entry smaller.
+
 - **ADR 0011 now applies to the charts, not only to the printed figures.** The
   first pass fixed the derived figures and missed the chart builders, so a
   report using `--min-commits` contradicted itself: over a two-contributor
