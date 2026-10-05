@@ -32,7 +32,6 @@ from collections import defaultdict
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from urllib.parse import urlsplit, urlunsplit
 
 from git import InvalidGitRepositoryError, NoSuchPathError, Repo
 from git.exc import GitCommandError
@@ -289,26 +288,42 @@ def _accumulate_file_totals(record: str, totals: dict[str, list[int]]) -> None:
 
 
 def _without_credentials(url: str) -> str:
-    """Remove a user name, password or token from a remote URL.
+    """Remove a password or token from a remote URL.
 
     A remote added as `https://user:token@host/repo.git` stores the token in
     `.git/config`, and the report prints the remote URL. Printed verbatim, the
-    token went into every HTML and JSON report of that repository. The query
-    string and fragment are dropped for the same reason: some hosts accept a
-    token there. An SSH address of the form `git@host:path` carries no secret
-    and is returned unchanged.
+    token went into every HTML and JSON report of that repository.
+
+    For `http` and `https` the whole user part is dropped, because a token is
+    often given as the user name alone (`https://TOKEN@host/...`). For other
+    schemes, such as `ssh://git@host/...`, the login name is part of the
+    address and is kept; only a password after it is dropped. The query string
+    and fragment are removed, since some hosts accept a token there. An SSH
+    address of the form `git@host:path` carries no secret and is returned
+    unchanged.
+
+    This is string handling rather than `urllib.parse.urlsplit`, which raises
+    on some addresses Git accepts (`https://[::1/r.git`), and a report must not
+    fail because a remote is oddly written.
 
     Args:
         url: The remote URL as Git stores it.
 
     Returns:
-        The URL with no user information, query string or fragment.
+        The URL without a password, token, query string or fragment.
     """
-    if "://" not in url:
+    scheme, separator, rest = url.partition("://")
+    if not separator:
         return url
-    parts = urlsplit(url)
-    host = parts.netloc.rpartition("@")[2]
-    return urlunsplit((parts.scheme, host, parts.path, "", ""))
+    rest = rest.split("#", 1)[0].split("?", 1)[0]
+    authority, slash, path = rest.partition("/")
+    userinfo, at, host = authority.rpartition("@")
+    if at:
+        if scheme.lower() in ("http", "https"):
+            authority = host
+        else:
+            authority = f"{userinfo.partition(':')[0]}@{host}"
+    return f"{scheme}://{authority}{slash}{path}"
 
 
 class GitReader:
