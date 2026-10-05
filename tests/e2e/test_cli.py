@@ -281,6 +281,27 @@ def default_report_content(
     return output.read_text(encoding="utf-8")
 
 
+@pytest.fixture(scope="module")
+def pinned_report_content(
+    e2e_repo: Path,
+    tmp_path_factory: pytest.TempPathFactory,
+) -> str:
+    """The default report with its window pinned to the repository.
+
+    Without `--deterministic` the window runs to today, and a weekly chart
+    draws every week in the window, so the report grows by a point per chart
+    each week the suite is run. A size budget measured on that report would
+    measure the calendar. Pinned, it measures what Reveille writes.
+    """
+    output = tmp_path_factory.mktemp("pinned_report") / "report.html"
+    result = runner.invoke(
+        app,
+        ["generate", "--repo", str(e2e_repo), "--output", str(output), "--deterministic"],
+    )
+    assert result.exit_code == 0, result.output
+    return output.read_text(encoding="utf-8")
+
+
 # ------------------------------------------------------------------
 # Version command
 # ------------------------------------------------------------------
@@ -1491,12 +1512,12 @@ class TestArtefactBudget:
 
     def test_the_authored_report_stays_within_its_budget(
         self,
-        default_report_content: str,
+        pinned_report_content: str,
     ) -> None:
         """The term that is ours: markup, styles, chart specifications."""
         import plotly.offline
 
-        authored = default_report_content.replace(plotly.offline.get_plotlyjs(), "")
+        authored = pinned_report_content.replace(plotly.offline.get_plotlyjs(), "")
         measured = len(authored.encode("utf-8"))
         assert measured <= _AUTHORED_BUDGET_BYTES, (
             f"the content Reveille authors is {measured:,} bytes, over the "
@@ -1505,10 +1526,10 @@ class TestArtefactBudget:
 
     def test_the_whole_artefact_stays_within_its_budget(
         self,
-        default_report_content: str,
+        pinned_report_content: str,
     ) -> None:
         """What the reader receives, which is the number that gets attached."""
-        measured = len(default_report_content.encode("utf-8"))
+        measured = len(pinned_report_content.encode("utf-8"))
         assert measured <= _ARTEFACT_BUDGET_BYTES, (
             f"the report is {measured:,} bytes, over the "
             f"{_ARTEFACT_BUDGET_BYTES:,} byte budget. Check which term grew: "

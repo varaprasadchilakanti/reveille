@@ -571,10 +571,11 @@ class Renderer:
         Returns:
             A dict mapping chart identifier to JSON string.
         """
+        window = (data.metadata.analysis_since, data.metadata.analysis_until)
         return {
-            "timeline": _build_timeline_chart(data.commits),
+            "timeline": _build_timeline_chart(data.commits, window),
             "contributor_timeline": _build_contributor_timeline_chart(
-                data.commits, data.ranked_contributors
+                data.commits, data.ranked_contributors, window
             ),
             "heatmap": _build_heatmap_data(
                 data.commits,
@@ -797,11 +798,46 @@ def _accessible_table(chart: str, specification: str) -> dict[str, Any]:
     }
 
 
-def _build_timeline_chart(commits: list[Commit]) -> str:
+def _commit_span(commits: list[Commit]) -> tuple[datetime.date, datetime.date]:
+    """The first and last commit dates, for a chart given no analysis window."""
+    dates = [c.timestamp.date() for c in commits]
+    return min(dates), max(dates)
+
+
+def _week_starts(first: datetime.date, last: datetime.date) -> list[str]:
+    """Every Monday from the week containing `first` to the week containing `last`.
+
+    A weekly chart built only from weeks that had commits skips the quiet
+    ones, and a line drawn straight across a gap reads as steady activity --
+    the opposite of what happened. Every week in the window gets a point, and
+    a week with no commits is drawn as zero.
+
+    Args:
+        first: The first day to cover.
+        last: The last day to cover.
+
+    Returns:
+        ISO dates of each week's Monday, in order.
+    """
+    monday = first - datetime.timedelta(days=first.weekday())
+    weeks: list[str] = []
+    while monday <= last:
+        weeks.append(monday.isoformat())
+        monday += datetime.timedelta(weeks=1)
+    return weeks
+
+
+def _build_timeline_chart(
+    commits: list[Commit],
+    window: tuple[datetime.date, datetime.date] | None = None,
+) -> str:
     """Build a weekly commit frequency line chart.
 
     Args:
         commits: All commits in the analysis window.
+        window: The analysis window's first and last day. Every week in it is
+            drawn, including weeks with no commits. Without it, the span of
+            the commits themselves is used.
 
     Returns:
         A Plotly figure JSON string, or 'null' if commits is empty.
@@ -815,8 +851,8 @@ def _build_timeline_chart(commits: list[Commit]) -> str:
         week_start = d - datetime.timedelta(days=d.weekday())
         weekly[week_start.isoformat()] += 1
 
-    sorted_weeks = sorted(weekly.keys())
-    counts = [weekly[w] for w in sorted_weeks]
+    sorted_weeks = _week_starts(*(window or _commit_span(commits)))
+    counts = [weekly.get(w, 0) for w in sorted_weeks]
 
     fig = go.Figure()
     fig.add_trace(
@@ -844,6 +880,7 @@ def _build_timeline_chart(commits: list[Commit]) -> str:
 def _build_contributor_timeline_chart(
     commits: list[Commit],
     ranked: list[RankedContributor],
+    window: tuple[datetime.date, datetime.date] | None = None,
 ) -> str:
     """Build a per-contributor weekly commit frequency line chart.
 
@@ -862,6 +899,8 @@ def _build_contributor_timeline_chart(
     Args:
         commits: All commits in the analysis window.
         ranked: Ranked contributor list in composite score order.
+        window: The analysis window's first and last day, as for
+            `_build_timeline_chart`.
 
     Returns:
         A Plotly figure JSON string, or 'null' if fewer than two
@@ -884,9 +923,9 @@ def _build_contributor_timeline_chart(
         week_start = (d - datetime.timedelta(days=d.weekday())).isoformat()
         weekly_per_email[email][week_start] = weekly_per_email[email].get(week_start, 0) + 1
 
-    all_weeks = sorted({week for bins in weekly_per_email.values() for week in bins})
-    if not all_weeks:
+    if not any(weekly_per_email.values()):
         return "null"
+    all_weeks = _week_starts(*(window or _commit_span(commits)))
 
     fig = go.Figure()
     for i, r in enumerate(shown):

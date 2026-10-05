@@ -428,6 +428,32 @@ class TestBuildTimelineChart:
         result = json.loads(_build_timeline_chart(commits))
         assert result["layout"]["xaxis"]["type"] == "category"
 
+    def test_a_quiet_week_is_drawn_as_zero_not_skipped(self) -> None:
+        """A skipped week let the line run straight across a gap.
+
+        The chart is where PLAYBOOK sends a reader asking whether a project is
+        still active, so a quiet spell must show as quiet.
+        """
+        commits = [
+            _make_commit(datetime.date(2026, 6, 1)),
+            _make_commit(datetime.date(2026, 7, 20)),
+        ]
+        trace = json.loads(_build_timeline_chart(commits))["data"][0]
+        weeks = dict(zip(trace["x"], trace["y"], strict=True))
+
+        assert weeks["2026-07-06"] == 0
+        assert len(weeks) == 8, "every Monday from 1 June to 20 July"
+
+    def test_the_whole_analysis_window_is_drawn(self) -> None:
+        """Quiet weeks before the first commit and after the last count too."""
+        commits = [_make_commit(datetime.date(2026, 6, 3))]
+        window = (datetime.date(2026, 5, 20), datetime.date(2026, 6, 20))
+        trace = json.loads(_build_timeline_chart(commits, window))["data"][0]
+
+        assert trace["x"][0] == "2026-05-18"
+        assert trace["x"][-1] == "2026-06-15"
+        assert sum(trace["y"]) == 1
+
 
 @pytest.mark.unit
 class TestBuildContributorTimelineChart:
@@ -444,6 +470,22 @@ class TestBuildContributorTimelineChart:
         commits = [_make_commit(datetime.date(2024, 3, 11), email="alice@example.com")]
         ranked = [_make_ranked("Alice", commit_count=1)]
         assert _build_contributor_timeline_chart(commits, ranked) == "null"
+
+    def test_a_week_nobody_committed_is_drawn_as_zero_for_everyone(self) -> None:
+        """Weeks were the union of weeks someone committed; a shared gap vanished."""
+        commits = [
+            _make_commit(datetime.date(2024, 3, 4), email="alice@example.com"),
+            _make_commit(datetime.date(2024, 3, 25), email="bob@example.com"),
+        ]
+        ranked = [
+            _make_ranked("Alice", commit_count=1),
+            _make_ranked("Bob", commit_count=1),
+        ]
+        traces = json.loads(_build_contributor_timeline_chart(commits, ranked))["data"]
+
+        for trace in traces:
+            assert trace["x"] == ["2024-03-04", "2024-03-11", "2024-03-18", "2024-03-25"]
+            assert trace["y"][1:3] == [0, 0]
 
     def test_two_contributors_return_valid_chart_json(self) -> None:
         commits = [
