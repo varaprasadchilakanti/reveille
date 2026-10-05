@@ -648,6 +648,46 @@ class TestSecondPassFindings:
         assert result.returncode == 2
         assert not (repo / ".git" / "report.html").exists()
 
+    def test_a_bare_repository_keeps_its_head(self, tmp_path: Path) -> None:
+        """A bare repository has no `.git`; its HEAD sits at the top level."""
+        source = _init_repo(tmp_path / "source")
+        bare = tmp_path / "bare.git"
+        subprocess.run(["git", "clone", "-q", "--bare", str(source), str(bare)], check=True)
+        head_before = (bare / "HEAD").read_bytes()
+
+        result = _run_console_script(["generate", "--output", "HEAD"], cwd=bare)
+
+        assert result.returncode == 2
+        assert (bare / "HEAD").read_bytes() == head_before
+
+    def test_a_separate_git_directory_is_protected(self, tmp_path: Path) -> None:
+        """`--separate-git-dir` leaves a `.git` file pointing elsewhere."""
+        work = tmp_path / "work"
+        store = tmp_path / "store"
+        subprocess.run(["git", "init", "-q", f"--separate-git-dir={store}", str(work)], check=True)
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=A",
+                "-c",
+                "user.email=a@example.com",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "c",
+            ],
+            cwd=work,
+            check=True,
+        )
+        head_before = (store / "HEAD").read_bytes()
+
+        result = _run_console_script(["generate", "--output", str(store / "HEAD")], cwd=work)
+
+        assert result.returncode == 2
+        assert (store / "HEAD").read_bytes() == head_before
+
     def test_a_discovered_config_file_says_what_it_changed(self, tmp_path: Path) -> None:
         """Turning the ranking on from a file nobody asked for must not be silent."""
         repo = _init_repo(tmp_path / "repo")

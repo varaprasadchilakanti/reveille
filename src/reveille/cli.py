@@ -331,6 +331,37 @@ def _resolve_output_path(output: Path, repo_path: Path) -> Path:
     return output
 
 
+def _git_directory(repo_path: Path) -> Path | None:
+    """Find where the repository keeps Git's own files, in any layout.
+
+    Usually that is `.git` inside the working tree. A bare repository keeps
+    them at its top level, so `HEAD` there is Git's HEAD, and a repository
+    made with `--separate-git-dir` has a `.git` file pointing elsewhere.
+    Checking only for a path component named `.git` missed both: in a bare
+    repository `--output HEAD` overwrote HEAD.
+
+    Args:
+        repo_path: The resolved repository root.
+
+    Returns:
+        The resolved Git directory, or None if none is recognisable.
+    """
+    dot_git = repo_path / ".git"
+    if dot_git.is_dir():
+        return dot_git.resolve()
+    if dot_git.is_file():
+        try:
+            pointer = dot_git.read_text(encoding="utf-8", errors="replace").strip()
+        except OSError:
+            return None
+        if pointer.startswith("gitdir:"):
+            return (repo_path / pointer.removeprefix("gitdir:").strip()).resolve()
+        return None
+    if (repo_path / "HEAD").is_file() and (repo_path / "objects").is_dir():
+        return repo_path.resolve()
+    return None
+
+
 def _validate_output_path(output: Path, repo_path: Path, *, from_config: bool = False) -> None:
     """Validate the output path for traversal components and boundary awareness.
 
@@ -379,11 +410,15 @@ def _validate_output_path(output: Path, repo_path: Path, *, from_config: bool = 
     # written over `.git/HEAD` leaves a clone that `git status` refuses to
     # read. No legitimate report belongs there, so this is refused whoever
     # chose the path -- flag, configuration file, or a symlink on the way.
-    if any(part.casefold() == ".git" for part in (*output.parts, *output.resolve().parts)):
+    git_dir = _git_directory(repo_path)
+    inside_git_dir = git_dir is not None and output.resolve().is_relative_to(git_dir)
+    if inside_git_dir or any(
+        part.casefold() == ".git" for part in (*output.parts, *output.resolve().parts)
+    ):
         typer.echo(
-            f"Error: output path '{output}' is inside a .git directory. "
-            "Reveille does not write into Git's own files. "
-            "Choose a path outside .git.",
+            f"Error: output path '{output}' is inside the repository's Git "
+            "directory. Reveille does not write into Git's own files. "
+            "Choose another path.",
             err=True,
         )
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
