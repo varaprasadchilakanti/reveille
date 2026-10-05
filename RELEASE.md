@@ -23,7 +23,7 @@ a mismatch fails the build rather than shipping:
 - `src/reveille/__init__.py` → `__version__ = "X.Y.Z"`
 
 **Update `SECURITY.md`.** The policy is that only the current stable release is
-supported, so the table becomes `X.Y.x ✓` / `< X.Y.0 ✗`.
+supported, so the table becomes `X.Y.x Yes` / `< X.Y.0 No`.
 
 **Promote the CHANGELOG.** Rename `## [Unreleased]` to
 `## [X.Y.Z] — YYYY-MM-DD — Theme`, add a fresh empty `[Unreleased]`, and add the
