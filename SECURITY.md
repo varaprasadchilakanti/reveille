@@ -194,15 +194,36 @@ timestamp. Regression tests for all five live in
 `tests/integration/test_security.py`, and each was observed failing against the
 reintroduced vulnerability before being trusted.
 
+v0.9.0 closed four more, each with a test observed failing before the fix:
+
+- A token in the remote URL (`https://user:token@host/...`) was printed in the
+  HTML report and the JSON. Credentials, query string and fragment are now
+  removed.
+- A `reveille.toml` could set the output path to `.git/HEAD`, which overwrote it
+  and left a clone Git could not read. Any output path inside `.git` is now
+  refused, and a discovered `reveille.toml` prints the settings it applied.
+- Names and addresses from `.mailmap` skipped the scrubbing and length limits
+  applied to author fields, a symlinked `.mailmap` was followed, and a
+  non-UTF-8 one crashed the run.
+- Four escapes in the report had no test, so any one could have been removed
+  unnoticed. Each now has one.
+
 Verified unaffected, by testing rather than assumption: HTML and JavaScript
-injection into the report, the offline guarantee, the `.mailmap` parser under
-malformed input, and the CI workflows.
+injection into the report, the offline guarantee, and the CI workflows.
+
+**One limit, stated plainly.** Git honours the configuration in a repository's
+own `.git/config`, and some settings name a program for Git to run — for
+example `gpg.program` when `log.showSignature` is on. Reveille calls Git, so
+analysing a repository whose `.git` directory came from someone else runs what
+that file names. `git clone` does not copy `.git/config`; a copied directory, an
+archive or a shared drive does. Treat such a repository as you would any
+untrusted code.
 
 ## Scope
 
 Reveille is a local analysis tool. It reads only the Git repository
-it is explicitly pointed at, produces a single HTML output file, and
-does not transmit data over a network. It does not accept inbound
+it is explicitly pointed at, writes one output file (HTML, JSON or
+CSV), and does not transmit data over a network. It does not accept inbound
 connections and does not execute content from commit messages or file
 contents. The primary attack surface is maliciously crafted Git
 repository content that could affect the HTML output, or
