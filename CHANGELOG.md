@@ -251,6 +251,11 @@ These are known and not fixed in this release.
   differently from its bytes.
 - Git honours a repository's own `.git/config`, including settings that name a
   program to run. `git clone` does not copy that file; see `SECURITY.md`.
+- Some error and warning messages print values from `reveille.toml` unescaped
+  on stderr: an `exclude_authors` entry that matches nothing, and a `branch`
+  that does not exist. A value containing terminal control sequences can change
+  what the terminal shows, for example erase the warning itself. Only a
+  configuration file you run Reveille next to can supply such a value.
 
 ## [0.8.1] — 2026-09-03 — Charts a Screen Reader Can Read
 
