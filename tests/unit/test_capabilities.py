@@ -205,7 +205,8 @@ class TestGuaranteeTextsSayWhatTheyClaim:
 
     def test_read_only_analysis_denies_modifying_the_repository(self) -> None:
         text = self._guarantee("read-only-analysis")
-        assert "never modifies the repository" in text
+        assert "never changes the repository's git data" in text
+        assert "inside .git is refused" in text
         # And still discloses the one command that does write, which the
         # earlier wording of llms.txt and this module both once omitted.
         assert "init" in text

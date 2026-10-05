@@ -23,16 +23,18 @@ single self-contained HTML file describing its contribution history.
 Three properties constrain nearly every design decision, and are worth
 stating before anything else:
 
-**It is read-only.** Reveille opens a repository, reads history, and
-writes one output file at a path you name. It never writes to `.git`,
-never creates commits or branches, and never runs a mutating Git
-command. Anything that would change repository state is out of scope by
+**It does not change Git data.** Reveille opens a repository, reads
+history, and writes one output file. It refuses any output path inside
+`.git`, never creates commits or branches, and never runs a mutating Git
+command. The report goes where you point it, by default
+`reveille-report.html` in the current directory, which is often the
+repository's working tree. Anything that would change repository state is out of scope by
 construction, not by omission.
 
 **It is offline.** Nothing is transmitted anywhere. The generated report
 loads no CDN, no web font, and no remote image — the ~4.8 MB Plotly
-bundle is embedded in the file itself. This is what makes the output
-safe to attach to an email or embed in Confluence, and it is enforced by
+bundle is embedded in the file itself. This is what lets the output be
+opened from an email attachment or a downloaded file, and it is enforced by
 a test asserting no `<link>`, `<script>`, or `<img>` in the template
 references a remote host.
 
@@ -359,9 +361,9 @@ was misconfigured. It replaced a silent `return "Recruit"` default that
 would have hidden exactly that.
 
 > **On interpreting these numbers.** Ranking measures commit and line
-> volume. It does not measure contribution, and the professional
-> consensus — DORA and SPACE both state this explicitly — is against
-> using such metrics for individual assessment. The rankings exist to
+> volume. It does not measure contribution. The SPACE framework advises
+> against judging individuals by activity counts and recommends aggregate
+> reporting; DORA's metrics describe applications and services, not people. The rankings exist to
 > show *shape of participation*, not to grade people. See the User
 > Guide for the caveat that ships to users.
 

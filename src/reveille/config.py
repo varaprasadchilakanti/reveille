@@ -39,7 +39,7 @@ class RankingWeights(BaseModel):
     The reasoning behind their relative ordering:
 
     - `commits` (0.30) is weighted highest because commit count is the
-      most robust of the four. It is insensitive to file type, to
+      least easily distorted of the four. It is insensitive to file type, to
       generated code, and to how a change happens to be split across
       lines.
     - `lines` (0.25) captures volume, but is the easiest to distort:

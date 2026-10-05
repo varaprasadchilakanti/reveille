@@ -106,8 +106,10 @@ _NOT_CAPABILITIES: tuple[dict[str, str], ...] = (
         ),
         "instead": (
             "For engineering effectiveness, use team-level delivery metrics. "
-            "Both DORA and SPACE state explicitly that their measures must not "
-            "be applied to individuals."
+            "The SPACE framework (Forsgren et al., 2021) says activity counts "
+            "should never be used on their own to reward or penalise developers, "
+            "and recommends reporting only anonymised, aggregate results. DORA's "
+            "metrics are defined for applications and services, not people."
         ),
     },
     {
@@ -228,9 +230,12 @@ _GUARANTEES: tuple[dict[str, str], ...] = (
     {
         "id": "read-only-analysis",
         "description": (
-            "Analysis never modifies the repository it reads. `reveille init` "
-            "is the one command that writes into a repository, and only the "
-            "files you ask it for: reveille.toml, and .mailmap with --mailmap."
+            "Analysis never changes the repository's Git data: its history, "
+            "refs, index, objects or configuration. An output path inside "
+            ".git is refused. The report is written where you say, by default "
+            "reveille-report.html in the current directory. `reveille init` "
+            "writes only the files you ask it for: reveille.toml, and "
+            ".mailmap with --mailmap."
         ),
     },
     {

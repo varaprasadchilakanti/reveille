@@ -102,9 +102,10 @@ class TestTheOutputIsNotCalledAPerformanceReport:
         asserted is a substitution, so the substitute has to be there.
         """
         readme = (_ROOT / "README.md").read_text(encoding="utf-8").splitlines()
-        taglines = [line for line in readme if line.startswith("**A CLI tool")]
-        assert len(taglines) == 1, f"expected one README tagline, found {len(taglines)}"
-        assert "commit activity" in taglines[0], (
+        # The tagline is the first bold line under the title.
+        taglines = [line for line in readme if line.startswith("**")][:1]
+        assert taglines, "the README has no tagline"
+        assert "Commit-history analytics" in taglines[0], (
             f"the README tagline no longer says what the tool does: {taglines[0]!r}"
         )
 
@@ -196,3 +197,38 @@ class TestTheFuzzingClaimMatchesScorecard:
         assert "Python is not among them" in security
         for language in ("Go", "Haskell", "Erlang"):
             assert language in security, f"{language} is missing from the corrected list"
+
+
+# Claims the project made and could not support, removed for 0.9.0. Matched
+# over whitespace-normalised text, because prose wraps and a phrase split
+# across two lines is still the same claim.
+_UNSUPPORTED = (
+    # DORA's guide defines its metrics for applications and services; it has
+    # no explicit statement about individuals. SPACE does, and is cited alone.
+    "dora and space",
+    # A reveille.toml naming .git/HEAD disproved it; the exact claim replaced it.
+    "never modifies the repository",
+    "production-grade",
+    # Commit counts do not establish health.
+    "repository health",
+)
+
+
+@pytest.mark.unit
+class TestUnsupportedClaimsStayOut:
+    """Each phrase below was once published and turned out not to be true."""
+
+    @pytest.mark.parametrize("phrase", _UNSUPPORTED)
+    def test_no_surface_makes_the_claim(self, phrase: str) -> None:
+        offenders = [
+            str(path.relative_to(_ROOT))
+            for path in _surface_files()
+            if phrase in " ".join(path.read_text(encoding="utf-8").lower().split())
+        ]
+        assert not offenders, f"{phrase!r} is back in: {offenders}"
+
+    def test_the_matcher_sees_a_phrase_split_across_lines(self, tmp_path: pathlib.Path) -> None:
+        """Positive control: wrapped prose must not slip past the guard."""
+        sample = tmp_path / "s.md"
+        sample.write_text("Both DORA and\nSPACE say so.\n", encoding="utf-8")
+        assert "dora and space" in " ".join(sample.read_text(encoding="utf-8").lower().split())

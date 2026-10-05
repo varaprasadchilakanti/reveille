@@ -989,9 +989,10 @@ def _repository_manifest(root: Path) -> dict[str, str]:
 class TestAnalysisNeverModifiesTheRepository:
     """`reveille capabilities` publishes this, so it is asserted here.
 
-    The claim, verbatim: "Analysis never modifies the repository it reads.
-    `reveille init` is the one command that writes into a repository, and
-    only the files you ask it for." The refusal beside it is stronger
+    The claim, verbatim: "Analysis never changes the repository's Git data:
+    its history, refs, index, objects or configuration." It once read "never
+    modifies the repository", which a reveille.toml naming `.git/HEAD`
+    disproved; that path is now refused. The refusal beside it is stronger
     still: Reveille will not "alter the contents, history, index or refs
     of a repository".
 

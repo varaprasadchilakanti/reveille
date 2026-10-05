@@ -1,6 +1,6 @@
 # Reveille
 
-**A CLI tool that reports a local Git repository's commit activity — as self-contained HTML, structured JSON, and CSV.**
+**Commit-history analytics for a local Git repository. It runs offline and sends nothing anywhere.**
 
 [![PyPI](https://img.shields.io/pypi/v/reveille)](https://pypi.org/project/reveille/)
 [![Python](https://img.shields.io/pypi/pyversions/reveille)](https://pypi.org/project/reveille/)
@@ -8,7 +8,39 @@
 [![CI](https://github.com/varaprasadchilakanti/reveille/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/varaprasadchilakanti/reveille/actions/workflows/ci.yml)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14502/badge)](https://www.bestpractices.dev/projects/14502)
 
-Reveille reads your repository's Git history and produces a single portable `.html` file containing interactive visualisations of contributor activity, commit trends, code volume, and repository health — with no server, no external API calls, and no configuration beyond the command itself. Open the output in any browser, share it over email, or drop it into a Confluence page without modification.
+Reveille reads a repository's Git history on your machine and writes one self-contained HTML
+report: a contribution calendar, weekly activity, how evenly commits are spread across
+contributors, and a per-contributor table. The same figures are available as JSON or CSV for
+scripts and AI assistants.
+
+```bash
+pipx install reveille
+cd /path/to/repository
+reveille generate
+```
+
+**What it guarantees.** Each of these is checked by the test suite on every change.
+[SECURITY.md](SECURITY.md) covers the threat model and how to verify a release.
+
+- **No network calls.** The report loads no remote resource and opens with no internet connection.
+- **No changes to Git data.** History, refs, index, objects and configuration are never changed,
+  and an output path inside `.git` is refused.
+- **Same input, same output.** With `--deterministic`, an unchanged repository produces a
+  byte-identical report.
+
+**What it is not.**
+
+- **Not a measure of performance.** It counts commits and changed lines. It does not measure
+  anyone's contribution, productivity or value.
+- **Not a ranking, unless you ask.** Ranking people needs `--ranking`, and the report then states
+  what the score measures and what it does not.
+- **Not anonymous.** The report lists contributor names and email addresses. Whoever shares it is
+  handling personal data; see [PRIVACY.md](PRIVACY.md).
+
+**For AI assistants and scripts.** `reveille capabilities --format json` describes what the tool
+can and cannot do. `reveille generate --format json` writes the figures to `reveille-report.json`.
+Anything that reads that file receives contributor names and email addresses; if it is a hosted
+model, they leave your machine.
 
 ---
 
@@ -33,25 +65,28 @@ Reveille reads your repository's Git history and produces a single portable `.ht
 
 ## Overview
 
-Reveille is designed for developers, engineering managers, and technical leads who need a production-grade, shareable retrospective from any Git repository — without configuring infrastructure or connecting to external services.
+Reveille is for engineering leads, maintainers and reviewers who need to answer questions about a
+repository's history — when work happened, how concentrated it is, who has been active — without
+sending that history to a service.
 
-**What it produces:**
+**What the HTML report contains:**
 
-- Contribution heatmap with a GitHub-style year-navigable grid showing per-day commit activity. Year tabs allow switching between calendar years; a contributor dropdown surfaces per-contributor views alongside the aggregated default.
-- Aggregate weekly commit timeline and per-contributor commit frequency chart, enabling direct comparison of burst contributors versus contributors with sustained low-volume engagement across the analysis window
-- Per-contributor breakdowns covering commits, lines added and removed, and active day counts
-- An opt-in ranking table (`--ranking`) assigning each contributor a tier designation based on weighted activity metrics. Off by default from 0.8.0 — read the caveat below before turning it on
-- Repository activity indicators including commit concentration, longest inactive streak, and consistency scores
-- Machine-readable output in JSON (contributor statistics and repository metadata) and CSV (contributor table with BOM encoding for Excel compatibility) via `--format json`, `--format csv`
+- A contribution calendar of commits per day, by year, for the whole repository or one contributor.
+- Weekly commit counts for the repository and for each contributor. Weeks with no commits are
+  drawn as zero.
+- How evenly commits are spread: a Lorenz curve and its Gini coefficient, and how many
+  contributors hold half the commits.
+- A repository profile of three measures — continuity, recent work and revisiting — each shown
+  against what chance alone would give.
+- A table of each contributor's commits, lines added and removed, and active days.
+- An optional ranking table (`--ranking`). Off by default; read
+  [Contributor Ranking System](#contributor-ranking-system) before turning it on.
 
-**Design constraints that are non-negotiable:**
+**Other formats:** JSON (`--format json`) with a declared `schema_version` and a `provenance`
+block, and CSV (`--format csv`) encoded for Excel.
 
-- The output is always a single `.html` file. No directories, no asset folders, no dependencies.
-- The file must open in any modern browser with no internet connection. All JavaScript, CSS, and chart data are embedded inline.
-- No external CDN calls. No iframes. No cookies. No tracking.
-- The output aesthetic is formal and stakeholder-ready. No emojis. No casual language. Typography is clean and readable.
-
-**Security and observability:** The project is continuously scanned by GitHub CodeQL (static analysis on every pull request) and OpenSSF Scorecard (automated security health scoring on every push to main). Pipeline progress is reported via structured events carrying per-stage elapsed time, enabling CI log analysis of generation bottlenecks in large repositories.
+**Checks on the project itself:** CodeQL runs on every pull request and every push to `main`;
+OpenSSF Scorecard runs on every push to `main` and weekly.
 
 ---
 
@@ -128,7 +163,7 @@ Reveille reads the local Git history and writes a report to the current director
 reveille init
 ```
 
-This writes an annotated `reveille.toml` to the current directory with every available configuration key present and commented out. Edit only the keys you need. On all subsequent invocations, `reveille generate` will detect and load `reveille.toml` automatically — no `--config` flag required.
+This writes an annotated `reveille.toml` to the current directory with every available configuration key present and commented out. Edit only the keys you need. On all subsequent invocations, `reveille generate` will detect and load `reveille.toml` automatically — no `--config` flag required — and print which settings it loaded.
 
 **Generate a report for a specific date range:**
 
@@ -296,7 +331,7 @@ Weights are configurable. See [Configuration](#configuration).
 
 **These defaults are a documented judgement, not a derived model.** No study
 establishes that these four signals in this proportion measure anything in
-particular. Commit volume is weighted highest because it is the most robust of
+particular. Commit volume is weighted highest because it is the least easily distorted of
 the four — insensitive to file type and to how a change is split across lines.
 Lines are weighted lower because a lockfile or a reformatting pass can dwarf
 months of considered work. Recency is weighted lowest deliberately: recency is a
@@ -304,9 +339,10 @@ property of the analysis window rather than of the person, so weighting it highe
 makes the same contributor's tier swing on the choice of end date.
 
 **What this measures is the volume and regularity of commits — not
-contribution, productivity, or value.** Both DORA and SPACE, the two most widely
-cited bodies of research on software delivery measurement, state explicitly that
-their metrics must not be used to assess individuals. Activity metrics are easy
+contribution, productivity, or value.** The SPACE framework (Forsgren et al.,
+2021) says activity counts should never be used on their own to reward or
+penalise developers, and recommends reporting only anonymised, aggregate results.
+DORA's metrics are defined for applications and services, not people. Activity metrics are easy
 to game and systematically misread review-heavy, mentoring, part-time, and
 on-call work as low output. A contributor who spends a quarter unblocking others
 and deleting a subsystem will rank below one who committed generated files.

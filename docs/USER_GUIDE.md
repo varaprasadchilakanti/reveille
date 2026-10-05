@@ -38,9 +38,11 @@ This is a single `git log --numstat` pass over the requested range,
 which is why the read scales to large repositories: it costs roughly
 0.8 milliseconds per commit, so a 50,000-commit history is read in
 under a minute rather than the several minutes a per-commit diff would
-take. Reveille never writes to the repository — no commits, no
+take. Reveille never changes the repository's Git data — no commits, no
 branches, no configuration changes, no mutating Git command at any
-point. The only file it writes is the output file you name.
+point, and any output path inside `.git` is refused. It writes one
+file: the report, at the path you give or `reveille-report.html` in the
+current directory.
 
 Second, raw commits are aggregated into per-contributor statistics. A
 contributor's identity is keyed on their author email address, not their
@@ -205,8 +207,8 @@ the activity heatmap, the timelines, and the distribution chart.
 **Why it is off.** The ranking assigns named individuals a composite score, a
 percentile and a tier designation, weighted 30% commits and 25% lines changed.
 Those figures measure the volume and regularity of commits and nothing else — not
-contribution, not productivity, not value — and both DORA and SPACE state that
-such measures must not be used to assess individuals. The caveats were always
+contribution, not productivity, not value — and the SPACE framework says such
+measures should never be used on their own to reward or penalise developers. The caveats were always
 documented, but documentation does not travel with the artefact: the HTML report
 is built to be forwarded, and the caveats stay in this repository. See
 [ADR 0010](adr/0010-ranking-is-opt-in.md).
@@ -356,10 +358,10 @@ consumer can decide whether it can parse the rest before trying.
 
 ```json
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "metadata": { "name": "...", "analysed_branch": "main", "...": "..." },
   "provenance": {
-    "reveille_version": "0.8.0",
+    "reveille_version": "0.9.0",
     "head_sha": "…",
     "deterministic": false,
     "mailmap_applied": true,
@@ -373,7 +375,13 @@ consumer can decide whether it can parse the rest before trying.
     "ranking": { "enabled": false, "weights": null }
   },
   "contributors": [ "..." ],
-  "derived": { "commit_concentration": 2, "gini_coefficient": 0.46, "...": "..." }
+  "derived": {
+    "commit_concentration": 2,
+    "gini_coefficient": 0.46,
+    "population_size": 5,
+    "contributors_below_threshold": 0,
+    "...": "..."
+  }
 }
 ```
 
@@ -672,7 +680,7 @@ percent, and recency at 20 percent.
 **Why those numbers.** They are a documented judgement, not a derived
 model — no study establishes that these four signals in this proportion
 measure anything in particular. Commit volume is highest because it is
-the most robust of the four: insensitive to file type, to generated
+the least easily distorted of the four: insensitive to file type, to generated
 code, and to how a change happens to be split across lines. Lines are
 lower because they are the easiest to distort — a vendored dependency, a
 lockfile, or a reformatting pass can dwarf months of considered work.
@@ -713,9 +721,10 @@ is what Git records. It does not measure contribution, productivity, or
 value, and it should not be used to assess an individual.
 
 This is the stated position of the research rather than a disclaimer.
-Both DORA and SPACE — the two most widely cited bodies of work on
-software delivery measurement — say explicitly that their metrics must
-not be applied to individuals. Activity metrics are easy to game and
+The SPACE framework (Forsgren et al., 2021) says activity counts should
+never be used on their own to reward or penalise developers, and
+recommends reporting only anonymised, aggregate results. DORA's metrics
+are defined for applications and services, not people. Activity metrics are easy to game and
 systematically misread review-heavy, mentoring, part-time, and on-call
 work as low output. A contributor who spends a quarter unblocking
 colleagues and deleting a subsystem will rank below one who committed
@@ -836,21 +845,19 @@ reveille generate --format csv --output /tmp/reports/q4.html
 
 The CSV file is written to `/tmp/reports/q4.csv`.
 
-### Embedding in Confluence
+### Sharing a report
 
-The generated HTML file is self-contained and opens correctly in any
-modern browser. To embed it in Confluence, use the HTML Macro on the
-target page, paste the full content of the generated file into the macro
-body, and save. All charts and styling will render without modification.
+The HTML file is self-contained: the recipient needs only a browser, with
+no server access or internet connection. It is about 5 MB, almost all of it
+the embedded chart library.
 
-Alternatively, attach the HTML file directly to the Confluence page as
-a file attachment. Readers can download and open it locally.
+To share it through a wiki such as Confluence, attach the file to the page;
+readers download it and open it locally. Pasting the file into an HTML macro
+has not been tested by this project, and many sites disable that macro.
 
-### Sharing over Email
-
-Because the output is a single file with no external dependencies, it can
-be attached to an email and opened by the recipient without any additional
-tooling, server access, or internet connection.
+Whether a particular mail system accepts a 5 MB HTML attachment has not been
+measured. If one refuses it, compress the file or share it through a file
+store.
 
 For distribution to a broader audience, consider placing the file on an
 internal web server or a shared drive and sharing a link rather than

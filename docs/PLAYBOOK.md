@@ -36,9 +36,9 @@ deliberate: findings first, evidence after.
 | Weekend share | When commits were timestamped | Overwork — time zones and rebases move commits across the boundary |
 | Ranking (`--ranking`) | Volume and regularity, nothing else | Any assessment of a person |
 
-The ranking is off by default and should usually stay off. DORA and
-SPACE both state that individual metrics of this kind must not be used
-to assess people; [ADR 0010](adr/0010-ranking-is-opt-in.md) records why
+The ranking is off by default and should usually stay off. The SPACE
+framework says activity counts should never be used on their own to
+reward or penalise developers; [ADR 0010](adr/0010-ranking-is-opt-in.md) records why
 this project agrees.
 
 ## Three questions it answers well
@@ -98,7 +98,7 @@ which is the point of using it rather than a bespoke score.
 | Repository Profile | Graphical perception, on why it is read as five numbers and not a shape | Cleveland & McGill, JASA 1984 |
 | What the History Shows | Data-to-text generation | Reiter & Dale, 2000 |
 | Chart colours | Color Universal Design; dichromat simulation; contrast | Okabe & Ito, 2008; Viénot, Brettel & Mollon, 1999; WCAG 2.1 |
-| The refusal to rank people | Position on individual metrics | DORA; SPACE (Forsgren et al., 2021) |
+| The refusal to rank people | Position on individual metrics | SPACE (Forsgren et al., 2021) |
 
 `docs/ARCHITECTURE.md` carries the same table with the reasoning for each
 choice, and names what is local to this project — which is where scrutiny
