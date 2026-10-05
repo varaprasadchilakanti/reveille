@@ -454,6 +454,33 @@ class TestMailmapIsUntrustedInput:
 
 
 @pytest.mark.integration
+class TestUnreadableConfigIsCannotRun:
+    """A configuration file that cannot be read is exit 2, never exit 1.
+
+    Exit 1 means "ran correctly, negative answer". A Latin-1 reveille.toml and a
+    directory of that name both escaped as tracebacks with exit 1.
+    """
+
+    def test_a_non_utf8_config_exits_2(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        (repo / "reveille.toml").write_bytes(b'[report]\ntitle = "caf\xe9"\n')
+
+        result = _run_console_script(["generate", "-o", str(tmp_path / "r.html")], cwd=repo)
+
+        assert result.returncode == 2
+        assert "Traceback" not in result.stderr
+
+    def test_a_directory_named_like_the_config_exits_2(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        (repo / "reveille.toml").mkdir()
+
+        result = _run_console_script(["generate", "-o", str(tmp_path / "r.html")], cwd=repo)
+
+        assert result.returncode == 2
+        assert "Traceback" not in result.stderr
+
+
+@pytest.mark.integration
 class TestOfflineGuarantee:
     """The report must never reach the network, whatever the repository says."""
 

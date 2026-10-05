@@ -179,6 +179,15 @@ def load_config_from_toml(path: Path) -> ReportConfigKwargs:
         raise ConfigurationError(f"Configuration file not found: '{path}'.") from exc
     except tomllib.TOMLDecodeError as exc:
         raise ConfigurationError(f"Configuration file is not valid TOML: {exc}") from exc
+    # Both used to escape as tracebacks with exit 1, which this project's
+    # contract reserves for "ran correctly, negative answer". TOML must be
+    # UTF-8, and a directory named reveille.toml is not a file.
+    except UnicodeDecodeError as exc:
+        raise ConfigurationError(
+            f"Configuration file '{path}' is not UTF-8 text, which TOML requires."
+        ) from exc
+    except OSError as exc:
+        raise ConfigurationError(f"Configuration file '{path}' cannot be read: {exc}") from exc
 
     parts: dict[str, Any] = {}
     parts.update(_parse_report_section(raw.get("report", {})))
