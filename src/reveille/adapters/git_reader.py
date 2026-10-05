@@ -32,6 +32,7 @@ from collections import defaultdict
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 from git import InvalidGitRepositoryError, NoSuchPathError, Repo
 from git.exc import GitCommandError
@@ -285,6 +286,29 @@ def _accumulate_file_totals(record: str, totals: dict[str, list[int]]) -> None:
             entry[0] += 1
             entry[1] += added
             entry[2] += deleted
+
+
+def _without_credentials(url: str) -> str:
+    """Remove a user name, password or token from a remote URL.
+
+    A remote added as `https://user:token@host/repo.git` stores the token in
+    `.git/config`, and the report prints the remote URL. Printed verbatim, the
+    token went into every HTML and JSON report of that repository. The query
+    string and fragment are dropped for the same reason: some hosts accept a
+    token there. An SSH address of the form `git@host:path` carries no secret
+    and is returned unchanged.
+
+    Args:
+        url: The remote URL as Git stores it.
+
+    Returns:
+        The URL with no user information, query string or fragment.
+    """
+    if "://" not in url:
+        return url
+    parts = urlsplit(url)
+    host = parts.netloc.rpartition("@")[2]
+    return urlunsplit((parts.scheme, host, parts.path, "", ""))
 
 
 class GitReader:
@@ -665,15 +689,18 @@ class GitReader:
     def _resolve_remote_url(self) -> str | None:
         """Return the URL of the origin remote, or the first available remote.
 
+        Any credentials in the URL are removed first; see `_without_credentials`.
+
         Returns:
             The remote URL string, or None if no remotes are configured.
         """
         if not self._repo.remotes:
             return None
         try:
-            return str(self._repo.remotes["origin"].url)
+            url = str(self._repo.remotes["origin"].url)
         except IndexError:
-            return str(self._repo.remotes[0].url)
+            url = str(self._repo.remotes[0].url)
+        return _without_credentials(url)
 
     def _read_mailmap(self) -> _Mailmap:
         """Read and parse the .mailmap file from the repository root.

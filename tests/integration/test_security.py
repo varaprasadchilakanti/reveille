@@ -343,6 +343,66 @@ class TestOutputPathSafety:
 
 
 @pytest.mark.integration
+class TestRemoteUrlCarriesNoCredentials:
+    """A token in the remote URL must not reach any report.
+
+    The URL was printed exactly as `.git/config` stores it, so a remote added
+    as `https://user:token@host/...` put the token in the HTML header and the
+    JSON metadata of every report of that repository.
+    """
+
+    @pytest.mark.parametrize("output_format", ["html", "json", "csv"])
+    def test_no_output_format_contains_the_secret(self, tmp_path: Path, output_format: str) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        subprocess.run(
+            [
+                "git",
+                "remote",
+                "add",
+                "origin",
+                "https://USER-SECRET:PLACEHOLDER-SECRET@example.test/r.git?private_token=QUERY-SECRET",
+            ],
+            cwd=repo,
+            check=True,
+        )
+        config = ReportConfig(
+            repo_path=repo,
+            output_path=tmp_path / "report.html",
+            output_format=output_format,
+            deterministic=True,
+        )
+
+        written = generate_report(config)
+        text = written[0].read_text(encoding="utf-8-sig")
+
+        assert "PLACEHOLDER-SECRET" not in text
+        assert "QUERY-SECRET" not in text
+        assert "USER-SECRET" not in text
+        if output_format != "csv":
+            # Positive control: the remote is still reported, only cleaned.
+            assert "https://example.test/r.git" in text
+
+    def test_an_ssh_address_is_reported_unchanged(self, tmp_path: Path) -> None:
+        """`git@host:path` names a login, not a secret, and stays readable."""
+        repo = _init_repo(tmp_path / "repo")
+        subprocess.run(
+            ["git", "remote", "add", "origin", "git@example.test:team/r.git"],
+            cwd=repo,
+            check=True,
+        )
+        config = ReportConfig(
+            repo_path=repo,
+            output_path=tmp_path / "report.html",
+            output_format="json",
+            deterministic=True,
+        )
+
+        text = generate_report(config)[0].read_text(encoding="utf-8")
+
+        assert '"remote_url": "git@example.test:team/r.git"' in text
+
+
+@pytest.mark.integration
 class TestOfflineGuarantee:
     """The report must never reach the network, whatever the repository says."""
 
