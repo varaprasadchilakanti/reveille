@@ -397,6 +397,16 @@
             vertical-align: middle;
         }
 
+        /* Body-text colour and size, not the muted footnote style: a caveat
+           in small grey type under a table is the part a skimming reader skips. */
+        .ranking-caveat {
+            margin: 0 0 14px;
+            color: var(--color-text-primary);
+            font-size: 14px;
+            line-height: 1.55;
+            max-width: 72ch;
+        }
+
         .chart-foot {
             margin: 10px 0 0;
             padding-top: 9px;
@@ -851,36 +861,14 @@
             <div class="label" aria-hidden="true">Longest Quiet Run (days)</div>
         </div>
         {#
-           The fifth card names a person only when the ranking was asked
-           for. It previously did so unconditionally: `--no-ranking`
-           removed the rank column, the designation and the score, and
-           still printed a named individual under the superlative "Top
-           Contributor" at the top of the page. ADR 0010 says the default
-           report describes the repository and names nobody; this card
-           was the one place it did not.
-
-           Off, the slot carries the Gini instead -- a repository-level
-           figure, and the one the distribution section is built on.
+           The fifth card describes the repository, never a person, in every
+           mode. It once named an individual under "Top Contributor", and
+           with --ranking it still put the top scorer's first name here, on
+           the same page whose findings say no individual is named. A
+           summary card is the first thing a reader looks at; a name there
+           reads as the headline. The ranking table below carries the order
+           for anyone who asked for it.
         #}
-        {% if data.provenance.ranking_enabled and data.ranked_contributors %}
-        <div class="summary-card">
-            {#
-               Labelled by what it is ordered by. `rank_contributors` sorts on
-               composite_score, so "by commit volume" was false whenever the
-               two disagree -- and it was false only in the visually-hidden
-               text, which is to say only for the readers who cannot see the
-               table to check it.
-            #}
-            <span class="visually-hidden">
-                Highest composite score:
-                {{ data.ranked_contributors[0].stats.name }}
-            </span>
-            <div class="value" aria-hidden="true">
-                {{ data.ranked_contributors[0].stats.name.split()[0] }}
-            </div>
-            <div class="label" aria-hidden="true">Highest Score</div>
-        </div>
-        {% else %}
         <div class="summary-card">
             <span class="visually-hidden">
                 Commit distribution, Gini coefficient:
@@ -889,7 +877,6 @@
             <div class="value" aria-hidden="true">{{ '%.2f'|format(derived.gini_coefficient) }}</div>
             <div class="label" aria-hidden="true">Distribution (Gini)</div>
         </div>
-        {% endif %}
     </div>
 
     <!-- ============================================================
@@ -910,7 +897,7 @@
         <p class="chart-foot">
             Generated from the figures in this report by fixed rules, offline
             and without a language model. The same history always produces the
-            same sentences. No individual is named or assessed.
+            same sentences. These sentences name no individual.
         </p>
     </div>
     {% endif %}
@@ -1143,6 +1130,19 @@
     {% if data.ranked_contributors %}
     <div class="section">
         <h2 class="section-title">{% if ranked %}Contributor Rankings{% else %}Contributors{% endif %}</h2>
+        {% if ranked %}
+        {% set w = data.provenance.ranking_weights %}
+        <p class="ranking-caveat">
+            Contributors are ordered by a weighted score: commit count
+            {{ (w.commits * 100)|round|int }}%, lines changed
+            {{ (w.lines * 100)|round|int }}%, days with a commit
+            {{ (w.consistency * 100)|round|int }}% and recency
+            {{ (w.recency * 100)|round|int }}%. The score measures how much and how
+            regularly each person committed in this window. It does not measure
+            contribution, productivity or value, and it is not fit for judging
+            individuals. The weights are a stated choice, not a validated model.
+        </p>
+        {% endif %}
         <div class="table-wrapper">
             <table class="ranking-table">
                 <caption class="visually-hidden">
