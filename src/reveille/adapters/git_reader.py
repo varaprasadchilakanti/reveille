@@ -713,15 +713,21 @@ class GitReader:
         bad line would be a worse failure than ignoring it.
 
         Returns:
-            The parsed lookup tables. Empty if the file is absent or
-            unreadable.
+            The parsed lookup tables. Empty if the file is absent, unreadable,
+            or a symbolic link.
         """
         mailmap_path = self._repo_path / ".mailmap"
-        if not mailmap_path.exists():
+        # Git itself refuses a symlinked .mailmap in the working tree. Following
+        # one let a repository point it at /dev/zero and exhaust memory.
+        if mailmap_path.is_symlink() or not mailmap_path.is_file():
             return _Mailmap()
 
         try:
-            lines = mailmap_path.read_text(encoding="utf-8").splitlines()
+            # Undecodable bytes become U+FFFD rather than an exception: one
+            # badly encoded line used to crash the run with exit 1, which this
+            # project's contract reserves for "ran correctly, negative answer".
+            text = mailmap_path.read_text(encoding="utf-8", errors="replace")
+            lines = text.splitlines()
         except OSError:
             return _Mailmap()
 
@@ -847,6 +853,12 @@ def _parse_log_record(
     raw_email = _truncate(_strip_control_chars(raw_email), _MAX_EMAIL_LENGTH)
 
     author_name, author_email = _resolve_identity(raw_name, raw_email, mailmap)
+    # A `.mailmap` is written by whoever controls the repository, exactly like
+    # an author field, so what it substitutes gets the same scrub and bounds.
+    # Scrubbing only the commit's own fields let a mapped name carry escape
+    # sequences and 300,000 characters straight into the CSV.
+    author_name = _truncate(_strip_control_chars(author_name), _MAX_NAME_LENGTH)
+    author_email = _truncate(_strip_control_chars(author_email), _MAX_EMAIL_LENGTH)
 
     # Both the resolved and the raw identity are matched, so an
     # --exclude-author value copied from `git log` still works after

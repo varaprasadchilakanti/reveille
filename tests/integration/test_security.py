@@ -402,6 +402,57 @@ class TestRemoteUrlCarriesNoCredentials:
         assert '"remote_url": "git@example.test:team/r.git"' in text
 
 
+def _contributor_names(repo: Path, tmp_path: Path) -> list[str]:
+    """Generate a JSON report and return every contributor name in it."""
+    import json
+
+    config = ReportConfig(
+        repo_path=repo,
+        output_path=tmp_path / "report.json",
+        output_format="json",
+        deterministic=True,
+    )
+    payload = json.loads(generate_report(config)[0].read_text(encoding="utf-8"))
+    return [c["name"] for c in payload["contributors"]]
+
+
+@pytest.mark.integration
+class TestMailmapIsUntrustedInput:
+    """A `.mailmap` is written by whoever controls the repository.
+
+    Its substitutions skipped the scrub and the length bounds applied to the
+    commit's own author fields, so a mapped name reached the CSV with escape
+    sequences intact and at any length.
+    """
+
+    def test_a_mapped_name_is_scrubbed_and_bounded(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        hostile = "\x1b[2J" + "Z" * 5000
+        (repo / ".mailmap").write_text(f"{hostile} <real@example.com>\n", encoding="utf-8")
+
+        (name,) = _contributor_names(repo, tmp_path)
+
+        assert "\x1b" not in name
+        assert len(name) <= 257
+        assert name.startswith("[2JZZZ"), "positive control: the mapping applied"
+
+    def test_a_symlinked_mailmap_is_ignored(self, tmp_path: Path) -> None:
+        """Git refuses one; following it let a repository point it at /dev/zero."""
+        repo = _init_repo(tmp_path / "repo")
+        target = tmp_path / "elsewhere"
+        target.write_text("Mapped Name <real@example.com>\n", encoding="utf-8")
+        (repo / ".mailmap").symlink_to(target)
+
+        assert _contributor_names(repo, tmp_path) == ["Real"]
+
+    def test_an_undecodable_mailmap_does_not_crash_the_run(self, tmp_path: Path) -> None:
+        """A Latin-1 byte used to raise and exit 1, the "negative answer" code."""
+        repo = _init_repo(tmp_path / "repo")
+        (repo / ".mailmap").write_bytes(b"Mapped Name <real@example.com>\n# caf\xe9\n")
+
+        assert _contributor_names(repo, tmp_path) == ["Mapped Name"]
+
+
 @pytest.mark.integration
 class TestOfflineGuarantee:
     """The report must never reach the network, whatever the repository says."""
