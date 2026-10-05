@@ -29,9 +29,13 @@ reveille generate
 
 - **No network calls.** The report loads no remote resource and opens with no internet connection.
 - **No changes to Git data.** History, refs, index, objects and configuration are never changed,
-  and an output path inside `.git` is refused.
+  and an output path inside the repository's Git directory is refused.
 - **Same input, same output.** With `--deterministic`, an unchanged repository produces a
   byte-identical report.
+
+One limit: Reveille runs Git, and Git obeys a repository's own `.git/config`, which can name a
+program to run. Such a program is outside these guarantees. `git clone` does not copy that file;
+a copied directory or an archive does.
 
 **What it is not.**
 
@@ -45,7 +49,7 @@ reveille generate
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/varaprasadchilakanti/reveille/main/docs/images/how-it-fits-dark.svg">
-  <img src="https://raw.githubusercontent.com/varaprasadchilakanti/reveille/main/docs/images/how-it-fits-light.svg" width="860" alt="A local Git repository goes into Reveille, which reads commit metadata and per-file line counts only, makes no network calls and never changes Git data. Out come one self-contained HTML report for people, and JSON or CSV with a schema version for scripts and AI assistants.">
+  <img src="https://raw.githubusercontent.com/varaprasadchilakanti/reveille/main/docs/images/how-it-fits-light.svg" width="860" alt="A local Git repository goes into Reveille, which reads commit metadata and per-file line counts only, makes no network calls and never changes Git data. Out come one self-contained HTML report for people, and JSON (with a schema version) or CSV for scripts and AI assistants.">
 </picture>
 
 **For AI assistants and scripts.** `reveille capabilities --format json` describes what the tool

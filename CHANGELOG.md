@@ -211,18 +211,24 @@ Nothing yet.
   "Never modifies the repository" was replaced by what holds: Git data is never
   changed, and the report is written where you say. "Production-grade",
   "repository health", and untested claims about Confluence and email were
-  removed. A test now keeps each of these out of every published file.
+  removed. A test now keeps four of these out of every published file: the
+  DORA sentence, "never modifies the repository", "production-grade" and
+  "repository health".
 
 ### Security
 
 - **A token in the remote URL reached the report.** A remote added as
   `https://user:token@host/...` was printed in the HTML header and in
-  `metadata.remote_url` of the JSON. User name, password, query string and
-  fragment are now removed; an SSH address such as `git@host:path` is unchanged.
+  `metadata.remote_url` of the JSON. For `http` and `https` the user part is now
+  removed, since a token is often given as the user name alone; for other
+  schemes only a password is removed, so `ssh://git@host/...` keeps its login.
+  Query string and fragment are removed too.
 - **A `reveille.toml` could overwrite `.git/HEAD`.** The output path was checked
   against the repository boundary but not against `.git` inside it, so a
   configuration file in a repository somebody else controls could break the
-  clone. Any output path inside `.git` is refused with exit 2, from any source.
+  clone. Any output path inside the repository's Git directory is now refused
+  with exit 2, whoever chose it — including in a bare repository, where Git's
+  files sit at the top level, and with `--separate-git-dir`.
 - **`.mailmap` is treated as untrusted input.** Names and addresses it
   substitutes now get the same scrubbing and length limits as author fields; a
   symlinked `.mailmap` is ignored, as Git ignores it; and undecodable bytes no

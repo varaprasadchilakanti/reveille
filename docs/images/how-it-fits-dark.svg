@@ -23,6 +23,6 @@
 <text x="658" y="96" font-size="13" fill="#9198a1">for people</text>
 <rect x="640" y="140" width="240" height="90" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1"/>
 <text x="658" y="170" font-size="15" font-weight="600" fill="#e6edf3">JSON or CSV</text>
-<text x="658" y="196" font-size="13" fill="#9198a1">with a schema version</text>
+<text x="658" y="196" font-size="13" fill="#9198a1">JSON has a schema version</text>
 <text x="658" y="216" font-size="13" fill="#9198a1">for scripts and AI assistants</text>
 </svg>
