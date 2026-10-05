@@ -35,6 +35,7 @@ import os
 import re
 import subprocess
 import sys
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
@@ -204,11 +205,11 @@ class TestRecordForgery:
         assert len(commits) >= 1
 
 
-def _report_with_name(name: str) -> ReportData:
+def _report_with_name(name: str, email: str = "a@example.com") -> ReportData:
     """A one-contributor report whose display name is attacker-controlled."""
     stats = ContributorStats(
         name=name,
-        email="a@example.com",
+        email=email,
         commit_count=1,
         lines_added=1,
         lines_deleted=0,
@@ -478,6 +479,84 @@ class TestUnreadableConfigIsCannotRun:
 
         assert result.returncode == 2
         assert "Traceback" not in result.stderr
+
+
+class _ElementCollector(HTMLParser):
+    """Every start tag a browser's tokenizer would see, with its attributes."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.elements: list[tuple[str, dict[str, str | None]]] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.elements.append((tag, dict(attrs)))
+
+
+def _elements(html: str) -> list[tuple[str, dict[str, str | None]]]:
+    collector = _ElementCollector()
+    collector.feed(html)
+    return collector.elements
+
+
+@pytest.mark.integration
+class TestEveryEscapeHasAGuard:
+    """Four escapes were each removable with the whole suite still passing.
+
+    Each test below was watched failing with its escape removed. Without the
+    first, a `.mailmap` entry could end a `<script>` block early.
+    """
+
+    def test_an_address_cannot_close_the_script_that_carries_the_chart_data(
+        self, tmp_path: Path
+    ) -> None:
+        """Heatmap data is JSON inside `<script>`, keyed by address.
+
+        A `.mailmap` address may contain `</script`, which ends the block in
+        every browser and turns the rest of the JSON into markup. JSON
+        encoding alone does not prevent it; the `</` escape does.
+        """
+        repo = _init_repo(tmp_path / "repo")
+        (repo / ".mailmap").write_text(
+            "Mal <a</script x@e.test> <real@example.com>\n", encoding="utf-8"
+        )
+        out = tmp_path / "r.html"
+        generate_report(ReportConfig(repo_path=repo, output_path=out, deterministic=True))
+        html = out.read_text(encoding="utf-8")
+
+        assert "a<\\/script x@e.test" in html, "positive control: address embedded"
+        assert "a</script" not in html
+
+    def test_an_email_is_escaped_in_the_html_table(self, tmp_path: Path) -> None:
+        out = tmp_path / "r.html"
+        Renderer().render(
+            _report_with_name("Ada", email='x"><img src=x onerror=alert(1)>@e.test'), out
+        )
+
+        assert not [
+            attrs for tag, attrs in _elements(out.read_text(encoding="utf-8")) if "onerror" in attrs
+        ]
+
+    def test_an_email_cannot_become_a_spreadsheet_formula(self, tmp_path: Path) -> None:
+        out = Renderer().render_csv(
+            _report_with_name("Ada", email='=HYPERLINK("http://evil.test")'), tmp_path / "r.csv"
+        )
+        rows = list(csv.DictReader(out.read_text(encoding="utf-8-sig").splitlines()))
+
+        assert rows[0]["email"].startswith("'=")
+
+    @pytest.mark.parametrize("writer", ["render_json", "render_csv"])
+    def test_structured_output_is_not_written_through_a_symlink(
+        self, tmp_path: Path, writer: str
+    ) -> None:
+        target = tmp_path / "target.txt"
+        target.write_text("TARGET", encoding="utf-8")
+        link = tmp_path / "report.out"
+        link.symlink_to(target)
+
+        with pytest.raises(OutputPathError, match="symbolic link"):
+            getattr(Renderer(), writer)(_report_with_name("Ada"), link)
+
+        assert target.read_text(encoding="utf-8") == "TARGET"
 
 
 @pytest.mark.integration
