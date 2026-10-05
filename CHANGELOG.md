@@ -155,6 +155,20 @@ Nothing yet.
 
 ---
 
+- **With `--ranking`, the report no longer puts a name in a summary card, and
+  it says what the score measures.** The fifth card showed the top scorer's first
+  name on the same page whose findings said no individual is named. It now shows
+  the Gini coefficient in every mode. The ranked table opens with the weights
+  actually used and a plain statement: the score measures how much and how
+  regularly people committed, not contribution, productivity or value, and it is
+  not fit for judging individuals.
+- **A `reveille.toml` picked up from the working directory says so.** It prints
+  one line on stderr naming every setting it applied, so turning the ranking on
+  or excluding a contributor from a file is never silent.
+- **The README's first screen says what the tool is, what it guarantees and what
+  it is not**, and what an AI assistant reading the JSON receives. It now carries
+  a screenshot of a report and a diagram of what goes in and comes out.
+
 ### Fixed
 
 - **The README asserted the opposite of the file it cited, about the GDPR.** It
@@ -184,6 +198,53 @@ Nothing yet.
 - **The Cyber Resilience Act timeline read as forthcoming.** Art. 14 has applied
   since 11 September 2026 and Chapter IV since 11 June 2026, so "do not
   monetise" is an operational instruction rather than a precaution.
+- **The weekly timelines skipped weeks with no commits.** The line ran straight
+  across a gap, so a quiet spell read as steady activity — in the chart the
+  Playbook recommends for "is this project still active?". Every week of the
+  analysis window is now drawn, with zero where nothing was committed.
+- **An unreadable `reveille.toml` exited 1.** A file that is not UTF-8, or a
+  directory with that name, raised a traceback and exited 1, which means "ran
+  correctly, negative answer". Both now exit 2 with a one-line error.
+- **Claims the project could not support were removed.** "Both DORA and SPACE
+  state that their metrics must not be applied to individuals" appeared at eight
+  places; the DORA metrics guide says no such thing, so SPACE is now cited alone.
+  "Never modifies the repository" was replaced by what holds: Git data is never
+  changed, and the report is written where you say. "Production-grade",
+  "repository health", and untested claims about Confluence and email were
+  removed. A test now keeps each of these out of every published file.
+
+### Security
+
+- **A token in the remote URL reached the report.** A remote added as
+  `https://user:token@host/...` was printed in the HTML header and in
+  `metadata.remote_url` of the JSON. User name, password, query string and
+  fragment are now removed; an SSH address such as `git@host:path` is unchanged.
+- **A `reveille.toml` could overwrite `.git/HEAD`.** The output path was checked
+  against the repository boundary but not against `.git` inside it, so a
+  configuration file in a repository somebody else controls could break the
+  clone. Any output path inside `.git` is refused with exit 2, from any source.
+- **`.mailmap` is treated as untrusted input.** Names and addresses it
+  substitutes now get the same scrubbing and length limits as author fields; a
+  symlinked `.mailmap` is ignored, as Git ignores it; and undecodable bytes no
+  longer crash the run.
+- **Four escapes in the report now have tests.** The `</` escape in the heatmap
+  data, HTML escaping of the email cell, the spreadsheet-formula guard on the CSV
+  email column, and the symbolic-link refusal for JSON and CSV could each be
+  removed with every test passing. Each was removed in turn and its new test seen
+  to fail.
+
+### Known issues
+
+These are known and not fixed in this release.
+
+- Each contributor in the JSON and CSV carries a `rank` field even when ranking
+  is off. `provenance.ranking.enabled` is `false` in that case; read `rank` as
+  list order only. Changing it changes the schema, so it waits for the next one.
+- Identity fields are scrubbed of control characters but not of Unicode
+  direction overrides or zero-width characters, which can make a name display
+  differently from its bytes.
+- Git honours a repository's own `.git/config`, including settings that name a
+  program to run. `git clone` does not copy that file; see `SECURITY.md`.
 
 ## [0.8.1] — 2026-09-03 — Charts a Screen Reader Can Read
 
