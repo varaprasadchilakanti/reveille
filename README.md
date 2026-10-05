@@ -25,7 +25,7 @@ reveille generate
 ```
 
 **What it guarantees.** Each of these is checked by the test suite on every change.
-[SECURITY.md](SECURITY.md) covers the threat model and how to verify a release.
+[SECURITY.md](https://github.com/varaprasadchilakanti/reveille/blob/main/SECURITY.md) covers the threat model and how to verify a release.
 
 - **No network calls.** The report loads no remote resource and opens with no internet connection.
 - **No changes to Git data.** History, refs, index, objects and configuration are never changed,
@@ -40,7 +40,8 @@ reveille generate
 - **Not a ranking, unless you ask.** Ranking people needs `--ranking`, and the report then states
   what the score measures and what it does not.
 - **Not anonymous.** The report lists contributor names and email addresses. Whoever shares it is
-  handling personal data; see [PRIVACY.md](PRIVACY.md).
+  handling personal data; [docs/COMPLIANCE.md](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/COMPLIANCE.md) sets out who is
+  responsible for what.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/varaprasadchilakanti/reveille/main/docs/images/how-it-fits-dark.svg">
