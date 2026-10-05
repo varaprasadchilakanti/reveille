@@ -25,7 +25,7 @@ import logging
 import sys
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Annotated, Any, ClassVar, TextIO, cast
 
@@ -154,6 +154,42 @@ def _discover_config() -> Path | None:
     """
     candidate = Path(_CONVENTIONAL_CONFIG)
     return candidate if candidate.exists() else None
+
+
+# Where each loaded setting lives in reveille.toml, so a notice can name it
+# the way the user would write it.
+_TOML_KEYS: dict[str, str] = {
+    "title": "report.title",
+    "output_path": "report.output",
+    "branch": "report.branch",
+    "since": "report.since",
+    "until": "report.until",
+    "output_format": "report.format",
+    "deterministic": "report.deterministic",
+    "min_commits": "filters.min_commits",
+    "exclude_authors": "filters.exclude_authors",
+    "ranking_enabled": "ranking.enabled",
+    "ranking_weights": "ranking.weights",
+}
+
+
+def _announce_discovered_settings(path: Path, settings: Mapping[str, object]) -> None:
+    """Say on stderr that a configuration file was picked up, and what it set.
+
+    `reveille.toml` is loaded from the working directory without being asked
+    for, and that directory may be a repository somebody else controls. A file
+    that turns the ranking on, excludes a contributor or retitles the report
+    changes what the report says, so it must not do so silently.
+
+    Args:
+        path: The configuration file that was loaded.
+        settings: The settings it supplied, keyed by `ReportConfig` field.
+    """
+    keys = ", ".join(_TOML_KEYS.get(name, name) for name in settings)
+    typer.echo(
+        f"Loaded settings from {path}: {keys}. Command-line options override them.",
+        err=True,
+    )
 
 
 class _StageSpinner:
@@ -338,6 +374,19 @@ def _validate_output_path(output: Path, repo_path: Path, *, from_config: bool = 
                 err=True,
             )
             raise typer.Exit(code=ExitCode.CANNOT_RUN)
+
+    # Writing into a Git directory can corrupt the repository: a report
+    # written over `.git/HEAD` leaves a clone that `git status` refuses to
+    # read. No legitimate report belongs there, so this is refused whoever
+    # chose the path -- flag, configuration file, or a symlink on the way.
+    if any(part.casefold() == ".git" for part in (*output.parts, *output.resolve().parts)):
+        typer.echo(
+            f"Error: output path '{output}' is inside a .git directory. "
+            "Reveille does not write into Git's own files. "
+            "Choose a path outside .git.",
+            err=True,
+        )
+        raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
     if ".." in output.parts:
         typer.echo(
@@ -557,6 +606,8 @@ def generate(
             else:
                 typer.echo(f"Configuration error: {exc}", err=True)
             raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
+        if _auto_discovered and config_kwargs:
+            _announce_discovered_settings(_config_path, config_kwargs)
 
     merged = _merge_cli_flags(
         config_kwargs,

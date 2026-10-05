@@ -290,6 +290,16 @@ class TestCsvFormulaInjection:
         assert rows[0]["name"] == "Ada Lovelace"
 
 
+def _run_console_script(args: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+    """Run the installed `reveille` command the way a user would.
+
+    The console script, not `python -m reveille.cli`: the module has no
+    __main__ guard, so `-m` imports it, runs nothing and exits 0.
+    """
+    console_script = Path(sys.executable).parent / "reveille"
+    return subprocess.run([str(console_script), *args], cwd=cwd, capture_output=True, text=True)
+
+
 @pytest.mark.integration
 class TestOutputPathSafety:
     """The path actually written must be the path that was checked."""
@@ -393,6 +403,47 @@ class TestSecondPassFindings:
 
         assert result.returncode != 0
         assert victim.read_text(encoding="utf-8") == "IMPORTANT"
+
+    def test_a_config_file_cannot_write_into_the_git_directory(self, tmp_path: Path) -> None:
+        """A reveille.toml naming `.git/HEAD` once overwrote it and broke the clone.
+
+        The path stayed inside the repository, so the outside-the-repository
+        check passed it. `git status` then exited 128 on the victim's clone.
+        """
+        repo = _init_repo(tmp_path / "hostile")
+        head_before = (repo / ".git" / "HEAD").read_bytes()
+        (repo / "reveille.toml").write_text('[report]\noutput = ".git/HEAD"\n', encoding="utf-8")
+
+        result = _run_console_script(["generate"], cwd=repo)
+
+        assert result.returncode == 2
+        assert (repo / ".git" / "HEAD").read_bytes() == head_before
+        assert subprocess.run(["git", "status"], cwd=repo, capture_output=True).returncode == 0
+
+    def test_an_explicit_output_flag_cannot_write_into_the_git_directory(
+        self, tmp_path: Path
+    ) -> None:
+        """The refusal holds whoever chose the path, not only a configuration file."""
+        repo = _init_repo(tmp_path / "repo")
+
+        result = _run_console_script(["generate", "--output", ".git/report.html"], cwd=repo)
+
+        assert result.returncode == 2
+        assert not (repo / ".git" / "report.html").exists()
+
+    def test_a_discovered_config_file_says_what_it_changed(self, tmp_path: Path) -> None:
+        """Turning the ranking on from a file nobody asked for must not be silent."""
+        repo = _init_repo(tmp_path / "repo")
+        (repo / "reveille.toml").write_text(
+            '[ranking]\nenabled = true\n[filters]\nexclude_authors = ["Bob"]\n',
+            encoding="utf-8",
+        )
+
+        result = _run_console_script(["generate", "--output", str(tmp_path / "r.html")], cwd=repo)
+
+        assert result.returncode == 0
+        assert "ranking.enabled" in result.stderr
+        assert "filters.exclude_authors" in result.stderr
 
     def test_init_refuses_a_symlinked_config_destination(self, tmp_path: Path) -> None:
         """A dangling link passes an `exists()` check and still redirects."""
