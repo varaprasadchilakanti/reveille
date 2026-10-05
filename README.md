@@ -8,6 +8,11 @@
 [![CI](https://github.com/varaprasadchilakanti/reveille/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/varaprasadchilakanti/reveille/actions/workflows/ci.yml)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14502/badge)](https://www.bestpractices.dev/projects/14502)
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/varaprasadchilakanti/reveille/main/docs/images/report-dark.png">
+  <img src="https://raw.githubusercontent.com/varaprasadchilakanti/reveille/main/docs/images/report-light.png" width="860" alt="The top of a Reveille report for this repository: five summary figures, three findings in plain sentences, and a Lorenz curve showing how commits are spread across contributors.">
+</picture>
+
 Reveille reads a repository's Git history on your machine and writes one self-contained HTML
 report: a contribution calendar, weekly activity, how evenly commits are spread across
 contributors, and a per-contributor table. The same figures are available as JSON or CSV for
@@ -36,6 +41,11 @@ reveille generate
   what the score measures and what it does not.
 - **Not anonymous.** The report lists contributor names and email addresses. Whoever shares it is
   handling personal data; see [PRIVACY.md](PRIVACY.md).
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/varaprasadchilakanti/reveille/main/docs/images/how-it-fits-dark.svg">
+  <img src="https://raw.githubusercontent.com/varaprasadchilakanti/reveille/main/docs/images/how-it-fits-light.svg" width="860" alt="A local Git repository goes into Reveille, which reads commit metadata and per-file line counts only, makes no network calls and never changes Git data. Out come one self-contained HTML report for people, and JSON or CSV with a schema version for scripts and AI assistants.">
+</picture>
 
 **For AI assistants and scripts.** `reveille capabilities --format json` describes what the tool
 can and cannot do. `reveille generate --format json` writes the figures to `reveille-report.json`.
