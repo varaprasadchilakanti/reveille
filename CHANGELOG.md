@@ -394,6 +394,12 @@ Nothing yet.
 
 ### Security
 
+- **The development lock carried a `virtualenv` with four published
+  advisories** (PYSEC-2026-4011 to -4014: unverified seed wheels, configuration
+  and command injection through the prompt and activation scripts). It is a
+  dev-only dependency of `pre-commit` and was never in the wheel; it is now
+  21.14.5, and osv-scanner, which had failed every open pull request on it,
+  finds nothing in the lock.
 - **A token in the remote URL reached the report.** A remote added as
   `https://user:token@host/...` was printed in the HTML header and in
   `metadata.remote_url` of the JSON. For `http` and `https` the user part is now
