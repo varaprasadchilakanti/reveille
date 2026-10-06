@@ -17,7 +17,7 @@ Nothing yet.
 
 ---
 
-## [0.9.0] — 2026-09-30 — Say Only What Is True
+## [0.9.0] — 2026-10-06 — Say Only What Is True
 
 ### Added
 
