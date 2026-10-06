@@ -282,6 +282,10 @@ Nothing yet.
   three-year window printed hundreds of rotated dates in an illegible band.
   Both timelines now use a date axis that places its own month or year ticks;
   hovering still names the exact week.
+- **On a phone the whole page scrolled sideways.** The tables that give each
+  chart a text alternative were hidden with a class that cannot shrink a
+  table, so at 375 pixels the page was 468 pixels wide. The class is now on a
+  wrapping block; the tables are unchanged for screen readers.
 
 ### Security
 

@@ -76,3 +76,13 @@ class TestTheContributorTable:
         line under the first column only."""
         rule = _declarations(rendered, ".ranking-table tbody tr:last-child th")
         assert "border-bottom: none" in rule
+
+
+@pytest.mark.unit
+def test_no_hidden_table_widens_the_page(rendered: str) -> None:
+    """`width: 1px` cannot shrink a table below its content, so a table
+    carrying `.visually-hidden` kept its full width while clipped from
+    sight. On a 375 px phone the page scrolled sideways to 468 px. The
+    class belongs on a wrapping block, which does shrink."""
+    assert not re.search(r"<table[^>]*class=\"[^\"]*visually-hidden", rendered)
+    assert '<div class="visually-hidden"><table>' in rendered, "positive control"

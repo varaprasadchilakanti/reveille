@@ -9,7 +9,10 @@
 {% macro chart_table(chart_id, caption) %}
 {%- set table = chart_tables.get(chart_id) %}
 {%- if table %}
-        <table class="visually-hidden">
+        {#- The class is on a wrapping block, not the table: `width: 1px`
+            cannot shrink a table below its content, and a clipped table at
+            full width made a phone's page scroll sideways. #}
+        <div class="visually-hidden"><table>
             <caption>{{ caption }}</caption>
             <thead>
                 <tr>{% for column in table.columns %}<th scope="col">{{ column }}</th>{% endfor %}</tr>
@@ -19,7 +22,7 @@
                 <tr><th scope="row">{{ row[0] }}</th>{% for cell in row[1:] %}<td>{{ cell }}</td>{% endfor %}</tr>
                 {% endfor %}
             </tbody>
-        </table>
+        </table></div>
 {%- endif %}
 {% endmacro %}
 {# SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti #}
