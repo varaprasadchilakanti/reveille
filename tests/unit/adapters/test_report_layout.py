@@ -209,3 +209,26 @@ def test_the_longest_hotspot_keeps_its_label() -> None:
 
     assert figure["data"][0]["cliponaxis"] is False
     assert figure["layout"]["margin"]["r"] >= 50
+
+
+@pytest.mark.unit
+class TestTheContributorTableScrollsInItsOwnPanel:
+    """1,682 rows pushed every later section thousands of pixels down."""
+
+    def test_the_panel_has_a_height_and_scrolls(self, rendered: str) -> None:
+        rule = _declarations(rendered, ".table-wrapper")
+        assert "max-height:" in rule
+        assert "overflow: auto" in rule
+
+    def test_the_header_stays_visible(self, rendered: str) -> None:
+        rule = _declarations(rendered, ".ranking-table thead th")
+        assert "position: sticky" in rule and "top: 0" in rule
+
+    def test_a_keyboard_can_scroll_it(self, rendered: str) -> None:
+        """WCAG 2.1.1: a scrollable region must be reachable by keyboard."""
+        assert re.search(
+            r'<div class="table-wrapper" role="region" aria-label="[^"]+" tabindex="0">', rendered
+        )
+
+    def test_paper_gets_every_row(self, rendered: str) -> None:
+        assert "max-height: none !important" in _print_rule(rendered, ".table-wrapper")

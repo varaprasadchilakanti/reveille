@@ -29,6 +29,10 @@ Nothing yet.
   Separate petals rather than the old radar polygon, which research found the
   least effective radial form. Inline SVG: it renders without JavaScript and
   prints. See ADR 0016.
+- **A long contributor table scrolls in its own panel.** With 1,682
+  contributors it pushed every later section thousands of pixels down. The
+  table now has a fixed height with its header kept in view, states how many
+  rows it holds, can be scrolled from the keyboard, and prints in full.
 - **`--limit` bounds every list of people in JSON and CSV**. JSON states the
   full total and a `truncated` flag beside each list; a cut CSV is announced
   on stderr. The full JSON of llama.cpp

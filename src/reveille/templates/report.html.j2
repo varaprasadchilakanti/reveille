@@ -537,6 +537,7 @@
             .table-wrapper,
             .heatmap-scroll {
                 overflow: visible !important;
+                max-height: none !important;
             }
 
             #chart-heatmap {
@@ -650,10 +651,36 @@
         /* ============================================================
            Ranking Table
            ============================================================ */
+        /* Its own scrolling panel: with 1,682 contributors the table pushed
+           every later section thousands of pixels down. The header stays in
+           view while the rows scroll; print lifts the limit. */
         .table-wrapper {
             border: 1px solid var(--color-border);
             border-radius: 6px;
-            overflow-x: auto;
+            max-height: min(70vh, 640px);
+            overflow: auto;
+        }
+
+        .table-wrapper:focus-visible {
+            outline: 2px solid var(--color-primary);
+            outline-offset: 2px;
+        }
+
+        .ranking-table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            background: var(--color-surface);
+        }
+
+        .section-note.co-authors {
+            margin-top: 14px;
+        }
+
+        .table-count {
+            margin: -6px 0 8px;
+            font-size: 12px;
+            color: var(--color-text-muted);
         }
 
         .ranking-table {
@@ -1343,7 +1370,11 @@
             individuals. The weights are a stated choice, not a validated model.
         </p>
         {% endif %}
-        <div class="table-wrapper">
+        {% set table_rows = data.ranked_contributors|length %}
+        {% if table_rows > 12 %}
+        <p class="table-count">{{ '{:,}'.format(table_rows) }} contributors; the table scrolls within its panel.</p>
+        {% endif %}
+        <div class="table-wrapper" role="region" aria-label="Contributor table, scrollable" tabindex="0">
             <table class="ranking-table">
                 <caption class="visually-hidden">
                     {% if ranked %}Contributor rankings{% else %}Contributors{% endif %} for {{ data.metadata.name }} between
