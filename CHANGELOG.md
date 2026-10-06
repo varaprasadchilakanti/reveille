@@ -342,8 +342,9 @@ Nothing yet.
 - **Values from `reveille.toml` could drive the terminal.** An `exclude_authors`
   entry that matched nothing, or a `branch` that does not exist, was printed on
   stderr with its control sequences intact, so a configuration file could erase
-  the warning about itself. Every message and warning now shows such
-  characters as escapes, for example `\x1b`.
+  the warning about itself. Every message and warning Reveille prints now
+  shows such characters as escapes, for example `\x1b`. Errors about the
+  command line itself are printed by the option parser, from what was typed.
 
 ### Known issues
 

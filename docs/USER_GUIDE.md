@@ -377,6 +377,8 @@ consumer can decide whether it can parse the rest before trying.
     "head_sha": "…",
     "deterministic": false,
     "mailmap_applied": true,
+    "commits_dated_after_window": 0,
+    "shallow_clone": false,
     "filters": {
       "requested_branch": "main",
       "requested_since": null,

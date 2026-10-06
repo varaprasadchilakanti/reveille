@@ -125,8 +125,8 @@ def _span_finding(commits: list[Commit]) -> Finding:
             f"{_plural(len(commits), 'commit')} over {_plural(days, 'day')}, "
             f"landing on {_plural(active, 'distinct day')}."
         ),
-        # Plain text: the sentence is rendered as HTML and written to JSON, and
-        # Markdown backticks printed literally in both.
+        # Plain text: the sentence is rendered as HTML, where Markdown
+        # backticks printed literally.
         detail="Merge commits are excluded, so this is lower than a raw git log count.",
         evidence=f"{first.isoformat()} to {last.isoformat()}",
     )
