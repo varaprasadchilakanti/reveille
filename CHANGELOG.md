@@ -138,7 +138,7 @@ Nothing yet.
 - **`schema_version` is `1.1`.** Additive, per ADR 0008: `derived` gains
   `population_size` and `contributors_below_threshold`, so a consumer can
   reconcile the contributor rows against `total_commits` without arithmetic,
-  and `provenance` gains `commits_dated_after_window`.
+  and `provenance` gains `commits_dated_after_window` and `shallow_clone`.
 - **A single-contributor report no longer contradicts itself.** The distribution
   caption rendered as "Gini runs 0 (even) to 0.00, which is the most concentrated
   1 contributors can be" — a vacuous range and a grammatical error in shipped
@@ -235,6 +235,12 @@ Nothing yet.
 - **The dormancy finding could never appear.** It was measured against the last
   commit instead of the end of the window, so "No commits in the last N days"
   was never written, although the Playbook tells readers to look for it.
+- **A shallow clone was reported as if it were the whole history.** A depth-5
+  clone of a 571-commit repository said "5 commits over 2 days" and nothing
+  else, and CI checkouts are shallow by default. The header and a note on
+  stderr now say the clone is shallow and that the period starts where its
+  history does, `provenance.shallow_clone` records it, and the note gives
+  `git fetch --unshallow` as the remedy.
 
 ### Security
 

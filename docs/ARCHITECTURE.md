@@ -156,7 +156,8 @@ the filters *as requested* (`requested_branch`, `requested_since`,
 `requested_until`, `exclude_authors_count`, `min_commits`), `ranking_enabled`,
 `ranking_weights`, `mailmap_applied`, `deterministic`,
 `commits_dated_after_window` (commits a default window left out because they
-are dated after today; counted in no figure).
+are dated after today; counted in no figure), `shallow_clone` (the repository
+holds only part of its history).
 
 The requested/resolved distinction is the point: `analysis_since` records where
 the window began, `requested_since` records whether anybody asked for it. Note

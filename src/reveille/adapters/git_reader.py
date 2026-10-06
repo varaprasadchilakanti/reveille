@@ -679,6 +679,22 @@ class GitReader:
         except Exception:
             return None
 
+    def is_shallow(self) -> bool:
+        """Report whether the repository is a shallow clone.
+
+        A shallow clone holds only its most recent commits, and Git walks it
+        as if they were the whole history, so every figure describes less
+        than the project. CI checkouts are shallow by default.
+
+        Returns:
+            True when Git reports a shallow repository. False when it does
+            not, or when Git cannot answer.
+        """
+        try:
+            return str(self._repo.git.rev_parse("--is-shallow-repository")).strip() == "true"
+        except Exception:
+            return False
+
     @property
     def file_stats(self) -> tuple[FileStats, ...]:
         """Per-path activity from the most recent `read_commits` call.

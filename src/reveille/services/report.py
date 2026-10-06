@@ -180,9 +180,18 @@ def generate_report(
         head_commit_time = max(c.timestamp for c in commits)
         metadata = replace(metadata, generated_at=head_commit_time)
 
+    shallow = reader.is_shallow()
+    if shallow:
+        _notify(
+            on_notice,
+            "This is a shallow clone, so only the history it holds is analysed and "
+            "the window starts where that history does. Run `git fetch --unshallow` "
+            "for the full history.",
+        )
     provenance = replace(
         _build_provenance(config, head_sha, reader.mailmap_applied),
         commits_dated_after_window=after_window,
+        shallow_clone=shallow,
     )
 
     report_data = ReportData(

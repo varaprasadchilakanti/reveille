@@ -133,6 +133,10 @@ how many, and `--until` with a later date includes them. With
 `--deterministic` the window closes on the last commit instead, so nothing
 is left out.
 
+In a shallow clone, which CI checkouts are by default, only the history the
+clone holds is analysed. The report header and a note on stderr say so; run
+`git fetch --unshallow`, or check out with full depth, for the whole history.
+
 ```bash
 reveille generate --since 2024-01-01 --until 2024-03-31
 ```

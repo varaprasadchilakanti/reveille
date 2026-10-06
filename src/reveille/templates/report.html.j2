@@ -829,6 +829,13 @@
                     are still counted in every figure here.
                 </span>
                 {% endif %}
+                {% if data.provenance.shallow_clone %}
+                <span class="filter-note">
+                    <strong>Shallow clone:</strong>
+                    only the history this clone holds is analysed, and the
+                    period starts where the clone's history does.
+                </span>
+                {% endif %}
                 {% if data.provenance.commits_dated_after_window %}
                 {#
                    A commit dated after the window is counted in no figure. The

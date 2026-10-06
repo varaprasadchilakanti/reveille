@@ -169,6 +169,10 @@ class AnalysisProvenance:
     # where that is recorded, so the report never silently holds fewer
     # commits than the branch.
     commits_dated_after_window: int = 0
+    # A shallow clone holds only its most recent commits. Every figure then
+    # describes the clone, not the project, and the window starts where the
+    # clone's history does.
+    shallow_clone: bool = False
 
 
 @dataclass(frozen=True)

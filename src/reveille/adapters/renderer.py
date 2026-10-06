@@ -349,6 +349,7 @@ class Renderer:
                 # Commits dated after the end of a default window: counted in
                 # no figure, and stated here so the omission is not silent.
                 "commits_dated_after_window": data.provenance.commits_dated_after_window,
+                "shallow_clone": data.provenance.shallow_clone,
                 "filters": {
                     "requested_branch": data.provenance.requested_branch,
                     "requested_since": (
