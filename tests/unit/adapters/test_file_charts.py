@@ -335,7 +335,7 @@ class TestTheProfileFlower:
 
     def test_the_label_carries_every_value(self, tmp_path: Path) -> None:
         html = self._html(tmp_path)
-        label = re.search(r'<svg viewBox="0 0 440 440" role="img"\s+aria-label="([^"]*)"', html)
+        label = re.search(r'<svg viewBox="[\d ]+" role="img"\s+aria-label="([^"]*)"', html)
 
         assert label
         for name in (
@@ -415,3 +415,67 @@ class TestTheFlowerGeometry:
             assert "#" not in rule, f"a fixed colour cannot follow dark mode: {rule.strip()}"
             for colour in re.findall(r"(?:fill|stroke):\s*([^;]+);", rule):
                 assert colour.startswith("var(--color-") or colour == "none", colour
+
+
+@pytest.mark.unit
+class TestTheProfileFitsTheScreen:
+    """The shape and its figures are read together, at every width."""
+
+    @staticmethod
+    def _template() -> str:
+        from reveille.adapters import renderer
+
+        return (Path(renderer.__file__).parent.parent / "templates" / "report.html.j2").read_text(
+            encoding="utf-8"
+        )
+
+    def test_the_flower_and_the_table_share_one_layout(self, tmp_path: Path) -> None:
+        html = TestTheRepositoryProfileSection()._rendered(tmp_path)
+        layout = html[html.index('<div class="profile-layout">') :]
+
+        assert (
+            layout.index('<figure class="profile-flower">')
+            < layout.index('<table class="profile">')
+            < layout.index("</div>")
+        )
+
+    def test_side_by_side_only_where_there_is_room(self) -> None:
+        css = re.sub(r"\s+", " ", self._template())
+
+        assert re.search(
+            r"@media \(min-width: 901px\) \{ \.profile-layout \{ grid-template-columns: "
+            r"minmax\(300px, 380px\) minmax\(0, 1fr\);",
+            css,
+        )
+
+    def test_a_phone_drops_the_bar_not_the_figures(self) -> None:
+        css = re.sub(r"\s+", " ", self._template())
+        phone = css[css.index("@media (max-width: 560px)") :]
+        phone = phone[: phone.index("} }") + 3]
+
+        assert ".profile-meter .meter" in phone and "display: none" in phone
+        assert ".profile-value" not in phone, "the share itself stays"
+
+    def test_every_label_sits_inside_the_drawing(self) -> None:
+        """The canvas is cropped to the labels; an anchor near its edge clips.
+
+        Text runs about 15 units above its baseline and the value line
+        16 below; a side label needs room for a word about 90 units wide.
+        """
+        from reveille.adapters.renderer import _profile_flower
+        from reveille.domain.profile import AXIS_ORDER, ProfileAxis
+
+        box = re.search(r'<svg viewBox="([\d ]+)" role="img"', self._template())
+        assert box
+        left, top, width, height = (float(v) for v in box.group(1).split())
+        petals = _profile_flower(
+            [ProfileAxis(name=n, value=0.5, description="") for n in AXIS_ORDER]
+        )
+
+        for petal in petals:
+            x, y = float(petal["label_x"]), float(petal["label_y"])
+            assert top <= y - 15 and y + 16 + 4 <= top + height, petal["name"]
+            if petal["anchor"] == "start":
+                assert x + 90 <= left + width, petal["name"]
+            elif petal["anchor"] == "end":
+                assert x - 90 >= left, petal["name"]

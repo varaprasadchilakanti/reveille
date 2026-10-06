@@ -29,7 +29,9 @@ Nothing yet.
   the share, with the value expected by chance marked where it can be computed.
   Separate petals rather than the old radar polygon, which research found the
   least effective radial form. Inline SVG: it renders without JavaScript and
-  prints. See ADR 0016.
+  prints. Beside its table where the screen is 901 px or wider, so the shape
+  and its figures are read together; stacked below that, and on a phone the
+  table drops its bars, which the flower above already draws. See ADR 0016.
 - **The report states its own limits.** One sentence under the header, and as
   `notice` in the full JSON: the figures are computed from Git history by fixed
   rules, history can be incomplete or wrong, and they need checking before a

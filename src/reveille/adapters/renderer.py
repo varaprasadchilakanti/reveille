@@ -922,7 +922,7 @@ def _listed_co_authors(data: ReportData) -> list[CoAuthor]:
 #: Geometry of the profile flower (ADR 0016), in SVG user units.
 _FLOWER_CENTRE = 220.0
 _FLOWER_RADIUS = 120.0
-_FLOWER_LABEL_RADIUS = 152.0
+_FLOWER_LABEL_RADIUS = 140.0
 #: Degrees of each petal's wedge; the rest of its sixth of the circle is gap,
 #: which keeps the petals separate rather than a polygon.
 _PETAL_SPAN = 44.0

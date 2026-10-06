@@ -324,8 +324,26 @@
            JavaScript being off. One neutral fill throughout -- a severity ramp
            would say some values are bad, and none of these measures is a
            target. */
+        /* The flower and the table that holds its figures, side by side
+           where there is room, so the shape and its numbers are read
+           together; stacked below that, the flower first. */
+        .profile-layout {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr);
+            gap: 8px 40px;
+            align-items: center;
+        }
+
+        @media (min-width: 901px) {
+            .profile-layout {
+                grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+            }
+            .profile-layout .profile-flower { margin: 0; }
+        }
+
         .profile-flower {
             margin: 0 auto 8px;
+            width: 100%;
             max-width: 400px;
         }
 
@@ -337,6 +355,7 @@
         }
 
         .profile-flower figcaption {
+            text-wrap: balance;
             text-align: center;
             font-size: 11.5px;
             color: var(--color-text-muted);
@@ -374,7 +393,7 @@
         }
 
         .flower-label {
-            font-size: 12px;
+            font-size: 14px;
             fill: var(--color-text-secondary);
         }
 
@@ -396,6 +415,7 @@
             vertical-align: middle;
         }
         .profile thead th {
+            white-space: nowrap;
             font-size: 11.5px;
             font-weight: 600;
             color: var(--color-text-muted);
@@ -449,6 +469,18 @@
             margin-left: -1px;
             background: var(--color-text-secondary);
         }
+        /* On a phone the bar is dropped: the flower above already draws
+           every length and mark, and the bar left the words three
+           columns' worth of width to wrap in. */
+        @media (max-width: 560px) {
+            .profile-meter .meter,
+            .wide-only { display: none; }
+            .profile-name { width: auto; }
+            .profile-meter,
+            .profile-expected { width: 1%; }
+            .flower-label { font-size: 15.5px; }
+        }
+
         .profile-value {
             display: inline-block;
             width: 44px;
@@ -1176,9 +1208,10 @@
            renders without JavaScript and prints. The table below holds every
            figure as text; the label here repeats them for screen readers.
         #}
+        <div class="profile-layout">
         {% if flower %}
         <figure class="profile-flower">
-            <svg viewBox="0 0 440 440" role="img"
+            <svg viewBox="0 58 440 332" role="img"
                  aria-label="Repository profile: {% for p in flower %}{{ p.name }} {{ p.percent }}{% if not loop.last %}, {% endif %}{% endfor %}. The figures follow in the table.">
                 <circle class="flower-grid" cx="220" cy="220" r="60"></circle>
                 <circle class="flower-grid" cx="220" cy="220" r="120"></circle>
@@ -1188,7 +1221,7 @@
                 {% if p.expected %}<path class="flower-expected-halo" d="{{ p.expected }}"></path><path class="flower-expected" d="{{ p.expected }}"></path>{% endif %}
                 <text class="flower-label" x="{{ p.label_x }}" y="{{ p.label_y }}" text-anchor="{{ p.anchor }}">
                     <tspan class="flower-name">{{ p.name }}</tspan>
-                    <tspan class="flower-value" x="{{ p.label_x }}" dy="15">{{ p.percent }}</tspan>
+                    <tspan class="flower-value" x="{{ p.label_x }}" dy="1.15em">{{ p.percent }}</tspan>
                 </text>
                 {% endfor %}
             </svg>
@@ -1205,7 +1238,7 @@
                 <tr>
                     <th scope="col">Measure</th>
                     <th scope="col">Share</th>
-                    <th scope="col">Expected by chance</th>
+                    <th scope="col">Expected<span class="wide-only"> by chance</span></th>
                 </tr>
             </thead>
             <tbody>
@@ -1240,6 +1273,7 @@
                 {% endfor %}
             </tbody>
         </table>
+        </div>
         <p class="chart-foot">
             <strong>Expected</strong> is what evenly spread activity would give,
             computed where the measure allows; it is not a target.
