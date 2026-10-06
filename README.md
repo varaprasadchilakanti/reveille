@@ -91,8 +91,9 @@ sending that history to a service.
   drawn as zero.
 - How evenly commits are spread: a Lorenz curve and its Gini coefficient, and how many
   contributors hold half the commits.
-- A repository profile of three measures — continuity, recent work and revisiting — each shown
-  against what chance alone would give.
+- A repository profile of six measures — continuity, recent work, shared, collaboration,
+  revisiting and automation — drawn as separate petals above a table, each shown against what
+  chance alone would give where that can be computed.
 - A table of each contributor's commits, lines added and removed, and active days.
 - An optional ranking table (`--ranking`). Off by default; read
   [Contributor Ranking System](#contributor-ranking-system) before turning it on.

@@ -21,6 +21,14 @@ Nothing yet.
 
 ### Added
 
+- **The repository profile has a shape again, and six measures.** Above the
+  table, six separate petals show Continuity, Recent work, Shared (commits not
+  made by the busiest author), Collaboration (commits crediting a co-author),
+  Revisiting and Automation (commits by automated accounts); petal length is
+  the share, with the value expected by chance marked where it can be computed.
+  Separate petals rather than the old radar polygon, which research found the
+  least effective radial form. Inline SVG: it renders without JavaScript and
+  prints. See ADR 0016.
 - **`--limit` bounds every list of people in JSON and CSV**. JSON states the
   full total and a `truncated` flag beside each list; a cut CSV is announced
   on stderr. The full JSON of llama.cpp

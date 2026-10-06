@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti
 # SPDX-License-Identifier: Apache-2.0
 
-"""A three-axis profile of a repository's working pattern.
+"""A six-axis profile of a repository's working pattern (ADR 0012, 0016).
 
 Every axis is a **naturally bounded ratio** -- a share of something out of
 something -- so nothing is rescaled by a constant chosen to make a figure
@@ -49,12 +49,20 @@ from __future__ import annotations
 import datetime
 from dataclasses import dataclass
 
+from reveille.domain.areas import is_automated
 from reveille.domain.files import is_generated
 from reveille.domain.models import Commit, FileStats
 
 #: Fixed axis order. Part of the contract: a reader comparing two reports of
 #: the same repository should find the measures in the same places.
-AXIS_ORDER = ("Continuity", "Recent work", "Revisiting")
+AXIS_ORDER = (
+    "Continuity",
+    "Recent work",
+    "Shared",
+    "Collaboration",
+    "Revisiting",
+    "Automation",
+)
 
 
 @dataclass(frozen=True)
@@ -157,6 +165,53 @@ def _revisiting(files: list[FileStats]) -> ProfileAxis:
     )
 
 
+def _shared(commits: list[Commit]) -> ProfileAxis:
+    """Share of commits not made by the single busiest author (ADR 0016).
+
+    The question readers bring first -- is this one person? -- as a plain
+    share. It partly restates the distribution findings, which ADR 0016
+    records and accepts. The expectation is what an even split across the
+    same number of authors would give: 1 - 1/n.
+    """
+    counts: dict[str, int] = {}
+    for commit in commits:
+        email = commit.author_email.lower()
+        counts[email] = counts.get(email, 0) + 1
+    busiest = max(counts.values())
+    return ProfileAxis(
+        name="Shared",
+        value=1.0 - busiest / len(commits),
+        description="commits not made by the busiest author",
+        expected=1.0 - 1.0 / len(counts),
+    )
+
+
+def _collaboration(commits: list[Commit]) -> ProfileAxis:
+    """Share of commits that credit a co-author (ADR 0014, 0016).
+
+    No expectation: how often people work together has no arithmetic
+    baseline, and an invented one would read as a target.
+    """
+    return ProfileAxis(
+        name="Collaboration",
+        value=sum(1 for c in commits if c.co_authors) / len(commits),
+        description="commits that credit a co-author",
+    )
+
+
+def _automation(commits: list[Commit]) -> ProfileAxis:
+    """Share of commits made by automated accounts (ADR 0013's rule, 0016).
+
+    No expectation, and no judgement: dependency bots in a well-kept
+    project and a project kept alive only by bots read the same here.
+    """
+    return ProfileAxis(
+        name="Automation",
+        value=sum(1 for c in commits if is_automated(c.author_name, c.author_email)) / len(commits),
+        description="commits by automated accounts",
+    )
+
+
 def repository_profile(
     commits: list[Commit],
     files: list[FileStats],
@@ -184,7 +239,10 @@ def repository_profile(
     axes = [
         _continuity(commits, since, until),
         _recent_share(commits, since, until),
+        _shared(commits),
+        _collaboration(commits),
         _revisiting(files),
+        _automation(commits),
     ]
     ordered = {axis.name: axis for axis in axes}
     return [ordered[name] for name in AXIS_ORDER]

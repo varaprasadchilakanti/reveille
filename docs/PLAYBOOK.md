@@ -95,7 +95,7 @@ which is the point of using it rather than a bespoke score.
 | Contribution Distribution | Lorenz curve, Gini coefficient | Lorenz (1905); Gini (1912) |
 | Where Change Concentrates | Relative code churn; hotspot analysis | Nagappan & Ball, ICSE 2005; Tornhill, 2013 |
 | Change Size per Commit | Relative code churn | Nagappan & Ball, ICSE 2005 |
-| Repository Profile | Graphical perception, on why it is read as five numbers and not a shape | Cleveland & McGill, JASA 1984 |
+| Repository Profile | Graphical perception, on reading length rather than area; and why separate petals rather than a radar polygon (ADR 0016) | Cleveland & McGill, JASA 1984; Albo et al., IEEE TVCG 2016; Fuchs et al., IEEE TVCG 2014 |
 | What the History Shows | Data-to-text generation | Reiter & Dale, 2000 |
 | Chart colours | Color Universal Design; dichromat simulation; contrast | Okabe & Ito, 2008; Viénot, Brettel & Mollon, 1999; WCAG 2.1 |
 | The refusal to rank people | Position on individual metrics | SPACE (Forsgren et al., 2021) |

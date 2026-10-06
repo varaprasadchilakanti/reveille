@@ -324,6 +324,56 @@
            JavaScript being off. One neutral fill throughout -- a severity ramp
            would say some values are bad, and none of these measures is a
            target. */
+        .profile-flower {
+            margin: 0 auto 8px;
+            max-width: 400px;
+        }
+
+        .profile-flower svg {
+            display: block;
+            width: 100%;
+            height: auto;
+            overflow: visible;
+        }
+
+        .profile-flower figcaption {
+            text-align: center;
+            font-size: 11.5px;
+            color: var(--color-text-muted);
+        }
+
+        .flower-grid {
+            fill: none;
+            stroke: var(--color-border);
+            stroke-dasharray: 2 3;
+        }
+
+        .flower-track {
+            fill: var(--color-surface);
+            stroke: var(--color-border);
+        }
+
+        .flower-petal {
+            fill: var(--color-primary);
+            fill-opacity: 0.85;
+        }
+
+        .flower-expected {
+            fill: none;
+            stroke: var(--color-text-primary);
+            stroke-width: 2;
+        }
+
+        .flower-label {
+            font-size: 12px;
+            fill: var(--color-text-secondary);
+        }
+
+        .flower-name {
+            font-weight: 600;
+            fill: var(--color-text-primary);
+        }
+
         .profile {
             width: 100%;
             border-collapse: collapse;
@@ -1078,11 +1128,37 @@
     <div class="section">
         <h2 class="section-title">Repository Profile</h2>
         <p class="section-note">
-            Three shares of the analysis window, each between 0% and 100%.
+            Six shares of the analysis window, each from 0% to 100%.
         </p>
+        {#
+           The shape, as separate petals (ADR 0016): length is the share,
+           centre 0% to rim 100%, never joined into a polygon whose area would
+           depend on the axis order. Inline SVG coloured from the theme, so it
+           renders without JavaScript and prints. The table below holds every
+           figure as text; the label here repeats them for screen readers.
+        #}
+        {% if flower %}
+        <figure class="profile-flower">
+            <svg viewBox="0 0 440 440" role="img"
+                 aria-label="Repository profile: {% for p in flower %}{{ p.name }} {{ p.percent }}{% if not loop.last %}, {% endif %}{% endfor %}. The figures follow in the table.">
+                <circle class="flower-grid" cx="220" cy="220" r="60"></circle>
+                <circle class="flower-grid" cx="220" cy="220" r="120"></circle>
+                {% for p in flower %}
+                <path class="flower-track" d="{{ p.track }}"></path>
+                {% if p.petal %}<path class="flower-petal" d="{{ p.petal }}"></path>{% endif %}
+                {% if p.expected %}<path class="flower-expected" d="{{ p.expected }}"></path>{% endif %}
+                <text class="flower-label" x="{{ p.label_x }}" y="{{ p.label_y }}" text-anchor="{{ p.anchor }}">
+                    <tspan class="flower-name">{{ p.name }}</tspan>
+                    <tspan class="flower-value" x="{{ p.label_x }}" dy="15">{{ p.percent }}</tspan>
+                </text>
+                {% endfor %}
+            </svg>
+            <figcaption>Petal length is the share; a cross-line marks the value expected by chance.</figcaption>
+        </figure>
+        {% endif %}
         <table class="profile">
             <caption class="visually-hidden">
-                The three repository profile measures, each with its value and,
+                The six repository profile measures, each with its value and,
                 where one can be computed, the value expected under evenly
                 spread activity.
             </caption>
@@ -1126,15 +1202,9 @@
             </tbody>
         </table>
         <p class="chart-foot">
-            Each measure is a naturally bounded share, never rescaled to fit.
-            <strong>Expected</strong> is what the measure would read under evenly
-            spread activity, computed from its own arithmetic — not a target, and
-            not a figure anyone chose. Continuity's expectation is the share of
-            weeks a commit would land in by chance; Recent work's is the share of
-            days the final quarter occupies. Revisiting has no such expectation,
-            so none is shown rather than one invented.
-            None of these is a goal: a finished library scores low on all three
-            for entirely ordinary reasons, and no measure here describes a person.
+            <strong>Expected</strong> is what evenly spread activity would give,
+            computed where the measure allows; it is not a target.
+            None of these is a goal, and none describes a person.
         </p>
     </div>
     {% endif %}

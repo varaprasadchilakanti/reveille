@@ -226,7 +226,7 @@ class TestTheRepositoryProfileSection:
         assert 'id="spec-profile"' not in html, "the profile is no longer a Plotly chart"
         assert 'id="chart-profile"' not in html
         body = html[html.index("Repository Profile") :]
-        assert "profile-value" in body[:4000]
+        assert "profile-value" in body[: body.index("</table>")]
 
     def test_one_row_per_axis(self, tmp_path: Path) -> None:
         from reveille.domain.profile import AXIS_ORDER
@@ -315,3 +315,39 @@ class TestTheContributionBreakdownUsesOneFormPerQuestion:
             if name == "_build_heatmap_data":
                 continue  # consumed by the client script, not a chart spec
             assert name in source, f"{name} is never called by _build_charts"
+
+
+@pytest.mark.unit
+class TestTheProfileFlower:
+    """ADR 0016: separate petals above the table, drawn without a script."""
+
+    def _html(self, tmp_path: Path) -> str:
+        return TestTheRepositoryProfileSection()._rendered(tmp_path)
+
+    def test_six_separate_petals_in_inline_svg(self, tmp_path: Path) -> None:
+        html = self._html(tmp_path)
+        flower = html[html.index('<figure class="profile-flower">') : html.index("</figure>")]
+
+        assert flower.count('class="flower-track"') == 6
+        assert "polygon" not in flower, "never joined into a shape whose area misleads"
+        assert 'id="spec-profile"' not in html
+
+    def test_the_label_carries_every_value(self, tmp_path: Path) -> None:
+        html = self._html(tmp_path)
+        label = re.search(r'<svg viewBox="0 0 440 440" role="img"\s+aria-label="([^"]*)"', html)
+
+        assert label
+        for name in (
+            "Continuity",
+            "Recent work",
+            "Shared",
+            "Collaboration",
+            "Revisiting",
+            "Automation",
+        ):
+            assert re.search(rf"{name} \d+%", label.group(1)), name
+
+    def test_expectations_are_marked_where_computable(self, tmp_path: Path) -> None:
+        html = self._html(tmp_path)
+
+        assert html.count('class="flower-expected"') == html.count('class="meter-tick"')

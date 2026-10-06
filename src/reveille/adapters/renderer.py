@@ -71,7 +71,7 @@ from reveille.domain.models import (
     RankedContributor,
     ReportData,
 )
-from reveille.domain.profile import repository_profile
+from reveille.domain.profile import ProfileAxis, repository_profile
 from reveille.domain.summary import Finding, longest_quiet_run, summarise
 from reveille.exceptions import OutputPathError, RenderError
 
@@ -288,6 +288,12 @@ class Renderer:
         Raises:
             RenderError: If the Jinja2 template raises an error during rendering.
         """
+        profile = repository_profile(
+            data.commits,
+            data.file_stats,
+            data.metadata.analysis_since,
+            data.metadata.analysis_until,
+        )
         try:
             charts = self._build_charts(data)
             derived = self._compute_derived_stats(data)
@@ -298,12 +304,8 @@ class Renderer:
                 charts=charts,
                 # The profile is rendered from these by the template, in HTML
                 # and CSS. It was a Plotly radar until 0.9.0; see ADR 0012.
-                profile=repository_profile(
-                    data.commits,
-                    data.file_stats,
-                    data.metadata.analysis_since,
-                    data.metadata.analysis_until,
-                ),
+                profile=profile,
+                flower=_profile_flower(profile),
                 chart_tables={
                     name: _accessible_table(name, specification)
                     for name, specification in charts.items()
@@ -912,6 +914,74 @@ _NOTICE = (
 def _listed_co_authors(data: ReportData) -> list[CoAuthor]:
     """Co-authors-only at or above the listing threshold (ADR 0011, 0014)."""
     return [c for c in data.co_authors_only if c.co_authored_commits >= data.provenance.min_commits]
+
+
+#: Geometry of the profile flower (ADR 0016), in SVG user units.
+_FLOWER_CENTRE = 220.0
+_FLOWER_RADIUS = 120.0
+_FLOWER_LABEL_RADIUS = 152.0
+#: Degrees of each petal's wedge; the rest of its sixth of the circle is gap,
+#: which keeps the petals separate rather than a polygon.
+_PETAL_SPAN = 44.0
+
+
+def _profile_flower(profile: list[ProfileAxis]) -> list[dict[str, Any]]:
+    """Lay out the profile as separate petals: geometry only, no colour.
+
+    Each petal is a wedge whose length is its share, from the centre (0%)
+    to the rim (100%), with a pale full-length wedge behind it so the
+    length can be read against the whole, and an arc across it at the
+    expected value where there is one. The template colours everything
+    from the theme, so nothing here depends on light or dark.
+
+    Args:
+        profile: The axes, in their fixed order.
+
+    Returns:
+        One dictionary per petal with SVG path data and label placement.
+    """
+    if not profile:
+        return []
+    step = 360.0 / len(profile)
+
+    def point(radius: float, degrees: float) -> str:
+        angle = math.radians(degrees)
+        x = _FLOWER_CENTRE + radius * math.cos(angle)
+        y = _FLOWER_CENTRE + radius * math.sin(angle)
+        return f"{x:.1f} {y:.1f}"
+
+    def wedge(radius: float, start: float, end: float) -> str:
+        return (
+            f"M {_FLOWER_CENTRE:.1f} {_FLOWER_CENTRE:.1f} L {point(radius, start)} "
+            f"A {radius:.1f} {radius:.1f} 0 0 1 {point(radius, end)} Z"
+        )
+
+    petals = []
+    for index, axis in enumerate(profile):
+        middle = -90.0 + index * step
+        start, end = middle - _PETAL_SPAN / 2, middle + _PETAL_SPAN / 2
+        length = _FLOWER_RADIUS * max(0.0, min(axis.value, 1.0))
+        expected = None
+        if axis.expected is not None:
+            radius = _FLOWER_RADIUS * max(0.0, min(axis.expected, 1.0))
+            expected = (
+                f"M {point(radius, start)} A {radius:.1f} {radius:.1f} 0 0 1 {point(radius, end)}"
+            )
+        cosine = math.cos(math.radians(middle))
+        label_x, label_y = point(_FLOWER_LABEL_RADIUS, middle).split()
+        petals.append(
+            {
+                "name": axis.name,
+                "percent": f"{axis.value * 100:.0f}%",
+                "track": wedge(_FLOWER_RADIUS, start, end),
+                "petal": wedge(length, start, end) if length >= 0.5 else "",
+                "expected": expected,
+                "label_x": label_x,
+                "label_y": label_y,
+                "anchor": "middle" if abs(cosine) < 0.3 else ("start" if cosine > 0 else "end"),
+            }
+        )
+    return petals
 
 
 def _truncated(items: Sequence[object], limit: int | None) -> bool:

@@ -94,7 +94,14 @@ class TestTheAxisOrderIsFixed:
         The contract is written out here independently, so changing the
         axis set is a deliberate act in two places.
         """
-        contract = ("Continuity", "Recent work", "Revisiting")
+        contract = (
+            "Continuity",
+            "Recent work",
+            "Shared",
+            "Collaboration",
+            "Revisiting",
+            "Automation",
+        )
         assert list(AXIS_ORDER) == list(contract), (
             "AXIS_ORDER changed; update this literal deliberately"
         )
@@ -242,3 +249,45 @@ class TestItNamesNobody:
         rendered = " ".join(f"{a.name} {a.description}" for a in axes)
         assert "alice" not in rendered
         assert "@" not in rendered
+
+
+def _c(index: int, email: str, co: tuple[tuple[str, str], ...] = ()) -> Commit:
+    return Commit(
+        sha=f"{index:040d}",
+        author_name=email.split("@")[0],
+        author_email=email,
+        timestamp=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+        + datetime.timedelta(days=index),
+        lines_added=1,
+        lines_deleted=0,
+        co_authors=co,
+    )
+
+
+@pytest.mark.unit
+class TestTheNewMeasures:
+    """ADR 0016: Shared, Collaboration and Automation, each a plain share."""
+
+    def _axes(self, commits: list[Commit]) -> dict[str, object]:
+        start = commits[0].timestamp.date()
+        end = commits[-1].timestamp.date()
+        return {a.name: a for a in repository_profile(commits, [], start, end)}
+
+    def test_shared_is_the_commits_outside_the_busiest_author(self) -> None:
+        commits = [_c(0, "a@e"), _c(1, "a@e"), _c(2, "a@e"), _c(3, "b@e")]
+        shared = self._axes(commits)["Shared"]
+
+        assert shared.value == pytest.approx(0.25)
+        assert shared.expected == pytest.approx(0.5), "1 - 1/n for two authors"
+
+    def test_collaboration_counts_commits_with_a_co_author(self) -> None:
+        commits = [_c(0, "a@e", (("H", "h@e"),)), _c(1, "a@e"), _c(2, "a@e"), _c(3, "a@e")]
+        collaboration = self._axes(commits)["Collaboration"]
+
+        assert collaboration.value == pytest.approx(0.25)
+        assert collaboration.expected is None
+
+    def test_automation_counts_bot_commits(self) -> None:
+        commits = [_c(0, "a@e"), _c(1, "dependabot[bot]@users.noreply.github.com")]
+
+        assert self._axes(commits)["Automation"].value == pytest.approx(0.5)

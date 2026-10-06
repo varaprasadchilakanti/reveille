@@ -10,6 +10,7 @@ from __future__ import annotations
 import csv
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -197,7 +198,9 @@ class TestTrailersAreReadSafely:
         config = ReportConfig(repo_path=repo, output_path=tmp_path / "r.html")
         text = generate_report(config)[0].read_text(encoding="utf-8")
 
-        assert "credit a co-author" not in text
+        # The finding sentence, not the profile's "commits that credit a
+        # co-author" description, which is always present.
+        assert not re.search(r"\d[\d,]* commits? credits? a co-author\.", text)
         assert "Credited only as co-author" not in text
 
 
