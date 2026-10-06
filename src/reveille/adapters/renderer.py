@@ -1163,7 +1163,7 @@ def _build_commit_share_pie(ranked: list[RankedContributor], unlisted_commits: i
     )
     layout = _base_layout()
     layout["showlegend"] = False
-    layout["margin"] = {"l": 20, "r": 20, "t": 20, "b": 20}
+    layout["margin"] = {"l": 20, "r": 20, "t": 40, "b": 20}
     fig.update_layout(**layout, height=320)
     return _to_json(fig)
 
@@ -1616,7 +1616,9 @@ def _base_layout() -> dict[str, Any]:
             ),
             "size": 12,
         },
-        "margin": {"l": 60, "r": 30, "t": 20, "b": 50},
+        # The top margin holds Plotly's toolbar (about 26 px), which otherwise
+        # sat over the first bar, the median label and the legends.
+        "margin": {"l": 60, "r": 30, "t": 40, "b": 50},
         # Plotly measures the rendered tick labels and axis title and grows
         # the margin to fit them. Without it the fixed bottom margin of 50px
         # is a guess: it was too small for -45 degree date labels, so the

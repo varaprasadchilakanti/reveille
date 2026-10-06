@@ -421,6 +421,15 @@
 
         /* The report is read on screen and printed to PDF. Splitting a chart
            or a table across a page break loses the axis with it. */
+        /* Plotly shows its toolbar permanently on a device that cannot hover,
+           where it covered legends and labels. Zoom and pan still work by
+           touch, and the toolbar remains on hover everywhere else. */
+        @media (hover: none) {
+            .modebar-container {
+                display: none !important;
+            }
+        }
+
         @media print {
             /* Browsers do not print background colours by default, but they
                do print text colour. A reader who had ever pressed "Dark
@@ -1750,7 +1759,7 @@
                         "Roboto, 'Helvetica Neue', Arial, sans-serif",
                 size: 12
             },
-            margin:     { l: 60, r: 30, t: 20, b: 50 },
+            margin:     { l: 60, r: 30, t: 40, b: 50 },
             // 'domain' on both axes: square cells shrink the plot area to the
             // weeks drawn. The default extends the x range instead, which
             // drew empty columns past the end of the window.

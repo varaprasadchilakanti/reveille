@@ -86,3 +86,40 @@ def test_no_hidden_table_widens_the_page(rendered: str) -> None:
     class belongs on a wrapping block, which does shrink."""
     assert not re.search(r"<table[^>]*class=\"[^\"]*visually-hidden", rendered)
     assert '<div class="visually-hidden"><table>' in rendered, "positive control"
+
+
+#: Plotly's toolbar is about 26 px tall and sits at the top of the figure.
+_TOOLBAR_CLEARANCE = 36
+
+
+@pytest.mark.unit
+class TestTheChartToolbarCoversNothing:
+    """It covered the Lorenz legend, the median label and the top hotspot bar.
+
+    Zoom and pan stay: the README promises them, and the toolbar is the only
+    visible way back after a drag. On a device without hover Plotly shows it
+    permanently, so there it is hidden, and on a desktop each chart keeps a
+    top margin the toolbar fits into.
+    """
+
+    def test_hidden_where_nothing_can_hover(self, rendered: str) -> None:
+        own = re.search(r"<style>(.*?)</style>", rendered, flags=re.DOTALL)
+        assert own
+        css = " ".join(own.group(1).split())
+        match = re.search(r"@media \(hover: none\) \{(.*?\})\s*\}", css)
+        assert match, "no rule for devices without hover"
+        assert ".modebar-container" in match.group(1)
+        assert "display: none" in match.group(1)
+
+    def test_every_chart_leaves_room_above_the_plot(self) -> None:
+        from reveille.adapters.renderer import _base_layout
+
+        assert _base_layout()["margin"]["t"] >= _TOOLBAR_CLEARANCE
+
+    def test_the_heatmap_too(self) -> None:
+        from tests.unit.adapters.test_heatmap_window import _TEMPLATE
+
+        source = _TEMPLATE.read_text(encoding="utf-8")
+        heatmap = source[source.index("function renderHeatmap(") :]
+        top = re.search(r"margin:\s*\{[^}]*\bt:\s*(\d+)", heatmap)
+        assert top and int(top.group(1)) >= _TOOLBAR_CLEARANCE

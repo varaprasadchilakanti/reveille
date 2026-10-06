@@ -286,6 +286,11 @@ Nothing yet.
   chart a text alternative were hidden with a class that cannot shrink a
   table, so at 375 pixels the page was 468 pixels wide. The class is now on a
   wrapping block; the tables are unchanged for screen readers.
+- **The chart toolbar covered data.** On a phone or tablet Plotly shows it
+  permanently, over the Lorenz legend and the median label; on a desktop it
+  covered the top bar of the hotspot chart while hovering. It is now hidden on
+  devices that cannot hover, where pinch and drag still zoom, and every chart
+  leaves room for it above the plot.
 
 ### Security
 
