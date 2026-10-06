@@ -261,7 +261,8 @@ files are left out. The eight areas with the most commits are shown.
 Names are alphabetical, with no date or count beside any person; the one date
 belongs to the area. When an area has more than five authors, the five shown are
 those who changed it most recently, still alphabetical, and the line says so.
-Accounts whose name ends in `[bot]` are listed on an *Automated* line. An author
+Identities whose name or address carries the `[bot]` suffix are listed on an
+*Automated* line, by the same rule. An author
 below `--min-commits` is counted and not named; an excluded author is neither.
 The section says who changed each area, not who knows or owns it.
 
@@ -514,7 +515,7 @@ it applied, because the directory may belong to someone else. An output path
 inside the repository's Git directory is refused with exit code 2, whether it
 comes from the file or the command line.
 
-The file is divided into three sections. All sections and all keys are
+The file is divided into four sections. All sections and all keys are
 optional.
 
 ```toml
@@ -540,7 +541,7 @@ until = "2024-12-31"
 
 
 [filters]
-# Minimum commits to include a contributor. Equivalent to --min-commits.
+# Minimum commits to list a contributor. Equivalent to --min-commits.
 min_commits = 2
 
 # Authors to exclude by name or email. Equivalent to repeating --exclude-author.

@@ -183,12 +183,17 @@ def _describe(
     # Anybody below the threshold, person or automation, is counted and not
     # named, and the line says how many (ADR 0011).
     unlisted = len(people) - len(named) + len(automated) - len(bots)
-    authors = _authors_line(named, activity.authors)
+    authors = _people_line(named, activity.authors, every="Authors", some="Authors include")
     if unlisted:
         held = f"{unlisted:,} below --min-commits {'is' if unlisted == 1 else 'are'} not named."
         authors = f"{authors} {held}".strip()
 
-    automated_line = f"Automated: {_name_list([name for name, _ in bots])}" if bots else ""
+    automated_line = _people_line(
+        sorted(bots, key=lambda n: n[0].casefold()),
+        activity.authors,
+        every="Automated",
+        some="Automated accounts include",
+    )
 
     notes: list[str] = []
     if len(people) == 1 and qualify_single:
@@ -217,12 +222,23 @@ def _describe(
     )
 
 
-def _authors_line(named: list[tuple[str, str]], last: dict[str, datetime.date]) -> str:
-    """List the authors: all of them, or the five most recent of many.
+def _people_line(
+    named: list[tuple[str, str]],
+    last: dict[str, datetime.date],
+    *,
+    every: str,
+    some: str,
+) -> str:
+    """List identities: all of them, or the five most recent of many.
+
+    One rule for authors and automated accounts alike: alphabetical, and
+    of more than five, the five that changed the area most recently, said so.
 
     Args:
-        named: `(name, address)` of each listed author, alphabetically.
+        named: `(name, address)` of each identity, alphabetically.
         last: When each address last changed the area.
+        every: The label when every identity is listed.
+        some: The label when only the most recent five are.
 
     Returns:
         The line, or an empty string when nobody is listed.
@@ -230,12 +246,12 @@ def _authors_line(named: list[tuple[str, str]], last: dict[str, datetime.date]) 
     if not named:
         return ""
     if len(named) <= _NAMES_SHOWN:
-        return f"Authors: {_name_list([name for name, _ in named])}"
+        return f"{every}: {_name_list([name for name, _ in named])}"
     recent = sorted(named, key=lambda n: (-last[n[1]].toordinal(), n[1]))[:_NAMES_SHOWN]
     shown = sorted((name for name, _ in recent), key=str.casefold)
     rest = len(named) - len(shown)
     return (
-        f"Authors include {', '.join(shown[:-1])} and {shown[-1]}, the five to change "
+        f"{some} {', '.join(shown[:-1])} and {shown[-1]}, the five to change "
         f"it most recently, and {_count(rest, 'other')}."
     )
 

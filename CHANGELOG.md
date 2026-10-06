@@ -27,8 +27,8 @@ Nothing yet.
   and when it was last changed. It is organised by directory rather than by
   person: names are alphabetical, with no count or date beside any of them,
   automated accounts are listed apart, and an author below `--min-commits` is
-  counted but not named. Of more than five authors, the five who changed the
-  area most recently are shown, and the line says so. `--area-depth` sets how
+  counted but not named. Of more than five authors, or automated accounts, the
+  five that changed the area most recently are shown, and the line says so. `--area-depth` sets how
   many directory levels make an area (default 3). Off by default and not
   implied by `--ranking`, because it names people. See ADR 0013.
 - **The release path is tested.** `publish.yml` had no tests, and its failure
@@ -323,6 +323,10 @@ Nothing yet.
   chart showed it that way, quotes included, as a path of its own. Such paths,
   and paths containing quotes or backslashes, are now decoded, renames
   included.
+- **A `reveille.toml` section that is not a table crashed the run.** `[ranking]`,
+  `[filters]` or `[report]` written as a plain value (`ranking = 5`) raised a
+  traceback; it is now a one-line configuration error. Errors about a setting
+  name both the flag and the file key, since either could have set it.
 - **The documentation described behaviour the report does not have.** The
   README and the user guide placed the default report in the current
   directory (it goes to the repository root), described two donut charts

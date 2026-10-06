@@ -229,7 +229,8 @@ _CAVEATS: tuple[dict[str, str], ...] = (
         "description": (
             "The report includes contributor names and email addresses. It is a "
             "document containing personal data; whoever circulates it is "
-            "responsible for that."
+            "responsible for that. --ranking scores named people and "
+            "--area-authors names who changed each area; both are off unless asked for."
         ),
     },
 )

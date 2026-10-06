@@ -144,9 +144,28 @@ def _describe_config_error(exc: Exception) -> str:
     for error in errors():
         message = str(error.get("msg", "")).removeprefix("Value error, ")
         fields = [str(part) for part in error.get("loc", ())]
-        option = ", ".join(_OPTION_NAMES.get(f, f) for f in fields)
+        option = ", ".join(_option_label(f) for f in fields)
         described.append(f"{option}: {message}" if option else message)
     return "; ".join(described) or str(exc)
+
+
+def _option_label(field: str) -> str:
+    """Name a configuration field as both a flag and a reveille.toml key.
+
+    The same field is set either way, and a message naming only the flag was
+    wrong when the value came from the file.
+
+    Args:
+        field: A ReportConfig field name.
+
+    Returns:
+        For example "--area-depth / areas.depth", or the field unchanged.
+    """
+    flag = _OPTION_NAMES.get(field)
+    key = _TOML_KEYS.get(field)
+    if flag and key:
+        return f"{flag} / {key}"
+    return flag or key or field
 
 
 class _EscapingFormatter(logging.Formatter):
@@ -682,6 +701,8 @@ def _apply_area_flags(
         merged["area_authors_enabled"] = True
     if area_depth is not None:
         merged["area_depth"] = area_depth
+        if not merged.get("area_authors_enabled"):
+            _err("Note: --area-depth has no effect without --area-authors.")
 
 
 @app.command()
@@ -719,7 +740,7 @@ def generate(
             "--min-commits",
             help=(
                 "List only contributors with at least this many commits. "
-                "Every figure still counts everyone."
+                "Totals and charts still count everyone."
             ),
         ),
     ] = None,

@@ -196,6 +196,11 @@ def load_config_from_toml(path: Path) -> ReportConfigKwargs:
     except OSError as exc:
         raise ConfigurationError(f"Configuration file '{path}' cannot be read: {exc}") from exc
 
+    for section in ("report", "filters", "ranking", "areas"):
+        if not isinstance(raw.get(section, {}), dict):
+            raise ConfigurationError(
+                f"[{section}] in '{path}' must be a table of settings, not {raw[section]!r}."
+            )
     parts: dict[str, Any] = {}
     parts.update(_parse_report_section(raw.get("report", {})))
     parts.update(_parse_filters_section(raw.get("filters", {})))

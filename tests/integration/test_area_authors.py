@@ -228,3 +228,40 @@ def test_non_ascii_and_quoted_paths_are_read_as_written(tmp_path: Path) -> None:
     assert 'src/say "hi".py' in files
     assert not any(f.startswith('"') or "\\3" in f for f in files)
     assert areas == {"src/naïve", "src"}
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("section", ["areas", "ranking", "filters", "report"])
+def test_a_section_that_is_not_a_table_is_a_plain_error(tmp_path: Path, section: str) -> None:
+    path = tmp_path / "reveille.toml"
+    path.write_text(f"{section} = 5\n", encoding="utf-8")
+
+    with pytest.raises(ConfigurationError, match=f"\\[{section}\\]"):
+        load_config_from_toml(path)
+
+
+@pytest.mark.integration
+def test_a_bad_depth_in_the_file_names_the_file_key(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "reveille.toml").write_text("[areas]\ndepth = 0\n", encoding="utf-8")
+    monkeypatch.chdir(work)
+    result = CliRunner().invoke(
+        app, ["generate", "--repo", str(repo), "-o", str(tmp_path / "r.html")]
+    )
+
+    assert result.exit_code == ExitCode.CANNOT_RUN
+    (error,) = [line for line in result.stderr.splitlines() if "error" in line.lower()]
+    assert "areas.depth" in error, error
+
+
+@pytest.mark.integration
+def test_a_depth_without_the_section_says_it_does_nothing(repo: Path, tmp_path: Path) -> None:
+    result = CliRunner().invoke(
+        app, ["generate", "--repo", str(repo), "-o", str(tmp_path / "r.html"), "--area-depth", "2"]
+    )
+
+    assert result.exit_code == ExitCode.SUCCESS
+    assert "--area-depth has no effect without --area-authors" in result.stderr

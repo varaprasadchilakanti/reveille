@@ -169,3 +169,16 @@ def test_an_automated_account_below_the_threshold_is_counted_too() -> None:
     assert statement.automated == ""
     assert statement.not_listed == 1
     assert statement.authors == "Authors: Amir Khan. 1 below --min-commits is not named."
+
+
+@pytest.mark.unit
+def test_many_automated_accounts_follow_the_same_rule() -> None:
+    """The first five bots alphabetically is the selection ADR 0013 rejected."""
+    last = {f"b{i}@e.test": _END - datetime.timedelta(days=i) for i in range(8)}
+    names = {e: f"bot{7 - int(e[1])}[bot]" for e in last}
+    (statement,) = describe_areas([_area("deps", 9, last)], names, set(last), _END)
+
+    assert statement.automated == (
+        "Automated accounts include bot3[bot], bot4[bot], bot5[bot], bot6[bot] and "
+        "bot7[bot], the five to change it most recently, and 3 others."
+    )
