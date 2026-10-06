@@ -245,6 +245,9 @@ Nothing yet.
   address with no spaces set the column's minimum width, so in a 300-row
   report only names were visible. Names and addresses now wrap, and the
   stray border under the first column of the last row is gone.
+- **The Contributors card counted table rows.** With `--min-commits 999` it
+  read 0 beside "1 hold half the commits". It now counts everybody the figures
+  describe; the header already states how many are listed.
 
 ### Security
 

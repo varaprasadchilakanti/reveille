@@ -879,8 +879,13 @@
             <div class="label" aria-hidden="true">Total Commits</div>
         </div>
         <div class="summary-card">
-            <span class="visually-hidden">Contributors: {{ data.metadata.unique_contributors }}</span>
-            <div class="value" aria-hidden="true">{{ data.metadata.unique_contributors }}</div>
+            {#
+               Everybody the figures describe, not the rows the threshold left
+               in the table: with --min-commits 999 this card read 0 beside
+               "1 hold half the commits". The header states the listing.
+            #}
+            <span class="visually-hidden">Contributors: {{ derived.population_size }}</span>
+            <div class="value" aria-hidden="true">{{ derived.population_size }}</div>
             <div class="label" aria-hidden="true">Contributors</div>
         </div>
         <div class="summary-card">

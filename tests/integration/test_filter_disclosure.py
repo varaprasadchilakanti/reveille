@@ -307,3 +307,23 @@ def test_the_population_is_the_repository_at_every_threshold(
     assert derived["_total_commits"] == 12
     assert derived["population_size"] == 2
     assert derived["gini_coefficient"] == 0.25
+
+
+class TestTheContributorsCardCountsThePopulation:
+    """The card describes the repository, like every figure beside it.
+
+    With `--min-commits 999` it read "Contributors 0" next to "1 hold half
+    the commits": it counted the rows the threshold left in the table, while
+    every other card counted the contributors the figures are about.
+    """
+
+    def test_a_threshold_does_not_change_the_card(self, tmp_path: Path) -> None:
+        repo = _repo_with_two_contributors(tmp_path / "repo", major=9, minor=3)
+        out = tmp_path / "r.html"
+        generate_report(
+            ReportConfig(repo_path=repo, output_path=out, min_commits=999, deterministic=True)
+        )
+        html = out.read_text(encoding="utf-8")
+
+        assert "Contributors: 2</span>" in html
+        assert "0 of 2 contributors" in " ".join(html.split()), "positive control"
