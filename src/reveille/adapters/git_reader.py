@@ -950,6 +950,9 @@ def _parse_log_record(
     # sequences and 300,000 characters straight into the CSV.
     author_name = _truncate(_strip_invisible(_strip_control_chars(author_name)), _MAX_NAME_LENGTH)
     author_email = _truncate(_strip_control_chars(author_email), _MAX_EMAIL_LENGTH)
+    # A name made only of invisible characters is empty once cleaned: a blank
+    # table cell and a blank legend entry. The address identifies the author.
+    author_name = author_name or author_email
 
     # Both the resolved and the raw identity are matched, so an
     # --exclude-author value copied from `git log` still works after

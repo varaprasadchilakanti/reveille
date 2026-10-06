@@ -336,8 +336,9 @@ Nothing yet.
   overrides and isolates, the zero-width space and the byte-order mark. The
   joiners and direction marks that Persian, Indic, Arabic and Hebrew names use
   are kept, and addresses are not changed, since an address is the identity
-  key. `--exclude-author` matches the name as `git log` prints it or as the
-  report shows it.
+  key. A name made only of such characters shows the address instead of
+  nothing. `--exclude-author` matches the name as `git log` prints it or as
+  the report shows it.
 - **Values from `reveille.toml` could drive the terminal.** An `exclude_authors`
   entry that matched nothing, or a `branch` that does not exist, was printed on
   stderr with its control sequences intact, so a configuration file could erase

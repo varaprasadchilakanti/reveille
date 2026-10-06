@@ -1287,3 +1287,12 @@ class TestNamesCannotHideTheirOwnText:
 
         assert "s@example.com" not in addresses
         assert "real@example.com" in addresses, "positive control: only one author left"
+
+
+@pytest.mark.integration
+def test_a_name_of_invisible_characters_only_shows_the_address(tmp_path: Path) -> None:
+    """Stripped, it was an empty cell in the table and an empty legend entry."""
+    repo = _init_repo(tmp_path / "repo")
+    _commit_as(repo, "‮​﻿", "ghost@example.com")
+
+    assert ("ghost@example.com", "ghost@example.com") in _identities(repo)
