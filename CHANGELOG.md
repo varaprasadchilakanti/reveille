@@ -259,6 +259,15 @@ Nothing yet.
   email column, and the symbolic-link refusal for JSON and CSV could each be
   removed with every test passing. Each was removed in turn and its new test seen
   to fail.
+- **A name could display as text it does not contain.** A right-to-left
+  override made `\u202eevil\u202c Name` display as "live Name" in the
+  contributor table and the chart legends, and a zero-width space let two
+  identical-looking names be two contributors. Names now lose direction
+  overrides and isolates, the zero-width space and the byte-order mark. The
+  joiners and direction marks that Persian, Indic, Arabic and Hebrew names use
+  are kept, and addresses are not changed, since an address is the identity
+  key. `--exclude-author` matches the name as `git log` prints it or as the
+  report shows it.
 
 ### Known issues
 
@@ -267,9 +276,6 @@ These are known and not fixed in this release.
 - Each contributor in the JSON and CSV carries a `rank` field even when ranking
   is off. `provenance.ranking.enabled` is `false` in that case; read `rank` as
   list order only. Changing it changes the schema, so it waits for the next one.
-- Identity fields are scrubbed of control characters but not of Unicode
-  direction overrides or zero-width characters, which can make a name display
-  differently from its bytes.
 - Git honours a repository's own `.git/config`, including settings that name a
   program to run. `git clone` does not copy that file; see `SECURITY.md`.
 - Some error and warning messages print values from `reveille.toml` unescaped

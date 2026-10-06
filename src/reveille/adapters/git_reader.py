@@ -62,6 +62,14 @@ _SHA_RE = re.compile(r"[0-9a-f]{40}")
 # them belongs in an author name, and all three break downstream formats.
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 
+# Characters that change how a name displays without being part of it:
+# direction overrides and embeddings (U+202A-U+202E), direction isolates
+# (U+2066-U+2069), the zero-width space and the byte-order mark. With them
+# "\u202eevil\u202c Name" displayed as "live Name". Deliberately absent: the
+# zero-width joiner and non-joiner and the left-to-right and right-to-left
+# marks, which Persian, Indic, Arabic and Hebrew names use.
+_INVISIBLE_IN_NAMES_RE = re.compile("[\u202a-\u202e\u2066-\u2069\u200b\ufeff]")
+
 # Upper bounds on an identity field. Git imposes none, and the field is
 # attacker-controlled in the threat model this reader is written against: a
 # repository somebody else authored. Measured before capping, a single commit
@@ -831,6 +839,22 @@ def _strip_control_chars(value: str) -> str:
     return _CONTROL_CHARS_RE.sub("", value)
 
 
+def _strip_invisible(name: str) -> str:
+    """Remove characters that make a name display as something it is not.
+
+    Applied to names only. An address is the identity key (ADR 0002), so
+    rewriting one could merge two people into one contributor.
+
+    Args:
+        name: An author name, already scrubbed of control characters.
+
+    Returns:
+        The name without direction overrides, isolates, zero-width spaces or
+        byte-order marks.
+    """
+    return _INVISIBLE_IN_NAMES_RE.sub("", name)
+
+
 def _parse_log_record(
     record: str,
     mailmap: _Mailmap,
@@ -886,7 +910,7 @@ def _parse_log_record(
     # an author field, so what it substitutes gets the same scrub and bounds.
     # Scrubbing only the commit's own fields let a mapped name carry escape
     # sequences and 300,000 characters straight into the CSV.
-    author_name = _truncate(_strip_control_chars(author_name), _MAX_NAME_LENGTH)
+    author_name = _truncate(_strip_invisible(_strip_control_chars(author_name)), _MAX_NAME_LENGTH)
     author_email = _truncate(_strip_control_chars(author_email), _MAX_EMAIL_LENGTH)
 
     # Both the resolved and the raw identity are matched, so an

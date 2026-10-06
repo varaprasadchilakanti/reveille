@@ -1203,3 +1203,87 @@ class TestTheManifestIsNotFooledByGitHousekeeping:
         assert _git_locks(repo) == []
         assert "poetry.lock" in _content_manifest(repo)
         assert not _is_transient_git_lock("poetry.lock")
+
+
+def _commit_as(repo: Path, name: str, email: str) -> None:
+    _run(
+        ["git", "commit", "-qm", "c", "--allow-empty"],
+        repo,
+        {
+            "GIT_AUTHOR_NAME": name,
+            "GIT_AUTHOR_EMAIL": email,
+            "GIT_COMMITTER_NAME": name,
+            "GIT_COMMITTER_EMAIL": email,
+            "GIT_AUTHOR_DATE": "2024-03-02T10:00:00+00:00",
+            "GIT_COMMITTER_DATE": "2024-03-02T10:00:00+00:00",
+        },
+    )
+
+
+def _identities(repo: Path, exclude: list[str] | None = None) -> set[tuple[str, str]]:
+    commits = GitReader(repo).read_commits(
+        branch="main", since=None, until=None, exclude_authors=exclude or []
+    )
+    return {(c.author_name, c.author_email) for c in commits}
+
+
+@pytest.mark.integration
+class TestNamesCannotHideTheirOwnText:
+    """A name must display as the characters it contains, in their order.
+
+    A right-to-left override made "\\u202eevil\\u202c Name" display as
+    "live Name" in the contributor table and the chart legend, and a
+    zero-width space let two names that look identical be different
+    contributors. Direction overrides and isolates, the zero-width space and
+    the byte-order mark are removed from names. The joiners and direction
+    marks that real Arabic, Hebrew, Persian and Indic names use are kept, and
+    addresses are left alone: an address is the identity key (ADR 0002), so
+    changing one could merge two people.
+    """
+
+    def test_a_direction_override_is_removed(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        _commit_as(repo, "‮evil‬ Name", "s@example.com")
+
+        assert ("evil Name", "s@example.com") in _identities(repo)
+
+    def test_isolates_zero_width_space_and_bom_are_removed(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        _commit_as(repo, "⁧Zero​Width﻿⁩", "z@example.com")
+
+        assert ("ZeroWidth", "z@example.com") in _identities(repo)
+
+    def test_characters_real_names_need_are_kept(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        persian = "می‌رزا"  # ZWNJ
+        devanagari = "क्‍ष"  # ZWJ
+        hebrew = "דוד ‏(2)"  # RLM
+        for index, name in enumerate((persian, devanagari, hebrew)):
+            _commit_as(repo, name, f"n{index}@example.com")
+
+        names = {name for name, _ in _identities(repo)}
+
+        assert {persian, devanagari, hebrew} <= names
+
+    def test_an_address_is_not_changed(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        _commit_as(repo, "Plain", "a​b@example.com")
+
+        assert ("Plain", "a​b@example.com") in _identities(repo)
+
+    def test_a_mapped_name_is_cleaned_too(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        (repo / ".mailmap").write_text("‮evil‬ Name <real@example.com>\n", encoding="utf-8")
+
+        assert _contributor_names(repo, tmp_path) == ["evil Name"]
+
+    @pytest.mark.parametrize("given", ["‮evil‬ Name", "evil Name"])
+    def test_either_spelling_excludes_the_author(self, tmp_path: Path, given: str) -> None:
+        """The raw name is what `git log` shows; the clean one is what the report shows."""
+        repo = _init_repo(tmp_path / "repo")
+        _commit_as(repo, "‮evil‬ Name", "s@example.com")
+
+        addresses = {email for _, email in _identities(repo, exclude=[given])}
+
+        assert "s@example.com" not in addresses
+        assert "real@example.com" in addresses, "positive control: only one author left"
