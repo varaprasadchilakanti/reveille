@@ -103,3 +103,34 @@ class TestTheReportsOwnWords:
         text = _render(data, tmp_path_factory)
 
         assert "Branch:</strong> detached HEAD at 0123456" in text
+
+
+@pytest.mark.unit
+class TestTheReportStatesItsLimits:
+    """Figures from history can be wrong; the artefact says so where it is read."""
+
+    def test_the_html_carries_the_notice_under_the_header(
+        self, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
+        text = _render(_report_data([3, 1]), tmp_path_factory)
+        header_end = text.index("</header>")
+
+        assert "check before relying on it for a decision" in text[:header_end]
+
+    def test_the_json_carries_it_too(self, tmp_path_factory: pytest.TempPathFactory) -> None:
+        import json
+
+        from reveille.adapters.renderer import Renderer
+
+        payload = json.loads(Renderer().json_text(_report_data([3, 1])))
+
+        assert "check before relying on it for a decision" in payload["notice"]
+
+
+@pytest.mark.unit
+def test_no_caption_runs_past_forty_words(tmp_path_factory: pytest.TempPathFactory) -> None:
+    """Captions were written to argue; a reader scanning a chart reads two lines."""
+    page = _render(_with_commits(_report_data([15, 15])), tmp_path_factory)
+    for caption in re.findall(r'<p class="chart-foot">(.*?)</p>', page, re.DOTALL):
+        words = re.sub(r"<[^>]+>", " ", caption).split()
+        assert len(words) <= 40, " ".join(words)

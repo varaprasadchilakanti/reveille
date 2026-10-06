@@ -484,6 +484,7 @@ class Renderer:
             # ADR 0011 applied to co-authors, as in the HTML: counted, not named.
             "co_authors_only_below_threshold": len(data.co_authors_only)
             - len(_listed_co_authors(data)),
+            "notice": _NOTICE,
         }
         if data.provenance.area_authors_enabled:
             # The same facts as the HTML section and nothing more: no count
