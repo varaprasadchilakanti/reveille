@@ -461,12 +461,45 @@
                 display: none !important;
             }
 
-            .section,
+            /* A chart is kept whole; a section is not. Keeping every
+               section whole pushed each one to a new page, nine pages with
+               the last holding only the footer. A heading stays with what
+               follows it, and a table breaks between rows. */
             .chart-container,
             .stat-card,
-            .ranking-table {
+            .ranking-table tr {
                 break-inside: avoid;
                 page-break-inside: avoid;
+            }
+
+            .section-title,
+            .section-note {
+                break-after: avoid;
+                page-break-after: avoid;
+            }
+
+            /* Paper cannot scroll. The scroll container clipped the table's
+               last columns, and the heatmap's minimum width ran off the
+               page. */
+            /* !important throughout: these override screen rules that come
+               later in the stylesheet, and at equal specificity the later
+               rule wins. */
+            .table-wrapper,
+            .heatmap-scroll {
+                overflow: visible !important;
+            }
+
+            #chart-heatmap {
+                min-width: 0 !important;
+            }
+
+            .ranking-table {
+                font-size: 10px !important;
+            }
+
+            .ranking-table th,
+            .ranking-table td {
+                padding: 6px 8px !important;
             }
         }
 
@@ -1898,6 +1931,35 @@
 
     var initialTheme = readTheme();
     applyThemeToDocument(initialTheme);
+
+    // Printing reflows the page to the paper's width without firing a resize
+    // event, so every chart kept its screen width and was cut off at the
+    // right edge. Plotly.Plots.resize redraws on a timer, after the page has
+    // already been printed, and 'beforeprint' fires before the print styles
+    // apply. So the charts are redrawn when the print media query starts to
+    // match -- the containers then have their printed width -- through
+    // Plotly.react, the same path as the first paint, with that width set.
+    // On return the width is cleared and the charts size to the screen again.
+    function fitChartsTo(printing) {
+        document.querySelectorAll('.js-plotly-plot').forEach(function (el) {
+            if (!el.data || !el.layout) return;
+            var layout = Object.assign({}, el.layout);
+            if (printing) {
+                // The chart's own box: the container's width includes its padding.
+                layout.width = el.clientWidth;
+            } else {
+                delete layout.width;
+            }
+            Plotly.react(el, el.data, layout, PLOTLY_CONFIG);
+        });
+    }
+    var printQuery = window.matchMedia ? window.matchMedia('print') : null;
+    if (printQuery && printQuery.addEventListener) {
+        printQuery.addEventListener('change', function (query) {
+            fitChartsTo(query.matches);
+        });
+    }
+    window.addEventListener('afterprint', function () { fitChartsTo(false); });
 
     document.addEventListener('DOMContentLoaded', function () {
         initAllCharts(initialTheme);

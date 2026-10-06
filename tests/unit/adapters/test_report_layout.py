@@ -123,3 +123,78 @@ class TestTheChartToolbarCoversNothing:
         heatmap = source[source.index("function renderHeatmap(") :]
         top = re.search(r"margin:\s*\{[^}]*\bt:\s*(\d+)", heatmap)
         assert top and int(top.group(1)) >= _TOOLBAR_CLEARANCE
+
+
+def _print_rules(rendered: str) -> str:
+    """The body of the stylesheet's `@media print` block, comments removed."""
+    own = re.search(r"<style>(.*?)</style>", rendered, flags=re.DOTALL)
+    assert own
+    css = re.sub(r"/\*.*?\*/", "", own.group(1), flags=re.DOTALL)
+    start = css.index("@media print {") + len("@media print {")
+    depth, end = 1, start
+    while depth:
+        depth += {"{": 1, "}": -1}.get(css[end], 0)
+        end += 1
+    return " ".join(css[start : end - 1].split())
+
+
+def _print_rule(rendered: str, selector: str) -> str:
+    rules = re.findall(r"([^{}]+)\{([^{}]*)\}", _print_rules(rendered))
+    found = [body for sel, body in rules if selector in [s.strip() for s in sel.split(",")]]
+    assert found, f"no print rule for {selector}"
+    return " ".join(found)
+
+
+@pytest.mark.unit
+class TestPrintingToPdf:
+    """Printed, the report lost the table's last columns, clipped every chart
+    at the right edge, and started each section on a new page -- nine pages,
+    the last holding only the footer."""
+
+    def test_the_table_is_not_clipped(self, rendered: str) -> None:
+        assert "overflow: visible !important" in _print_rule(rendered, ".table-wrapper")
+
+    def test_sections_may_break_across_pages(self, rendered: str) -> None:
+        avoided = re.findall(r"([^{}]+)\{[^{}]*break-inside: avoid", _print_rules(rendered))
+        selectors = {s.strip() for group in avoided for s in group.split(",")}
+        assert ".section" not in selectors
+        assert ".chart-container" in selectors, "a chart is still kept whole"
+
+    def test_a_heading_stays_with_its_section(self, rendered: str) -> None:
+        assert "break-after: avoid" in _print_rule(rendered, ".section-title")
+
+    def test_the_heatmap_fits_the_page(self, rendered: str) -> None:
+        assert "overflow: visible" in _print_rule(rendered, ".heatmap-scroll")
+        assert "min-width: 0" in _print_rule(rendered, "#chart-heatmap")
+
+    def test_charts_are_redrawn_at_the_printed_width(self, rendered: str) -> None:
+        """Printing reflows the page without a resize event, so a chart keeps
+        the width it had on screen unless it is told. `beforeprint` fires
+        before the print styles apply, and `Plotly.Plots.resize` redraws on a
+        timer after the page is printed; both were tried and printed clipped
+        charts. The print media query's change event is the moment the
+        containers have their printed width."""
+        assert "matchMedia('print')" in rendered
+        handler = rendered[rendered.index("function fitChartsTo(") :]
+        handler = handler[: handler.index("\n    }\n")]
+        assert "layout.width = el.clientWidth" in handler
+        assert "Plotly.react(" in handler
+
+
+@pytest.mark.unit
+def test_the_longest_hotspot_keeps_its_label() -> None:
+    """Its value label sits past the bar's end and was clipped to the plot
+    area at a printed page's width: "3,59" for 3,591."""
+    import json
+
+    from reveille.adapters.renderer import _build_hotspot_chart
+    from reveille.domain.models import FileStats
+
+    files = [
+        FileStats(path=f"f{i}.py", commits=1, lines_added=i * 700, lines_deleted=0)
+        for i in range(1, 6)
+    ]
+    figure = json.loads(_build_hotspot_chart(files))
+
+    assert figure["data"][0]["cliponaxis"] is False
+    assert figure["layout"]["margin"]["r"] >= 50

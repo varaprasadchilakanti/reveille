@@ -1289,10 +1289,15 @@ def _build_hotspot_chart(files: list[FileStats]) -> str:
             ),
             text=[f"{value:,}" for value in churn],
             textposition="outside",
+            # The label sits past the end of the longest bar. Clipped to the
+            # plot area it printed as "3,59" at a printed page's width.
+            cliponaxis=False,
         )
     )
+    layout = _base_layout()
+    layout["margin"] = {**layout["margin"], "r": 60}
     fig.update_layout(
-        **_base_layout(),
+        **layout,
         xaxis_title="Lines changed (added + deleted)",
         height=max(280, min(len(ranked) * 30 + 90, _MAX_CHART_HEIGHT)),
     )

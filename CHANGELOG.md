@@ -291,6 +291,13 @@ Nothing yet.
   covered the top bar of the hotspot chart while hovering. It is now hidden on
   devices that cannot hover, where pinch and drag still zoom, and every chart
   leaves room for it above the plot.
+- **Printing to PDF cut the report.** Every chart kept its screen width and
+  was cut off at the right edge, the contributor table lost its last columns
+  behind a scrollbar, and each section was pushed to a new page, so the
+  footer printed alone on the ninth. Charts are now redrawn at the page's
+  width when printing starts, the table prints whole, sections break where
+  they fall while a heading stays with its chart, and the longest hotspot
+  bar keeps its label.
 
 ### Security
 
