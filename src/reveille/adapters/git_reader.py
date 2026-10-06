@@ -30,7 +30,7 @@ import os
 import re
 from collections import defaultdict
 from collections.abc import Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from git import InvalidGitRepositoryError, NoSuchPathError, Repo
@@ -601,11 +601,14 @@ class GitReader:
         # SHA is not in this set did not come from a commit.
         _logger.debug("git rev-list %s", " ".join(rev_list_args))
         try:
-            authentic_shas = {
+            # In order as well as a set: the co-author pass must line up with
+            # it one for one (ADR 0014).
+            authentic_order = [
                 line.strip()
                 for line in str(self._repo.git.rev_list(*rev_list_args)).splitlines()
                 if line.strip()
-            }
+            ]
+            authentic_shas = set(authentic_order)
         except GitCommandError as exc:
             raise RepositoryError(
                 f"Failed to enumerate commits on branch '{rev}'. "
@@ -659,6 +662,10 @@ class GitReader:
             for area, total in area_totals.items()
         )
 
+        commits = self._credit_co_authors(
+            log_args, authentic_order, commits, mailmap, exclude_set, matched
+        )
+
         # A filter that matched nothing is almost always a typo, and silence
         # makes it indistinguishable from one that worked. This matters most
         # for the case the filter exists to serve: somebody asked to be left
@@ -703,8 +710,11 @@ class GitReader:
             Contributors below the min_commits threshold are excluded.
         """
         grouped: dict[str, list[Commit]] = defaultdict(list)
+        co_authored: dict[str, int] = defaultdict(int)
         for commit in commits:
             grouped[commit.author_email.lower()].append(commit)
+            for _, email in commit.co_authors:
+                co_authored[email] += 1
 
         result: list[ContributorStats] = []
         for email, contributor_commits in grouped.items():
@@ -725,6 +735,7 @@ class GitReader:
                     active_days=len(active_dates),
                     first_commit_date=sorted_by_time[0].timestamp.date(),
                     last_commit_date=sorted_by_time[-1].timestamp.date(),
+                    co_authored_commits=co_authored.get(email, 0),
                 )
             )
 
@@ -786,6 +797,65 @@ class GitReader:
             return self._repo.active_branch.name
         except TypeError:
             return "HEAD"
+
+    def _credit_co_authors(
+        self,
+        log_args: list[str],
+        authentic_order: list[str],
+        commits: list[Commit],
+        mailmap: _Mailmap,
+        exclude_set: set[str],
+        matched: set[str],
+    ) -> list[Commit]:
+        """Attach the identities each commit's `Co-authored-by` trailers credit.
+
+        A second `git log` over the same selection as the main read, emitting
+        only hashes and trailer values (ADR 0014). Records are NUL-separated,
+        which a commit message cannot contain, and must line up one for one,
+        in order, with `rev-list`: matched by hash alone, a trailer holding a
+        separator and another commit's public hash forged a record for that
+        commit. If they do not line up, no co-author is credited at all.
+
+        Args:
+            log_args: The main read's arguments, whose selection is reused.
+            authentic_order: Hashes from `rev-list`, in log order.
+            commits: The commits being counted.
+            mailmap: Parsed `.mailmap`, applied as for authors.
+            exclude_set: Lower-cased exclusions; a co-author matching one is
+                dropped, and the exclusion counts as matched.
+            matched: Mutated with every exclusion value that matched.
+
+        Returns:
+            The commits, with `co_authors` set where any are credited.
+        """
+        if not commits:
+            return commits
+        selection = [a for a in log_args if a not in ("--numstat", _LOG_FORMAT)]
+        try:
+            raw = str(self._repo.git.log("-z", _TRAILER_FORMAT, *selection))
+        except GitCommandError as exc:
+            _logger.warning("co-author trailers could not be read: %s", exc)
+            return commits
+        records = [r for r in raw.split("\0") if r.strip()]
+        hashes = [r.split(_FIELD_SEP, 1)[0].strip() for r in records]
+        if hashes != authentic_order:
+            _logger.warning(
+                "co-author trailers did not line up with the commits read; "
+                "no co-author is credited in this report"
+            )
+            return commits
+
+        credited: dict[str, tuple[tuple[str, str], ...]] = {}
+        authors = {c.sha: c.author_email.lower() for c in commits}
+        for record in records:
+            sha, _, values = record.partition(_FIELD_SEP)
+            sha = sha.strip()
+            if sha not in authors or not values.strip():
+                continue
+            found = _co_author_identities(values, mailmap, exclude_set, matched, authors[sha])
+            if found:
+                credited[sha] = found
+        return [replace(c, co_authors=credited[c.sha]) if c.sha in credited else c for c in commits]
 
     def resolve_head_sha(self, branch: str | None = None) -> str | None:
         """Return the full SHA at the tip of the ref that was analysed.
@@ -949,6 +1019,67 @@ class GitReader:
                 mailmap.by_email[email] = (m1.group(1).strip(), email)
 
         return mailmap
+
+
+#: Hash, then each `Co-authored-by` value, unfolded; the key is matched by
+#: Git case-insensitively. Used with `-z`, so records end in NUL.
+_TRAILER_FORMAT = (
+    f"--format=%H{_FIELD_SEP}"
+    f"%(trailers:key=Co-authored-by,valueonly,unfold,separator=%x{ord(_FIELD_SEP):02x})"
+)
+
+#: Distinct co-authors kept per commit; a message naming thousands would
+#: otherwise put thousands of names in the report.
+_MAX_CO_AUTHORS = 32
+
+_CO_AUTHOR_RE = re.compile(r"^(?P<name>.*?)\s*<(?P<email>[^<>]+)>\s*$")
+
+
+def _co_author_identities(
+    values: str,
+    mailmap: _Mailmap,
+    exclude_set: set[str],
+    matched: set[str],
+    author: str,
+) -> tuple[tuple[str, str], ...]:
+    """Resolve one commit's `Co-authored-by` values like author identities.
+
+    Args:
+        values: The trailer values, separated by the field separator.
+        mailmap: Parsed `.mailmap`.
+        exclude_set: Lower-cased exclusions.
+        matched: Mutated with every exclusion value that matched.
+        author: The commit's own author address, lower-cased.
+
+    Returns:
+        Up to `_MAX_CO_AUTHORS` distinct `(name, address)` pairs.
+    """
+    found: dict[str, str] = {}
+    dropped = 0
+    for value in values.split(_FIELD_SEP):
+        parsed = _CO_AUTHOR_RE.match(_strip_control_chars(value.strip()))
+        if parsed is None:
+            continue
+        raw_name = _truncate(parsed.group("name").strip(), _MAX_NAME_LENGTH)
+        raw_email = _truncate(parsed.group("email").strip(), _MAX_EMAIL_LENGTH)
+        name, email = _resolve_identity(raw_name, raw_email, mailmap)
+        name = _truncate(_strip_invisible(_strip_control_chars(name)), _MAX_NAME_LENGTH)
+        email = _truncate(_strip_control_chars(email), _MAX_EMAIL_LENGTH).lower()
+        hits = exclude_set & {name.lower(), email, raw_name.lower(), raw_email.lower()}
+        if hits:
+            matched.update(hits)
+            continue
+        if email == author or email in found:
+            continue
+        if len(found) == _MAX_CO_AUTHORS:
+            dropped += 1
+            continue
+        found[email] = name or email
+    if dropped:
+        _logger.warning(
+            "a commit names more than %d co-authors; %d ignored", _MAX_CO_AUTHORS, dropped
+        )
+    return tuple((name, email) for email, name in found.items())
 
 
 def _truncate(value: str, limit: int) -> str:

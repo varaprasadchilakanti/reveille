@@ -1297,6 +1297,9 @@
                         <th scope="col" style="text-align:right">Net Lines</th>
                         <th scope="col" style="text-align:right">Active Days</th>
                         <th scope="col" style="white-space:nowrap">Last Commit</th>
+                        {% if derived.co_authored_any %}
+                        <th scope="col" style="text-align:right">Co-authored</th>
+                        {% endif %}
                         {% if ranked %}
                         <th scope="col" style="min-width:180px">Score</th>
                         {% endif %}
@@ -1351,6 +1354,11 @@
                         <td style="color:var(--color-text-secondary)">
                             {{ contributor.stats.last_commit_date }}
                         </td>
+                        {% if derived.co_authored_any %}
+                        <td style="text-align:right" class="num-neutral">
+                            {{ '{:,}'.format(contributor.stats.co_authored_commits) }}
+                        </td>
+                        {% endif %}
                         {% if ranked %}
                         <td>
                             <div class="score-cell">
@@ -1370,6 +1378,19 @@
                 </tbody>
             </table>
         </div>
+        {#
+           Co-authorship beside authorship (ADR 0014): identities credited by a
+           Co-authored-by trailer who authored nothing in the window. Never in
+           the charts, which count authors.
+        #}
+        {% if derived.co_authors_named or derived.co_authors_unnamed %}
+        <p class="section-note co-authors">
+            <strong>Credited only as co-author:</strong>
+            {% if derived.co_authors_named %}{% for c in derived.co_authors_named[:10] %}{{ c.name }} ({{ '{:,}'.format(c.co_authored_commits) }}){% if not loop.last %}, {% endif %}{% endfor %}{% if derived.co_authors_named|length > 10 %} and {{ derived.co_authors_named|length - 10 }} others{% endif %}.{% endif %}
+            {% if derived.co_authors_unnamed %}{{ derived.co_authors_unnamed }} below --min-commits {{ 'is' if derived.co_authors_unnamed == 1 else 'are' }} not named.{% endif %}
+            Co-authored-by trailers are not verified.
+        </p>
+        {% endif %}
     </div>
     {% endif %}
 

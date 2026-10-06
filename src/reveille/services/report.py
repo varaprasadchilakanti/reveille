@@ -36,6 +36,7 @@ from reveille import __version__
 from reveille.adapters.git_reader import GitReader
 from reveille.adapters.renderer import Renderer
 from reveille.config import ReportConfig
+from reveille.domain.coauthors import co_authors_only
 from reveille.domain.models import (
     SCHEMA_VERSION,
     AnalysisProvenance,
@@ -207,6 +208,7 @@ def generate_report(
         file_stats=list(reader.file_stats),
         suppressed_contributors=suppressed_contributors,
         areas=list(reader.area_activity) if config.area_authors_enabled else [],
+        co_authors_only=co_authors_only(commits),
     )
 
     _logger.debug(

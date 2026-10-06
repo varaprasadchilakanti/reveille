@@ -244,6 +244,21 @@ def _weekend_finding(
     )
 
 
+def _co_author_finding(commits: list[Commit]) -> Finding | None:
+    """State how many commits credit a co-author, naming nobody (ADR 0014)."""
+    credited = sum(1 for c in commits if c.co_authors)
+    if not credited:
+        return None
+    return Finding(
+        headline=f"{_plural(credited, 'commit')} {'credits' if credited == 1 else 'credit'} a co-author.",
+        detail=(
+            "Credited by a Co-authored-by trailer, which is not verified. "
+            "The charts count authors only."
+        ),
+        evidence=f"{credited:,} of {len(commits):,}",
+    )
+
+
 def _recency_finding(commits: list[Commit], today: datetime.date) -> Finding | None:
     """State how current the history is, relative to when it was read."""
     last = max(c.timestamp for c in commits).date()
@@ -287,6 +302,7 @@ def summarise(
         _distribution_finding(contributors),
         _cadence_finding(commits),
         _weekend_finding(commits, contributors),
+        _co_author_finding(commits),
         _recency_finding(commits, reference),
     ]
     return [finding for finding in candidates if finding is not None]

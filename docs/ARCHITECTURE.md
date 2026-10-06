@@ -160,6 +160,11 @@ are dated after today; counted in no figure), `shallow_clone` (the repository
 holds only part of its history), `area_authors_enabled` and `area_depth`
 (whether the opt-in "who changed each area" section was asked for; ADR 0013).
 
+**`CoAuthor`** and `Commit.co_authors` — identities a `Co-authored-by` trailer
+credits, read in a separate NUL-separated pass that must line up with
+`rev-list` one for one, resolved like authors (ADR 0014). `domain/coauthors.py`
+lists those credited only as co-authors; authorship figures never use them.
+
 **`AreaActivity`** — `area`, `commits`, `last_changed`, and each author's address
 with the date they last changed the area. Collected by the reader only under
 `--area-authors`; `domain/areas.py` turns it into statements that name authors

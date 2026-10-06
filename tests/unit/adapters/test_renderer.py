@@ -213,6 +213,7 @@ class TestRenderCsv:
         "net_lines",
         "active_days",
         "last_commit_date",
+        "co_authored_commits",
         "composite_score",
         "percentile",
     ]

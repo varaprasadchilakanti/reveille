@@ -274,6 +274,17 @@ enabled = true
 depth = 3
 ```
 
+### Co-authors
+
+A commit made together credits its other authors with a `Co-authored-by:
+Name <address>` trailer. Reveille reads those trailers (and nothing else in a
+commit message) and reports them beside authorship, never inside it: each
+contributor's co-authored count, a line naming identities credited only as
+co-authors, and a finding with the number of commits that credit one. The
+charts and every authorship figure count authors only. A trailer is written by
+whoever wrote the commit and is not verified. See
+[ADR 0014](adr/0014-co-authors-are-a-separate-fact.md).
+
 ### `--deterministic`
 
 Produces byte-reproducible output: two runs over an unchanged repository give

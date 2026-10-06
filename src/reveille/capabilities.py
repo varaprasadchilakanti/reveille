@@ -78,6 +78,14 @@ _CAPABILITIES: tuple[dict[str, str], ...] = (
         ),
     },
     {
+        "id": "co-authors",
+        "description": (
+            "Report identities credited by Co-authored-by trailers beside, not "
+            "inside, authorship: a co-authored count per contributor and the "
+            "identities credited only as co-authors. Trailers are not verified."
+        ),
+    },
+    {
         "id": "area-authors",
         "description": (
             "When asked with --area-authors, list who changed each of the "

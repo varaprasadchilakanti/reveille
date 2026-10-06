@@ -34,6 +34,9 @@ class Commit:
     timestamp: datetime.datetime
     lines_added: int
     lines_deleted: int
+    #: `(name, address)` of each identity a `Co-authored-by` trailer credits,
+    #: resolved like an author (ADR 0014). Never counted as authorship.
+    co_authors: tuple[tuple[str, str], ...] = ()
 
     @property
     def lines_changed(self) -> int:
@@ -82,6 +85,9 @@ class ContributorStats:
     active_days: int
     first_commit_date: datetime.date
     last_commit_date: datetime.date
+    #: Commits this contributor is credited on as a co-author (ADR 0014). A
+    #: plain count beside the authored one; never part of the ranking.
+    co_authored_commits: int = 0
 
     @property
     def net_lines(self) -> int:
@@ -181,6 +187,21 @@ class AnalysisProvenance:
 
 
 @dataclass(frozen=True)
+class CoAuthor:
+    """An identity credited only as a co-author in the window (ADR 0014).
+
+    Attributes:
+        name: Display name, resolved like an author's.
+        email: Lower-cased address, the identity key.
+        co_authored_commits: Commits whose trailers credit this identity.
+    """
+
+    name: str
+    email: str
+    co_authored_commits: int
+
+
+@dataclass(frozen=True)
 class AreaActivity:
     """Who changed one directory in the analysis window (ADR 0013).
 
@@ -245,3 +266,5 @@ class ReportData:
     #: Per-directory activity, present only when `--area-authors` asked for
     #: it (ADR 0013). Empty otherwise, and the section is then absent.
     areas: list[AreaActivity] = field(default_factory=list)
+    #: Identities credited only as co-authors, alphabetically (ADR 0014).
+    co_authors_only: list[CoAuthor] = field(default_factory=list)

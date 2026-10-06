@@ -56,7 +56,8 @@ from jinja2 import (
     select_autoescape,
 )
 
-from reveille.domain.areas import AreaStatement, describe_areas
+from reveille.domain.areas import AreaStatement, describe_areas, is_automated
+from reveille.domain.coauthors import commits_with_co_authors
 from reveille.domain.concentration import gini_coefficient, lorenz_curve
 from reveille.domain.files import extension_breakdown, hotspots
 from reveille.domain.models import (
@@ -407,6 +408,7 @@ class Renderer:
                     "active_days": r.stats.active_days,
                     "first_commit_date": r.stats.first_commit_date.isoformat(),
                     "last_commit_date": r.stats.last_commit_date.isoformat(),
+                    "co_authored_commits": r.stats.co_authored_commits,
                 }
                 for i, r in enumerate(data.ranked_contributors)
             ],
@@ -421,7 +423,19 @@ class Renderer:
                 # arithmetic.
                 "population_size": derived["population_size"],
                 "contributors_below_threshold": derived["contributors_below_threshold"],
+                "commits_with_co_authors": commits_with_co_authors(data.commits),
             },
+            # Identities credited only by Co-authored-by trailers (ADR 0014).
+            # Alphabetical, never by count; a trailer is not verified.
+            "co_authors_only": [
+                {
+                    "name": c.name,
+                    "email": c.email,
+                    "co_authored_commits": c.co_authored_commits,
+                    "automated": is_automated(c.name, c.email),
+                }
+                for c in data.co_authors_only
+            ],
         }
         if data.provenance.area_authors_enabled:
             # The same facts as the HTML section and nothing more: no count
@@ -492,6 +506,8 @@ class Renderer:
             "net_lines",
             "active_days",
             "last_commit_date",
+            # Credited by Co-authored-by trailers; not authorship (ADR 0014).
+            "co_authored_commits",
         ]
         if ranked:
             fieldnames[3:3] = ["designation", "tier"]
@@ -512,6 +528,7 @@ class Renderer:
                         "net_lines": r.stats.net_lines,
                         "active_days": r.stats.active_days,
                         "last_commit_date": r.stats.last_commit_date.isoformat(),
+                        "co_authored_commits": r.stats.co_authored_commits,
                     }
                     if ranked:
                         row["designation"] = _neutralise_csv_cell(r.tier_designation)
@@ -577,6 +594,18 @@ class Renderer:
             ),
             # Who changed each area; empty unless --area-authors (ADR 0013).
             "areas": _area_statements(data),
+            # Co-authorship beside authorship (ADR 0014).
+            "co_authored_any": any(r.stats.co_authored_commits for r in data.ranked_contributors),
+            "co_authors_named": [
+                c
+                for c in data.co_authors_only
+                if c.co_authored_commits >= data.provenance.min_commits
+            ],
+            "co_authors_unnamed": sum(
+                1
+                for c in data.co_authors_only
+                if c.co_authored_commits < data.provenance.min_commits
+            ),
         }
 
     # ------------------------------------------------------------------
