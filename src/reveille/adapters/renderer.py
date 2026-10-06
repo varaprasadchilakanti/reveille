@@ -43,6 +43,7 @@ import json
 import math
 import re
 from collections import defaultdict
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, cast
 
@@ -386,6 +387,7 @@ class Renderer:
                 # no figure, and stated here so the omission is not silent.
                 "commits_dated_after_window": data.provenance.commits_dated_after_window,
                 "shallow_clone": data.provenance.shallow_clone,
+                "limit": data.provenance.limit,
                 "areas": {
                     "enabled": data.provenance.area_authors_enabled,
                     "depth": data.provenance.area_depth,
@@ -440,8 +442,12 @@ class Renderer:
                     "last_commit_date": r.stats.last_commit_date.isoformat(),
                     "co_authored_commits": r.stats.co_authored_commits,
                 }
-                for i, r in enumerate(data.ranked_contributors)
+                for i, r in enumerate(data.ranked_contributors[: data.provenance.limit])
             ],
+            # The full count beside the list, so a bounded list is never read
+            # as the whole (ADR 0015).
+            "contributors_total": len(data.ranked_contributors),
+            "contributors_truncated": _truncated(data.ranked_contributors, data.provenance.limit),
             "derived": {
                 "commit_concentration": derived["commit_concentration"],
                 "gini_coefficient": derived["gini_coefficient"],
@@ -464,8 +470,10 @@ class Renderer:
                     "co_authored_commits": c.co_authored_commits,
                     "automated": is_automated(c.name, c.email),
                 }
-                for c in data.co_authors_only
+                for c in data.co_authors_only[: data.provenance.limit]
             ],
+            "co_authors_only_total": len(data.co_authors_only),
+            "co_authors_only_truncated": _truncated(data.co_authors_only, data.provenance.limit),
         }
         if data.provenance.area_authors_enabled:
             # The same facts as the HTML section and nothing more: no count
@@ -479,10 +487,17 @@ class Renderer:
                     "automated_accounts": a.automated_count,
                     "not_listed": a.not_listed,
                     "last_changed": a.last_changed.isoformat(),
-                    "listed_authors": [{"name": n, "email": e} for n, e in a.named],
-                    "listed_automated_accounts": [
-                        {"name": n, "email": e} for n, e in a.automated_named
+                    "listed_authors": [
+                        {"name": n, "email": e} for n, e in a.named[: data.provenance.limit]
                     ],
+                    "listed_authors_truncated": _truncated(a.named, data.provenance.limit),
+                    "listed_automated_accounts": [
+                        {"name": n, "email": e}
+                        for n, e in a.automated_named[: data.provenance.limit]
+                    ],
+                    "listed_automated_accounts_truncated": _truncated(
+                        a.automated_named, data.provenance.limit
+                    ),
                 }
                 for a in _area_statements(data)
             ]
@@ -710,7 +725,7 @@ class Renderer:
         buffer = io.StringIO(newline="")
         writer = csv.DictWriter(buffer, fieldnames=fieldnames)
         writer.writeheader()
-        for i, r in enumerate(data.ranked_contributors):
+        for i, r in enumerate(data.ranked_contributors[: data.provenance.limit]):
             row = {
                 "rank": i + 1,
                 "name": _neutralise_csv_cell(r.stats.name),
@@ -882,6 +897,11 @@ _NOTICE = (
     "wrong (rewritten, shallow, misdated, split identities); check before "
     "relying on it for a decision."
 )
+
+
+def _truncated(items: Sequence[object], limit: int | None) -> bool:
+    """Return whether bounding `items` to `limit` leaves any out."""
+    return limit is not None and len(items) > limit
 
 
 def _area_statements(data: ReportData) -> list[AreaStatement]:

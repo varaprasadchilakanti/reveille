@@ -265,3 +265,14 @@ def test_a_depth_without_the_section_says_it_does_nothing(repo: Path, tmp_path: 
 
     assert result.exit_code == ExitCode.SUCCESS
     assert "--area-depth has no effect without --area-authors" in result.stderr
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("body", ['deterministic = "false"', "limit = true", 'limit = "5"'])
+def test_report_section_values_have_their_types(tmp_path: Path, body: str) -> None:
+    """bool("false") is True: a quoted false switched determinism on."""
+    path = tmp_path / "reveille.toml"
+    path.write_text(f"[report]\n{body}\n", encoding="utf-8")
+
+    with pytest.raises(ConfigurationError):
+        load_config_from_toml(path)

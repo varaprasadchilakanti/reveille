@@ -120,6 +120,7 @@ _OPTION_NAMES = {
     "repo_path": "--repo",
     "exclude_authors": "--exclude-author",
     "area_depth": "--area-depth",
+    "limit": "--limit",
 }
 
 
@@ -300,6 +301,7 @@ _TOML_KEYS: dict[str, str] = {
     "ranking_weights": "ranking.weights",
     "area_authors_enabled": "areas.enabled",
     "area_depth": "areas.depth",
+    "limit": "report.limit",
 }
 
 
@@ -626,6 +628,7 @@ def _merge_cli_flags(
     deterministic: bool,
     area_authors: bool = False,
     area_depth: int | None = None,
+    limit: int | None = None,
 ) -> ReportConfigKwargs:
     """Merge CLI flag values into the base configuration dict.
 
@@ -655,6 +658,8 @@ def _merge_cli_flags(
             for. Only ever switches it on; a config file's setting stands
             when the flag is absent.
         area_depth: Area depth, or None if the flag was not given.
+        limit: The most entries a list of people carries in JSON and CSV,
+            or None for every one.
 
     Returns:
         A merged ReportConfigKwargs ready for ReportConfig construction.
@@ -681,6 +686,7 @@ def _merge_cli_flags(
         merged["min_commits"] = min_commits
     _apply_ranking_flags(merged, ranking=ranking, no_ranking=no_ranking)
     _apply_area_flags(merged, area_authors=area_authors, area_depth=area_depth)
+    merged.update({"limit": limit} if limit is not None else {})
     if output_format is not None:
         merged["output_format"] = cast(OutputFormat, output_format)
 
@@ -843,6 +849,16 @@ def generate(
             help="Directory components that make an area (default 3).",
         ),
     ] = None,
+    limit: Annotated[
+        int | None,
+        typer.Option(
+            "--limit",
+            help=(
+                "Bound every list of people in JSON and CSV to this many, with "
+                "the full total beside it. Default: every one."
+            ),
+        ),
+    ] = None,
     config: Annotated[
         Path | None,
         typer.Option("--config", "-c", help="Path to a TOML configuration file."),
@@ -896,6 +912,7 @@ def generate(
         deterministic,
         area_authors,
         area_depth,
+        limit,
     )
 
     # Validate the EFFECTIVE path, not the flag. `merged["output_path"]` may

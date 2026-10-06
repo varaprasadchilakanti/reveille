@@ -184,6 +184,9 @@ class AnalysisProvenance:
     # not name people by area as plainly as one that does.
     area_authors_enabled: bool = False
     area_depth: int | None = None
+    # The most entries any list of people in JSON or CSV carries (ADR 0015),
+    # or None for every one.
+    limit: int | None = None
 
 
 @dataclass(frozen=True)

@@ -21,6 +21,10 @@ Nothing yet.
 
 ### Added
 
+- **`--limit` bounds every list of people in JSON and CSV**, with the full
+  total and a `truncated` flag beside each list. The full JSON of llama.cpp
+  is 663 KB; with `--limit 10` it is 6.5 KB and states that 10 of 1,682
+  contributors are listed. Also `[report] limit`. See ADR 0015.
 - **`reveille who-changed <path>`.** Who changed one file or directory, and
   who changed it most recently: the person to ask about a bug in it. Authors
   alphabetically, the five most recent apart, automated accounts and
@@ -355,6 +359,9 @@ Nothing yet.
   `[filters]` or `[report]` written as a plain value (`ranking = 5`) raised a
   traceback; it is now a one-line configuration error. Errors about a setting
   name both the flag and the file key, since either could have set it.
+- **`deterministic = "false"` in `reveille.toml` switched determinism on.**
+  A quoted value is a string, and any non-empty string counted as true. It is
+  now refused, as quoted values for `[ranking]` and `[areas]` already were.
 - **The documentation described behaviour the report does not have.** The
   README and the user guide placed the default report in the current
   directory (it goes to the repository root), described two donut charts

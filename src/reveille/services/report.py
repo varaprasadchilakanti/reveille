@@ -327,6 +327,7 @@ def build_report_data(
         shallow_clone=shallow,
         area_authors_enabled=config.area_authors_enabled,
         area_depth=config.area_depth if config.area_authors_enabled else None,
+        limit=config.limit,
     )
 
     report_data = ReportData(

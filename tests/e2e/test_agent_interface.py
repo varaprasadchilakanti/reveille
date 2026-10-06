@@ -238,3 +238,40 @@ class TestWhoChanged:
         answer = self._json(many, str(many / "lib" / "core.c"))
 
         assert answer["path"] == "lib/core.c"
+
+
+@pytest.mark.e2e
+class TestBoundedLists:
+    def _json(self, repo: Path, *args: str) -> dict:
+        code, out, err = _run("generate", "--repo", str(repo), "--format", "json", "-o", "-", *args)
+        assert code == ExitCode.SUCCESS, err
+        return json.loads(out)
+
+    def test_a_limit_bounds_the_rows_and_states_the_total(self, many: Path) -> None:
+        payload = self._json(many, "--limit", "2")
+
+        assert len(payload["contributors"]) == 2
+        assert payload["contributors_total"] == 10
+        assert payload["contributors_truncated"] is True
+        assert payload["provenance"]["limit"] == 2
+
+    def test_without_a_limit_every_row_is_there(self, many: Path) -> None:
+        payload = self._json(many)
+
+        assert len(payload["contributors"]) == payload["contributors_total"] == 10
+        assert payload["contributors_truncated"] is False
+
+    def test_area_names_are_bounded_too(self, many: Path) -> None:
+        payload = self._json(many, "--limit", "2", "--area-authors")
+        (lib,) = [a for a in payload["areas"] if a["area"] == "lib"]
+
+        assert len(lib["listed_authors"]) == 2
+        assert lib["listed_authors_truncated"] is True
+
+    def test_csv_rows_are_bounded(self, many: Path) -> None:
+        code, out, _ = _run(
+            "generate", "--repo", str(many), "--format", "csv", "-o", "-", "--limit", "3"
+        )
+
+        assert code == ExitCode.SUCCESS
+        assert len(list(csv.DictReader(io.StringIO(out)))) == 3

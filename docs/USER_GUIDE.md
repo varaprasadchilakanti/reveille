@@ -575,6 +575,9 @@ since = "2024-10-01"
 # Analysis window end date. Equivalent to --until.
 until = "2024-12-31"
 
+# The most entries any list of people carries in JSON and CSV. Equivalent to --limit.
+limit = 50
+
 # Output format. Equivalent to --format.
 # Accepted values: html (default), json, csv.
 # format = "html"

@@ -116,6 +116,9 @@ class ReportConfig(BaseModel):
     area_depth: int = Field(default=3, ge=1, le=10)
     output_format: OutputFormat = Field(default="html")
     deterministic: bool = Field(default=False)
+    # Bounds every list of people in JSON and CSV (ADR 0015). None keeps
+    # every row, as before.
+    limit: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def since_must_precede_until(self) -> ReportConfig:
@@ -159,6 +162,7 @@ class ReportConfigKwargs(TypedDict, total=False):
     area_depth: int
     output_format: OutputFormat
     deterministic: bool
+    limit: int
 
 
 def load_config_from_toml(path: Path) -> ReportConfigKwargs:
@@ -248,8 +252,50 @@ def _parse_report_section(report: dict[str, Any]) -> dict[str, Any]:
     if "format" in report:
         kwargs["output_format"] = cast(OutputFormat, str(report["format"]))
     if "deterministic" in report:
-        kwargs["deterministic"] = bool(report["deterministic"])
+        # Strict, like [ranking] enabled: bool("false") is True.
+        kwargs["deterministic"] = _strict_bool("report", "deterministic", report["deterministic"])
+    if "limit" in report:
+        kwargs["limit"] = _strict_int("report", "limit", report["limit"])
     return kwargs
+
+
+def _strict_bool(section: str, key: str, value: object) -> bool:
+    """Return a TOML boolean, refusing anything else.
+
+    Args:
+        section: The table the key is in, for the message.
+        key: The key, for the message.
+        value: The parsed value.
+
+    Returns:
+        The value.
+
+    Raises:
+        ConfigurationError: If the value is not a boolean; a quoted "false"
+            is a non-empty string, which would count as true.
+    """
+    if not isinstance(value, bool):
+        raise ConfigurationError(f"[{section}] {key} must be true or false, not {value!r}.")
+    return value
+
+
+def _strict_int(section: str, key: str, value: object) -> int:
+    """Return a TOML integer, refusing booleans, strings and floats.
+
+    Args:
+        section: The table the key is in, for the message.
+        key: The key, for the message.
+        value: The parsed value.
+
+    Returns:
+        The value.
+
+    Raises:
+        ConfigurationError: If the value is not a whole number.
+    """
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ConfigurationError(f"[{section}] {key} must be a whole number, not {value!r}.")
+    return value
 
 
 def _parse_filters_section(filters: dict[str, Any]) -> dict[str, Any]:

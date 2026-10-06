@@ -71,6 +71,10 @@ _DEFAULT_CONFIG_TEMPLATE: str = """\
 # scores too. That is why it is opt-in.
 # deterministic = false
 
+# Bound every list of people in JSON and CSV output to this many entries; the
+# full total is written beside each list. Equivalent to --limit.
+# limit = 50
+
 
 # ------------------------------------------------------------------------------
 # [filters] -- Contributor and commit filtering
