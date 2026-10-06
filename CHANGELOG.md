@@ -21,6 +21,9 @@ Nothing yet.
 
 ### Added
 
+- **The report can go to stdout.** `--output -` writes it, in any format, to
+  stdout, with progress, notes and errors on stderr, so a script or an
+  assistant can read it without a temporary file. See ADR 0015.
 - **Co-authors are reported.** A `Co-authored-by` trailer credits a commit's
   other authors; Reveille read authors only, so pair work and accepted
   automated fixes were invisible. Each contributor now carries a co-authored

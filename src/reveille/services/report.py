@@ -55,27 +55,76 @@ def generate_report(
     on_progress: Callable[[ProgressEvent], None] | None = None,
     on_notice: Callable[[str], None] | None = None,
 ) -> list[Path]:
-    """Generate a self-contained HTML report of repository activity.
+    """Generate the report and write it to the configured output path.
 
     Args:
-        config: Validated report configuration produced by the CLI layer.
+        config: Validated report configuration.
         on_progress: Optional callable invoked with a ProgressEvent at each
-            pipeline stage boundary. Carries the incoming stage label, elapsed
-            time of the stage that just completed, and an optional item count.
-            Has no effect on the output when omitted.
+            pipeline stage boundary. Has no effect on the output when omitted.
         on_notice: Optional callable given one plain sentence for each thing
             the reader of the report should know about how it was produced,
-            such as commits left out of the window. The report states the
-            same facts; this is for whoever ran the command.
+            such as commits left out of the window.
 
     Returns:
-        The absolute path of the written HTML file.
+        The absolute paths of the written files.
 
     Raises:
         RepositoryError: If the target path is not a readable Git repository.
         EmptyRepositoryError: If no commits exist within the analysis window.
         OutputPathError: If the output file cannot be written.
         RenderError: If the HTML template fails to render.
+    """
+    report_data = build_report_data(config, on_progress, on_notice)
+    renderer = Renderer()
+    paths: list[Path] = []
+    if config.output_format == "html":
+        paths.append(renderer.render(report_data, config.output_path))
+    if config.output_format == "json":
+        paths.append(renderer.render_json(report_data, config.output_path.with_suffix(".json")))
+    if config.output_format == "csv":
+        paths.append(renderer.render_csv(report_data, config.output_path.with_suffix(".csv")))
+    _logger.debug("wrote %d output file(s): %s", len(paths), [str(p) for p in paths])
+    return paths
+
+
+def report_text(
+    config: ReportConfig,
+    on_progress: Callable[[ProgressEvent], None] | None = None,
+    on_notice: Callable[[str], None] | None = None,
+) -> str:
+    """Generate the report and return it as text, for `--output -` (ADR 0015).
+
+    Args:
+        config: Validated report configuration; its output path is unused.
+        on_progress: As for generate_report.
+        on_notice: As for generate_report.
+
+    Returns:
+        The report in the configured format.
+    """
+    report_data = build_report_data(config, on_progress, on_notice)
+    renderer = Renderer()
+    if config.output_format == "json":
+        return renderer.json_text(report_data)
+    if config.output_format == "csv":
+        return renderer.csv_text(report_data)
+    return renderer.html_text(report_data)
+
+
+def build_report_data(
+    config: ReportConfig,
+    on_progress: Callable[[ProgressEvent], None] | None = None,
+    on_notice: Callable[[str], None] | None = None,
+) -> ReportData:
+    """Read the repository and assemble everything a report states.
+
+    Args:
+        config: Validated report configuration.
+        on_progress: As for generate_report.
+        on_notice: As for generate_report.
+
+    Returns:
+        The complete report dataset, ready for any renderer.
     """
     _logger.debug("pipeline start: repo=%s", config.repo_path)
     reader = GitReader(config.repo_path)
@@ -216,16 +265,7 @@ def generate_report(
         len(commits),
         len(contributor_stats),
     )
-    renderer = Renderer()
-    paths: list[Path] = []
-    if config.output_format == "html":
-        paths.append(renderer.render(report_data, config.output_path))
-    if config.output_format == "json":
-        paths.append(renderer.render_json(report_data, config.output_path.with_suffix(".json")))
-    if config.output_format == "csv":
-        paths.append(renderer.render_csv(report_data, config.output_path.with_suffix(".csv")))
-    _logger.debug("wrote %d output file(s): %s", len(paths), [str(p) for p in paths])
-    return paths
+    return report_data
 
 
 def _emit(

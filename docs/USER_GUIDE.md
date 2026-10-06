@@ -274,6 +274,19 @@ enabled = true
 depth = 3
 ```
 
+### Output to stdout
+
+`--output -` writes the report to stdout instead of a file, in any format, and
+nothing else goes there: progress, notes and errors are on stderr. It is meant
+for scripts and assistants that read the result directly.
+
+```bash
+reveille generate --format json --output - | jq .derived
+```
+
+CSV on stdout carries no byte-order mark; the BOM in a CSV file is there for
+spreadsheet programs opening it.
+
 ### Co-authors
 
 A commit made together credits its other authors with a `Co-authored-by:

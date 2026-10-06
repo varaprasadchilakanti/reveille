@@ -209,7 +209,7 @@ Generates the HTML activity report for the target repository.
 | Flag | Short | Type | Default | Description |
 |---|---|---|---|---|
 | `--repo` | `-r` | `PATH` | `.` (current directory) | Path to a Git repository: a working tree's root, or a bare repository. |
-| `--output` | `-o` | `PATH` | `reveille-report.html` in the repository root | Path for the generated HTML file. Parent directories must exist. |
+| `--output` | `-o` | `PATH` | `reveille-report.html` in the repository root | Path for the generated HTML file. Parent directories must exist. `-` writes the report, in any format, to stdout, and nothing else goes there. |
 | `--since` | | `DATE` | The first commit | Include only commits on or after this date. Accepts `YYYY-MM-DD`. A date before the first commit changes nothing: the days before a repository existed are not quiet days. |
 | `--until` | | `DATE` | Today (UTC) | Include only commits on or before this date. Accepts `YYYY-MM-DD`. Without it, commits dated after today are counted in no figure, and the report and a note on stderr say how many. |
 | `--branch` | `-b` | `TEXT` | The checked-out branch | Analyse commits reachable from this branch only. Defaults to whichever branch is currently checked out, which is not necessarily the repository's default branch. |

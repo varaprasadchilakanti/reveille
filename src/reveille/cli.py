@@ -687,6 +687,48 @@ def _merge_cli_flags(
     return cast(ReportConfigKwargs, merged)
 
 
+def _run_report(report_config: ReportConfig, *, to_stdout: bool) -> None:
+    """Run the pipeline with a progress indicator, then print the outcome.
+
+    Args:
+        report_config: The validated configuration.
+        to_stdout: Whether the report itself goes to stdout (`--output -`).
+            Progress, notes and errors are on stderr either way, so stdout
+            carries the report and nothing else.
+
+    Raises:
+        typer.Exit: NEGATIVE for an empty window, CANNOT_RUN for any other
+            failure to produce the report.
+    """
+    from reveille.services.report import generate_report, report_text
+
+    spinner = _StageSpinner()
+    # Held until the spinner has finished, so a notice is not overwritten by
+    # the next animation frame.
+    notices: list[str] = []
+    progress = _make_progress_callback(spinner)
+    try:
+        if to_stdout:
+            text = report_text(report_config, on_progress=progress, on_notice=notices.append)
+        else:
+            written = generate_report(report_config, on_progress=progress, on_notice=notices.append)
+    except EmptyRepositoryError as exc:
+        spinner.complete()
+        _err(f"Error: {exc}")
+        raise typer.Exit(code=ExitCode.NEGATIVE) from exc
+    except ReveilleError as exc:
+        spinner.complete()
+        _err(f"Error: {exc}")
+        raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
+    spinner.complete()
+    _print_notices(notices)
+    if to_stdout:
+        typer.echo(text, nl=not text.endswith("\n"))
+        return
+    for path in written:
+        typer.echo(f"Report written to: {path}")
+
+
 def _apply_area_flags(
     merged: dict[str, Any], *, area_authors: bool, area_depth: int | None
 ) -> None:
@@ -815,7 +857,6 @@ def generate(
 ) -> None:
     """Generate an HTML activity report for the target repository."""
     from reveille.config import load_config_from_toml
-    from reveille.services.report import generate_report
 
     _configure_logging(verbose)
 
@@ -872,11 +913,15 @@ def generate(
         and "output_path" in config_kwargs
         and output == Path("reveille-report.html")
     )
-    _validate_output_path(
-        Path(merged.get("output_path", output)),
-        repo.resolve(),
-        from_config=_output_from_config,
-    )
+    # `--output -` writes the report to stdout and nothing else goes there
+    # (ADR 0015); there is no file, so there is no path to check.
+    to_stdout = str(merged.get("output_path", output)) == "-"
+    if not to_stdout:
+        _validate_output_path(
+            Path(merged.get("output_path", output)),
+            repo.resolve(),
+            from_config=_output_from_config,
+        )
 
     try:
         report_config = ReportConfig(**merged)
@@ -898,29 +943,7 @@ def generate(
         report_config.output_format,
     )
 
-    spinner = _StageSpinner()
-    # Held until the spinner has finished, so a notice is not overwritten by
-    # the next animation frame.
-    notices: list[str] = []
-    try:
-        written_paths = generate_report(
-            report_config,
-            on_progress=_make_progress_callback(spinner),
-            on_notice=notices.append,
-        )
-    except EmptyRepositoryError as exc:
-        spinner.complete()
-        _err(f"Error: {exc}")
-        raise typer.Exit(code=ExitCode.NEGATIVE) from exc
-    except ReveilleError as exc:
-        spinner.complete()
-        _err(f"Error: {exc}")
-        raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
-    else:
-        spinner.complete()
-        _print_notices(notices)
-        for path in written_paths:
-            typer.echo(f"Report written to: {path}")
+    _run_report(report_config, to_stdout=to_stdout)
 
 
 @app.command()

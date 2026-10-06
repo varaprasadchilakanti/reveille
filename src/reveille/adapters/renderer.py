@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import csv
 import datetime
+import io
 import itertools
 import json
 import math
@@ -264,7 +265,26 @@ class Renderer:
                 f"Output directory '{resolved.parent}' does not exist. "
                 "Create the directory before generating a report."
             )
+        html = self.html_text(data)
+        try:
+            resolved.write_text(html, encoding="utf-8")
+        except OSError as exc:
+            raise OutputPathError(f"Failed to write report to '{resolved}': {exc}") from exc
 
+        return resolved
+
+    def html_text(self, data: ReportData) -> str:
+        """Render the HTML report as text, for a file or for stdout.
+
+        Args:
+            data: The complete structured report dataset.
+
+        Returns:
+            The self-contained HTML document.
+
+        Raises:
+            RenderError: If the Jinja2 template raises an error during rendering.
+        """
         try:
             charts = self._build_charts(data)
             derived = self._compute_derived_stats(data)
@@ -293,13 +313,7 @@ class Renderer:
             raise
         except Exception as exc:
             raise RenderError(f"Template rendering failed: {exc}") from exc
-
-        try:
-            resolved.write_text(html, encoding="utf-8")
-        except OSError as exc:
-            raise OutputPathError(f"Failed to write report to '{resolved}': {exc}") from exc
-
-        return resolved
+        return str(html)
 
     def render_json(self, data: ReportData, output_path: Path) -> Path:
         """Serialise the report data to a structured JSON file.
@@ -328,7 +342,22 @@ class Renderer:
                 f"Output directory '{resolved.parent}' does not exist. "
                 "Create the directory before generating a report."
             )
+        text = self.json_text(data)
+        try:
+            resolved.write_text(text, encoding="utf-8")
+        except OSError as exc:
+            raise OutputPathError(f"Failed to write JSON report to '{resolved}': {exc}") from exc
+        return resolved
 
+    def json_text(self, data: ReportData) -> str:
+        """Serialise the report data as JSON text, for a file or for stdout.
+
+        Args:
+            data: The complete structured report dataset.
+
+        Returns:
+            The JSON document, indented.
+        """
         derived = self._compute_derived_stats(data)
 
         payload: dict[str, Any] = {
@@ -457,12 +486,7 @@ class Renderer:
                 for a in _area_statements(data)
             ]
 
-        try:
-            resolved.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-        except OSError as exc:
-            raise OutputPathError(f"Failed to write JSON report to '{resolved}': {exc}") from exc
-
-        return resolved
+        return json.dumps(payload, indent=2)
 
     def render_csv(self, data: ReportData, output_path: Path) -> Path:
         """Serialise the ranked contributor table to a UTF-8 CSV file with BOM encoding.
@@ -488,7 +512,25 @@ class Renderer:
                 f"Output directory '{resolved.parent}' does not exist. "
                 "Create the directory before generating a report."
             )
+        text = self.csv_text(data)
+        try:
+            # The BOM is for spreadsheet programs opening the file; stdout
+            # output (csv_text) carries none.
+            with resolved.open("w", encoding="utf-8-sig", newline="") as fh:
+                fh.write(text)
+        except OSError as exc:
+            raise OutputPathError(f"Failed to write CSV report to '{resolved}': {exc}") from exc
+        return resolved
 
+    def csv_text(self, data: ReportData) -> str:
+        """Serialise the contributor table as CSV text, for a file or for stdout.
+
+        Args:
+            data: The complete structured report dataset.
+
+        Returns:
+            The CSV document, without a byte-order mark.
+        """
         # Ranking columns are omitted entirely when ranking is off, mirroring
         # render_json. Emitting `tier,0` and `composite_score,0.0` puts a number
         # a reader can sort on into the format most likely to be opened in a
@@ -513,33 +555,29 @@ class Renderer:
             fieldnames[3:3] = ["designation", "tier"]
             fieldnames += ["composite_score", "percentile"]
 
-        try:
-            with resolved.open("w", encoding="utf-8-sig", newline="") as fh:
-                writer = csv.DictWriter(fh, fieldnames=fieldnames)
-                writer.writeheader()
-                for i, r in enumerate(data.ranked_contributors):
-                    row = {
-                        "rank": i + 1,
-                        "name": _neutralise_csv_cell(r.stats.name),
-                        "email": _neutralise_csv_cell(r.stats.email),
-                        "commits": r.stats.commit_count,
-                        "lines_added": r.stats.lines_added,
-                        "lines_deleted": r.stats.lines_deleted,
-                        "net_lines": r.stats.net_lines,
-                        "active_days": r.stats.active_days,
-                        "last_commit_date": r.stats.last_commit_date.isoformat(),
-                        "co_authored_commits": r.stats.co_authored_commits,
-                    }
-                    if ranked:
-                        row["designation"] = _neutralise_csv_cell(r.tier_designation)
-                        row["tier"] = r.tier
-                        row["composite_score"] = r.composite_score
-                        row["percentile"] = r.percentile
-                    writer.writerow(row)
-        except OSError as exc:
-            raise OutputPathError(f"Failed to write CSV report to '{resolved}': {exc}") from exc
-
-        return resolved
+        buffer = io.StringIO(newline="")
+        writer = csv.DictWriter(buffer, fieldnames=fieldnames)
+        writer.writeheader()
+        for i, r in enumerate(data.ranked_contributors):
+            row = {
+                "rank": i + 1,
+                "name": _neutralise_csv_cell(r.stats.name),
+                "email": _neutralise_csv_cell(r.stats.email),
+                "commits": r.stats.commit_count,
+                "lines_added": r.stats.lines_added,
+                "lines_deleted": r.stats.lines_deleted,
+                "net_lines": r.stats.net_lines,
+                "active_days": r.stats.active_days,
+                "last_commit_date": r.stats.last_commit_date.isoformat(),
+                "co_authored_commits": r.stats.co_authored_commits,
+            }
+            if ranked:
+                row["designation"] = _neutralise_csv_cell(r.tier_designation)
+                row["tier"] = r.tier
+                row["composite_score"] = r.composite_score
+                row["percentile"] = r.percentile
+            writer.writerow(row)
+        return buffer.getvalue()
 
     # ------------------------------------------------------------------
     # Derived statistics
