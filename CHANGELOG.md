@@ -22,13 +22,18 @@ Nothing yet.
 ### Added
 
 - **The repository profile has a shape again, and six measures.** Above the
-  table, six separate petals show Continuity, Recent work, Shared (commits not
-  made by the busiest author), Collaboration (commits crediting a co-author),
+  table, six separate petals show Continuity, Recent work, Shared (people's
+  commits not made by the busiest person; bots are left out and counted under
+  Automation), Collaboration (commits crediting a co-author),
   Revisiting and Automation (commits by automated accounts); petal length is
   the share, with the value expected by chance marked where it can be computed.
   Separate petals rather than the old radar polygon, which research found the
   least effective radial form. Inline SVG: it renders without JavaScript and
   prints. See ADR 0016.
+- **The report states its own limits.** One sentence under the header, and as
+  `notice` in the full JSON: the figures are computed from Git history by fixed
+  rules, history can be incomplete or wrong, and they need checking before a
+  decision. The same text, from one copy, as `summary` prints.
 - **A long contributor table scrolls in its own panel.** With 1,682
   contributors it pushed every later section thousands of pixels down. The
   table now has a fixed height with its header kept in view, states how many
@@ -113,9 +118,10 @@ Nothing yet.
   while the figures themselves sat in a `visually-hidden` table sighted readers
   never saw, and the section drew nothing at all with scripting off. All three
   audiences now read the same markup.
-- **The profile no longer reads contributor data.** `Spread` was the only axis
-  that did, so `repository_profile` takes commits, files and a window. It cannot
-  name, rank or count people even by accident.
+- **The profile names nobody.** `Spread`, a transform of the Gini, is gone, and
+  `repository_profile` takes commits, files and a window, never contributor
+  rows. Shared, Collaboration and Automation read authors and trailers only to
+  count commits; no axis names, ranks or counts any one person's work.
 - **`scatterpolar` is no longer emitted.** The profile was its only user, so the
   report now draws `bar`, `pie` and `scatter` only, and the offline guarantee's
   trace-type allowlist is one entry smaller.

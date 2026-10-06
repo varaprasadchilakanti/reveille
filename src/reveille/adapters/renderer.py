@@ -288,13 +288,13 @@ class Renderer:
         Raises:
             RenderError: If the Jinja2 template raises an error during rendering.
         """
-        profile = repository_profile(
-            data.commits,
-            data.file_stats,
-            data.metadata.analysis_since,
-            data.metadata.analysis_until,
-        )
         try:
+            profile = repository_profile(
+                data.commits,
+                data.file_stats,
+                data.metadata.analysis_since,
+                data.metadata.analysis_until,
+            )
             charts = self._build_charts(data)
             derived = self._compute_derived_stats(data)
             plotly_js = _PLOTLY_JS_BUNDLE
@@ -311,6 +311,7 @@ class Renderer:
                     for name, specification in charts.items()
                 },
                 derived=derived,
+                notice=_NOTICE,
                 plotly_js=plotly_js,
                 generated_at=generated_at,
             )
@@ -902,11 +903,12 @@ def _ceiling_text(population: int) -> str:
     return f"{math.floor(ceiling * 1000) / 1000:.3f}"
 
 
-#: Stated with every summary. Short, because it is read by assistants as
+#: Stated in every output that carries figures: under the HTML header, in
+#: the full JSON, and with every summary. One copy, so they cannot drift. Short, because it is read by assistants as
 #: often as by people, and plain, because it is the limit of what the
 #: numbers can carry.
 _NOTICE = (
-    "Computed from Git history by fixed rules. History can be incomplete or "
+    "Computed from Git history by fixed rules, offline. History can be incomplete or "
     "wrong (rewritten, shallow, misdated, split identities); check before "
     "relying on it for a decision."
 )

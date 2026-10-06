@@ -358,6 +358,15 @@
             fill-opacity: 0.85;
         }
 
+        /* A ring of the page colour under the mark, so it stays visible
+           where it crosses a petal: the bare mark measured 2.6:1 against
+           the petal fill, below the 3:1 WCAG 1.4.11 asks of a graphic. */
+        .flower-expected-halo {
+            fill: none;
+            stroke: var(--color-bg);
+            stroke-width: 5;
+        }
+
         .flower-expected {
             fill: none;
             stroke: var(--color-text-primary);
@@ -507,7 +516,8 @@
                the reader cannot reach. */
             .theme-toggle,
             .heatmap-controls,
-            .modebar {
+            .modebar,
+            .table-count {
                 display: none !important;
             }
 
@@ -1006,11 +1016,7 @@
                 {% endif %}
             </div>
             {# The limit of what the figures can carry, where every reader sees it. #}
-            <p class="report-notice">
-                Computed from Git history by fixed rules, offline. History can be
-                incomplete or wrong (rewritten, shallow, misdated, split identities);
-                check before relying on it for a decision.
-            </p>
+            <p class="report-notice">{{ notice }}</p>
         </div>
         <button id="theme-toggle" class="theme-toggle" type="button">
             Dark Mode
@@ -1144,19 +1150,15 @@
          Repository profile
          ============================================================ -->
     {#
-       A table, not a chart. It was a Plotly radar until 0.9.0: area is read
-       far less accurately than length (Cleveland & McGill, JASA 1984), the
-       shape depended on an axis order carrying no meaning, and the report had
-       to instruct the reader to treat the figure as numbers rather than as a
-       silhouette -- an admission that the form was wrong, not a mitigation of
-       it. Numbers presented accurately is a table with bars in it. Two of the
-       five measures were dropped because each restated a figure printed
-       elsewhere in this report; see ADR 0012.
+       A flower above a table. It was a Plotly radar until 0.9.0: area is read
+       far less accurately than length (Cleveland & McGill, JASA 1984) and the
+       shape depended on an axis order carrying no meaning (ADR 0012). The
+       shape came back as separate petals of length (ADR 0016); the table
+       stays as the authoritative text.
 
-       Consequences, all deliberate: it renders with JavaScript off, where the
-       radar drew nothing; it is visible to sighted readers, where the radar's
-       figures lived only in a visually-hidden table; and it needs no
-       role="img" and no aria-label, because it is text.
+       Both render with JavaScript off and print. The flower is an image with
+       an aria-label listing every value; the table needs no label, because
+       it is text.
 
        A Jinja comment rather than an HTML one: this is for whoever edits the
        template, and has no business shipping inside every report.
@@ -1183,7 +1185,7 @@
                 {% for p in flower %}
                 <path class="flower-track" d="{{ p.track }}"></path>
                 {% if p.petal %}<path class="flower-petal" d="{{ p.petal }}"></path>{% endif %}
-                {% if p.expected %}<path class="flower-expected" d="{{ p.expected }}"></path>{% endif %}
+                {% if p.expected %}<path class="flower-expected-halo" d="{{ p.expected }}"></path><path class="flower-expected" d="{{ p.expected }}"></path>{% endif %}
                 <text class="flower-label" x="{{ p.label_x }}" y="{{ p.label_y }}" text-anchor="{{ p.anchor }}">
                     <tspan class="flower-name">{{ p.name }}</tspan>
                     <tspan class="flower-value" x="{{ p.label_x }}" dy="15">{{ p.percent }}</tspan>

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import math
 import re
 from pathlib import Path
 
@@ -351,3 +352,66 @@ class TestTheProfileFlower:
         html = self._html(tmp_path)
 
         assert html.count('class="flower-expected"') == html.count('class="meter-tick"')
+        # On a ring of the page colour, or it falls below 3:1 against a petal.
+        assert html.count('class="flower-expected-halo"') == html.count('class="flower-expected"')
+
+
+def _radius(path: str) -> float:
+    """The radius of a petal wedge or expectation arc, from its `A` command."""
+    match = re.search(r"A ([\d.]+) ", path)
+    assert match, path
+    return float(match.group(1))
+
+
+@pytest.mark.unit
+class TestTheFlowerGeometry:
+    """The petal is the figure: its length, its mark and its place are checked."""
+
+    def _petals(self, values: list[float], expected: list[float | None]) -> list[dict]:
+        from reveille.adapters.renderer import _profile_flower
+        from reveille.domain.profile import AXIS_ORDER, ProfileAxis
+
+        return _profile_flower(
+            [
+                ProfileAxis(name=name, value=value, description="", expected=mark)
+                for name, value, mark in zip(AXIS_ORDER, values, expected, strict=True)
+            ]
+        )
+
+    def test_length_is_the_share_from_centre_to_rim(self) -> None:
+        petals = self._petals([1.0, 0.5, 0.25, 0.1, 0.75, 0.0], [None] * 6)
+
+        assert [_radius(p["petal"]) for p in petals[:5]] == [120.0, 60.0, 30.0, 12.0, 90.0]
+        assert petals[5]["petal"] == "", "0% draws no petal"
+        assert all(_radius(p["track"]) == 120.0 for p in petals), "every track reaches the rim"
+
+    def test_the_mark_sits_at_the_expected_value_not_the_value(self) -> None:
+        petals = self._petals([0.9, 0.2, 0.5, 0.1, 0.1, 0.1], [0.5, 0.25, None, None, None, None])
+
+        assert _radius(petals[0]["expected"]) == 60.0
+        assert _radius(petals[1]["expected"]) == 30.0
+        assert petals[2]["expected"] is None
+
+    def test_the_order_runs_clockwise_from_the_top(self) -> None:
+        """Continuity at twelve o'clock, then clockwise in `AXIS_ORDER`."""
+        petals = self._petals([0.5] * 6, [None] * 6)
+        angles = [
+            math.degrees(math.atan2(float(p["label_y"]) - 220, float(p["label_x"]) - 220))
+            for p in petals
+        ]
+
+        assert [round(a) for a in angles] == [-90, -30, 30, 90, 150, -150]
+
+    def test_colours_come_from_the_theme(self) -> None:
+        from reveille.adapters import renderer
+
+        template = (
+            Path(renderer.__file__).parent.parent / "templates" / "report.html.j2"
+        ).read_text(encoding="utf-8")
+        rules = re.findall(r"\.flower-[\w-]+\s*\{([^}]*)\}", template)
+
+        assert len(rules) >= 6
+        for rule in rules:
+            assert "#" not in rule, f"a fixed colour cannot follow dark mode: {rule.strip()}"
+            for colour in re.findall(r"(?:fill|stroke):\s*([^;]+);", rule):
+                assert colour.startswith("var(--color-") or colour == "none", colour

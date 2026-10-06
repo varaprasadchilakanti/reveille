@@ -131,11 +131,11 @@ class TestTheDroppedAxesStayDropped:
         assert "Small steps" not in _profile([_commit(1)], [])
 
     def test_the_profile_cannot_see_contributors_at_all(self) -> None:
-        """Spread was the only axis that read people; its removal is structural.
+        """The profile takes commits, files and a window, never contributor rows.
 
-        `repository_profile` takes commits, files and a window. There is no
-        contributor argument to pass, so the profile cannot name, rank or
-        count people even by accident.
+        `Shared`, `Collaboration` and `Automation` read authors from the
+        commits to count them (ADR 0016); there is still no ranked or scored
+        contributor data to pass, and `TestItNamesNobody` holds the output.
         """
         import inspect
 
@@ -279,6 +279,31 @@ class TestTheNewMeasures:
 
         assert shared.value == pytest.approx(0.25)
         assert shared.expected == pytest.approx(0.5), "1 - 1/n for two authors"
+
+    def test_shared_expects_one_minus_one_over_n(self) -> None:
+        """Three people, where 1 - 1/n and 1/n differ; two could not tell them apart."""
+        commits = [_c(0, "a@e"), _c(1, "a@e"), _c(2, "b@e"), _c(3, "c@e")]
+        shared = self._axes(commits)["Shared"]
+
+        assert shared.value == pytest.approx(0.5)
+        assert shared.expected == pytest.approx(2 / 3)
+
+    def test_a_bot_is_not_the_one_person(self) -> None:
+        """Shared answers "is this one person?"; a busy bot is Automation's."""
+        bot = "renovate[bot]@users.noreply.github.com"
+        commits = [_c(i, bot) for i in range(8)] + [_c(8, "a@e"), _c(9, "b@e")]
+        axes = self._axes(commits)
+
+        assert axes["Shared"].value == pytest.approx(0.5)
+        assert axes["Shared"].expected == pytest.approx(0.5)
+        assert axes["Automation"].value == pytest.approx(0.8)
+
+    def test_shared_without_people_has_no_expectation(self) -> None:
+        bot = "dependabot[bot]@users.noreply.github.com"
+        shared = self._axes([_c(0, bot), _c(1, bot)])["Shared"]
+
+        assert shared.value == 0.0
+        assert shared.expected is None
 
     def test_collaboration_counts_commits_with_a_co_author(self) -> None:
         commits = [_c(0, "a@e", (("H", "h@e"),)), _c(1, "a@e"), _c(2, "a@e"), _c(3, "a@e")]

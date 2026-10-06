@@ -15,6 +15,7 @@ from __future__ import annotations
 import datetime
 import re
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -126,11 +127,93 @@ class TestTheReportStatesItsLimits:
 
         assert "check before relying on it for a decision" in payload["notice"]
 
+    def test_every_output_states_the_same_notice(
+        self, tmp_path_factory: pytest.TempPathFactory
+    ) -> None:
+        """One copy: the HTML once carried its own wording, and drifted."""
+        import json
+
+        from reveille.adapters.renderer import _NOTICE
+
+        data = _report_data([3, 1])
+        notice = re.search(r'<p class="report-notice">(.*?)</p>', _render(data, tmp_path_factory))
+
+        assert notice
+        assert notice.group(1).strip() == _NOTICE
+        assert json.loads(Renderer().json_text(data))["notice"] == _NOTICE
+
+    def test_paper_is_not_told_the_table_scrolls(self) -> None:
+        from reveille.adapters import renderer
+
+        template = (
+            Path(renderer.__file__).parent.parent / "templates" / "report.html.j2"
+        ).read_text(encoding="utf-8")
+        start = template.index("@media print")
+        hidden = template[start : template.index("}", template.index("display: none", start))]
+
+        assert ".table-count" in hidden
+
+
+def _longest_rendering(caption: str) -> int:
+    """Words in the longest text a caption can render, over every branch.
+
+    An expression counts as one word; of an `if`'s branches the longest is
+    taken, so the bound holds whichever one a report renders.
+    """
+    caption = re.sub(r"\{#.*?#\}", " ", caption, flags=re.DOTALL)
+    stack: list[list[int]] = [[0]]
+    for token in re.split(r"(\{%-?.*?-?%\})", caption, flags=re.DOTALL):
+        tag = re.match(r"\{%-?\s*(\w+)", token)
+        if tag and tag.group(1) == "if":
+            stack.append([0])
+        elif tag and tag.group(1) in ("elif", "else"):
+            stack[-1].append(0)
+        elif tag and tag.group(1) == "endif":
+            longest = max(stack.pop())
+            stack[-1][-1] += longest
+        elif not tag:
+            text = re.sub(r"<[^>]+>", " ", re.sub(r"\{\{.*?\}\}", " X ", token, flags=re.DOTALL))
+            stack[-1][-1] += len(text.split())
+    return stack[0][0]
+
 
 @pytest.mark.unit
-def test_no_caption_runs_past_forty_words(tmp_path_factory: pytest.TempPathFactory) -> None:
-    """Captions were written to argue; a reader scanning a chart reads two lines."""
-    page = _render(_with_commits(_report_data([15, 15])), tmp_path_factory)
-    for caption in re.findall(r'<p class="chart-foot">(.*?)</p>', page, re.DOTALL):
-        words = re.sub(r"<[^>]+>", " ", caption).split()
-        assert len(words) <= 40, " ".join(words)
+def test_no_caption_runs_past_forty_words() -> None:
+    """Captions were written to argue; a reader scanning a chart reads two lines.
+
+    Read from the template, not a rendered report: a fixture renders only
+    the captions its data reaches, and the hotspot, file-type and area
+    captions once went unchecked that way.
+    """
+    from reveille.adapters import renderer
+
+    template = (Path(renderer.__file__).parent.parent / "templates" / "report.html.j2").read_text(
+        encoding="utf-8"
+    )
+    captions = re.findall(r'<p class="chart-foot">(.*?)</p>', template, re.DOTALL)
+
+    assert len(captions) >= 7, "every chart caption is found"
+    for caption in captions:
+        assert _longest_rendering(caption) <= 40, " ".join(caption.split())
+
+
+@pytest.mark.unit
+def test_the_word_bound_takes_the_longest_branch() -> None:
+    caption = "a b {% if x %}c d e{% else %}f{% endif %} {{ g }}"
+
+    assert _longest_rendering(caption) == 6
+
+
+@pytest.mark.unit
+def test_a_profile_failure_is_a_render_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The docstring promises RenderError; the profile was once outside the wrapper."""
+    from reveille.adapters import renderer
+    from reveille.exceptions import RenderError
+
+    def broken(*_: object) -> None:
+        raise ZeroDivisionError("profile")
+
+    monkeypatch.setattr(renderer, "repository_profile", broken)
+
+    with pytest.raises(RenderError, match="profile"):
+        Renderer().html_text(_report_data([3, 1]))

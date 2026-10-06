@@ -471,9 +471,14 @@ consumer can decide whether it can parse the rest before trying.
     "population_size": 5,
     "contributors_below_threshold": 0,
     "...": "..."
-  }
+  },
+  "notice": "Computed from Git history by fixed rules, offline. History can be incomplete or wrong (rewritten, shallow, misdated, split identities); check before relying on it for a decision."
 }
 ```
+
+**`notice` travels with the figures.** It is the sentence printed under the HTML
+report's header and with every `summary`, so a document passed on without the
+page around it still says what it cannot carry.
 
 **`schema_version` changes when the shape changes**, not when the tool does.
 A major bump means a removal or a rename; a minor bump means a purely additive

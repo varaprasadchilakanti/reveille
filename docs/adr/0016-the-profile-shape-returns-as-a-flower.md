@@ -34,8 +34,10 @@ marks of length.
 - **Six measures, in a fixed order, each a share between 0 and 1:**
   1. *Continuity* — weeks with a commit (ADR 0012; expectation computed).
   2. *Recent work* — commits in the final quarter of the window (ADR 0012; expectation computed).
-  3. *Shared* — commits not made by the single busiest author. Expected under an even split
-     across *n* authors: 1 − 1/*n*.
+  3. *Shared* — of commits by people, those not made by the single busiest person. Automated
+     accounts are left out of both sides of the ratio: "is this one person?" is not answered by
+     a dependency bot, and *Automation* reports the bots. Expected under an even split across
+     *n* people: 1 − 1/*n*; with no human commits, no expectation.
   4. *Collaboration* — commits that credit a co-author (ADR 0014). No expectation.
   5. *Revisiting* — files touched by more than one commit (ADR 0012). No expectation.
   6. *Automation* — commits by automated accounts (the `[bot]` rule of ADR 0013). No expectation.
@@ -53,6 +55,9 @@ and its expectation is computed. The Gini remains the measure of distribution.
 
 **Petal area grows with the square of its length.** Values are printed on every petal and in
 the table, so nothing has to be read from area; the caption says length encodes the share.
+
+**The expectation mark sits on a ring of the page colour.** Bare, it measured 2.6:1 against the
+petal fill, below the 3:1 WCAG 1.4.11 asks of a graphical object.
 
 **One more drawing to keep accessible.** The SVG carries a label listing every value, and the
 table remains the authoritative text.
