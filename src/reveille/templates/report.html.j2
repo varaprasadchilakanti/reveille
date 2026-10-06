@@ -1603,6 +1603,9 @@
     var heatmapData = null;
     var currentYear = null;
     var currentContributor = '__aggregated__';
+    // True while the page is being printed: charts take the light theme and
+    // the printed width (see fitChartsTo).
+    var printing = false;
 
     // ------------------------------------------------------------------
     // Theme persistence
@@ -1659,6 +1662,7 @@
         }
 
         var layout = mergeLayout(spec.layout || {}, THEME_LAYOUTS[theme]);
+        if (printing) layout.width = divEl.clientWidth;
         if (divEl._fullLayout) {
             Plotly.react(divEl, spec.data, layout, PLOTLY_CONFIG);
         } else {
@@ -1803,6 +1807,7 @@
             modebar:    { remove: ['logo'] },
             height:     260
         }, THEME_LAYOUTS[theme]);
+        if (printing) layout.width = divEl.clientWidth;
 
         if (divEl._fullLayout) {
             Plotly.react(divEl, [trace], layout, PLOTLY_CONFIG);
@@ -1937,21 +1942,16 @@
     // right edge. Plotly.Plots.resize redraws on a timer, after the page has
     // already been printed, and 'beforeprint' fires before the print styles
     // apply. So the charts are redrawn when the print media query starts to
-    // match -- the containers then have their printed width -- through
-    // Plotly.react, the same path as the first paint, with that width set.
-    // On return the width is cleared and the charts size to the screen again.
-    function fitChartsTo(printing) {
-        document.querySelectorAll('.js-plotly-plot').forEach(function (el) {
-            if (!el.data || !el.layout) return;
-            var layout = Object.assign({}, el.layout);
-            if (printing) {
-                // The chart's own box: the container's width includes its padding.
-                layout.width = el.clientWidth;
-            } else {
-                delete layout.width;
-            }
-            Plotly.react(el, el.data, layout, PLOTLY_CONFIG);
-        });
+    // match -- the containers then have their printed width -- through the
+    // same path as the first paint, with that width set. The page prints in
+    // the light palette whatever theme it is shown in, so the charts do too;
+    // they kept a dark theme and printed as dark panels on white paper. On
+    // return they are redrawn in the reader's theme, sized to the screen.
+    function fitChartsTo(isPrinting) {
+        printing = isPrinting;
+        var theme = printing ? 'light' : readTheme();
+        CHART_IDS.forEach(function (id) { initChart(id, theme); });
+        if (heatmapData) renderHeatmap(currentYear, currentContributor, theme);
     }
     var printQuery = window.matchMedia ? window.matchMedia('print') : null;
     if (printQuery && printQuery.addEventListener) {

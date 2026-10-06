@@ -301,7 +301,9 @@ Nothing yet.
   footer printed alone on the ninth. Charts are now redrawn at the page's
   width when printing starts, the table prints whole, sections break where
   they fall while a heading stays with its chart, and the longest hotspot
-  bar keeps its label.
+  bar keeps its label. Printed from dark mode, the charts kept the dark theme
+  and came out as dark panels on a white page; they now print light, like the
+  rest of the page.
 - **A warning printed on the end of the progress line.** "Reading commit
   history .  WARNING ..." now reads as two lines, and the progress line says
   "1 commit", not "1 commits".

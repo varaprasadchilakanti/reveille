@@ -177,8 +177,19 @@ class TestPrintingToPdf:
         assert "matchMedia('print')" in rendered
         handler = rendered[rendered.index("function fitChartsTo(") :]
         handler = handler[: handler.index("\n    }\n")]
-        assert "layout.width = el.clientWidth" in handler
-        assert "Plotly.react(" in handler
+        assert "initChart(id, theme)" in handler, "redrawn through the first-paint path"
+        assert "renderHeatmap(" in handler
+        for builder in ("function initChart(", "function renderHeatmap("):
+            body = rendered[rendered.index(builder) :]
+            body = body[: body.index("\n    }\n")]
+            assert "if (printing) layout.width = divEl.clientWidth;" in body, builder
+
+    def test_charts_print_in_the_light_theme(self, rendered: str) -> None:
+        """The page prints light whatever theme it is in; the charts kept the
+        reader's dark theme, and printed as dark panels on white paper."""
+        handler = rendered[rendered.index("function fitChartsTo(") :]
+        handler = handler[: handler.index("\n    }\n")]
+        assert "var theme = printing ? 'light' : readTheme();" in handler
 
 
 @pytest.mark.unit
