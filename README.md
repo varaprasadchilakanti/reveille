@@ -270,6 +270,23 @@ reveille summary
 reveille summary --format json
 ```
 
+### `reveille who-changed`
+
+Who changed one file or directory in the window, and who changed it most
+recently: for finding the person to ask about a bug, or a reviewer for a
+change. Names are alphabetical, with no count or date per person; the five who
+changed it most recently are shown separately; automated accounts and
+co-authors are listed apart; every list is bounded by `--limit` (default 20).
+It says who changed the code, not who knows or owns it. Takes the options of
+`summary` plus `--limit`.
+
+```bash
+reveille who-changed src/parser/lexer.c
+reveille who-changed src/parser --since 2026-01-01 --format json
+```
+
+A path that no commit in the window changed is a negative answer (exit 1).
+
 ### `reveille capabilities`
 
 Describes what Reveille can and cannot do — including, deliberately, the things

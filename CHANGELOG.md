@@ -21,6 +21,13 @@ Nothing yet.
 
 ### Added
 
+- **`reveille who-changed <path>`.** Who changed one file or directory, and
+  who changed it most recently: the person to ask about a bug in it. Authors
+  alphabetically, the five most recent apart, automated accounts and
+  co-authors listed separately, no count or date per person, every list
+  bounded by `--limit`. It reads only the commits that changed the path: on
+  llama.cpp's CUDA directory, 0.6 seconds. The path is taken literally. See
+  ADR 0015.
 - **`reveille summary`.** The repository in a few lines, naming nobody: the
   window, totals, Gini, concentration, quiet run, days since the last commit,
   the findings and a notice that the figures need checking before a decision,

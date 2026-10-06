@@ -60,7 +60,15 @@ class TestDerivedFactsCannotDrift:
         described = {c["name"] for c in document["commands"]}
 
         assert described == registered
-        assert described == {"generate", "summary", "validate", "init", "capabilities", "help"}
+        assert described == {
+            "generate",
+            "summary",
+            "who-changed",
+            "validate",
+            "init",
+            "capabilities",
+            "help",
+        }
 
     def test_a_broken_introspection_raises_rather_than_emptying(self) -> None:
         """An empty command list is never a true answer, so it must not be one.

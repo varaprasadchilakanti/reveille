@@ -36,6 +36,7 @@ from reveille import __version__
 from reveille.adapters.git_reader import GitReader
 from reveille.adapters.renderer import Renderer
 from reveille.config import ReportConfig
+from reveille.domain.areas import who_changed
 from reveille.domain.coauthors import co_authors_only
 from reveille.domain.models import (
     SCHEMA_VERSION,
@@ -46,6 +47,7 @@ from reveille.domain.models import (
     ReportData,
 )
 from reveille.domain.ranking import rank_contributors
+from reveille.exceptions import EmptyRepositoryError
 
 _logger = logging.getLogger(__name__)
 
@@ -130,6 +132,58 @@ def summary_text(
     """
     data = build_report_data(config, on_notice=on_notice, line_counts=False)
     return Renderer().summary_text(data, output_format)
+
+
+def who_changed_text(
+    config: ReportConfig,
+    path: str,
+    output_format: str,
+    limit: int,
+    on_notice: Callable[[str], None] | None = None,
+) -> str:
+    """State who changed one path in the window (ADR 0015).
+
+    Reads only the commits that changed the path, without line counts, so it
+    answers in well under a second on a large history.
+
+    Args:
+        config: Validated configuration; output settings are unused.
+        path: A repository-relative path, file or directory.
+        output_format: "json" or "text".
+        limit: The most names any list carries.
+        on_notice: As for generate_report.
+
+    Returns:
+        The answer.
+
+    Raises:
+        EmptyRepositoryError: If no commit in the window changed the path.
+    """
+    reader = GitReader(config.repo_path)
+    cutoff = _today() if config.until is None and not config.deterministic else None
+    try:
+        commits = reader.read_commits(
+            branch=config.branch,
+            since=config.since,
+            until=config.until,
+            exclude_authors=config.exclude_authors,
+            dated_until=cutoff,
+            line_counts=False,
+            path=path,
+        )
+    except EmptyRepositoryError as exc:
+        raise EmptyRepositoryError(f"No commit in the analysis window changed '{path}'.") from exc
+    if reader.commits_dated_after and cutoff is not None:
+        _notify(
+            on_notice,
+            f"{_count(reader.commits_dated_after)} dated after {cutoff.isoformat()} and not counted.",
+        )
+    if reader.is_shallow():
+        _notify(on_notice, "This is a shallow clone, so only the history it holds is analysed.")
+    first = min(c.timestamp.date() for c in commits)
+    window_end = cutoff if cutoff is not None else _resolve_window_end(config, commits)
+    window = (max(config.since, first) if config.since else first, window_end)
+    return Renderer.who_changed_text(who_changed(path, commits), window, output_format, limit)
 
 
 def build_report_data(

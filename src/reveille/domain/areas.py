@@ -34,7 +34,7 @@ from __future__ import annotations
 import datetime
 from dataclasses import dataclass
 
-from reveille.domain.models import AreaActivity
+from reveille.domain.models import AreaActivity, Commit
 
 #: The area files at the top level of a repository belong to.
 ROOT_AREA = "(root)"
@@ -272,3 +272,78 @@ def _name_list(names: list[str]) -> str:
 def _count(n: int, singular: str) -> str:
     """Return "1 thing" or "N things"."""
     return f"{n:,} {singular}" if n == 1 else f"{n:,} {singular}s"
+
+
+@dataclass(frozen=True)
+class PathAnswer:
+    """Who changed one path in the window: `reveille who-changed` (ADR 0015).
+
+    The rules of ADR 0013 applied to a single path: authors alphabetically,
+    automated accounts apart, one date for the path, and no count or date
+    for any person.
+
+    Attributes:
+        path: The path asked about, as given.
+        commits: Commits that changed it.
+        last_changed: When it was last changed.
+        authors: `(name, address)` of every author, alphabetically.
+        recently_active: Names of the five authors who changed it most
+            recently, alphabetically -- whom to ask first.
+        automated: `(name, address)` of automated accounts, alphabetically.
+        co_authored_commits: Of those commits, how many credit a co-author.
+        co_authors: `(name, address)` of co-authors who did not also author a
+            commit here, alphabetically.
+    """
+
+    path: str
+    commits: int
+    last_changed: datetime.date
+    authors: tuple[tuple[str, str], ...]
+    recently_active: tuple[str, ...]
+    automated: tuple[tuple[str, str], ...]
+    co_authored_commits: int
+    co_authors: tuple[tuple[str, str], ...]
+
+
+def who_changed(path: str, commits: list[Commit]) -> PathAnswer:
+    """State who changed a path, from the commits that changed it.
+
+    Args:
+        path: The path asked about.
+        commits: The commits that changed it; at least one.
+
+    Returns:
+        The answer.
+    """
+    names: dict[str, str] = {}
+    last: dict[str, datetime.date] = {}
+    for commit in sorted(commits, key=lambda c: c.timestamp):
+        email = commit.author_email.lower()
+        names[email] = commit.author_name
+        last[email] = commit.timestamp.date()
+
+    def by_name(identities: list[str]) -> tuple[tuple[str, str], ...]:
+        return tuple(sorted(((names[e], e) for e in identities), key=lambda n: n[0].casefold()))
+
+    automated = [e for e in names if is_automated(names[e], e)]
+    people = [e for e in names if e not in automated]
+    recent = sorted(people, key=lambda e: (-last[e].toordinal(), e))[:_NAMES_SHOWN]
+
+    credited: dict[str, str] = {}
+    for commit in commits:
+        for name, email in commit.co_authors:
+            if email not in names:
+                credited.setdefault(email, name)
+
+    return PathAnswer(
+        path=path,
+        commits=len(commits),
+        last_changed=max(last.values()),
+        authors=by_name(people),
+        recently_active=tuple(sorted((names[e] for e in recent), key=str.casefold)),
+        automated=by_name(automated),
+        co_authored_commits=sum(1 for c in commits if c.co_authors),
+        co_authors=tuple(
+            sorted(((n, e) for e, n in credited.items()), key=lambda n: n[0].casefold())
+        ),
+    )

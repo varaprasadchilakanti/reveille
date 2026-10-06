@@ -1051,6 +1051,62 @@ def summary(
     _run_query(lambda notice: summary_text(config, output_format, on_notice=notice))
 
 
+def _repository_path(path: str, repo: Path) -> str:
+    """Turn the path given to who-changed into a repository-relative one.
+
+    Args:
+        path: As typed: relative to the repository, or absolute inside it.
+        repo: The repository root.
+
+    Returns:
+        A repository-relative path with forward slashes ("." for the root).
+
+    Raises:
+        typer.Exit: CANNOT_RUN for a path outside the repository or one that
+            climbs out of it with "..".
+    """
+    candidate = Path(path)
+    if candidate.is_absolute():
+        try:
+            candidate = candidate.resolve().relative_to(repo.resolve())
+        except ValueError as exc:
+            _err(f"Error: '{path}' is outside the repository '{repo.resolve()}'.")
+            raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
+    if ".." in candidate.parts:
+        _err(f"Error: '{path}' climbs out of the repository; give a path inside it.")
+        raise typer.Exit(code=ExitCode.CANNOT_RUN)
+    return candidate.as_posix()
+
+
+@app.command(name="who-changed")
+def who_changed(
+    path: Annotated[
+        str, typer.Argument(help="A file or directory, relative to the repository root.")
+    ],
+    repo: _RepoOption = Path("."),
+    since: _SinceOption = None,
+    until: _UntilOption = None,
+    branch: _BranchOption = None,
+    exclude_author: _ExcludeOption = None,
+    deterministic: _DeterministicOption = False,
+    output_format: _QueryFormatOption = "text",
+    limit: Annotated[
+        int, typer.Option("--limit", min=1, help="The most names any list shows.")
+    ] = 20,
+    verbose: _VerboseOption = False,
+) -> None:
+    """Say who changed a file or directory, and who changed it most recently."""
+    from reveille.services.report import who_changed_text
+
+    _configure_logging(verbose)
+    _check_query_format(output_format)
+    relative = _repository_path(path, repo)
+    config = _query_config(repo, since, until, branch, exclude_author, deterministic)
+    _run_query(
+        lambda notice: who_changed_text(config, relative, output_format, limit, on_notice=notice)
+    )
+
+
 @app.command()
 def validate(
     repo: Annotated[

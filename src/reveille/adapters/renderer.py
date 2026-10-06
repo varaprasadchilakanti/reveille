@@ -57,11 +57,12 @@ from jinja2 import (
     select_autoescape,
 )
 
-from reveille.domain.areas import AreaStatement, describe_areas, is_automated
+from reveille.domain.areas import AreaStatement, PathAnswer, describe_areas, is_automated
 from reveille.domain.coauthors import commits_with_co_authors
 from reveille.domain.concentration import gini_coefficient, lorenz_curve
 from reveille.domain.files import extension_breakdown, hotspots
 from reveille.domain.models import (
+    SCHEMA_VERSION,
     Commit,
     ContributorStats,
     FileStats,
@@ -560,6 +561,83 @@ class Renderer:
             *(f"- {f['headline']}" for f in document["findings"]),
             document["notice"],
         ]
+        return "\n".join(lines) + "\n"
+
+    @staticmethod
+    def who_changed_text(
+        answer: PathAnswer,
+        window: tuple[datetime.date, datetime.date],
+        output_format: str,
+        limit: int,
+    ) -> str:
+        """Render who changed a path, as JSON or plain lines (ADR 0015).
+
+        Every list of people is bounded by `limit` and carries its full
+        total, so a path with hundreds of authors cannot flood a reader.
+
+        Args:
+            answer: The facts for the path.
+            window: The analysis window.
+            output_format: "json" or "text".
+            limit: The most names any list carries.
+
+        Returns:
+            The answer.
+        """
+
+        def bounded(people: tuple[tuple[str, str], ...]) -> dict[str, Any]:
+            return {
+                "total": len(people),
+                "truncated": len(people) > limit,
+                "list": [{"name": n, "email": e} for n, e in people[:limit]],
+            }
+
+        if output_format == "json":
+            return json.dumps(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "document": "who-changed",
+                    "path": answer.path,
+                    "analysis_since": window[0].isoformat(),
+                    "analysis_until": window[1].isoformat(),
+                    "commits": answer.commits,
+                    "last_changed": answer.last_changed.isoformat(),
+                    "recently_active": list(answer.recently_active),
+                    "authors": bounded(answer.authors),
+                    "automated_accounts": bounded(answer.automated),
+                    "co_authored_commits": answer.co_authored_commits,
+                    "co_authors": bounded(answer.co_authors),
+                    "notice": _NOTICE,
+                },
+                indent=2,
+            )
+
+        def names(people: tuple[tuple[str, str], ...]) -> str:
+            # One person under two addresses reads as a typo when only the
+            # name is printed; a repeated name carries its address.
+            repeated = {n for n in (p[0] for p in people) if [p[0] for p in people].count(n) > 1}
+            shown = ", ".join(f"{n} <{e}>" if n in repeated else n for n, e in people[:limit])
+            rest = len(people) - min(len(people), limit)
+            return f"{shown} and {rest:,} more" if rest else shown
+
+        lines = [
+            f"{answer.path}: {answer.commits:,} commits by {len(answer.authors):,} authors, "
+            f"{window[0].isoformat()} to {window[1].isoformat()}; "
+            f"last changed {answer.last_changed.isoformat()}.",
+        ]
+        if answer.recently_active:
+            lines.append(f"Changed it most recently: {', '.join(answer.recently_active)}.")
+        if answer.authors:
+            lines.append(f"Authors: {names(answer.authors)}.")
+        if answer.automated:
+            lines.append(f"Automated: {names(answer.automated)}.")
+        if answer.co_authors:
+            lines.append(f"Credited as co-author: {names(answer.co_authors)}.")
+        lines.append(
+            "Who changed it, not who knows or owns it: review and pairing do not "
+            "appear in commit history."
+        )
+        lines.append(_NOTICE)
         return "\n".join(lines) + "\n"
 
     def render_csv(self, data: ReportData, output_path: Path) -> Path:

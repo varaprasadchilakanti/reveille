@@ -508,6 +508,7 @@ class GitReader:
         dated_until: datetime.date | None = None,
         area_depth: int | None = None,
         line_counts: bool = True,
+        path: str | None = None,
     ) -> list[Commit]:
         """Read all commits within the specified analysis window.
 
@@ -542,6 +543,8 @@ class GitReader:
                 a large history is spent here; a caller that needs only who
                 committed when -- `summary`, `who-changed` -- passes False,
                 and every commit then reports zero lines and no files.
+            path: Only commits that changed this repository-relative path, a
+                file or a directory, taken literally (`who-changed`).
 
         Returns:
             A list of Commit objects sorted by timestamp descending
@@ -573,7 +576,12 @@ class GitReader:
             )
 
         log_args, rev_list_args = _build_log_args(
-            rev, since, until, self._supports_since_as_filter(), line_counts=line_counts
+            rev,
+            since,
+            until,
+            self._supports_since_as_filter(),
+            line_counts=line_counts,
+            path=path,
         )
 
         # The mailmap is read first, because an exclusion has to be expanded
@@ -1265,6 +1273,7 @@ def _build_log_args(
     supports_since_as_filter: bool = True,
     *,
     line_counts: bool = True,
+    path: str | None = None,
 ) -> tuple[list[str], list[str]]:
     """Build the argument lists for the numstat read and the SHA allowlist.
 
@@ -1283,6 +1292,9 @@ def _build_log_args(
             greedy `--after` is used and a narrow window over non-chronological
             history may under-report.
         line_counts: Whether to ask for per-file line counts (`--numstat`).
+        path: Restrict the walk to commits that changed this path. Passed
+            after `--` as a `:(literal)` pathspec, so a value can be neither
+            an option nor pathspec magic such as `:(exclude)`.
 
     Returns:
         A `(log_args, rev_list_args)` pair.
@@ -1329,6 +1341,8 @@ def _build_log_args(
     # trailing `--` disambiguates the revision from a path of the same name.
     for args in (log_args, rev_list_args):
         args.extend(["--end-of-options", rev, "--"])
+        if path is not None:
+            args.append(f":(literal){path}")
 
     return log_args, rev_list_args
 

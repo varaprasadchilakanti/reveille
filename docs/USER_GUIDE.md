@@ -274,6 +274,22 @@ enabled = true
 depth = 3
 ```
 
+### Who changed a file: `reveille who-changed`
+
+A bug turns up in `src/parser/lexer.c`. Who should you ask?
+
+```bash
+reveille who-changed src/parser/lexer.c --since 2026-01-01
+```
+
+The answer names the path's authors alphabetically, the five who changed it
+most recently (the people to ask first), automated accounts and co-authors
+apart, and when the path was last changed. It gives no count or date for any
+person: who changed a file is a fact the history records, while "who did the
+most" is not what it is for. It reads only the commits that changed the path
+and no line counts, so it answers in well under a second on a large history.
+The path is taken literally and must be inside the repository.
+
 ### Output to stdout
 
 `--output -` writes the report to stdout instead of a file, in any format, and

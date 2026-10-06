@@ -86,6 +86,14 @@ _CAPABILITIES: tuple[dict[str, str], ...] = (
         ),
     },
     {
+        "id": "who-changed",
+        "description": (
+            "Say who changed one file or directory with `reveille who-changed "
+            "<path>`: its authors alphabetically, the five most recent, automated "
+            "accounts and co-authors apart, with no count or date per person."
+        ),
+    },
+    {
         "id": "co-authors",
         "description": (
             "Report identities credited by Co-authored-by trailers beside, not "
