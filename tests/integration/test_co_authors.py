@@ -199,3 +199,49 @@ class TestTrailersAreReadSafely:
 
         assert "credit a co-author" not in text
         assert "Credited only as co-author" not in text
+
+
+@pytest.mark.integration
+class TestReadsDoNotDependOnGitConfig:
+    def test_log_follow_does_not_drop_co_authors(self, tmp_path: Path) -> None:
+        """`log.follow=true` makes `git log -- <path>` follow renames while
+        `rev-list` does not, so the two disagreed and every co-author was
+        dropped. It is a common global setting."""
+        from reveille.adapters.git_reader import GitReader
+
+        repo = _repo(tmp_path)
+        _commit(repo, "A", "a@e.test", "one\n\nCo-authored-by: H <h@e.test>\n", 1)
+        subprocess.run(["git", "mv", "f1.txt", "moved.txt"], cwd=repo, check=True)
+        _commit(repo, "A", "a@e.test", "two\n\nCo-authored-by: H <h@e.test>\n", 2)
+        subprocess.run(["git", "config", "log.follow", "true"], cwd=repo, check=True)
+
+        commits = GitReader(repo).read_commits(
+            branch="main", since=None, until=None, exclude_authors=[], path="moved.txt"
+        )
+
+        assert len(commits) == 1, "the read matches rev-list: renames are not followed"
+        assert commits[0].co_authors == (("H", "h@e.test"),)
+
+
+@pytest.mark.integration
+def test_trailers_out_of_order_credit_nobody(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The sequence check, not only the NUL separator: records that do not
+    line up with rev-list one for one are discarded, never guessed at."""
+    from reveille.adapters.git_reader import GitReader
+
+    repo = _repo(tmp_path)
+    _commit(repo, "A", "a@e.test", "one\n\nCo-authored-by: H <h@e.test>\n", 1)
+    _commit(repo, "B", "b@e.test", "two\n", 2)
+    reader = GitReader(repo)
+    honest = reader._trailer_log
+
+    def reordered(selection: list[str]) -> str:
+        return "\0".join(reversed([r for r in honest(selection).split("\0") if r.strip()]))
+
+    monkeypatch.setattr(reader, "_trailer_log", reordered)
+    commits = reader.read_commits(branch="main", since=None, until=None, exclude_authors=[])
+
+    assert all(c.co_authors == () for c in commits)
+    assert "did not line up" in caplog.text

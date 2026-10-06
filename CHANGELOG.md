@@ -49,7 +49,8 @@ Nothing yet.
   The charts and every authorship figure still count authors only, so nothing
   is counted twice. Trailers are read in a separate pass that cannot credit one
   commit with another's co-authors, resolved like author identities, and capped
-  at 32 per commit. JSON gains `co_authored_commits`, `co_authors_only` and
+  at 32 per commit; Reveille's reads pin `log.follow=false`, so a user's own
+  Git setting cannot change what is read. JSON gains `co_authored_commits`, `co_authors_only` and
   `derived.commits_with_co_authors`; CSV gains `co_authored_commits`. See
   ADR 0014.
 - **Who changed each area, on request.** `--area-authors` (or `[areas] enabled

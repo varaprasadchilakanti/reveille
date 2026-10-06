@@ -32,6 +32,7 @@ from collections import defaultdict
 from collections.abc import Iterator
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from typing import Any
 
 from git import InvalidGitRepositoryError, NoSuchPathError, Repo
 from git.exc import GitCommandError
@@ -618,7 +619,7 @@ class GitReader:
             # it one for one (ADR 0014).
             authentic_order = [
                 line.strip()
-                for line in str(self._repo.git.rev_list(*rev_list_args)).splitlines()
+                for line in str(self._git().rev_list(*rev_list_args)).splitlines()
                 if line.strip()
             ]
             authentic_shas = set(authentic_order)
@@ -630,7 +631,7 @@ class GitReader:
 
         _logger.debug("git log %s", " ".join(log_args))
         try:
-            raw_log = self._repo.git.log(*log_args)
+            raw_log = self._git().log(*log_args)
         except GitCommandError as exc:
             raise RepositoryError(
                 f"Failed to read commits from branch '{rev}'. "
@@ -845,7 +846,7 @@ class GitReader:
             return commits
         selection = [a for a in log_args if a not in ("--numstat", _LOG_FORMAT)]
         try:
-            raw = str(self._repo.git.log("-z", _TRAILER_FORMAT, *selection))
+            raw = self._trailer_log(selection)
         except GitCommandError as exc:
             _logger.warning("co-author trailers could not be read: %s", exc)
             return commits
@@ -869,6 +870,32 @@ class GitReader:
             if found:
                 credited[sha] = found
         return [replace(c, co_authors=credited[c.sha]) if c.sha in credited else c for c in commits]
+
+    def _git(self) -> Any:
+        """Return the Git command runner, with settings that change what is read pinned.
+
+        A user's `log.follow=true` makes `git log -- <path>` follow renames,
+        which `git rev-list` does not, so the main read and the co-author
+        read stopped matching the commit list. Settings like that one are
+        fixed for every read, so the answer does not depend on whose
+        configuration ran it.
+
+        Returns:
+            GitPython's command runner for this repository.
+        """
+        return self._repo.git(c="log.follow=false")
+
+    def _trailer_log(self, selection: list[str]) -> str:
+        """Run the co-author read: NUL-separated hashes and trailer values.
+
+        Args:
+            selection: The main read's arguments without its format and
+                line counts.
+
+        Returns:
+            Git's output.
+        """
+        return str(self._git().log("-z", _TRAILER_FORMAT, *selection))
 
     def resolve_head_sha(self, branch: str | None = None) -> str | None:
         """Return the full SHA at the tip of the ref that was analysed.
