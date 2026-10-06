@@ -272,6 +272,12 @@ Nothing yet.
   header says their commits are counted in every figure, but the donut was
   drawn from the listed contributors only, so each slice overstated its share
   of the repository. Their commits now go into the "Other Contributors" slice.
+- **The activity heatmap drew the whole calendar year.** Days before the
+  window, when the repository may not have existed, and days after it, in the
+  future, were drawn exactly like days with no commits. The grid now covers the
+  window only. With many years the year buttons ran off the page; they wrap.
+  On a phone the grid shrank to a strip about 25 pixels tall; it now keeps its
+  size and scrolls sideways.
 
 ### Security
 

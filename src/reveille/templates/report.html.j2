@@ -753,7 +753,15 @@
 
         .heatmap-year-tabs {
             display: flex;
+            flex-wrap: wrap;
             gap: 6px;
+        }
+
+        /* The grid is given a minimum width from its number of weeks and
+           scrolls sideways below it. Squeezed to a phone's width it became a
+           strip about 25 pixels tall. */
+        .heatmap-scroll {
+            overflow-x: auto;
         }
 
         .heatmap-year-btn {
@@ -984,7 +992,7 @@
                     class="heatmap-contributor-select"
                     aria-label="Filter the activity heatmap by contributor"></select>
         </div>
-        <div class="chart-container">
+        <div class="chart-container heatmap-scroll">
             <div id="chart-heatmap" role="img" aria-label="Activity heatmap: commit counts per calendar day. {{ derived.heatmap_summary }}"></div>
         </div>
     </div>
@@ -1622,15 +1630,23 @@
     // Heatmap: GitHub-style grid builder
     //
     // All date arithmetic uses UTC milliseconds to avoid DST anomalies.
-    // The grid spans from the Monday of Jan 1's week to the Sunday of
-    // Dec 31's week for the requested year. Cells outside the calendar
-    // year render as zero (transparent via the colorscale) with empty
-    // customdata so hover is suppressed.
+    // The grid covers the part of the requested year that lies inside the
+    // analysis window, from the Monday of its first week to the Sunday of
+    // its last. Days outside the window are null -- drawn as no cell, with
+    // no hover -- because they are not days with no commits: before the
+    // window the repository may not have existed, and after it is the
+    // future. They were once drawn as zero, the whole year round.
     // ------------------------------------------------------------------
 
-    function buildYearGrid(year, counts) {
-        var jan1Ms  = Date.UTC(year, 0, 1);
-        var dec31Ms = Date.UTC(year, 11, 31);
+    function buildYearGrid(year, counts, since, until) {
+        function dayMs(iso) {
+            var p = iso.split('-');
+            return Date.UTC(+p[0], +p[1] - 1, +p[2]);
+        }
+        var firstMs = Math.max(Date.UTC(year, 0, 1), since ? dayMs(since) : -Infinity);
+        var lastMs  = Math.min(Date.UTC(year, 11, 31), until ? dayMs(until) : Infinity);
+        var jan1Ms  = firstMs;
+        var dec31Ms = lastMs;
 
         // Convert JS Sunday=0 to Monday=0 day-of-week index.
         var jan1Dow  = (new Date(jan1Ms).getUTCDay() + 6) % 7;
@@ -1665,15 +1681,15 @@
             for (var d = 0; d < 7; d++) {
                 var cellMs = weekMonMs + d * 86400000;
                 var cd = new Date(cellMs);
-                if (cd.getUTCFullYear() === year) {
+                if (cellMs >= firstMs && cellMs <= lastMs) {
                     var mo = String(cd.getUTCMonth() + 1).padStart(2, '0');
                     var da = String(cd.getUTCDate()).padStart(2, '0');
                     var dateStr = year + '-' + mo + '-' + da;
                     z[d].push(counts[dateStr] || 0);
                     customdata[d].push(dateStr);
                 } else {
-                    // Outside the calendar year — render transparent.
-                    z[d].push(0);
+                    // Outside the window: no cell and no hover.
+                    z[d].push(null);
                     customdata[d].push('');
                 }
             }
@@ -1691,7 +1707,12 @@
         if (!divEl || !heatmapData) return;
 
         var counts = heatmapData.daily_counts[email] || {};
-        var grid   = buildYearGrid(year, counts);
+        var grid   = buildYearGrid(year, counts, heatmapData.since, heatmapData.until);
+
+        // About 14 pixels a week plus room for the day labels and colour
+        // bar. Below this the container scrolls instead of the cells
+        // shrinking to nothing.
+        divEl.style.minWidth = (grid.x.length * 14 + 120) + 'px';
 
         // Compute the peak commit count across the current grid.
         // When a contributor has no activity in the selected year, every z
@@ -1727,7 +1748,10 @@
                 size: 12
             },
             margin:     { l: 60, r: 30, t: 20, b: 50 },
-            xaxis:      { type: 'category', tickangle: -45 },
+            // 'domain' on both axes: square cells shrink the plot area to the
+            // weeks drawn. The default extends the x range instead, which
+            // drew empty columns past the end of the window.
+            xaxis:      { type: 'category', tickangle: -45, constrain: 'domain' },
             yaxis:      { autorange: 'reversed', scaleanchor: 'x',
                           constrain: 'domain' },
             showlegend: false,

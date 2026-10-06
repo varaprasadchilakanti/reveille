@@ -1053,6 +1053,11 @@ def _build_heatmap_data(
 
     payload: dict[str, object] = {
         "years": years,
+        # The grid draws these bounds rather than the whole calendar year, so
+        # days before the window or after it are not drawn as days with no
+        # commits.
+        "since": analysis_since.isoformat(),
+        "until": analysis_until.isoformat(),
         "contributors": contributors,
         "daily_counts": daily_counts,
     }
