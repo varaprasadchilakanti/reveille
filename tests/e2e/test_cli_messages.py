@@ -11,6 +11,7 @@ their control sequences intact, so a file could erase its own warning.
 
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -117,3 +118,39 @@ class TestConfigValuesCannotDriveTheTerminal:
 
         assert "\x1b" not in stderr
         assert "nope\\x1b[31m" in stderr
+
+
+@pytest.mark.e2e
+def test_a_warning_starts_its_own_line(capsys: pytest.CaptureFixture[str]) -> None:
+    """The progress line stays open while it animates, and a warning raised
+    meanwhile was printed on the end of it: "Reading commit history .
+    WARNING ...". It now starts on a line of its own."""
+    import logging
+    import time
+
+    from reveille.cli import _configure_logging, _StageSpinner
+
+    _configure_logging(verbose=False)
+    spinner = _StageSpinner()
+    spinner.begin("Reading commit history")
+    time.sleep(0.05)
+    logging.getLogger("reveille.test").warning("matched no commits for: x")
+    spinner.complete()
+
+    err = capsys.readouterr().err
+    assert "WARNING" in err, "positive control: the warning was printed"
+    assert not re.search(r"[^\n]WARNING", err), err
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize(("count", "says"), [(1, "1 commit)"), (2, "2 commits)")])
+def test_the_progress_line_agrees_with_its_count(
+    capsys: pytest.CaptureFixture[str], count: int, says: str
+) -> None:
+    from reveille.cli import _StageSpinner
+
+    spinner = _StageSpinner()
+    spinner.begin("Reading commit history")
+    spinner.complete(elapsed_seconds=0.0, items_processed=count)
+
+    assert says in capsys.readouterr().err

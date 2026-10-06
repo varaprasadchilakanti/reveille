@@ -298,6 +298,9 @@ Nothing yet.
   width when printing starts, the table prints whole, sections break where
   they fall while a heading stays with its chart, and the longest hotspot
   bar keeps its label.
+- **A warning printed on the end of the progress line.** "Reading commit
+  history .  WARNING ..." now reads as two lines, and the progress line says
+  "1 commit", not "1 commits".
 
 ### Security
 

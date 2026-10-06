@@ -187,6 +187,20 @@ class _StderrHandler(logging.StreamHandler):  # type: ignore[type-arg]
     def stream(self, _value: object) -> None:
         """Ignore assignment; the stream is always the current `sys.stderr`."""
 
+    def emit(self, record: logging.LogRecord) -> None:
+        """Write the record, on a line of its own if the progress line is open.
+
+        The spinner redraws its line with a carriage return and leaves it
+        open; a warning raised meanwhile was printed on the end of it.
+
+        Args:
+            record: The log record.
+        """
+        if _StageSpinner.line_open:
+            _StageSpinner.line_open = False
+            self.stream.write("\n")
+        super().emit(record)
+
 
 def _configure_logging(verbose: bool) -> None:
     """Attach a stderr log handler when diagnostics are requested.
@@ -305,6 +319,10 @@ class _StageSpinner:
 
     _FRAMES: ClassVar[list[str]] = [".  ", ".. ", "..."]
 
+    #: True while a frame has been written and its line not yet ended, so a
+    #: log line can start a fresh one. Shared because only one spinner runs.
+    line_open: ClassVar[bool] = False
+
     def __init__(self) -> None:
         self._active: bool = False
         self._stop_event: threading.Event = threading.Event()
@@ -359,15 +377,18 @@ class _StageSpinner:
         for frame in itertools.cycle(self._FRAMES):
             sys.stderr.write(f"\r  {label} {frame}")
             sys.stderr.flush()
+            _StageSpinner.line_open = True
             if self._stop_event.wait(0.2):
                 break
         elapsed = self._elapsed_seconds
         if self._items_processed is not None:
-            suffix = f"({elapsed:.1f}s, {self._items_processed:,} commits)"
+            count = self._items_processed
+            suffix = f"({elapsed:.1f}s, {count:,} commit{'' if count == 1 else 's'})"
         else:
             suffix = f"({elapsed:.1f}s)"
         sys.stderr.write(f"\r  {label} ...   done {suffix}\n")
         sys.stderr.flush()
+        _StageSpinner.line_open = False
 
 
 def _make_progress_callback(spinner: _StageSpinner) -> Callable[[ProgressEvent], None]:
