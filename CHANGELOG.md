@@ -262,6 +262,12 @@ Nothing yet.
   now prints three places when two would reach 1; the footer wrote the period
   with a dash where the header writes "to"; and a detached checkout showed
   "Branch: HEAD" where it now names the commit.
+- **Numbers were spelled three ways.** Cards printed "30000" beside findings
+  reading "30,000", bar labels printed "17497", and axes printed "1000" beside
+  labels reading "1,594" and switched to "25k" above ten thousand. Every card,
+  label and axis now writes numbers in full with separators. The change-size
+  bins read "0–9" to "5,000+" in one style; the first bin starts at zero, which
+  is where commits that change no counted line always went.
 
 ### Security
 

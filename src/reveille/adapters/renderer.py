@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import csv
 import datetime
+import itertools
 import json
 import math
 import re
@@ -1169,8 +1170,11 @@ def _build_commit_size_chart(commits: list[Commit]) -> str:
     if not commits:
         return "null"
 
-    edges = [1, 10, 50, 200, 1000, 5000]
-    labels = ["1-9", "10-49", "50-199", "200-999", "1k-4,999", "5,000+"]
+    # The first bin starts at zero: a commit can change no counted line (an
+    # empty commit, or binary files only), and it was counted under "1-9".
+    edges = [0, 10, 50, 200, 1000, 5000]
+    dash = "\u2013"  # en dash, written as an escape so it cannot be mistaken
+    labels = [*(f"{low:,}{dash}{high - 1:,}" for low, high in itertools.pairwise(edges)), "5,000+"]
     buckets = [0] * len(labels)
     for commit in commits:
         size = commit.lines_added + commit.lines_deleted
@@ -1186,7 +1190,7 @@ def _build_commit_size_chart(commits: list[Commit]) -> str:
             x=labels,
             y=buckets,
             marker_color=_CATEGORICAL_PALETTE[0],
-            text=[str(count) if count else "" for count in buckets],
+            text=[f"{count:,}" if count else "" for count in buckets],
             textposition="outside",
             hovertemplate="%{x} lines changed<br>Commits: %{y}<extra></extra>",
         )
@@ -1595,8 +1599,11 @@ def _base_layout() -> dict[str, Any]:
         # is a guess: it was too small for -45 degree date labels, so the
         # "Week" title was drawn on top of them, and too small on the left
         # for a contributor axis, which truncated names to "dabot[bot]".
-        "xaxis": {"automargin": True},
-        "yaxis": {"automargin": True},
+        # Numbers in full, with separators, as every label and sentence in
+        # the report writes them. Plotly's default printed "1000" beside a
+        # bar labelled "1,594", and switched to "25k" above ten thousand.
+        "xaxis": {"automargin": True, "separatethousands": True, "exponentformat": "none"},
+        "yaxis": {"automargin": True, "separatethousands": True, "exponentformat": "none"},
         "showlegend": False,
         "modebar": {"remove": ["logo"]},
     }

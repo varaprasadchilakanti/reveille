@@ -837,7 +837,7 @@
                 <span class="filter-note">
                     <strong>Listing:</strong>
                     {{ data.metadata.unique_contributors }} of
-                    {{ derived.population_size }} contributors.
+                    {{ '{:,}'.format(derived.population_size) }} contributors.
                     {{ derived.contributors_below_threshold }}
                     {{ 'contributor is' if derived.contributors_below_threshold == 1 else 'contributors are' }}
                     below the min-commits threshold of
@@ -879,8 +879,8 @@
          ============================================================ -->
     <div class="summary-grid">
         <div class="summary-card">
-            <span class="visually-hidden">Total Commits: {{ data.metadata.total_commits }}</span>
-            <div class="value" aria-hidden="true">{{ data.metadata.total_commits }}</div>
+            <span class="visually-hidden">Total Commits: {{ '{:,}'.format(data.metadata.total_commits) }}</span>
+            <div class="value" aria-hidden="true">{{ '{:,}'.format(data.metadata.total_commits) }}</div>
             <div class="label" aria-hidden="true">Total Commits</div>
         </div>
         <div class="summary-card">
@@ -889,18 +889,18 @@
                in the table: with --min-commits 999 this card read 0 beside
                "1 hold half the commits". The header states the listing.
             #}
-            <span class="visually-hidden">Contributors: {{ derived.population_size }}</span>
-            <div class="value" aria-hidden="true">{{ derived.population_size }}</div>
+            <span class="visually-hidden">Contributors: {{ '{:,}'.format(derived.population_size) }}</span>
+            <div class="value" aria-hidden="true">{{ '{:,}'.format(derived.population_size) }}</div>
             <div class="label" aria-hidden="true">Contributors</div>
         </div>
         <div class="summary-card">
-            <span class="visually-hidden">Contributors holding half the commits: {{ derived.commit_concentration }}</span>
-            <div class="value" aria-hidden="true">{{ derived.commit_concentration }}</div>
+            <span class="visually-hidden">Contributors holding half the commits: {{ '{:,}'.format(derived.commit_concentration) }}</span>
+            <div class="value" aria-hidden="true">{{ '{:,}'.format(derived.commit_concentration) }}</div>
             <div class="label" aria-hidden="true">{{ 'Holds' if derived.commit_concentration == 1 else 'Hold' }} Half the Commits</div>
         </div>
         <div class="summary-card">
-            <span class="visually-hidden">Longest quiet run between commits: {{ derived.longest_inactive_streak }} days</span>
-            <div class="value" aria-hidden="true">{{ derived.longest_inactive_streak }}</div>
+            <span class="visually-hidden">Longest quiet run between commits: {{ '{:,}'.format(derived.longest_inactive_streak) }} days</span>
+            <div class="value" aria-hidden="true">{{ '{:,}'.format(derived.longest_inactive_streak) }}</div>
             <div class="label" aria-hidden="true">Longest Quiet Run (days)</div>
         </div>
         {#
@@ -961,7 +961,7 @@
         <p class="chart-foot">
             {% if derived.population_size > 1 %}
             Gini runs 0 (even) to {{ derived.gini_ceiling }}, which is the most
-            concentrated {{ derived.population_size }} contributors can be — the maximum is (n-1)/n, not 1.
+            concentrated {{ '{:,}'.format(derived.population_size) }} contributors can be — the maximum is (n-1)/n, not 1.
             {% else %}
             With a single contributor there is no distribution to measure: the Gini is 0 by
             definition, not because activity is evenly shared.
