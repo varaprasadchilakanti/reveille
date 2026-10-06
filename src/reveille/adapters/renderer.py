@@ -891,7 +891,9 @@ def _build_timeline_chart(
         go.Scatter(
             x=sorted_weeks,
             y=counts,
-            mode="lines",
+            # One point draws no line; a marker shows it.
+            mode="lines+markers" if len(sorted_weeks) == 1 else "lines",
+            marker={"size": 8},
             fill="tozeroy",
             line={"color": _CATEGORICAL_PALETTE[0], "width": 2},
             fillcolor=_translucent(_CATEGORICAL_PALETTE[0], 0.10),
@@ -901,7 +903,7 @@ def _build_timeline_chart(
     layout = _base_layout()
     # A date axis spaces its own ticks by month or year. As a category axis
     # every week was a label: hundreds of rotated dates over a long window.
-    layout["xaxis"] = {"type": "date", "automargin": True}
+    layout["xaxis"] = _week_axis(sorted_weeks)
     fig.update_layout(
         **layout,
         xaxis_title="Week",
@@ -970,7 +972,8 @@ def _build_contributor_timeline_chart(
             go.Scatter(
                 x=all_weeks,
                 y=counts,
-                mode="lines",
+                mode="lines+markers" if len(all_weeks) == 1 else "lines",
+                marker={"size": 8},
                 name=labels[r.stats.email.lower()],
                 line={
                     "color": _CATEGORICAL_PALETTE[i],
@@ -989,7 +992,7 @@ def _build_contributor_timeline_chart(
     layout = _base_layout()
     # A date axis spaces its own ticks by month or year. As a category axis
     # every week was a label: hundreds of rotated dates over a long window.
-    layout["xaxis"] = {"type": "date", "automargin": True}
+    layout["xaxis"] = _week_axis(all_weeks)
     layout["showlegend"] = True
     layout["legend"] = {"orientation": "h", "y": 1.12, "x": 0}
     fig.update_layout(
@@ -999,6 +1002,28 @@ def _build_contributor_timeline_chart(
         height=320,
     )
     return _to_json(fig)
+
+
+def _week_axis(weeks: list[str]) -> dict[str, Any]:
+    """Return the x axis for a weekly timeline.
+
+    A date axis spaces its own ticks by month or year. Given one week it has
+    no span to scale to, and Plotly drew millisecond ticks; one week either
+    side gives it days.
+
+    Args:
+        weeks: The ISO dates of the weeks drawn, in order.
+
+    Returns:
+        A Plotly axis definition.
+    """
+    axis: dict[str, Any] = {"type": "date", "automargin": True}
+    if len(weeks) == 1:
+        week = datetime.date.fromisoformat(weeks[0])
+        span = datetime.timedelta(days=7)
+        axis["range"] = [(week - span).isoformat(), (week + span).isoformat()]
+        axis["tickformat"] = "%b %-d, %Y"
+    return axis
 
 
 def _build_heatmap_data(

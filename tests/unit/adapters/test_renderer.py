@@ -783,3 +783,41 @@ class TestToJson:
         result = _to_json(fig)
         assert "</script>" not in result
         assert "<\\/script>" in result
+
+
+@pytest.mark.unit
+class TestAOneWeekTimeline:
+    """A single point gives a date axis no span to scale to, and Plotly drew
+    millisecond ticks: "23:59:59.999 Aug 30, 2026", "23:59:59.9995", ..."""
+
+    @staticmethod
+    def _span(layout: dict) -> datetime.timedelta:
+        start, end = (datetime.date.fromisoformat(v[:10]) for v in layout["xaxis"]["range"])
+        return end - start
+
+    def test_the_weekly_timeline_spans_days(self) -> None:
+        commits = [
+            _make_commit(datetime.date(2026, 8, 31)),
+            _make_commit(datetime.date(2026, 9, 2)),
+        ]
+        figure = json.loads(_build_timeline_chart(commits))
+        layout = figure["layout"]
+
+        assert self._span(layout) >= datetime.timedelta(days=7)
+        assert "markers" in figure["data"][0]["mode"], "one point draws no line"
+
+    def test_the_contributor_timeline_spans_days(self) -> None:
+        commits = [
+            _make_commit(datetime.date(2026, 8, 31), email="alice@example.com"),
+            _make_commit(datetime.date(2026, 9, 1), email="bob@example.com"),
+        ]
+        ranked = [_make_ranked("Alice", commit_count=1), _make_ranked("Bob", commit_count=1)]
+        layout = json.loads(_build_contributor_timeline_chart(commits, ranked))["layout"]
+
+        assert self._span(layout) >= datetime.timedelta(days=7)
+
+    def test_a_longer_timeline_is_left_to_scale_itself(self) -> None:
+        commits = [_make_commit(datetime.date(2026, 8, 3)), _make_commit(datetime.date(2026, 9, 2))]
+        layout = json.loads(_build_timeline_chart(commits))["layout"]
+
+        assert "range" not in layout["xaxis"]
