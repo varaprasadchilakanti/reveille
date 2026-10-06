@@ -725,8 +725,9 @@ def generate(
         typer.Option(
             "--deterministic",
             help=(
-                "Produce byte-reproducible output. Pins the timestamp and the "
-                "analysis window to the repository rather than to the clock."
+                "Produce byte-reproducible output. Pins the timestamp to the "
+                "analysed commit and closes the window on the last commit "
+                "rather than today."
             ),
         ),
     ] = False,

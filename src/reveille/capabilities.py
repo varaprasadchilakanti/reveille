@@ -208,6 +208,15 @@ _CAVEATS: tuple[dict[str, str], ...] = (
         ),
     },
     {
+        "id": "history-may-be-partial",
+        "description": (
+            "A shallow clone is analysed as the history it holds, and commits "
+            "dated after the end of a default window are counted in no figure. "
+            "Both are stated in the report and in provenance (shallow_clone, "
+            "commits_dated_after_window); read them before reading the totals."
+        ),
+    },
+    {
         "id": "output-contains-personal-data",
         "description": (
             "The report includes contributor names and email addresses. It is a "

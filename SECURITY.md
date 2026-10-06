@@ -194,7 +194,7 @@ timestamp. Regression tests for all five live in
 `tests/integration/test_security.py`, and each was observed failing against the
 reintroduced vulnerability before being trusted.
 
-v0.9.0 closed four more, each with a test observed failing before the fix:
+v0.9.0 closed six more, each with a test observed failing before the fix:
 
 - A token in the remote URL (`https://user:token@host/...`) was printed in the
   HTML report and the JSON. Credentials, query string and fragment are now
@@ -207,6 +207,12 @@ v0.9.0 closed four more, each with a test observed failing before the fix:
   non-UTF-8 one crashed the run.
 - Four escapes in the report had no test, so any one could have been removed
   unnoticed. Each now has one.
+- A direction override in a name made it display as text it does not contain
+  (`\u202eevil\u202c Name` read "live Name"). Direction overrides and
+  isolates, zero-width spaces and byte-order marks are removed from names.
+- Values from a `reveille.toml` reached stderr with their terminal control
+  sequences intact, so a file could erase the warning about itself. Every
+  message and warning Reveille prints now shows them as escapes.
 
 Verified unaffected, by testing rather than assumption: HTML and JavaScript
 injection into the report, the offline guarantee, and the CI workflows.

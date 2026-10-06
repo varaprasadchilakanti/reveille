@@ -307,6 +307,14 @@ Nothing yet.
 - **A warning printed on the end of the progress line.** "Reading commit
   history .  WARNING ..." now reads as two lines, and the progress line says
   "1 commit", not "1 commits".
+- **The documentation described behaviour the report does not have.** The
+  README and the user guide placed the default report in the current
+  directory (it goes to the repository root), described two donut charts
+  pooling contributors beyond eight (there is one, pooling beyond four), and
+  counted four summary cards (there are five). They, `llms.txt`, the
+  scaffolded `reveille.toml`, `--help` and `capabilities` now also describe
+  this release's window, quiet-run, shallow-clone and `--min-commits`
+  behaviour.
 
 ### Security
 

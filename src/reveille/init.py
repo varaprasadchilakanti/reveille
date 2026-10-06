@@ -35,7 +35,7 @@ _DEFAULT_CONFIG_TEMPLATE: str = """\
 
 # Output path for the generated HTML file.
 # The parent directory must exist at generation time.
-# Defaults to ./reveille-report.html at the repository root.
+# Defaults to reveille-report.html in the repository root.
 # output = "./reveille-report.html"
 
 # Analyse commits reachable from this branch only.
@@ -43,11 +43,13 @@ _DEFAULT_CONFIG_TEMPLATE: str = """\
 # branch = "main"
 
 # Include only commits on or after this date (YYYY-MM-DD).
-# Defaults to the date of the repository's first commit.
+# Defaults to the date of the repository's first commit; an earlier date
+# changes nothing.
 # since = "2024-01-01"
 
 # Include only commits on or before this date (YYYY-MM-DD).
-# Defaults to today.
+# Defaults to today (UTC). Commits dated later are then counted in no figure,
+# and the report says how many.
 # until = "2024-12-31"
 
 # Output format for the generated report.
@@ -76,7 +78,8 @@ _DEFAULT_CONFIG_TEMPLATE: str = """\
 
 [filters]
 
-# Exclude contributors with fewer than this many commits in the analysis window.
+# List only contributors with at least this many commits in the analysis window.
+# Every figure still counts everybody; the report header says how many are listed.
 # Must be a positive integer. Useful for filtering one-off contributors that
 # would otherwise distort ranking percentiles in small populations.
 # min_commits = 1

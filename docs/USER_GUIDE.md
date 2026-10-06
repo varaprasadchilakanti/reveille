@@ -87,7 +87,7 @@ a contributor ranked Captain in a ten-person team may rank Sergeant in a
 thirty-person team analysed over a longer window.
 
 Fourth, the Renderer assembles all data, computes derived metrics such as
-commit concentration and longest inactive streak, builds Plotly chart specifications,
+commit concentration and the longest quiet run between commits, builds Plotly chart specifications,
 and writes a single self-contained HTML file. All JavaScript and chart
 data are embedded inline. The output file has no external dependencies and
 can be opened in any modern browser without an internet connection.
@@ -144,7 +144,8 @@ reveille generate --since 2024-01-01 --until 2024-03-31
 When `--since` is omitted but `--until` is provided, the window runs
 from the repository's first commit up to the specified end date.
 When `--until` is omitted but `--since` is provided, the window runs
-from the specified start date up to the current day.
+from the later of the specified start date and the first commit up to
+the current day (UTC).
 
 ### `--branch` / `-b`
 
@@ -544,14 +545,17 @@ string and is rejected rather than read as true.
 
 ### Repository Summary
 
-The summary cards at the top of the report provide four at-a-glance
-metrics. Total commits and unique contributors reflect the analysis
-window after all filters have been applied. Commit concentration is the
+The summary cards at the top of the report provide five at-a-glance
+metrics: Total Commits, Contributors, Hold(s) Half the Commits, Longest
+Quiet Run (days) and Distribution (Gini). Total commits and contributors
+reflect the analysis window after `--exclude-author` and the date filters;
+Contributors counts everybody the figures describe, including anyone
+`--min-commits` keeps out of the table. Commit concentration is the
 minimum number of contributors whose combined commit volume accounts for
 at least 50 percent of total commits — a value of 1 means a single person
-authored the majority of the history in the analysis window. Max inactive
-days is the longest run of calendar days with no commit between two days
-that had one. Days before the first commit and after the last are not
+authored the majority of the history in the analysis window. The longest
+quiet run is the longest run of calendar days with no commit between two
+days that had one. Days before the first commit and after the last are not
 counted; the silence since the last commit is stated by the dormancy
 finding instead.
 
@@ -576,8 +580,12 @@ higher commit volumes. Empty cells — rendered as transparent — indicate
 periods of no activity. Persistent gaps may indicate holidays, sprints
 with no deliverables, or periods of reduced team capacity.
 
-Year tabs above the chart allow switching between calendar years covered
-by the analysis window without regenerating the report. The most recent
+Only the weeks of the analysis window are drawn, so the first and last
+years are usually partial; days outside the window have no cell, rather
+than being drawn as days without commits. On a narrow screen the grid
+keeps its size and scrolls sideways. Year tabs above the chart allow
+switching between calendar years covered by the analysis window without
+regenerating the report. The most recent
 year is active by default. A contributor dropdown provides per-contributor
 views alongside the aggregated default. In single-contributor repositories,
 the dropdown is hidden automatically.
@@ -625,11 +633,11 @@ absolute activity levels.
 
 ### Contribution Breakdown Charts
 
-The two bar charts show commits and lines changed per contributor,
-providing a visual complement to the table. The two donut charts show
-each contributor's proportional share of total commits and total lines
-changed. Contributors beyond eight are aggregated into a single
-"Other Contributors" slice.
+A donut chart shows each contributor's share of all commits in the
+window. Contributors beyond four, and anyone `--min-commits` keeps out
+of the table, are pooled into a single "Other Contributors" slice, so the
+slices always add up to every commit. A grouped bar chart shows the lines
+added and deleted by each listed contributor.
 
 ---
 

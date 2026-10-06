@@ -282,7 +282,8 @@ the template checks for that sentinel rather than the renderer deciding
 what the page looks like.
 
 The heatmap is the exception: it ships a compact daily-count payload,
-not a Plotly figure, and client-side JavaScript builds the Mon–Sun grid.
+not a Plotly figure, and client-side JavaScript builds the Mon–Sun grid
+over the weeks of the analysis window, whose bounds the payload carries.
 A per-day Plotly spec for a multi-year repository is far larger than the
 counts it encodes.
 

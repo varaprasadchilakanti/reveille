@@ -209,12 +209,12 @@ Generates the HTML activity report for the target repository.
 | Flag | Short | Type | Default | Description |
 |---|---|---|---|---|
 | `--repo` | `-r` | `PATH` | `.` (current directory) | Path to a Git repository: a working tree's root, or a bare repository. |
-| `--output` | `-o` | `PATH` | `./reveille-report.html` | Path for the generated HTML file. Parent directories must exist. |
-| `--since` | | `DATE` | Repository creation date | Include only commits on or after this date. Accepts `YYYY-MM-DD`. |
-| `--until` | | `DATE` | Today | Include only commits on or before this date. Accepts `YYYY-MM-DD`. |
+| `--output` | `-o` | `PATH` | `reveille-report.html` in the repository root | Path for the generated HTML file. Parent directories must exist. |
+| `--since` | | `DATE` | The first commit | Include only commits on or after this date. Accepts `YYYY-MM-DD`. A date before the first commit changes nothing: the days before a repository existed are not quiet days. |
+| `--until` | | `DATE` | Today (UTC) | Include only commits on or before this date. Accepts `YYYY-MM-DD`. Without it, commits dated after today are counted in no figure, and the report and a note on stderr say how many. |
 | `--branch` | `-b` | `TEXT` | The checked-out branch | Analyse commits reachable from this branch only. Defaults to whichever branch is currently checked out, which is not necessarily the repository's default branch. |
 | `--exclude-author` | | `TEXT` | None | Exclude a contributor by name or email. Repeatable. |
-| `--min-commits` | | `INT` | `1` | Exclude contributors with fewer than this many commits in the analysis window. |
+| `--min-commits` | | `INT` | `1` | List only contributors with at least this many commits in the analysis window. Every figure still counts everyone, and the header says how many are listed. |
 | `--title` | | `TEXT` | Repository name | Override the report title displayed in the HTML output. |
 | `--ranking` | | Flag | Off | Include the contributor ranking table. **Off by default** — it scores and tiers named individuals, which is more than the figures support. See [ADR 0010](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/adr/0010-ranking-is-opt-in.md). |
 | `--no-ranking` | | Flag | Off | Explicitly omit the ranking table. Ranking is already off by default; this exists so existing invocations keep working. |
@@ -290,9 +290,9 @@ reveille help
 
 The generated HTML file is structured as a formal report with the following sections.
 
-**Repository Summary** — Name, remote URL if present, default branch, total commits in the analysis window, unique contributors, date range, and report generation timestamp.
+**Repository Summary** — Name, remote URL if present, analysed branch, period, and report generation timestamp; when they apply, lines stating how many contributors are listed, how many commits are dated after the window, and that the repository is a shallow clone. Summary cards give total commits, contributors, commit concentration, the longest quiet run and the Gini coefficient.
 
-**Activity Heatmap** — A GitHub-style year-navigable grid showing commit frequency by calendar day. Rows represent days of the week (Monday–Sunday); columns represent calendar weeks. Year tabs derived from the analysis window allow switching between calendar years without regenerating the report. A contributor dropdown provides per-contributor views alongside the aggregated default; single-contributor repositories hide the dropdown automatically.
+**Activity Heatmap** — A GitHub-style year-navigable grid showing commit frequency by calendar day, drawn over the weeks of the analysis window only. Rows represent days of the week (Monday–Sunday); columns represent calendar weeks. Year tabs derived from the analysis window allow switching between calendar years without regenerating the report. A contributor dropdown provides per-contributor views alongside the aggregated default; single-contributor repositories hide the dropdown automatically.
 
 **Commit Timeline** — A rolling area chart showing commit volume per calendar week over the analysis window. Highlights periods of high and low activity.
 
@@ -300,9 +300,9 @@ The generated HTML file is structured as a formal report with the following sect
 
 **Contributor Summary Table** — A table listing each contributor with their commit count, lines added, lines removed, net line delta, active days, and most recent commit date, ordered by commit count. With `--ranking` it additionally carries a rank, a tier designation and a composite score, and is headed *Contributor Rankings*.
 
-**Contribution Breakdown Charts** — Horizontal bar charts of commits and lines changed per contributor, and two donut charts showing each contributor's proportional share of total commits and total lines changed.
+**Contribution Breakdown Charts** — A donut chart of each contributor's share of all commits, with contributors beyond four and anyone held back by `--min-commits` pooled as "Other Contributors", and a grouped bar chart of lines added and deleted per listed contributor.
 
-**Repository Activity Indicators** — Commit concentration (the minimum number of contributors accounting for 50% of commits) and longest inactive streak within the analysis window. Commit concentration is a measure of how concentrated the commit history is, not a bus factor: bus factor is a property of line ownership across the surviving codebase, which commit counts cannot establish. See the [User Guide](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md#repository-summary) for how to read it.
+**Repository Activity Indicators** — Commit concentration (the minimum number of contributors accounting for 50% of commits) and the longest quiet run: the most consecutive days without a commit between two days that had one. Silence since the last commit is stated separately, by the dormancy finding. Commit concentration is a measure of how concentrated the commit history is, not a bus factor: bus factor is a property of line ownership across the surviving codebase, which commit counts cannot establish. See the [User Guide](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md#repository-summary) for how to read it.
 
 **JSON export** — When `--format json` is used, a structured JSON file is written at the same path stem as the HTML output. The payload contains repository metadata, contributor statistics, and the derived summary measures; the scoring fields are present only with `--ranking`. Suitable for dashboards, data warehouses, and CI integrations without parsing HTML.
 
