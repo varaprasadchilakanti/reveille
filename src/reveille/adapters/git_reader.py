@@ -507,6 +507,7 @@ class GitReader:
         exclude_authors: list[str],
         dated_until: datetime.date | None = None,
         area_depth: int | None = None,
+        line_counts: bool = True,
     ) -> list[Commit]:
         """Read all commits within the specified analysis window.
 
@@ -537,6 +538,10 @@ class GitReader:
             area_depth: When given, also record who changed each directory,
                 cut to this many components, in `area_activity` (ADR 0013).
                 Nothing is kept when it is None.
+            line_counts: Read per-file line counts. Most of a run's time on
+                a large history is spent here; a caller that needs only who
+                committed when -- `summary`, `who-changed` -- passes False,
+                and every commit then reports zero lines and no files.
 
         Returns:
             A list of Commit objects sorted by timestamp descending
@@ -568,7 +573,7 @@ class GitReader:
             )
 
         log_args, rev_list_args = _build_log_args(
-            rev, since, until, self._supports_since_as_filter()
+            rev, since, until, self._supports_since_as_filter(), line_counts=line_counts
         )
 
         # The mailmap is read first, because an exclusion has to be expanded
@@ -1258,6 +1263,8 @@ def _build_log_args(
     since: datetime.date | None,
     until: datetime.date | None,
     supports_since_as_filter: bool = True,
+    *,
+    line_counts: bool = True,
 ) -> tuple[list[str], list[str]]:
     """Build the argument lists for the numstat read and the SHA allowlist.
 
@@ -1275,11 +1282,12 @@ def _build_log_args(
             `--since-as-filter` (added in git 2.37). When it does not, the
             greedy `--after` is used and a narrow window over non-chronological
             history may under-report.
+        line_counts: Whether to ask for per-file line counts (`--numstat`).
 
     Returns:
         A `(log_args, rev_list_args)` pair.
     """
-    log_args: list[str] = ["--no-merges", "--numstat", _LOG_FORMAT]
+    log_args: list[str] = ["--no-merges", *(["--numstat"] if line_counts else []), _LOG_FORMAT]
     rev_list_args: list[str] = ["--no-merges"]
 
     # Boundaries are pinned to UTC. Git parses a bare `YYYY-MM-DD` in the

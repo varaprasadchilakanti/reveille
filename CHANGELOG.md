@@ -21,6 +21,12 @@ Nothing yet.
 
 ### Added
 
+- **`reveille summary`.** The repository in a few lines, naming nobody: the
+  window, totals, Gini, concentration, quiet run, days since the last commit,
+  the findings and a notice that the figures need checking before a decision,
+  as text or JSON. It skips the line-count read: on llama.cpp (9,015 commits)
+  1.7 seconds and 2 KB, against 10 seconds and 663 KB for the full JSON. It is
+  the starting point for assistants. See ADR 0015.
 - **The report can go to stdout.** `--output -` writes it, in any format, to
   stdout, with progress, notes and errors on stderr, so a script or an
   assistant can read it without a temporary file. See ADR 0015.

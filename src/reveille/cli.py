@@ -946,6 +946,111 @@ def generate(
     _run_report(report_config, to_stdout=to_stdout)
 
 
+def _query_config(
+    repo: Path,
+    since: str | None,
+    until: str | None,
+    branch: str | None,
+    exclude_author: list[str] | None,
+    deterministic: bool,
+) -> ReportConfig:
+    """Build the configuration for `summary` and `who-changed` from options.
+
+    These commands read no reveille.toml: an assistant calling them gets the
+    answer to the options it passed, not to a file it may not know exists.
+
+    Raises:
+        typer.Exit: CANNOT_RUN if an option is invalid.
+    """
+    kwargs: dict[str, Any] = {"repo_path": repo.resolve(), "deterministic": deterministic}
+    if since is not None:
+        kwargs["since"] = _parse_date(since, "--since")
+    if until is not None:
+        kwargs["until"] = _parse_date(until, "--until")
+    if branch is not None:
+        kwargs["branch"] = branch
+    if exclude_author:
+        kwargs["exclude_authors"] = exclude_author
+    try:
+        return ReportConfig(**kwargs)
+    except ValueError as exc:
+        _err(f"Configuration error: {_describe_config_error(exc)}")
+        raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
+
+
+def _run_query(produce: Callable[[Callable[[str], None]], str]) -> None:
+    """Run a query command and print its answer, and only its answer, on stdout.
+
+    Args:
+        produce: Called with a notice sink; returns the text to print.
+
+    Raises:
+        typer.Exit: NEGATIVE for an empty answer, CANNOT_RUN otherwise.
+    """
+    notices: list[str] = []
+    try:
+        text = produce(notices.append)
+    except EmptyRepositoryError as exc:
+        _err(f"Error: {exc}")
+        raise typer.Exit(code=ExitCode.NEGATIVE) from exc
+    except ReveilleError as exc:
+        _err(f"Error: {exc}")
+        raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
+    _print_notices(notices)
+    typer.echo(text, nl=not text.endswith("\n"))
+
+
+def _check_query_format(output_format: str) -> None:
+    """Refuse a --format other than text or json."""
+    if output_format not in ("text", "json"):
+        _err(f"Error: --format must be text or json, not {output_format!r}.")
+        raise typer.Exit(code=ExitCode.CANNOT_RUN)
+
+
+_RepoOption = Annotated[Path, typer.Option("--repo", "-r", help="Path to the Git repository root.")]
+_SinceOption = Annotated[
+    str | None, typer.Option("--since", help="Include commits on or after this date (YYYY-MM-DD).")
+]
+_UntilOption = Annotated[
+    str | None, typer.Option("--until", help="Include commits on or before this date (YYYY-MM-DD).")
+]
+_BranchOption = Annotated[
+    str | None, typer.Option("--branch", "-b", help="Analyse commits reachable from this branch.")
+]
+_ExcludeOption = Annotated[
+    list[str] | None,
+    typer.Option("--exclude-author", help="Exclude a contributor by name or email. Repeatable."),
+]
+_DeterministicOption = Annotated[
+    bool,
+    typer.Option("--deterministic", help="Close the window on the last commit, not today."),
+]
+_QueryFormatOption = Annotated[str, typer.Option("--format", help="Output format: text or json.")]
+_VerboseOption = Annotated[
+    bool, typer.Option("--verbose", help="Emit diagnostic logging to stderr.")
+]
+
+
+@app.command()
+def summary(
+    repo: _RepoOption = Path("."),
+    since: _SinceOption = None,
+    until: _UntilOption = None,
+    branch: _BranchOption = None,
+    exclude_author: _ExcludeOption = None,
+    deterministic: _DeterministicOption = False,
+    output_format: _QueryFormatOption = "text",
+    verbose: _VerboseOption = False,
+) -> None:
+    """Summarise the repository in a few lines, naming nobody."""
+    from reveille.services.report import summary_text
+
+    _configure_logging(verbose)
+    _check_query_format(output_format)
+    config = _query_config(repo, since, until, branch, exclude_author, deterministic)
+    _run_query(lambda notice: summary_text(config, output_format, on_notice=notice))
+
+
 @app.command()
 def validate(
     repo: Annotated[

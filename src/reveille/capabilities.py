@@ -78,6 +78,14 @@ _CAPABILITIES: tuple[dict[str, str], ...] = (
         ),
     },
     {
+        "id": "repository-summary",
+        "description": (
+            "Summarise a repository in a few hundred bytes with `reveille summary`: "
+            "window, totals, concentration, quiet run and the written findings, "
+            "naming nobody."
+        ),
+    },
+    {
         "id": "co-authors",
         "description": (
             "Report identities credited by Co-authored-by trailers beside, not "

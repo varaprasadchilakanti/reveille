@@ -44,7 +44,7 @@ import math
 import re
 from collections import defaultdict
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import plotly.graph_objects as go
 import plotly.offline
@@ -69,7 +69,7 @@ from reveille.domain.models import (
     ReportData,
 )
 from reveille.domain.profile import repository_profile
-from reveille.domain.summary import longest_quiet_run, summarise
+from reveille.domain.summary import Finding, longest_quiet_run, summarise
 from reveille.exceptions import OutputPathError, RenderError
 
 # Label of the aggregated residual slice, referenced where its colour is chosen.
@@ -488,6 +488,80 @@ class Renderer:
 
         return json.dumps(payload, indent=2)
 
+    def summary_document(self, data: ReportData) -> dict[str, Any]:
+        """Describe the repository in a few hundred bytes, naming nobody.
+
+        The default answer for an assistant (ADR 0015): the window, totals,
+        the measures and the findings, and the provenance an answer must
+        carry. Every value is about the repository; no name or address is
+        included, so it is safe to hand to any assistant.
+
+        Args:
+            data: The report dataset; line counts are not needed.
+
+        Returns:
+            A JSON-serialisable document.
+        """
+        derived = self._compute_derived_stats(data)
+        last = max(c.timestamp.date() for c in data.commits)
+        findings = cast(list[Finding], derived["findings"])
+        return {
+            "schema_version": data.provenance.schema_version,
+            "document": "summary",
+            "repository": {
+                "name": data.metadata.name,
+                "analysed_branch": data.metadata.analysed_branch,
+                "head_sha": data.provenance.head_sha,
+                "analysis_since": data.metadata.analysis_since.isoformat(),
+                "analysis_until": data.metadata.analysis_until.isoformat(),
+                "shallow_clone": data.provenance.shallow_clone,
+                "commits_dated_after_window": data.provenance.commits_dated_after_window,
+            },
+            "totals": {
+                "commits": data.metadata.total_commits,
+                "authors": derived["population_size"],
+                "commits_with_co_authors": commits_with_co_authors(data.commits),
+            },
+            "measures": {
+                "gini_coefficient": derived["gini_coefficient"],
+                "commit_concentration": derived["commit_concentration"],
+                "longest_quiet_run_days": derived["longest_inactive_streak"],
+                "days_since_last_commit": (data.metadata.analysis_until - last).days,
+            },
+            "findings": [
+                {"headline": f.headline, "detail": f.detail, "evidence": f.evidence}
+                for f in findings
+            ],
+            "notice": _NOTICE,
+        }
+
+    def summary_text(self, data: ReportData, output_format: str) -> str:
+        """Render the summary as JSON or as plain lines.
+
+        Args:
+            data: The report dataset.
+            output_format: "json" or "text".
+
+        Returns:
+            The summary.
+        """
+        document = self.summary_document(data)
+        if output_format == "json":
+            return json.dumps(document, indent=2)
+        repo = document["repository"]
+        totals = document["totals"]
+        measures = document["measures"]
+        lines = [
+            f"{repo['name']} ({repo['analysed_branch']}), "
+            f"{repo['analysis_since']} to {repo['analysis_until']}",
+            f"{totals['commits']:,} commits by {totals['authors']:,} authors; "
+            f"Gini {measures['gini_coefficient']}, "
+            f"longest quiet run {measures['longest_quiet_run_days']:,} days.",
+            *(f"- {f['headline']}" for f in document["findings"]),
+            document["notice"],
+        ]
+        return "\n".join(lines) + "\n"
+
     def render_csv(self, data: ReportData, output_path: Path) -> Path:
         """Serialise the ranked contributor table to a UTF-8 CSV file with BOM encoding.
 
@@ -720,6 +794,16 @@ def _ceiling_text(population: int) -> str:
     if round(ceiling, 2) < 1:
         return f"{ceiling:.2f}"
     return f"{math.floor(ceiling * 1000) / 1000:.3f}"
+
+
+#: Stated with every summary. Short, because it is read by assistants as
+#: often as by people, and plain, because it is the limit of what the
+#: numbers can carry.
+_NOTICE = (
+    "Computed from Git history by fixed rules. History can be incomplete or "
+    "wrong (rewritten, shallow, misdated, split identities); check before "
+    "relying on it for a decision."
+)
 
 
 def _area_statements(data: ReportData) -> list[AreaStatement]:

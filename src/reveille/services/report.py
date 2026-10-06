@@ -111,10 +111,33 @@ def report_text(
     return renderer.html_text(report_data)
 
 
+def summary_text(
+    config: ReportConfig,
+    output_format: str,
+    on_notice: Callable[[str], None] | None = None,
+) -> str:
+    """Summarise the repository, naming nobody, as JSON or text (ADR 0015).
+
+    Reads no line counts, so it costs a fraction of a full report.
+
+    Args:
+        config: Validated configuration; output settings are unused.
+        output_format: "json" or "text".
+        on_notice: As for generate_report.
+
+    Returns:
+        The summary.
+    """
+    data = build_report_data(config, on_notice=on_notice, line_counts=False)
+    return Renderer().summary_text(data, output_format)
+
+
 def build_report_data(
     config: ReportConfig,
     on_progress: Callable[[ProgressEvent], None] | None = None,
     on_notice: Callable[[str], None] | None = None,
+    *,
+    line_counts: bool = True,
 ) -> ReportData:
     """Read the repository and assemble everything a report states.
 
@@ -122,6 +145,8 @@ def build_report_data(
         config: Validated report configuration.
         on_progress: As for generate_report.
         on_notice: As for generate_report.
+        line_counts: Read per-file line counts; False for callers that
+            state nothing about lines or files.
 
     Returns:
         The complete report dataset, ready for any renderer.
@@ -148,6 +173,7 @@ def build_report_data(
         # Collected only when asked for: the section names people by area
         # (ADR 0013), and nothing about it is kept otherwise.
         area_depth=config.area_depth if config.area_authors_enabled else None,
+        line_counts=line_counts,
     )
     after_window = reader.commits_dated_after if cutoff is not None else 0
     if after_window and cutoff is not None:

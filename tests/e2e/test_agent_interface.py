@@ -88,3 +88,44 @@ class TestOutputToStdout:
 
         assert code == ExitCode.SUCCESS
         assert out.lstrip().lower().startswith("<!doctype html>")
+
+
+@pytest.mark.e2e
+class TestSummary:
+    def test_json_answers_the_repository_questions(self, repo: Path) -> None:
+        code, out, err = _run("summary", "--repo", str(repo), "--format", "json", "--deterministic")
+
+        assert code == ExitCode.SUCCESS, err
+        document = json.loads(out)
+        assert document["document"] == "summary"
+        assert document["totals"] == {"commits": 4, "authors": 3, "commits_with_co_authors": 0}
+        assert set(document["measures"]) == {
+            "gini_coefficient",
+            "commit_concentration",
+            "longest_quiet_run_days",
+            "days_since_last_commit",
+        }
+        assert "check before relying on it" in document["notice"]
+
+    def test_it_names_nobody(self, repo: Path) -> None:
+        for fmt in ("json", "text"):
+            _, out, _ = _run("summary", "--repo", str(repo), "--format", fmt)
+            for identity in ("Zoe", "Amir", "zoe@", "amir@", "dependabot", "bot@"):
+                assert identity not in out, f"{identity!r} in the {fmt} summary"
+
+    def test_it_is_small(self, repo: Path) -> None:
+        _, out, _ = _run("summary", "--repo", str(repo), "--format", "json")
+
+        assert len(out.encode()) < 4096
+
+    def test_an_empty_window_is_a_negative_answer(self, repo: Path) -> None:
+        code, out, _ = _run("summary", "--repo", str(repo), "--since", "2030-01-01")
+
+        assert code == ExitCode.NEGATIVE
+        assert out == ""
+
+    def test_an_unknown_format_cannot_run(self, repo: Path) -> None:
+        code, _, err = _run("summary", "--repo", str(repo), "--format", "yaml")
+
+        assert code == ExitCode.CANNOT_RUN
+        assert "text or json" in err

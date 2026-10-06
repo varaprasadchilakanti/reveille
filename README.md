@@ -255,6 +255,21 @@ reveille validate --repo /path/to/repository
 `validate` also accepts `--verbose`, which emits diagnostic logging to stderr
 without changing the exit code or the normal output.
 
+### `reveille summary`
+
+The repository in a few lines, naming nobody: window, totals, Gini, commit
+concentration, longest quiet run, days since the last commit, the written
+findings, and a notice that the figures need checking before a decision. It
+reads no line counts, so on a large history it is several times faster than
+`generate`. Takes `--repo`, `--since`, `--until`, `--branch`,
+`--exclude-author`, `--deterministic` and `--format text|json`; it reads no
+`reveille.toml`.
+
+```bash
+reveille summary
+reveille summary --format json
+```
+
 ### `reveille capabilities`
 
 Describes what Reveille can and cannot do — including, deliberately, the things
