@@ -189,7 +189,7 @@ class TestWhoChanged:
     def test_the_five_most_recent_alphabetically(self, many: Path) -> None:
         answer = self._json(many, "lib")
 
-        assert answer["recently_active"] == [
+        assert [p["name"] for p in answer["recently_active"]] == [
             "Person A",
             "Person D",
             "Person E",
@@ -275,3 +275,155 @@ class TestBoundedLists:
 
         assert code == ExitCode.SUCCESS
         assert len(list(csv.DictReader(io.StringIO(out)))) == 3
+
+
+@pytest.mark.e2e
+class TestVerifierFindings:
+    """Each found by the independent verification of the agent interface."""
+
+    def test_html_on_stdout_starts_at_the_doctype(self, repo: Path) -> None:
+        _, out, _ = _run("generate", "--repo", str(repo), "-o", "-")
+
+        assert out.lower().startswith("<!doctype html>")
+
+    def test_a_cut_csv_says_so_on_stderr(self, many: Path) -> None:
+        code, _, err = _run(
+            "generate", "--repo", str(many), "--format", "csv", "-o", "-", "--limit", "3"
+        )
+
+        assert code == ExitCode.SUCCESS
+        assert "lists 3 of 10 contributors" in err
+
+    def test_notes_never_reach_stdout(self, tmp_path: Path) -> None:
+        path = tmp_path / "future"
+        path.mkdir()
+        subprocess.run(["git", "init", "-q", "-b", "main"], cwd=path, check=True)
+        (path / "a").write_text("a\n", encoding="utf-8")
+        env = {
+            **os.environ,
+            "GIT_AUTHOR_DATE": "2090-01-01T00:00:00+00:00",
+            "GIT_COMMITTER_DATE": "2090-01-01T00:00:00+00:00",
+        }
+        subprocess.run(["git", "add", "-A"], cwd=path, check=True)
+        subprocess.run(
+            ["git", "-c", "user.name=A", "-c", "user.email=a@e.test", "commit", "-qm", "x"],
+            cwd=path,
+            check=True,
+            env=env,
+        )
+        (path / "b").write_text("b\n", encoding="utf-8")
+        subprocess.run(["git", "add", "-A"], cwd=path, check=True)
+        subprocess.run(
+            ["git", "-c", "user.name=A", "-c", "user.email=a@e.test", "commit", "-qm", "y"],
+            cwd=path,
+            check=True,
+        )
+
+        code, out, err = _run("generate", "--repo", str(path), "--format", "json", "-o", "-")
+
+        assert code == ExitCode.SUCCESS
+        json.loads(out)
+        assert "Note:" in err and "Note:" not in out
+
+    def test_co_authors_only_is_bounded_and_flagged(self, tmp_path: Path) -> None:
+        path = tmp_path / "co"
+        path.mkdir()
+        subprocess.run(["git", "init", "-q", "-b", "main"], cwd=path, check=True)
+        trailers = "".join(f"Co-authored-by: P{i} <p{i}@e.test>\n" for i in range(5))
+        (path / "a").write_text("a\n", encoding="utf-8")
+        subprocess.run(["git", "add", "-A"], cwd=path, check=True)
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=A",
+                "-c",
+                "user.email=a@e.test",
+                "commit",
+                "-q",
+                "-m",
+                "x\n\n" + trailers,
+            ],
+            cwd=path,
+            check=True,
+        )
+
+        _, out, _ = _run(
+            "generate", "--repo", str(path), "--format", "json", "-o", "-", "--limit", "2"
+        )
+        payload = json.loads(out)
+
+        assert len(payload["co_authors_only"]) == 2
+        assert payload["co_authors_only_total"] == 5
+        assert payload["co_authors_only_truncated"] is True
+
+    def test_json_co_authors_follow_min_commits(self, tmp_path: Path) -> None:
+        path = tmp_path / "co"
+        path.mkdir()
+        subprocess.run(["git", "init", "-q", "-b", "main"], cwd=path, check=True)
+        for i in range(2):
+            (path / f"a{i}").write_text("a\n", encoding="utf-8")
+            subprocess.run(["git", "add", "-A"], cwd=path, check=True)
+            trailer = "Co-authored-by: Often <often@e.test>\n" + (
+                "Co-authored-by: Once <once@e.test>\n" if i == 0 else ""
+            )
+            subprocess.run(
+                [
+                    "git",
+                    "-c",
+                    "user.name=A",
+                    "-c",
+                    "user.email=a@e.test",
+                    "commit",
+                    "-q",
+                    "-m",
+                    "x\n\n" + trailer,
+                ],
+                cwd=path,
+                check=True,
+            )
+
+        _, out, _ = _run(
+            "generate", "--repo", str(path), "--format", "json", "-o", "-", "--min-commits", "2"
+        )
+        payload = json.loads(out)
+
+        assert [c["email"] for c in payload["co_authors_only"]] == ["often@e.test"]
+        assert payload["co_authors_only_below_threshold"] == 1
+
+    def test_one_commit_one_author_reads_as_singular(self, repo: Path) -> None:
+        _, out, _ = _run("who-changed", "docs/x.md", "--repo", str(repo))
+
+        assert "1 commit by 1 author," in out
+
+    def test_recently_active_tells_a_repeated_name_apart(self, many: Path) -> None:
+        code, out, _ = _run("who-changed", "lib/core.c", "--repo", str(many), "--format", "json")
+        answer = json.loads(out)
+
+        assert code == ExitCode.SUCCESS
+        assert {"name": "Person A", "email": "a.other@e.test"} in answer["recently_active"]
+
+    def test_an_empty_path_cannot_run(self, repo: Path) -> None:
+        code, _, _ = _run("who-changed", "", "--repo", str(repo))
+
+        assert code == ExitCode.CANNOT_RUN
+
+    def test_an_absolute_path_to_a_symlink_names_the_link(self, tmp_path: Path) -> None:
+        path = tmp_path / "s"
+        path.mkdir()
+        subprocess.run(["git", "init", "-q", "-b", "main"], cwd=path, check=True)
+        (path / "real.c").write_text("x\n", encoding="utf-8")
+        (path / "link.c").symlink_to("real.c")
+        subprocess.run(["git", "add", "-A"], cwd=path, check=True)
+        subprocess.run(
+            ["git", "-c", "user.name=A", "-c", "user.email=a@e.test", "commit", "-qm", "x"],
+            cwd=path,
+            check=True,
+        )
+
+        code, out, _ = _run(
+            "who-changed", str(path / "link.c"), "--repo", str(path), "--format", "json"
+        )
+
+        assert code == ExitCode.SUCCESS
+        assert json.loads(out)["path"] == "link.c"

@@ -64,6 +64,7 @@ from reveille.domain.concentration import gini_coefficient, lorenz_curve
 from reveille.domain.files import extension_breakdown, hotspots
 from reveille.domain.models import (
     SCHEMA_VERSION,
+    CoAuthor,
     Commit,
     ContributorStats,
     FileStats,
@@ -315,7 +316,9 @@ class Renderer:
             raise
         except Exception as exc:
             raise RenderError(f"Template rendering failed: {exc}") from exc
-        return str(html)
+        # The template's macros leave blank lines before the doctype; a
+        # document read from stdout should start with it.
+        return str(html).lstrip()
 
     def render_json(self, data: ReportData, output_path: Path) -> Path:
         """Serialise the report data to a structured JSON file.
@@ -470,10 +473,15 @@ class Renderer:
                     "co_authored_commits": c.co_authored_commits,
                     "automated": is_automated(c.name, c.email),
                 }
-                for c in data.co_authors_only[: data.provenance.limit]
+                for c in _listed_co_authors(data)[: data.provenance.limit]
             ],
-            "co_authors_only_total": len(data.co_authors_only),
-            "co_authors_only_truncated": _truncated(data.co_authors_only, data.provenance.limit),
+            "co_authors_only_total": len(_listed_co_authors(data)),
+            "co_authors_only_truncated": _truncated(
+                _listed_co_authors(data), data.provenance.limit
+            ),
+            # ADR 0011 applied to co-authors, as in the HTML: counted, not named.
+            "co_authors_only_below_threshold": len(data.co_authors_only)
+            - len(_listed_co_authors(data)),
         }
         if data.provenance.area_authors_enabled:
             # The same facts as the HTML section and nothing more: no count
@@ -505,7 +513,7 @@ class Renderer:
         return json.dumps(payload, indent=2)
 
     def summary_document(self, data: ReportData) -> dict[str, Any]:
-        """Describe the repository in a few hundred bytes, naming nobody.
+        """Describe the repository in about 2 KB, naming no contributor.
 
         The default answer for an assistant (ADR 0015): the window, totals,
         the measures and the findings, and the provenance an answer must
@@ -617,7 +625,7 @@ class Renderer:
                     "analysis_until": window[1].isoformat(),
                     "commits": answer.commits,
                     "last_changed": answer.last_changed.isoformat(),
-                    "recently_active": list(answer.recently_active),
+                    "recently_active": [{"name": n, "email": e} for n, e in answer.recently_active],
                     "authors": bounded(answer.authors),
                     "automated_accounts": bounded(answer.automated),
                     "co_authored_commits": answer.co_authored_commits,
@@ -635,13 +643,15 @@ class Renderer:
             rest = len(people) - min(len(people), limit)
             return f"{shown} and {rest:,} more" if rest else shown
 
+        commits = f"{answer.commits:,} commit{'' if answer.commits == 1 else 's'}"
+        authors = f"{len(answer.authors):,} author{'' if len(answer.authors) == 1 else 's'}"
         lines = [
-            f"{answer.path}: {answer.commits:,} commits by {len(answer.authors):,} authors, "
+            f"{answer.path}: {commits} by {authors}, "
             f"{window[0].isoformat()} to {window[1].isoformat()}; "
             f"last changed {answer.last_changed.isoformat()}.",
         ]
         if answer.recently_active:
-            lines.append(f"Changed it most recently: {', '.join(answer.recently_active)}.")
+            lines.append(f"Changed it most recently: {names(answer.recently_active)}.")
         if answer.authors:
             lines.append(f"Authors: {names(answer.authors)}.")
         if answer.automated:
@@ -897,6 +907,11 @@ _NOTICE = (
     "wrong (rewritten, shallow, misdated, split identities); check before "
     "relying on it for a decision."
 )
+
+
+def _listed_co_authors(data: ReportData) -> list[CoAuthor]:
+    """Co-authors-only at or above the listing threshold (ADR 0011, 0014)."""
+    return [c for c in data.co_authors_only if c.co_authored_commits >= data.provenance.min_commits]
 
 
 def _truncated(items: Sequence[object], limit: int | None) -> bool:

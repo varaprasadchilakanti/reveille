@@ -25,21 +25,24 @@ than it saves.
 
 Four additions, each small, each built on what exists.
 
-- **`reveille summary`** — the repository in a few hundred bytes: window, totals, concentration,
+- **`reveille summary`** — the repository in about 2 KB: window, totals, concentration,
   Gini, quiet run, the findings, and the provenance an answer must carry (analysed commit, shallow
-  clone, commits dated after the window, co-authored commits). **It names nobody**, so it is safe
+  clone, commits dated after the window, co-authored commits). **It names no contributor** (the
+  repository and branch names are printed as they are), so it is safe
   to hand to any assistant by default. It reads no line counts, which are the expensive part of a
   run, so it is fast.
 - **`reveille who-changed <path>`** — for one file or directory: commits, authors, when it was last
   changed, the authors alphabetically, and the five who changed it most recently, alphabetically,
   by the rules of ADR 0013 (no count or date per person; automated accounts apart). It names
   people; running the command is the request, as `--area-authors` is for the report. The path is
-  taken literally (`--literal-pathspecs`, after `--`), so it cannot be an option or pathspec
-  magic. No line counts are read.
+  taken literally (a `:(literal)` pathspec, after `--`), so it cannot be an option or pathspec
+  magic. No line counts are read. Renames are not followed: a file's history before a rename
+  belongs to its old path, as `git log -- <path>` without `--follow` reports it.
 - **`--output -`** writes the report, in any format, to stdout, and nothing else goes there:
   progress, notes and errors are on stderr.
-- **`--limit N`** bounds every list of people in JSON and CSV, with the full count and a
-  `truncated` flag beside each bounded list. Off unless given, so the existing contract holds;
+- **`--limit N`** bounds every list of people in JSON and CSV. In JSON the full count and a
+  `truncated` flag sit beside each bounded list; a CSV has nowhere to put them, so a cut CSV
+  is announced on stderr. Off unless given, so the existing contract holds;
   `summary` and `who-changed` are bounded by default.
 
 Exit codes keep their meaning: 0 answered, 1 answered negatively (no commits in the window or on
@@ -47,7 +50,7 @@ the path), 2 could not run.
 
 ## Consequences
 
-**An assistant's default path is small and names nobody.** `capabilities` and `llms.txt` point to
+**An assistant's default path is small and names no contributor.** `capabilities` and `llms.txt` point to
 `summary` first, to `who-changed` for "whom do I ask", and to `generate` for the full report.
 
 **Two more commands to maintain.** Both reuse the reader, the domain functions and the output

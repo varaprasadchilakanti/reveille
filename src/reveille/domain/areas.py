@@ -287,8 +287,8 @@ class PathAnswer:
         commits: Commits that changed it.
         last_changed: When it was last changed.
         authors: `(name, address)` of every author, alphabetically.
-        recently_active: Names of the five authors who changed it most
-            recently, alphabetically -- whom to ask first.
+        recently_active: `(name, address)` of the five authors who changed it
+            most recently, alphabetically -- whom to ask first.
         automated: `(name, address)` of automated accounts, alphabetically.
         co_authored_commits: Of those commits, how many credit a co-author.
         co_authors: `(name, address)` of co-authors who did not also author a
@@ -299,7 +299,7 @@ class PathAnswer:
     commits: int
     last_changed: datetime.date
     authors: tuple[tuple[str, str], ...]
-    recently_active: tuple[str, ...]
+    recently_active: tuple[tuple[str, str], ...]
     automated: tuple[tuple[str, str], ...]
     co_authored_commits: int
     co_authors: tuple[tuple[str, str], ...]
@@ -340,7 +340,7 @@ def who_changed(path: str, commits: list[Commit]) -> PathAnswer:
         commits=len(commits),
         last_changed=max(last.values()),
         authors=by_name(people),
-        recently_active=tuple(sorted((names[e] for e in recent), key=str.casefold)),
+        recently_active=by_name(recent),
         automated=by_name(automated),
         co_authored_commits=sum(1 for c in commits if c.co_authors),
         co_authors=tuple(

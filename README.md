@@ -219,7 +219,7 @@ Generates the HTML activity report for the target repository.
 | `--ranking` | | Flag | Off | Include the contributor ranking table. **Off by default** — it scores and tiers named individuals, which is more than the figures support. See [ADR 0010](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/adr/0010-ranking-is-opt-in.md). |
 | `--no-ranking` | | Flag | Off | Explicitly omit the ranking table. Ranking is already off by default; this exists so existing invocations keep working. |
 | `--area-authors` | | Flag | Off | Add a section listing who changed each of the most-changed directories, and when each was last changed. **Off by default**: it names people, by area. See [ADR 0013](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/adr/0013-who-changes-what-is-opt-in-and-area-first.md). |
-| `--limit` | | `INT` | None | Bound every list of people in JSON and CSV to this many, with the full total and a `truncated` flag beside each list. For assistants: the full JSON of a large repository runs to hundreds of kilobytes. |
+| `--limit` | | `INT` | None | Bound every list of people in JSON and CSV to this many. JSON states the full total and a `truncated` flag beside each list; a cut CSV is announced on stderr. For assistants: the full JSON of a large repository runs to hundreds of kilobytes. |
 | `--area-depth` | | `INT` | `3` | Directory components that make an area for `--area-authors`. |
 | `--format` | | `TEXT` | `html` | Output format. Accepted values: `html`, `json`, `csv`. `json` and `csv` write files at the same path stem as `--output`. |
 | `--deterministic` | | Flag | Off | Produce byte-reproducible output. Pins `generated_at` and the end of the analysis window to the repository's own last commit rather than to the clock, so two runs over an identical repository produce identical bytes. |
@@ -258,7 +258,7 @@ without changing the exit code or the normal output.
 
 ### `reveille summary`
 
-The repository in a few lines, naming nobody: window, totals, Gini, commit
+The repository in a few lines, naming no contributor: window, totals, Gini, commit
 concentration, longest quiet run, days since the last commit, the written
 findings, and a notice that the figures need checking before a decision. It
 reads no line counts, so on a large history it is several times faster than
@@ -286,7 +286,8 @@ reveille who-changed src/parser/lexer.c
 reveille who-changed src/parser --since 2026-01-01 --format json
 ```
 
-A path that no commit in the window changed is a negative answer (exit 1).
+A path that no commit in the window changed is a negative answer (exit 1). Renames are
+not followed: history from before a rename belongs to the old path.
 
 ### `reveille capabilities`
 

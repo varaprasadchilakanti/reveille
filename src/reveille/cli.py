@@ -1059,7 +1059,7 @@ def summary(
     output_format: _QueryFormatOption = "text",
     verbose: _VerboseOption = False,
 ) -> None:
-    """Summarise the repository in a few lines, naming nobody."""
+    """Summarise the repository in a few lines, naming no contributor."""
     from reveille.services.report import summary_text
 
     _configure_logging(verbose)
@@ -1082,10 +1082,16 @@ def _repository_path(path: str, repo: Path) -> str:
         typer.Exit: CANNOT_RUN for a path outside the repository or one that
             climbs out of it with "..".
     """
+    if not path.strip():
+        _err("Error: give a path inside the repository; use '.' for all of it.")
+        raise typer.Exit(code=ExitCode.CANNOT_RUN)
     candidate = Path(path)
     if candidate.is_absolute():
         try:
-            candidate = candidate.resolve().relative_to(repo.resolve())
+            # The directory is resolved, the final name is not: a symlink is
+            # a file in the repository with a history of its own, and
+            # resolving it answered for the file it points to.
+            candidate = (candidate.parent.resolve() / candidate.name).relative_to(repo.resolve())
         except ValueError as exc:
             _err(f"Error: '{path}' is outside the repository '{repo.resolve()}'.")
             raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc

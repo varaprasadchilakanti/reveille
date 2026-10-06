@@ -77,6 +77,7 @@ def generate_report(
         RenderError: If the HTML template fails to render.
     """
     report_data = build_report_data(config, on_progress, on_notice)
+    _note_cut_csv(config, report_data, on_notice)
     renderer = Renderer()
     paths: list[Path] = []
     if config.output_format == "html":
@@ -105,6 +106,7 @@ def report_text(
         The report in the configured format.
     """
     report_data = build_report_data(config, on_progress, on_notice)
+    _note_cut_csv(config, report_data, on_notice)
     renderer = Renderer()
     if config.output_format == "json":
         return renderer.json_text(report_data)
@@ -377,6 +379,28 @@ def _emit(
             items_processed=items_processed,
         )
     )
+
+
+def _note_cut_csv(
+    config: ReportConfig, data: ReportData, on_notice: Callable[[str], None] | None
+) -> None:
+    """Say when --limit cut the CSV, which has nowhere to carry a total.
+
+    The JSON states the full count beside every bounded list; a CSV is rows
+    only, so the omission is stated on stderr instead of left silent.
+
+    Args:
+        config: The configuration, for the format and the limit.
+        data: The report dataset.
+        on_notice: Where the sentence goes.
+    """
+    listed = len(data.ranked_contributors)
+    if config.output_format == "csv" and config.limit is not None and listed > config.limit:
+        _notify(
+            on_notice,
+            f"The CSV lists {config.limit:,} of {listed:,} contributors (--limit); "
+            "the JSON states the totals.",
+        )
 
 
 def _notify(on_notice: Callable[[str], None] | None, message: str) -> None:

@@ -21,18 +21,20 @@ Nothing yet.
 
 ### Added
 
-- **`--limit` bounds every list of people in JSON and CSV**, with the full
-  total and a `truncated` flag beside each list. The full JSON of llama.cpp
+- **`--limit` bounds every list of people in JSON and CSV**. JSON states the
+  full total and a `truncated` flag beside each list; a cut CSV is announced
+  on stderr. The full JSON of llama.cpp
   is 663 KB; with `--limit 10` it is 6.5 KB and states that 10 of 1,682
   contributors are listed. Also `[report] limit`. See ADR 0015.
 - **`reveille who-changed <path>`.** Who changed one file or directory, and
   who changed it most recently: the person to ask about a bug in it. Authors
   alphabetically, the five most recent apart, automated accounts and
   co-authors listed separately, no count or date per person, every list
-  bounded by `--limit`. It reads only the commits that changed the path: on
+  bounded by `--limit`. Renames are not followed. It reads only the commits
+  that changed the path: on
   llama.cpp's CUDA directory, 0.6 seconds. The path is taken literally. See
   ADR 0015.
-- **`reveille summary`.** The repository in a few lines, naming nobody: the
+- **`reveille summary`.** The repository in a few lines, naming no contributor: the
   window, totals, Gini, concentration, quiet run, days since the last commit,
   the findings and a notice that the figures need checking before a decision,
   as text or JSON. It skips the line-count read: on llama.cpp (9,015 commits)
