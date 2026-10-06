@@ -590,7 +590,8 @@
             vertical-align: middle;
         }
 
-        .ranking-table tbody tr:last-child td {
+        .ranking-table tbody tr:last-child td,
+        .ranking-table tbody tr:last-child th {
             border-bottom: none;
         }
 
@@ -616,14 +617,24 @@
             vertical-align: middle;
         }
 
+        /* A name or address with no spaces -- 257 characters is possible
+           after the cap -- otherwise sets the column's minimum width and
+           pushes every figure off the screen. `anywhere` rather than
+           `break-word`: only `anywhere` lowers the minimum width that table
+           layout reads. The cap on width keeps one long name from taking
+           the table even when it could fit. */
         .contributor-name {
             display: block;
+            max-width: 36ch;
+            overflow-wrap: anywhere;
             font-weight: 600;
             color: var(--color-text-primary);
         }
 
         .contributor-email {
             display: block;
+            max-width: 36ch;
+            overflow-wrap: anywhere;
             margin-top: 2px;
             font-size: 11px;
             color: var(--color-text-muted);

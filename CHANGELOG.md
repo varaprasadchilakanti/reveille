@@ -241,6 +241,10 @@ Nothing yet.
   stderr now say the clone is shallow and that the period starts where its
   history does, `provenance.shallow_clone` records it, and the note gives
   `git fetch --unshallow` as the remedy.
+- **One long name pushed every figure off the contributor table.** A name or
+  address with no spaces set the column's minimum width, so in a 300-row
+  report only names were visible. Names and addresses now wrap, and the
+  stray border under the first column of the last row is gone.
 
 ### Security
 
