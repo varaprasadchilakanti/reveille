@@ -199,3 +199,83 @@ class TestDormancy:
         html = _html(dated_repo, tmp_path / "r.html", deterministic=True)
 
         assert "No commits in the last" not in html
+
+
+@pytest.mark.integration
+def test_a_commit_made_today_is_counted_west_of_utc(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Timestamps are UTC; the cut-off was the local date. In a US evening
+    the local date is a day behind UTC, and a commit made minutes earlier
+    was announced as "dated after today" and left out. The zone below is
+    chosen so the local date is always behind the UTC one."""
+    import time
+
+    now = datetime.datetime.now(datetime.UTC)
+    today_utc = now.date()
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    _commit(repo, 0, today_utc - datetime.timedelta(days=3))
+    early_today = f"{today_utc.isoformat()}T00:00:30+00:00"
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "Alice",
+        "GIT_AUTHOR_EMAIL": "alice@example.com",
+        "GIT_COMMITTER_NAME": "Alice",
+        "GIT_COMMITTER_EMAIL": "alice@example.com",
+        "GIT_AUTHOR_DATE": early_today,
+        "GIT_COMMITTER_DATE": early_today,
+    }
+    subprocess.run(
+        ["git", "commit", "-q", "--allow-empty", "-m", "today"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+    # POSIX offsets are west-positive: this zone is (hour + 1) hours behind UTC.
+    monkeypatch.setenv("TZ", f"TST+{now.hour + 1}")
+    time.tzset()
+    try:
+        assert datetime.date.today() < today_utc, "positive control: local date behind UTC"
+        payload = _json(repo, tmp_path / "r.json")
+    finally:
+        monkeypatch.undo()
+        time.tzset()
+
+    assert payload["provenance"]["commits_dated_after_window"] == 0
+    assert payload["metadata"]["total_commits"] == 2
+
+
+@pytest.mark.integration
+def test_a_left_out_commit_adds_nothing_to_the_file_figures(
+    dated_repo: Path, tmp_path: Path
+) -> None:
+    """The commit dated 400 days ahead touched a file of its own."""
+    from reveille.adapters.git_reader import GitReader
+
+    reader = GitReader(dated_repo)
+    reader.read_commits(
+        branch="main", since=None, until=None, exclude_authors=[], dated_until=_TODAY
+    )
+    paths = {f.path for f in reader.file_stats}
+
+    assert len(paths) == len(_OFFSETS), "positive control: every counted file is there"
+    assert f"f{len(_OFFSETS)}.txt" not in paths
+
+
+@pytest.mark.integration
+def test_when_every_commit_is_after_the_window_the_error_says_so(tmp_path: Path) -> None:
+    from reveille.adapters.git_reader import GitReader
+    from reveille.exceptions import EmptyRepositoryError
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    _commit(repo, 0, _FUTURE)
+
+    with pytest.raises(EmptyRepositoryError, match="1 commit is dated after"):
+        GitReader(repo).read_commits(
+            branch="main", since=None, until=None, exclude_authors=[], dated_until=_TODAY
+        )

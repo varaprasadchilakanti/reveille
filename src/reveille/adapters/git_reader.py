@@ -410,11 +410,11 @@ class GitReader:
             until: Include only commits on or before this date. No upper
                 bound is applied if None.
             exclude_authors: Author names or email addresses to exclude.
-            dated_until: Leave out commits whose own timestamp falls after
-                this date, and count them in `commits_dated_after`. Unlike
-                `until`, which Git applies to the committer date, this tests
-                the date every figure in the report uses, so nothing left out
-                here reappears in the file statistics.
+            dated_until: Leave out commits whose timestamp, read in UTC,
+                falls after this date, and count them in
+                `commits_dated_after`. Applied while reading, before a
+                commit's files are counted, so nothing left out here
+                reappears in the file statistics.
                 Matching is case-insensitive.
 
         Returns:
@@ -540,10 +540,7 @@ class GitReader:
             _logger.warning("--exclude-author matched no commits for: %s", ", ".join(unmatched))
 
         if not commits:
-            raise EmptyRepositoryError(
-                "No commits found within the specified analysis window. "
-                "Try widening the date range or removing author filters."
-            )
+            raise _empty_window(dated_after, dated_until)
 
         _logger.debug(
             "read %d commits from %s (%d bytes of git log output)",
@@ -835,6 +832,31 @@ def _truncate(value: str, limit: int) -> str:
     if len(value) <= limit:
         return value
     return value[:limit] + _TRUNCATION_MARKER
+
+
+def _empty_window(dated_after: int, dated_until: datetime.date | None) -> EmptyRepositoryError:
+    """Explain an empty analysis window.
+
+    When every commit was left out for being dated after the window, saying
+    "try widening the date range" sends the reader the wrong way.
+
+    Args:
+        dated_after: Commits left out for being dated after `dated_until`.
+        dated_until: The date they were measured against, if any.
+
+    Returns:
+        The error to raise.
+    """
+    if dated_after and dated_until is not None:
+        dated = "1 commit is" if dated_after == 1 else f"{dated_after:,} commits are"
+        return EmptyRepositoryError(
+            f"No commits found within the analysis window: {dated} dated after "
+            f"{dated_until.isoformat()}. Pass --until with a later date to include them."
+        )
+    return EmptyRepositoryError(
+        "No commits found within the specified analysis window. "
+        "Try widening the date range or removing author filters."
+    )
 
 
 def _strip_control_chars(value: str) -> str:

@@ -231,7 +231,9 @@ Nothing yet.
   described different sets of commits. Without `--until` such commits are now
   counted in no figure, and the header, a note on stderr and
   `provenance.commits_dated_after_window` say how many. `--deterministic` is
-  unchanged.
+  unchanged. "Today" is the UTC date, the zone every commit timestamp is read
+  in, so a commit made minutes ago is never left out west of UTC; and when
+  every commit is dated later, the error says so.
 - **The dormancy finding could never appear.** It was measured against the last
   commit instead of the end of the window, so "No commits in the last N days"
   was never written, although the Playbook tells readers to look for it.

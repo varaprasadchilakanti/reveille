@@ -88,7 +88,7 @@ def generate_report(
     # timeline thirteen years to the right. It is left out of every figure
     # and the omission is stated. An explicit `--until` is taken as asked,
     # and deterministic mode closes on the last commit (ADR 0008).
-    cutoff = datetime.date.today() if config.until is None and not config.deterministic else None
+    cutoff = _today() if config.until is None and not config.deterministic else None
     commits = reader.read_commits(
         branch=config.branch,
         since=config.since,
@@ -287,7 +287,20 @@ def _resolve_window_end(config: ReportConfig, commits: list[Commit]) -> datetime
         return config.until
     if config.deterministic:
         return max(c.timestamp.date() for c in commits)
-    return datetime.date.today()
+    return _today()
+
+
+def _today() -> datetime.date:
+    """Return today's date in UTC, the zone every commit timestamp is read in.
+
+    The local date was used, and west of UTC it is a day behind for part of
+    every day: a commit made minutes earlier was "dated after today" and left
+    out of the report.
+
+    Returns:
+        The current UTC calendar date.
+    """
+    return datetime.datetime.now(datetime.UTC).date()
 
 
 def _build_provenance(
