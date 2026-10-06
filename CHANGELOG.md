@@ -268,6 +268,10 @@ Nothing yet.
   label and axis now writes numbers in full with separators. The change-size
   bins read "0–9" to "5,000+" in one style; the first bin starts at zero, which
   is where commits that change no counted line always went.
+- **The commit-share chart left out contributors below `--min-commits`.** The
+  header says their commits are counted in every figure, but the donut was
+  drawn from the listed contributors only, so each slice overstated its share
+  of the repository. Their commits now go into the "Other Contributors" slice.
 
 ### Security
 

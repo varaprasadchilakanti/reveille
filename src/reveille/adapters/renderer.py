@@ -591,7 +591,10 @@ class Renderer:
                 data.metadata.analysis_until,
             ),
             "contributor_lines": _build_contributor_lines_chart(data.ranked_contributors),
-            "pie_commits": _build_commit_share_pie(data.ranked_contributors),
+            "pie_commits": _build_commit_share_pie(
+                data.ranked_contributors,
+                sum(s.commit_count for s in data.suppressed_contributors),
+            ),
             "lorenz": _build_lorenz_chart([stats.commit_count for stats in _population(data)]),
             "commit_size": _build_commit_size_chart(data.commits),
             "hotspots": _build_hotspot_chart(data.file_stats),
@@ -1104,20 +1107,25 @@ def _build_contributor_lines_chart(ranked: list[RankedContributor]) -> str:
     return _to_json(fig)
 
 
-def _build_commit_share_pie(ranked: list[RankedContributor]) -> str:
+def _build_commit_share_pie(ranked: list[RankedContributor], unlisted_commits: int = 0) -> str:
     """Build a donut chart showing each contributor's share of total commits.
 
     Contributors beyond _PIE_MAX_SLICES are aggregated into a single
-    'Other Contributors' slice to maintain legibility.
+    'Other Contributors' slice to maintain legibility. So are the commits of
+    contributors `min_commits` kept out of the table: the slices are shares of
+    every commit, as ADR 0011 requires of every figure. Without them a listed
+    contributor holding 75% of the listed commits was drawn as holding 75% of
+    the repository.
 
     Args:
         ranked: Ranked contributor list sorted by composite score descending.
+        unlisted_commits: Commits by contributors below the listing threshold.
 
     Returns:
-        A Plotly figure JSON string, or 'null' if fewer than two contributors
-        are present. A single-contributor pie carries no comparative information.
+        A Plotly figure JSON string, or 'null' if fewer than two slices would
+        be drawn. A single slice carries no comparative information.
     """
-    if len(ranked) < 2:
+    if len(ranked) + (1 if unlisted_commits else 0) < 2 or not ranked:
         return "null"
 
     display = _contributor_labels(ranked)
@@ -1125,6 +1133,12 @@ def _build_commit_share_pie(ranked: list[RankedContributor]) -> str:
     labels, values = _aggregate_pie_data(
         [(display[r.stats.email.lower()], r.stats.commit_count) for r in sorted_r]
     )
+    if unlisted_commits:
+        if labels[-1] == _OTHER_LABEL:
+            values[-1] += unlisted_commits
+        else:
+            labels.append(_OTHER_LABEL)
+            values.append(unlisted_commits)
 
     fig = go.Figure(
         go.Pie(
