@@ -201,3 +201,30 @@ class TestConfiguration:
         assert result.exit_code == ExitCode.CANNOT_RUN
         assert "--area-depth" in result.stderr
         assert "pydantic" not in result.stderr
+
+
+@pytest.mark.integration
+def test_non_ascii_and_quoted_paths_are_read_as_written(tmp_path: Path) -> None:
+    """Git quotes such paths in numstat ("src/na\\303\\257ve/\\303\\274.py"),
+    and the quoted form became an area and a hotspot of its own, with a
+    stray quote: one directory shown twice."""
+    from reveille.adapters.git_reader import GitReader
+
+    path = tmp_path / "repo"
+    path.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=path, check=True)
+    _commit(path, "A", "a@e.test", {"src/naïve/ü.py": "1\n", "src/plain.py": "1\n"}, 1)
+    _commit(path, "A", "a@e.test", {'src/say "hi".py': "1\n"}, 2)
+    (path / "src/naïve/ü.py").rename(path / "src/naïve/ö.py")
+    _commit(path, "A", "a@e.test", {}, 3)
+
+    reader = GitReader(path)
+    reader.read_commits(branch="main", since=None, until=None, exclude_authors=[], area_depth=2)
+    files = {f.path for f in reader.file_stats}
+    areas = {a.area for a in reader.area_activity}
+
+    assert "src/naïve/ü.py" in files
+    assert "src/naïve/ö.py" in files, "the rename's destination, decoded"
+    assert 'src/say "hi".py' in files
+    assert not any(f.startswith('"') or "\\3" in f for f in files)
+    assert areas == {"src/naïve", "src"}

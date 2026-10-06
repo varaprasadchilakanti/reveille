@@ -318,6 +318,11 @@ Nothing yet.
 - **A warning printed on the end of the progress line.** "Reading commit
   history .  WARNING ..." now reads as two lines, and the progress line says
   "1 commit", not "1 commits".
+- **A path with a non-ASCII character showed in Git's escaped form.** Git
+  prints `src/naïve/ü.py` as `"src/na\303\257ve/\303\274.py"`, and the hotspot
+  chart showed it that way, quotes included, as a path of its own. Such paths,
+  and paths containing quotes or backslashes, are now decoded, renames
+  included.
 - **The documentation described behaviour the report does not have.** The
   README and the user guide placed the default report in the current
   directory (it goes to the repository root), described two donut charts

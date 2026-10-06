@@ -253,7 +253,69 @@ def _iter_numstat(block: str) -> Iterator[tuple[str, int, int]]:
         raw_added, raw_deleted, path = fields[0], fields[1], fields[2]
         added = int(raw_added) if raw_added.isdigit() else 0
         deleted = int(raw_deleted) if raw_deleted.isdigit() else 0
-        yield _rename_destination(path), added, deleted
+        yield _numstat_path(path), added, deleted
+
+
+def _numstat_path(field: str) -> str:
+    """Return the path a numstat field names, decoded and after any rename.
+
+    Git quotes each side of a plain rename separately -- `"old" => "new"` --
+    so the destination is taken first and then decoded. A brace rename or a
+    single path is decoded as a whole first.
+
+    Args:
+        field: One numstat path field.
+
+    Returns:
+        The file's path as it is now.
+    """
+    if " => " in field and "{" not in field:
+        return _unquote_path(field.rsplit(" => ", 1)[1].strip())
+    return _rename_destination(_unquote_path(field))
+
+
+#: C escapes Git uses in a quoted path, other than octal byte escapes.
+_PATH_ESCAPES = {"a": 7, "b": 8, "t": 9, "n": 10, "v": 11, "f": 12, "r": 13, '"': 34, "\\": 92}
+
+
+def _unquote_path(path: str) -> str:
+    r"""Decode a path Git printed in quoted form.
+
+    Git quotes a path that holds a non-ASCII byte, a double quote, a
+    backslash or a control character: `src/naïve/ü.py` comes out as
+    `"src/na\303\257ve/\303\274.py"`. Taken as written, that became a
+    hotspot and an area of its own, beginning with a quote, beside the real
+    directory.
+
+    Args:
+        path: One numstat path field.
+
+    Returns:
+        The path as UTF-8 text, or the input unchanged when it is not quoted.
+    """
+    if len(path) < 2 or not (path.startswith('"') and path.endswith('"')):
+        return path
+    body = path[1:-1]
+    out = bytearray()
+    index = 0
+    while index < len(body):
+        char = body[index]
+        if char != "\\" or index + 1 == len(body):
+            out.extend(char.encode("utf-8"))
+            index += 1
+            continue
+        following = body[index + 1]
+        octal = body[index + 1 : index + 4]
+        if len(octal) == 3 and all(c in "01234567" for c in octal):
+            out.append(int(octal, 8) & 0xFF)
+            index += 4
+        elif following in _PATH_ESCAPES:
+            out.append(_PATH_ESCAPES[following])
+            index += 2
+        else:
+            out.extend(char.encode("utf-8"))
+            index += 1
+    return out.decode("utf-8", errors="replace")
 
 
 def _rename_destination(path: str) -> str:
