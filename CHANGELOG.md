@@ -255,6 +255,13 @@ Nothing yet.
   naming the option and what is wrong with it. An `--output` that names a
   directory says so instead of printing `[Errno 21]`, and `validate` no longer
   asks for a `.git` directory, which a bare repository does not have.
+- **Small errors in the report's own words.** "1 Hold Half the Commits" now
+  reads "1 Holds Half the Commits"; two findings printed Markdown backticks
+  literally; the Gini note said "0 to 1.00 ... the maximum is (n-1)/n, not 1"
+  from 200 contributors upward, because the ceiling was rounded to 1.00, and
+  now prints three places when two would reach 1; the footer wrote the period
+  with a dash where the header writes "to"; and a detached checkout showed
+  "Branch: HEAD" where it now names the commit.
 
 ### Security
 

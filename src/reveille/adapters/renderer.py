@@ -38,6 +38,7 @@ from __future__ import annotations
 import csv
 import datetime
 import json
+import math
 import re
 from collections import defaultdict
 from pathlib import Path
@@ -144,8 +145,10 @@ _LINE_DASHES: tuple[str, ...] = ("solid", "dash", "dot", "dashdot")
 _PIE_MAX_SLICES: int = len(_CATEGORICAL_PALETTE)
 
 # Added and deleted lines are a semantic pair, not two arbitrary categories, so
-# they are named rather than taken from the categorical order. They are drawn
-# from the same validated set to keep one visual language across the report.
+# they are named rather than taken from the categorical order. They are not in
+# the categorical palette. Each is held to the same contrast floor as the
+# palette, and the pair stays 9.5 OKLab units apart under simulated
+# protanopia, above the floor of 6 -- asserted in test_palette.py.
 _LINES_ADDED_COLOUR: str = "#008300"
 _LINES_DELETED_COLOUR: str = "#e66767"
 
@@ -523,9 +526,7 @@ class Renderer:
             # split. Showing 0.23 against a stated 0-to-1 scale invites the
             # reader to conclude "23% of the way to maximum concentration"
             # when it is 46% of the achievable range.
-            "gini_ceiling": round((len(population) - 1) / len(population), 2)
-            if len(population) > 1
-            else 0.0,
+            "gini_ceiling": _ceiling_text(len(population)),
             # The population the figures above describe, which is not the
             # number of rows in the table when `min_commits` is in use. The
             # template states it beside the Gini so the reader is never left
@@ -600,6 +601,28 @@ class Renderer:
 # ------------------------------------------------------------------
 # Chart construction functions
 # ------------------------------------------------------------------
+
+
+def _ceiling_text(population: int) -> str:
+    """Format the largest Gini a population of this size can reach.
+
+    The maximum is (n-1)/n. Rounded to two places it reads "1.00" from 200
+    contributors upward, beside a sentence saying the maximum is not 1, so
+    the figure is truncated, not rounded, to three places when two would
+    reach 1.
+
+    Args:
+        population: The number of contributors the Gini describes.
+
+    Returns:
+        The ceiling as text, or "0.00" for fewer than two contributors.
+    """
+    if population < 2:
+        return "0.00"
+    ceiling = (population - 1) / population
+    if round(ceiling, 2) < 1:
+        return f"{ceiling:.2f}"
+    return f"{math.floor(ceiling * 1000) / 1000:.3f}"
 
 
 def _population(data: ReportData) -> list[ContributorStats]:

@@ -125,7 +125,9 @@ def _span_finding(commits: list[Commit]) -> Finding:
             f"{_plural(len(commits), 'commit')} over {_plural(days, 'day')}, "
             f"landing on {_plural(active, 'distinct day')}."
         ),
-        detail=("Merge commits are excluded, so this is lower than raw `git log`."),
+        # Plain text: the sentence is rendered as HTML and written to JSON, and
+        # Markdown backticks printed literally in both.
+        detail="Merge commits are excluded, so this is lower than a raw git log count.",
         evidence=f"{first.isoformat()} to {last.isoformat()}",
     )
 
@@ -252,7 +254,7 @@ def _recency_finding(commits: list[Commit], today: datetime.date) -> Finding | N
         headline=f"No commits in the last {_plural(idle, 'day')}.",
         detail=(
             "The analysis window may simply end before the most recent work; "
-            "check `--since` and `--until` before reading this as dormancy."
+            "check --since and --until before reading this as dormancy."
         ),
         evidence=f"last commit {last.isoformat()}",
     )
