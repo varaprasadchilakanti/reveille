@@ -715,7 +715,13 @@ def generate(
     ] = None,
     min_commits: Annotated[
         int | None,
-        typer.Option("--min-commits", help="Exclude contributors below this commit threshold."),
+        typer.Option(
+            "--min-commits",
+            help=(
+                "List only contributors with at least this many commits. "
+                "Every figure still counts everyone."
+            ),
+        ),
     ] = None,
     title: Annotated[
         str | None,
