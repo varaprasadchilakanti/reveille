@@ -298,11 +298,11 @@ class Renderer:
     def render_json(self, data: ReportData, output_path: Path) -> Path:
         """Serialise the report data to a structured JSON file.
 
-        The payload contains repository metadata, ranked contributor statistics
-        with all scoring fields, and derived health metrics. The raw commits
-        list is excluded. Dates are ISO 8601 strings. Suitable for consumption
-        by dashboards, data warehouses, and Jira integrations without parsing
-        HTML.
+        The payload contains repository metadata, contributor statistics, and
+        the derived summary measures; the scoring fields are present only when
+        ranking is enabled. The raw commits list is excluded. Dates are ISO
+        8601 strings. Suitable for consumption by dashboards, data warehouses,
+        and scripts without parsing HTML.
 
         Args:
             data: The complete structured report dataset.

@@ -98,8 +98,8 @@ can be opened in any modern browser without an internet connection.
 
 ### `--repo` / `-r`
 
-The path to the Git repository root. This must be a directory containing
-a `.git` subdirectory. Defaults to the current working directory, which
+The path to a Git repository: the root of a working tree, or a bare
+repository. Defaults to the current working directory, which
 means running `reveille generate` from inside a repository requires no
 explicit flag.
 
@@ -266,7 +266,7 @@ Controls the output format for `reveille generate`. Accepts four values.
 
 `html` is the default and produces the single self-contained HTML file at the path specified by `--output`.
 
-`json` writes a structured JSON file at the same path stem as `--output` with a `.json` extension. The payload contains repository metadata, ranked contributor statistics with all scoring fields, and derived health metrics. The raw commits list is excluded. Suitable for consumption by dashboards and data warehouses without parsing HTML.
+`json` writes a structured JSON file at the same path stem as `--output` with a `.json` extension. The payload contains repository metadata, contributor statistics, and the derived summary measures; the scoring fields are present only with `--ranking`. The raw commits list is excluded. Suitable for consumption by dashboards and data warehouses without parsing HTML.
 
 `csv` writes the ranked contributor table as a UTF-8 CSV file with BOM encoding at the same path stem as `--output` with a `.csv` extension. BOM ensures correct column rendering in Microsoft Excel on Windows without requiring a manual import wizard configuration.
 
@@ -455,9 +455,15 @@ reveille init --mailmap --force
 ## TOML Configuration Reference
 
 A TOML configuration file is useful when you run Reveille regularly
-against the same repository with the same parameters. Place it at the
-repository root as `reveille.toml` or pass its path explicitly with
-`--config`. Use `reveille init` to generate an annotated starting point.
+against the same repository with the same parameters. Pass its path with
+`--config`, or name it `reveille.toml` in the directory you run Reveille
+from, where it is loaded without being asked for. Use `reveille init` to
+generate an annotated starting point.
+
+A file loaded without `--config` is announced on stderr, with every setting
+it applied, because the directory may belong to someone else. An output path
+inside the repository's Git directory is refused with exit code 2, whether it
+comes from the file or the command line.
 
 The file is divided into three sections. All sections and all keys are
 optional.
@@ -827,7 +833,7 @@ startup and exits with an error if the constraint is violated.
 
 ### Exporting Machine-Readable Output for Downstream Integration
 
-`--format json` produces a structured JSON file at the same path stem as the HTML output. The payload contains repository metadata, ranked contributor statistics, and derived health metrics — suitable for dashboards, data warehouses, and Jira integrations without parsing HTML.
+`--format json` produces a structured JSON file at the same path stem as the HTML output. The payload contains repository metadata, contributor statistics, and the derived summary measures — suitable for dashboards, data warehouses, and scripts without parsing HTML.
 
 ```bash
 reveille generate --format json --output /tmp/reports/q4.html

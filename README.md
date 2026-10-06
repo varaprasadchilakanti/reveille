@@ -208,7 +208,7 @@ Generates the HTML activity report for the target repository.
 
 | Flag | Short | Type | Default | Description |
 |---|---|---|---|---|
-| `--repo` | `-r` | `PATH` | `.` (current directory) | Path to the Git repository root. Must contain a `.git` directory. |
+| `--repo` | `-r` | `PATH` | `.` (current directory) | Path to a Git repository: a working tree's root, or a bare repository. |
 | `--output` | `-o` | `PATH` | `./reveille-report.html` | Path for the generated HTML file. Parent directories must exist. |
 | `--since` | | `DATE` | Repository creation date | Include only commits on or after this date. Accepts `YYYY-MM-DD`. |
 | `--until` | | `DATE` | Today | Include only commits on or before this date. Accepts `YYYY-MM-DD`. |
@@ -304,7 +304,7 @@ The generated HTML file is structured as a formal report with the following sect
 
 **Repository Activity Indicators** — Commit concentration (the minimum number of contributors accounting for 50% of commits) and longest inactive streak within the analysis window. Commit concentration is a measure of how concentrated the commit history is, not a bus factor: bus factor is a property of line ownership across the surviving codebase, which commit counts cannot establish. See the [User Guide](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md#repository-summary) for how to read it.
 
-**JSON export** — When `--format json` is used, a structured JSON file is written at the same path stem as the HTML output. The payload contains repository metadata, contributor statistics, and derived health metrics; the scoring fields are present only with `--ranking`. Suitable for dashboards, data warehouses, and CI integrations without parsing HTML.
+**JSON export** — When `--format json` is used, a structured JSON file is written at the same path stem as the HTML output. The payload contains repository metadata, contributor statistics, and the derived summary measures; the scoring fields are present only with `--ranking`. Suitable for dashboards, data warehouses, and CI integrations without parsing HTML.
 
 **CSV export** — When `--format csv` is used, the contributor table is written as a UTF-8 CSV file with BOM encoding. BOM ensures correct column rendering in Microsoft Excel on Windows without requiring a manual import wizard. Columns: `rank`, `name`, `email`, `commits`, `lines_added`, `lines_deleted`, `net_lines`, `active_days`, `last_commit_date`. With `--ranking`, `designation` and `tier` follow `email`, and `composite_score` and `percentile` are appended. As in the JSON payload, the ranking columns are omitted entirely rather than written as zeroes — a `0` in a spreadsheet is a number someone will sort on.
 

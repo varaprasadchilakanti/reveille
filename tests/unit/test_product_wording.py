@@ -211,6 +211,7 @@ _UNSUPPORTED = (
     "production-grade",
     # Commit counts do not establish health.
     "repository health",
+    "health metrics",
 )
 
 
