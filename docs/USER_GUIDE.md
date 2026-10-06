@@ -239,6 +239,40 @@ enabled = true
 It must be a real boolean. `enabled = "false"` is a *string*, and would be
 rejected rather than quietly read as true.
 
+### `--area-authors` and `--area-depth`
+
+**Off by default.** `--area-authors` adds a section, *Who Changed Each Area*,
+that lists the most-changed directories and, for each, how many commits changed
+it, how many authors made them, who they are, and when it was last changed. It
+names people, organised by directory rather than by person, so it is a separate
+choice from `--ranking` and is not switched on by it. See
+[ADR 0013](adr/0013-who-changes-what-is-opt-in-and-area-first.md).
+
+```bash
+reveille generate --area-authors
+reveille generate --area-authors --area-depth 2
+```
+
+An area is a directory of at most `--area-depth` components (default 3, so
+`src/app/core` rather than `src/app`); a file in a shallower directory belongs to
+that directory, and files at the top level form the area `(root)`. Generated lock
+files are left out. The eight areas with the most commits are shown.
+
+Names are alphabetical, with no date or count beside any person; the one date
+belongs to the area. When an area has more than five authors, the five shown are
+those who changed it most recently, still alphabetical, and the line says so.
+Accounts whose name ends in `[bot]` are listed on an *Automated* line. An author
+below `--min-commits` is counted and not named; an excluded author is neither.
+The section says who changed each area, not who knows or owns it.
+
+In `reveille.toml`:
+
+```toml
+[areas]
+enabled = true
+depth = 3
+```
+
 ### `--deterministic`
 
 Produces byte-reproducible output: two runs over an unchanged repository give
@@ -523,6 +557,14 @@ enabled = true
 # Metric weights for the composite score. All four values must sum to 1.0.
 # The defaults shown here are the documented reproducible defaults.
 weights = { commits = 0.30, lines = 0.25, consistency = 0.25, recency = 0.20 }
+
+
+[areas]
+# Add the "Who Changed Each Area" section. Equivalent to --area-authors.
+enabled = true
+
+# Directory components that make an area. Equivalent to --area-depth.
+depth = 3
 ```
 
 When a key is absent from the configuration file, the CLI default for

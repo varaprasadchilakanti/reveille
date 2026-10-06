@@ -78,6 +78,14 @@ _CAPABILITIES: tuple[dict[str, str], ...] = (
         ),
     },
     {
+        "id": "area-authors",
+        "description": (
+            "When asked with --area-authors, list who changed each of the "
+            "most-changed directories and when each was last changed, names "
+            "alphabetically, with no count or date per person."
+        ),
+    },
+    {
         "id": "structured-export",
         "description": (
             "Emit the same analysis as JSON or CSV for downstream processing, "

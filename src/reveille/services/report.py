@@ -95,6 +95,9 @@ def generate_report(
         until=config.until,
         exclude_authors=config.exclude_authors,
         dated_until=cutoff,
+        # Collected only when asked for: the section names people by area
+        # (ADR 0013), and nothing about it is kept otherwise.
+        area_depth=config.area_depth if config.area_authors_enabled else None,
     )
     after_window = reader.commits_dated_after if cutoff is not None else 0
     if after_window and cutoff is not None:
@@ -192,6 +195,8 @@ def generate_report(
         _build_provenance(config, head_sha, reader.mailmap_applied),
         commits_dated_after_window=after_window,
         shallow_clone=shallow,
+        area_authors_enabled=config.area_authors_enabled,
+        area_depth=config.area_depth if config.area_authors_enabled else None,
     )
 
     report_data = ReportData(
@@ -201,6 +206,7 @@ def generate_report(
         commits=commits,
         file_stats=list(reader.file_stats),
         suppressed_contributors=suppressed_contributors,
+        areas=list(reader.area_activity) if config.area_authors_enabled else [],
     )
 
     _logger.debug(

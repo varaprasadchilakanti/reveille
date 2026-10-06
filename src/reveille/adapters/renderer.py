@@ -56,6 +56,7 @@ from jinja2 import (
     select_autoescape,
 )
 
+from reveille.domain.areas import AreaStatement, describe_areas
 from reveille.domain.concentration import gini_coefficient, lorenz_curve
 from reveille.domain.files import extension_breakdown, hotspots
 from reveille.domain.models import (
@@ -354,6 +355,10 @@ class Renderer:
                 # no figure, and stated here so the omission is not silent.
                 "commits_dated_after_window": data.provenance.commits_dated_after_window,
                 "shallow_clone": data.provenance.shallow_clone,
+                "areas": {
+                    "enabled": data.provenance.area_authors_enabled,
+                    "depth": data.provenance.area_depth,
+                },
                 "filters": {
                     "requested_branch": data.provenance.requested_branch,
                     "requested_since": (
@@ -418,6 +423,25 @@ class Renderer:
                 "contributors_below_threshold": derived["contributors_below_threshold"],
             },
         }
+        if data.provenance.area_authors_enabled:
+            # The same facts as the HTML section and nothing more: no count
+            # per person, which would be a share of an area per person, and
+            # which a program summarising this document would state (ADR 0013).
+            payload["areas"] = [
+                {
+                    "area": a.area,
+                    "commits": a.commits,
+                    "authors": a.author_count,
+                    "automated_accounts": a.automated_count,
+                    "not_listed": a.not_listed,
+                    "last_changed": a.last_changed.isoformat(),
+                    "listed_authors": [{"name": n, "email": e} for n, e in a.named],
+                    "listed_automated_accounts": [
+                        {"name": n, "email": e} for n, e in a.automated_named
+                    ],
+                }
+                for a in _area_statements(data)
+            ]
 
         try:
             resolved.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -551,6 +575,8 @@ class Renderer:
             "findings": summarise(
                 data.commits, _population(data), today=data.metadata.analysis_until
             ),
+            # Who changed each area; empty unless --area-authors (ADR 0013).
+            "areas": _area_statements(data),
         }
 
     # ------------------------------------------------------------------
@@ -627,6 +653,22 @@ def _ceiling_text(population: int) -> str:
     if round(ceiling, 2) < 1:
         return f"{ceiling:.2f}"
     return f"{math.floor(ceiling * 1000) / 1000:.3f}"
+
+
+def _area_statements(data: ReportData) -> list[AreaStatement]:
+    """Describe who changed each area, when the report asked for it.
+
+    Args:
+        data: The complete report dataset.
+
+    Returns:
+        One statement per area shown, or none when the section is off.
+    """
+    if not data.areas:
+        return []
+    names = {s.email.lower(): s.name for s in _population(data)}
+    listed = {r.stats.email.lower() for r in data.ranked_contributors}
+    return describe_areas(data.areas, names, listed, data.metadata.analysis_until)
 
 
 def _population(data: ReportData) -> list[ContributorStats]:

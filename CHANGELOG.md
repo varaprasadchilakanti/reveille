@@ -21,6 +21,16 @@ Nothing yet.
 
 ### Added
 
+- **Who changed each area, on request.** `--area-authors` (or `[areas] enabled
+  = true`) adds a section listing the eight most-changed directories and, for
+  each, how many commits changed it, how many authors made them, who they are
+  and when it was last changed. It is organised by directory rather than by
+  person: names are alphabetical, with no count or date beside any of them,
+  automated accounts are listed apart, and an author below `--min-commits` is
+  counted but not named. Of more than five authors, the five who changed the
+  area most recently are shown, and the line says so. `--area-depth` sets how
+  many directory levels make an area (default 3). Off by default and not
+  implied by `--ranking`, because it names people. See ADR 0013.
 - **The release path is tested.** `publish.yml` had no tests, and its failure
   mode is a broken release — not hypothetical: v0.8.0 shipped without its SBOM
   because a glob that looked right matched nothing, and PR #179 then added an
@@ -138,7 +148,8 @@ Nothing yet.
 - **`schema_version` is `1.1`.** Additive, per ADR 0008: `derived` gains
   `population_size` and `contributors_below_threshold`, so a consumer can
   reconcile the contributor rows against `total_commits` without arithmetic,
-  and `provenance` gains `commits_dated_after_window` and `shallow_clone`.
+  and `provenance` gains `commits_dated_after_window`, `shallow_clone` and
+  `areas`, and the document gains `areas` when `--area-authors` is given.
 - **A single-contributor report no longer contradicts itself.** The distribution
   caption rendered as "Gini runs 0 (even) to 0.00, which is the most concentrated
   1 contributors can be" — a vacuous range and a grammatical error in shipped

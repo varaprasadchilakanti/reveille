@@ -109,6 +109,11 @@ class ReportConfig(BaseModel):
     # `[ranking] enabled = true`. See docs/adr/0010-ranking-is-opt-in.md.
     ranking_enabled: bool = Field(default=False)
     ranking_weights: RankingWeights = Field(default_factory=RankingWeights)
+    # Off by default, and not implied by the ranking: the "who changed each
+    # area" section names people, so it is a separate, deliberate choice.
+    # Opt in with --area-authors or `[areas] enabled = true`. ADR 0013.
+    area_authors_enabled: bool = Field(default=False)
+    area_depth: int = Field(default=3, ge=1, le=10)
     output_format: OutputFormat = Field(default="html")
     deterministic: bool = Field(default=False)
 
@@ -150,6 +155,8 @@ class ReportConfigKwargs(TypedDict, total=False):
     min_commits: int
     ranking_enabled: bool
     ranking_weights: RankingWeights
+    area_authors_enabled: bool
+    area_depth: int
     output_format: OutputFormat
     deterministic: bool
 
@@ -193,6 +200,7 @@ def load_config_from_toml(path: Path) -> ReportConfigKwargs:
     parts.update(_parse_report_section(raw.get("report", {})))
     parts.update(_parse_filters_section(raw.get("filters", {})))
     parts.update(_parse_ranking_section(raw.get("ranking", {})))
+    parts.update(_parse_areas_section(raw.get("areas", {})))
     return cast(ReportConfigKwargs, parts)
 
 
@@ -273,6 +281,39 @@ def _parse_filters_section(filters: dict[str, Any]) -> dict[str, Any]:
                 f"[filters] exclude_authors must be a list of strings, not {authors!r}."
             )
         kwargs["exclude_authors"] = list(authors)
+    return kwargs
+
+
+def _parse_areas_section(areas: dict[str, Any]) -> dict[str, Any]:
+    """Parse the [areas] section of a Reveille TOML configuration file.
+
+    Args:
+        areas: The raw [areas] table from the parsed TOML document.
+
+    Returns:
+        A partial kwargs dict for ReportConfig construction.
+
+    Raises:
+        ConfigurationError: If `enabled` is not a boolean or `depth` is not
+            an integer.
+    """
+    kwargs: dict[str, Any] = {}
+    if "enabled" in areas:
+        # Strict for the same reason as [ranking]: "false" is a non-empty
+        # string, and an accidental enable names people.
+        value = areas["enabled"]
+        if not isinstance(value, bool):
+            raise ConfigurationError(
+                f"[areas] enabled must be true or false, not {value!r}. "
+                'Quoted values such as "false" are strings, and every '
+                "non-empty string would count as true."
+            )
+        kwargs["area_authors_enabled"] = value
+    if "depth" in areas:
+        depth = areas["depth"]
+        if isinstance(depth, bool) or not isinstance(depth, int):
+            raise ConfigurationError(f"[areas] depth must be a whole number, not {depth!r}.")
+        kwargs["area_depth"] = depth
     return kwargs
 
 

@@ -218,6 +218,8 @@ Generates the HTML activity report for the target repository.
 | `--title` | | `TEXT` | Repository name | Override the report title displayed in the HTML output. |
 | `--ranking` | | Flag | Off | Include the contributor ranking table. **Off by default** — it scores and tiers named individuals, which is more than the figures support. See [ADR 0010](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/adr/0010-ranking-is-opt-in.md). |
 | `--no-ranking` | | Flag | Off | Explicitly omit the ranking table. Ranking is already off by default; this exists so existing invocations keep working. |
+| `--area-authors` | | Flag | Off | Add a section listing who changed each of the most-changed directories, and when each was last changed. **Off by default**: it names people, by area. See [ADR 0013](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/adr/0013-who-changes-what-is-opt-in-and-area-first.md). |
+| `--area-depth` | | `INT` | `3` | Directory components that make an area for `--area-authors`. |
 | `--format` | | `TEXT` | `html` | Output format. Accepted values: `html`, `json`, `csv`. `json` and `csv` write files at the same path stem as `--output`. |
 | `--deterministic` | | Flag | Off | Produce byte-reproducible output. Pins `generated_at` and the end of the analysis window to the repository's own last commit rather than to the clock, so two runs over an identical repository produce identical bytes. |
 | `--verbose` | | Flag | Off | Emit diagnostic logging to stderr. Does not change the report. |
@@ -301,6 +303,8 @@ The generated HTML file is structured as a formal report with the following sect
 **Contributor Summary Table** — A table listing each contributor with their commit count, lines added, lines removed, net line delta, active days, and most recent commit date, ordered by commit count. With `--ranking` it additionally carries a rank, a tier designation and a composite score, and is headed *Contributor Rankings*.
 
 **Contribution Breakdown Charts** — A donut chart of each contributor's share of all commits, with contributors beyond four and anyone held back by `--min-commits` pooled as "Other Contributors", and a grouped bar chart of lines added and deleted per listed contributor.
+
+**Who Changed Each Area** (with `--area-authors`) — For the eight most-changed directories: commits, authors, when the area was last changed, and the authors' names alphabetically. No count or date per person. It says who changed each area, not who knows or owns it.
 
 **Repository Activity Indicators** — Commit concentration (the minimum number of contributors accounting for 50% of commits) and the longest quiet run: the most consecutive days without a commit between two days that had one. Silence since the last commit is stated separately, by the dormancy finding. Commit concentration is a measure of how concentrated the commit history is, not a bus factor: bus factor is a property of line ownership across the surviving codebase, which commit counts cannot establish. See the [User Guide](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md#repository-summary) for how to read it.
 

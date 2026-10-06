@@ -115,6 +115,22 @@ _DEFAULT_CONFIG_TEMPLATE: str = """\
 #                  analysis window end date.
 #
 # weights = { commits = 0.30, lines = 0.25, consistency = 0.25, recency = 0.20 }
+
+
+# ------------------------------------------------------------------------------
+# [areas] -- Who changed each area
+# ------------------------------------------------------------------------------
+
+[areas]
+
+# Adds a "Who Changed Each Area" section: the most-changed directories, and for
+# each the authors who changed it, alphabetically, with when it was last
+# changed. OFF by default, and not switched on by the ranking: it names people,
+# organised by directory. It says who changed an area, not who knows or owns it.
+# enabled = false
+
+# Directory components that make an area: 3 makes src/app/core one area.
+# depth = 3
 """
 
 _DEFAULT_MAILMAP_TEMPLATE: str = """\

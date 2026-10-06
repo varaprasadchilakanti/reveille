@@ -119,6 +119,7 @@ _OPTION_NAMES = {
     "output_path": "--output",
     "repo_path": "--repo",
     "exclude_authors": "--exclude-author",
+    "area_depth": "--area-depth",
 }
 
 
@@ -278,6 +279,8 @@ _TOML_KEYS: dict[str, str] = {
     "exclude_authors": "filters.exclude_authors",
     "ranking_enabled": "ranking.enabled",
     "ranking_weights": "ranking.weights",
+    "area_authors_enabled": "areas.enabled",
+    "area_depth": "areas.depth",
 }
 
 
@@ -602,6 +605,8 @@ def _merge_cli_flags(
     ranking: bool,
     output_format: str | None,
     deterministic: bool,
+    area_authors: bool = False,
+    area_depth: int | None = None,
 ) -> ReportConfigKwargs:
     """Merge CLI flag values into the base configuration dict.
 
@@ -627,6 +632,10 @@ def _merge_cli_flags(
             absent flag -- and an unconditional assignment here silently
             overwrote whatever `reveille.toml` had set.
         deterministic: Whether to produce byte-reproducible output.
+        area_authors: Whether the "who changed each area" section was asked
+            for. Only ever switches it on; a config file's setting stands
+            when the flag is absent.
+        area_depth: Area depth, or None if the flag was not given.
 
     Returns:
         A merged ReportConfigKwargs ready for ReportConfig construction.
@@ -652,10 +661,27 @@ def _merge_cli_flags(
     if min_commits is not None:
         merged["min_commits"] = min_commits
     _apply_ranking_flags(merged, ranking=ranking, no_ranking=no_ranking)
+    _apply_area_flags(merged, area_authors=area_authors, area_depth=area_depth)
     if output_format is not None:
         merged["output_format"] = cast(OutputFormat, output_format)
 
     return cast(ReportConfigKwargs, merged)
+
+
+def _apply_area_flags(
+    merged: dict[str, Any], *, area_authors: bool, area_depth: int | None
+) -> None:
+    """Apply --area-authors and --area-depth over the configuration file.
+
+    Args:
+        merged: The configuration being assembled; mutated in place.
+        area_authors: Whether --area-authors was given.
+        area_depth: The --area-depth value, or None if it was not given.
+    """
+    if area_authors:
+        merged["area_authors_enabled"] = True
+    if area_depth is not None:
+        merged["area_depth"] = area_depth
 
 
 @app.command()
@@ -731,6 +757,23 @@ def generate(
             ),
         ),
     ] = False,
+    area_authors: Annotated[
+        bool,
+        typer.Option(
+            "--area-authors",
+            help=(
+                "Add a section naming who changed each of the most-changed "
+                "directories. Off by default: it names people by area."
+            ),
+        ),
+    ] = False,
+    area_depth: Annotated[
+        int | None,
+        typer.Option(
+            "--area-depth",
+            help="Directory components that make an area (default 3).",
+        ),
+    ] = None,
     config: Annotated[
         Path | None,
         typer.Option("--config", "-c", help="Path to a TOML configuration file."),
@@ -783,6 +826,8 @@ def generate(
         ranking,
         output_format,
         deterministic,
+        area_authors,
+        area_depth,
     )
 
     # Validate the EFFECTIVE path, not the flag. `merged["output_path"]` may

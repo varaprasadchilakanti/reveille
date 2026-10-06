@@ -173,6 +173,36 @@ class AnalysisProvenance:
     # describes the clone, not the project, and the window starts where the
     # clone's history does.
     shallow_clone: bool = False
+    # Whether the "who changed each area" section was asked for, and at what
+    # depth (ADR 0013). Recorded either way, so a report states that it does
+    # not name people by area as plainly as one that does.
+    area_authors_enabled: bool = False
+    area_depth: int | None = None
+
+
+@dataclass(frozen=True)
+class AreaActivity:
+    """Who changed one directory in the analysis window (ADR 0013).
+
+    An area, not a person: it records which identities changed it and when
+    it was last changed, and deliberately no count per person, which would
+    be a share of the area per person.
+
+    Attributes:
+        area: The directory, at most `--area-depth` components, or "(root)"
+            for files at the top level.
+        commits: Commits that changed at least one file in the area.
+        last_changed: The date of the most recent of those commits.
+        authors: Lower-cased address of everybody who made them, mapped to
+            the date they last changed the area. Used only to choose which
+            names a long list shows; never printed or written out, since a
+            person's last date reads as a departure date.
+    """
+
+    area: str
+    commits: int
+    last_changed: datetime.date
+    authors: dict[str, datetime.date]
 
 
 @dataclass(frozen=True)
@@ -212,3 +242,6 @@ class ReportData:
     #: listing, not the analysis. Defaults to empty, so a caller
     #: constructing a report without it keeps working.
     suppressed_contributors: list[ContributorStats] = field(default_factory=list)
+    #: Per-directory activity, present only when `--area-authors` asked for
+    #: it (ADR 0013). Empty otherwise, and the section is then absent.
+    areas: list[AreaActivity] = field(default_factory=list)

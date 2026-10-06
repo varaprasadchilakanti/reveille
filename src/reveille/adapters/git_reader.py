@@ -36,7 +36,15 @@ from pathlib import Path
 from git import InvalidGitRepositoryError, NoSuchPathError, Repo
 from git.exc import GitCommandError
 
-from reveille.domain.models import Commit, ContributorStats, FileStats, RepositoryMetadata
+from reveille.domain.areas import area_of
+from reveille.domain.files import is_generated
+from reveille.domain.models import (
+    AreaActivity,
+    Commit,
+    ContributorStats,
+    FileStats,
+    RepositoryMetadata,
+)
 from reveille.exceptions import EmptyRepositoryError, RepositoryError
 
 # Record and field delimiters for the single-pass `git log` read.
@@ -273,6 +281,50 @@ def _rename_destination(path: str) -> str:
     return destination.strip()
 
 
+@dataclass
+class _AreaTotal:
+    """Running totals for one area while the log streams."""
+
+    commits: int
+    last_changed: datetime.date
+    authors: dict[str, datetime.date] = field(default_factory=dict)
+
+
+def _accumulate_area_totals(
+    record: str, commit: Commit, depth: int | None, totals: dict[str, _AreaTotal]
+) -> None:
+    """Fold one commit into the per-area totals: once per area it touched.
+
+    Bounded by areas times authors, not by commits, like the file totals.
+    Generated lock files are skipped, as in the hotspot chart.
+
+    Args:
+        record: One `git log` record, header line then numstat block.
+        commit: The parsed commit, for its author and date.
+        depth: The most directory components an area may have, or None
+            when areas were not asked for, in which case nothing is kept.
+        totals: Mutated in place, keyed by area.
+    """
+    if depth is None:
+        return
+    _, _, numstat_block = record.partition("\n")
+    areas = {
+        area_of(path, depth)
+        for path, _, _ in _iter_numstat(numstat_block)
+        if not is_generated(path)
+    }
+    day = commit.timestamp.date()
+    author = commit.author_email.lower()
+    for area in areas:
+        total = totals.get(area)
+        if total is None:
+            totals[area] = _AreaTotal(commits=1, last_changed=day, authors={author: day})
+        else:
+            total.commits += 1
+            total.last_changed = max(total.last_changed, day)
+            total.authors[author] = max(total.authors.get(author, day), day)
+
+
 def _accumulate_file_totals(record: str, totals: dict[str, list[int]]) -> None:
     """Fold one log record's numstat block into the running per-path totals.
 
@@ -359,6 +411,9 @@ class GitReader:
         #: Commits the last `read_commits` left out because their timestamp
         #: fell after `dated_until`.
         self.commits_dated_after: int = 0
+        #: Who changed each directory, from the last `read_commits` given an
+        #: `area_depth`; empty otherwise.
+        self.area_activity: tuple[AreaActivity, ...] = ()
         self.unmatched_exclusions: tuple[str, ...] = ()
         try:
             self._repo = Repo(str(repo_path), search_parent_directories=False)
@@ -389,6 +444,7 @@ class GitReader:
         until: datetime.date | None,
         exclude_authors: list[str],
         dated_until: datetime.date | None = None,
+        area_depth: int | None = None,
     ) -> list[Commit]:
         """Read all commits within the specified analysis window.
 
@@ -410,12 +466,15 @@ class GitReader:
             until: Include only commits on or before this date. No upper
                 bound is applied if None.
             exclude_authors: Author names or email addresses to exclude.
+                Matching is case-insensitive.
             dated_until: Leave out commits whose timestamp, read in UTC,
                 falls after this date, and count them in
                 `commits_dated_after`. Applied while reading, before a
                 commit's files are counted, so nothing left out here
                 reappears in the file statistics.
-                Matching is case-insensitive.
+            area_depth: When given, also record who changed each directory,
+                cut to this many components, in `area_activity` (ADR 0013).
+                Nothing is kept when it is None.
 
         Returns:
             A list of Commit objects sorted by timestamp descending
@@ -508,6 +567,7 @@ class GitReader:
         # 50,000-commit repository would otherwise hold a list of paths
         # per commit for the whole run.
         file_totals: dict[str, list[int]] = {}
+        area_totals: dict[str, _AreaTotal] = {}
         dated_after = 0
         for record in raw_log.split(_RECORD_SEP):
             commit = _parse_log_record(record, mailmap, exclude_set, authentic_shas, matched)
@@ -520,12 +580,22 @@ class GitReader:
             # Only files from commits that survived filtering: an excluded
             # author's churn must not reappear here.
             _accumulate_file_totals(record, file_totals)
+            _accumulate_area_totals(record, commit, area_depth, area_totals)
 
         self._file_stats = tuple(
             FileStats(path=path, commits=n, lines_added=a, lines_deleted=d)
             for path, (n, a, d) in file_totals.items()
         )
         self.commits_dated_after = dated_after
+        self.area_activity = tuple(
+            AreaActivity(
+                area=area,
+                commits=total.commits,
+                last_changed=total.last_changed,
+                authors=dict(total.authors),
+            )
+            for area, total in area_totals.items()
+        )
 
         # A filter that matched nothing is almost always a typo, and silence
         # makes it indistinguishable from one that worked. This matters most

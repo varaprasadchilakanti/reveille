@@ -157,7 +157,13 @@ the filters *as requested* (`requested_branch`, `requested_since`,
 `ranking_weights`, `mailmap_applied`, `deterministic`,
 `commits_dated_after_window` (commits a default window left out because they
 are dated after today; counted in no figure), `shallow_clone` (the repository
-holds only part of its history).
+holds only part of its history), `area_authors_enabled` and `area_depth`
+(whether the opt-in "who changed each area" section was asked for; ADR 0013).
+
+**`AreaActivity`** — `area`, `commits`, `last_changed`, and each author's address
+with the date they last changed the area. Collected by the reader only under
+`--area-authors`; `domain/areas.py` turns it into statements that name authors
+alphabetically and never print a per-person count or date.
 
 The requested/resolved distinction is the point: `analysis_since` records where
 the window began, `requested_since` records whether anybody asked for it. Note
