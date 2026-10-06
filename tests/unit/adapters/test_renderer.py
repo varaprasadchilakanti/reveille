@@ -371,13 +371,18 @@ class TestBuildTimelineChart:
         assert "paper_bgcolor" not in layout
         assert "plot_bgcolor" not in layout
 
-    def test_xaxis_type_is_category(self) -> None:
+    def test_xaxis_is_a_date_axis(self) -> None:
+        """A category axis printed one label per week: hundreds of rotated
+        labels over a long window, an illegible band. A date axis spaces its
+        own ticks by month or year; the hover still names the exact week."""
         commits = [
             _make_commit(datetime.date(2024, 1, 8)),
             _make_commit(datetime.date(2024, 1, 15)),
         ]
         result = json.loads(_build_timeline_chart(commits))
-        assert result["layout"]["xaxis"]["type"] == "category"
+        assert result["layout"]["xaxis"]["type"] == "date"
+        assert "tickangle" not in result["layout"]["xaxis"]
+        assert "%{x|%Y-%m-%d}" in result["data"][0]["hovertemplate"]
 
     def test_a_quiet_week_is_drawn_as_zero_not_skipped(self) -> None:
         """A skipped week let the line run straight across a gap.
@@ -463,7 +468,7 @@ class TestBuildContributorTimelineChart:
         parsed = json.loads(_build_contributor_timeline_chart(commits, ranked))
         assert len(parsed["data"]) == 3
 
-    def test_xaxis_type_is_category(self) -> None:
+    def test_xaxis_is_a_date_axis(self) -> None:
         commits = [
             _make_commit(datetime.date(2024, 3, 11), email="alice@example.com"),
             _make_commit(datetime.date(2024, 3, 18), email="bob@example.com"),
@@ -473,7 +478,8 @@ class TestBuildContributorTimelineChart:
             _make_ranked("Bob", commit_count=1),
         ]
         parsed = json.loads(_build_contributor_timeline_chart(commits, ranked))
-        assert parsed["layout"]["xaxis"]["type"] == "category"
+        assert parsed["layout"]["xaxis"]["type"] == "date"
+        assert all("%{x|%Y-%m-%d}" in t["hovertemplate"] for t in parsed["data"])
 
     def test_layout_does_not_contain_bgcolor_keys(self) -> None:
         commits = [

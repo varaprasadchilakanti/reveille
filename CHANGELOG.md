@@ -278,6 +278,10 @@ Nothing yet.
   window only. With many years the year buttons ran off the page; they wrap.
   On a phone the grid shrank to a strip about 25 pixels tall; it now keeps its
   size and scrolls sideways.
+- **The weekly timelines labelled every week.** On a category axis a
+  three-year window printed hundreds of rotated dates in an illegible band.
+  Both timelines now use a date axis that places its own month or year ticks;
+  hovering still names the exact week.
 
 ### Security
 

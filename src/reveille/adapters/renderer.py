@@ -895,11 +895,13 @@ def _build_timeline_chart(
             fill="tozeroy",
             line={"color": _CATEGORICAL_PALETTE[0], "width": 2},
             fillcolor=_translucent(_CATEGORICAL_PALETTE[0], 0.10),
-            hovertemplate="Week of %{x}<br>Commits: %{y}<extra></extra>",
+            hovertemplate="Week of %{x|%Y-%m-%d}<br>Commits: %{y:,}<extra></extra>",
         )
     )
     layout = _base_layout()
-    layout["xaxis"] = {"type": "category", "tickangle": -45, "automargin": True}
+    # A date axis spaces its own ticks by month or year. As a category axis
+    # every week was a label: hundreds of rotated dates over a long window.
+    layout["xaxis"] = {"type": "date", "automargin": True}
     fig.update_layout(
         **layout,
         xaxis_title="Week",
@@ -980,12 +982,14 @@ def _build_contributor_timeline_chart(
                     # own dash as well as its own hue.
                     "dash": _LINE_DASHES[i % len(_LINE_DASHES)],
                 },
-                hovertemplate="Week of %{x}<br>Commits: %{y}<extra></extra>",
+                hovertemplate="Week of %{x|%Y-%m-%d}<br>Commits: %{y:,}<extra></extra>",
             )
         )
 
     layout = _base_layout()
-    layout["xaxis"] = {"type": "category", "tickangle": -45, "automargin": True}
+    # A date axis spaces its own ticks by month or year. As a category axis
+    # every week was a label: hundreds of rotated dates over a long window.
+    layout["xaxis"] = {"type": "date", "automargin": True}
     layout["showlegend"] = True
     layout["legend"] = {"orientation": "h", "y": 1.12, "x": 0}
     fig.update_layout(
