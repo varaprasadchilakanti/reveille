@@ -348,6 +348,9 @@ class GitReader:
         """
         self._mailmap_applied = False
         self._file_stats: tuple[FileStats, ...] = ()
+        #: Commits the last `read_commits` left out because their timestamp
+        #: fell after `dated_until`.
+        self.commits_dated_after: int = 0
         self.unmatched_exclusions: tuple[str, ...] = ()
         try:
             self._repo = Repo(str(repo_path), search_parent_directories=False)
@@ -377,6 +380,7 @@ class GitReader:
         since: datetime.date | None,
         until: datetime.date | None,
         exclude_authors: list[str],
+        dated_until: datetime.date | None = None,
     ) -> list[Commit]:
         """Read all commits within the specified analysis window.
 
@@ -398,6 +402,11 @@ class GitReader:
             until: Include only commits on or before this date. No upper
                 bound is applied if None.
             exclude_authors: Author names or email addresses to exclude.
+            dated_until: Leave out commits whose own timestamp falls after
+                this date, and count them in `commits_dated_after`. Unlike
+                `until`, which Git applies to the committer date, this tests
+                the date every figure in the report uses, so nothing left out
+                here reappears in the file statistics.
                 Matching is case-insensitive.
 
         Returns:
@@ -491,9 +500,13 @@ class GitReader:
         # 50,000-commit repository would otherwise hold a list of paths
         # per commit for the whole run.
         file_totals: dict[str, list[int]] = {}
+        dated_after = 0
         for record in raw_log.split(_RECORD_SEP):
             commit = _parse_log_record(record, mailmap, exclude_set, authentic_shas, matched)
             if commit is None:
+                continue
+            if dated_until is not None and commit.timestamp.date() > dated_until:
+                dated_after += 1
                 continue
             commits.append(commit)
             # Only files from commits that survived filtering: an excluded
@@ -504,6 +517,7 @@ class GitReader:
             FileStats(path=path, commits=n, lines_added=a, lines_deleted=d)
             for path, (n, a, d) in file_totals.items()
         )
+        self.commits_dated_after = dated_after
 
         # A filter that matched nothing is almost always a typo, and silence
         # makes it indistinguishable from one that worked. This matters most

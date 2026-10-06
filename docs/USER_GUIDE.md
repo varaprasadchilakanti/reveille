@@ -123,7 +123,15 @@ reveille generate --output /tmp/reports/q4-2024.html
 Both flags accept dates in `YYYY-MM-DD` format. The `--since` boundary
 is inclusive: commits on that calendar day are included. The `--until`
 boundary is also inclusive. If neither is provided, the full commit
-history on the target branch is analysed.
+history on the target branch is analysed, up to today.
+
+The window starts at the first commit, however early `--since` is: days
+before a repository's first commit are not quiet days. Without `--until`,
+a commit dated after today (a wrong clock, or a rebase that kept a future
+date) is counted in no figure; the report header and a note on stderr say
+how many, and `--until` with a later date includes them. With
+`--deterministic` the window closes on the last commit instead, so nothing
+is left out.
 
 ```bash
 reveille generate --since 2024-01-01 --until 2024-03-31
@@ -536,8 +544,10 @@ window after all filters have been applied. Commit concentration is the
 minimum number of contributors whose combined commit volume accounts for
 at least 50 percent of total commits — a value of 1 means a single person
 authored the majority of the history in the analysis window. Max inactive
-days is the longest consecutive calendar period within the analysis window
-on which no commits were recorded.
+days is the longest run of calendar days with no commit between two days
+that had one. Days before the first commit and after the last are not
+counted; the silence since the last commit is stated by the dormancy
+finding instead.
 
 **Commit concentration is not a bus factor, and should not be read as one.**
 Bus factor asks how much of the surviving code only one person understands.

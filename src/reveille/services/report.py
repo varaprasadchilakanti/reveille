@@ -52,6 +52,7 @@ _logger = logging.getLogger(__name__)
 def generate_report(
     config: ReportConfig,
     on_progress: Callable[[ProgressEvent], None] | None = None,
+    on_notice: Callable[[str], None] | None = None,
 ) -> list[Path]:
     """Generate a self-contained HTML report of repository activity.
 
@@ -61,6 +62,10 @@ def generate_report(
             pipeline stage boundary. Carries the incoming stage label, elapsed
             time of the stage that just completed, and an optional item count.
             Has no effect on the output when omitted.
+        on_notice: Optional callable given one plain sentence for each thing
+            the reader of the report should know about how it was produced,
+            such as commits left out of the window. The report states the
+            same facts; this is for whoever ran the command.
 
     Returns:
         The absolute path of the written HTML file.
@@ -76,17 +81,37 @@ def generate_report(
     stage_start = time.monotonic()
 
     _emit(on_progress, "Reading commit history", 0.0)
+    # A default window ends today. A commit dated later -- a wrong clock, or
+    # a rebase that kept a future date -- would otherwise be counted in the
+    # totals of a window that says it ended before it. Nor may one such
+    # commit stretch the window: a single 2039 timestamp would drag every
+    # timeline thirteen years to the right. It is left out of every figure
+    # and the omission is stated. An explicit `--until` is taken as asked,
+    # and deterministic mode closes on the last commit (ADR 0008).
+    cutoff = datetime.date.today() if config.until is None and not config.deterministic else None
     commits = reader.read_commits(
         branch=config.branch,
         since=config.since,
         until=config.until,
         exclude_authors=config.exclude_authors,
+        dated_until=cutoff,
     )
+    after_window = reader.commits_dated_after if cutoff is not None else 0
+    if after_window and cutoff is not None:
+        _notify(
+            on_notice,
+            f"{_count(after_window)} dated after {cutoff.isoformat()} and not counted. "
+            f"Pass --until with a later date to include {'it' if after_window == 1 else 'them'}.",
+        )
 
-    window_start = (
-        config.since if config.since is not None else min(c.timestamp.date() for c in commits)
-    )
-    window_end = _resolve_window_end(config, commits)
+    window_end = cutoff if cutoff is not None else _resolve_window_end(config, commits)
+
+    # The window starts where the history does, however early `--since` was.
+    # Days before the first commit are not quiet days, and counting them put
+    # "Longest quiet run 8,469 days" on a repository three years old.
+    # `provenance.filters.requested_since` keeps what was asked for.
+    first_commit = min(c.timestamp.date() for c in commits)
+    window_start = max(config.since, first_commit) if config.since is not None else first_commit
 
     elapsed = time.monotonic() - stage_start
     stage_start = time.monotonic()
@@ -155,7 +180,10 @@ def generate_report(
         head_commit_time = max(c.timestamp for c in commits)
         metadata = replace(metadata, generated_at=head_commit_time)
 
-    provenance = _build_provenance(config, head_sha, reader.mailmap_applied)
+    provenance = replace(
+        _build_provenance(config, head_sha, reader.mailmap_applied),
+        commits_dated_after_window=after_window,
+    )
 
     report_data = ReportData(
         metadata=metadata,
@@ -211,6 +239,22 @@ def _emit(
             items_processed=items_processed,
         )
     )
+
+
+def _notify(on_notice: Callable[[str], None] | None, message: str) -> None:
+    """Pass a notice to the caller, if anybody is listening.
+
+    Args:
+        on_notice: The optional callback supplied by the caller.
+        message: One plain sentence.
+    """
+    if on_notice is not None:
+        on_notice(message)
+
+
+def _count(commits: int) -> str:
+    """Return "1 commit is" or "N commits are", for a notice."""
+    return "1 commit is" if commits == 1 else f"{commits:,} commits are"
 
 
 def _resolve_window_end(config: ReportConfig, commits: list[Commit]) -> datetime.date:

@@ -829,6 +829,21 @@
                     are still counted in every figure here.
                 </span>
                 {% endif %}
+                {% if data.provenance.commits_dated_after_window %}
+                {#
+                   A commit dated after the window is counted in no figure. The
+                   branch therefore holds more commits than this report, and
+                   the reader is told so rather than left to find the gap.
+                #}
+                <span class="filter-note">
+                    <strong>Not counted:</strong>
+                    {{ data.provenance.commits_dated_after_window }}
+                    {{ 'commit' if data.provenance.commits_dated_after_window == 1 else 'commits' }}
+                    dated after {{ data.metadata.analysis_until }}
+                    {{ 'is' if data.provenance.commits_dated_after_window == 1 else 'are' }}
+                    not counted.
+                </span>
+                {% endif %}
             </div>
         </div>
         <button id="theme-toggle" class="theme-toggle" type="button">
@@ -856,7 +871,7 @@
             <div class="label" aria-hidden="true">Hold Half the Commits</div>
         </div>
         <div class="summary-card">
-            <span class="visually-hidden">Longest run of days with no commits: {{ derived.longest_inactive_streak }}</span>
+            <span class="visually-hidden">Longest quiet run between commits: {{ derived.longest_inactive_streak }} days</span>
             <div class="value" aria-hidden="true">{{ derived.longest_inactive_streak }}</div>
             <div class="label" aria-hidden="true">Longest Quiet Run (days)</div>
         </div>

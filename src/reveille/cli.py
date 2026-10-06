@@ -192,6 +192,16 @@ def _announce_discovered_settings(path: Path, settings: Mapping[str, object]) ->
     )
 
 
+def _print_notices(notices: list[str]) -> None:
+    """Print each notice the service raised, on stderr, after the spinner.
+
+    Args:
+        notices: Plain sentences, in the order the service raised them.
+    """
+    for notice in notices:
+        typer.echo(f"Note: {notice}", err=True)
+
+
 class _StageSpinner:
     """Per-stage progress indicator for the generate pipeline.
 
@@ -702,10 +712,14 @@ def generate(
     )
 
     spinner = _StageSpinner()
+    # Held until the spinner has finished, so a notice is not overwritten by
+    # the next animation frame.
+    notices: list[str] = []
     try:
         written_paths = generate_report(
             report_config,
             on_progress=_make_progress_callback(spinner),
+            on_notice=notices.append,
         )
     except EmptyRepositoryError as exc:
         spinner.complete()
@@ -717,6 +731,7 @@ def generate(
         raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
     else:
         spinner.complete()
+        _print_notices(notices)
         for path in written_paths:
             typer.echo(f"Report written to: {path}")
 

@@ -29,7 +29,6 @@ from reveille.adapters.renderer import (
     _build_heatmap_data,
     _build_timeline_chart,
     _compute_commit_concentration,
-    _compute_longest_inactive_streak,
     _sanitise_chart_label,
     _to_json,
 )
@@ -310,54 +309,6 @@ class TestComputeCommitConcentration:
         """The helper sorts internally, so a caller need not."""
         assert _compute_commit_concentration([5, 90, 5]) == 1
         assert _compute_commit_concentration([5, 5, 90]) == 1
-
-
-# ------------------------------------------------------------------
-# _compute_longest_inactive_streak
-# ------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestComputeLongestInactiveStreak:
-    """Tests for the inactive streak derived metric helper."""
-
-    def test_no_commits_returns_full_window_length(self) -> None:
-        streak = _compute_longest_inactive_streak(
-            commits=[],
-            window_start=datetime.date(2024, 1, 1),
-            window_end=datetime.date(2024, 1, 10),
-        )
-        assert streak == 9
-
-    def test_commits_every_day_returns_zero(self) -> None:
-        start = datetime.date(2024, 1, 1)
-        end = datetime.date(2024, 1, 5)
-        commits = [_make_commit(start + datetime.timedelta(days=i)) for i in range(5)]
-        assert (
-            _compute_longest_inactive_streak(commits=commits, window_start=start, window_end=end)
-            == 0
-        )
-
-    def test_gap_in_the_middle_is_detected(self) -> None:
-        commits = [
-            _make_commit(datetime.date(2024, 1, 1)),
-            _make_commit(datetime.date(2024, 1, 8)),
-        ]
-        streak = _compute_longest_inactive_streak(
-            commits=commits,
-            window_start=datetime.date(2024, 1, 1),
-            window_end=datetime.date(2024, 1, 10),
-        )
-        assert streak == 6
-
-    def test_gap_at_start_of_window_is_detected(self) -> None:
-        commits = [_make_commit(datetime.date(2024, 1, 5))]
-        streak = _compute_longest_inactive_streak(
-            commits=commits,
-            window_start=datetime.date(2024, 1, 1),
-            window_end=datetime.date(2024, 1, 5),
-        )
-        assert streak == 4
 
 
 # ------------------------------------------------------------------

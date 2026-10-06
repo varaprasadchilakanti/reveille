@@ -164,6 +164,11 @@ class AnalysisProvenance:
     ranking_weights: dict[str, float] | None
     mailmap_applied: bool
     deterministic: bool
+    # Commits dated after the end of a default window -- a wrong clock, or a
+    # rebase that kept a future date. They are counted in no figure; this is
+    # where that is recorded, so the report never silently holds fewer
+    # commits than the branch.
+    commits_dated_after_window: int = 0
 
 
 @dataclass(frozen=True)

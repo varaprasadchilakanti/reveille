@@ -83,6 +83,30 @@ class Finding:
     evidence: str
 
 
+def longest_quiet_run(commits: list[Commit]) -> int:
+    """Return the most consecutive days without a commit between two that had one.
+
+    This is the single definition the summary card, the cadence finding and
+    the JSON all use. Days before the first commit and after the last are not
+    counted: before the first there was nothing to be quiet, and the silence
+    after the last is what the dormancy finding states, against the end of
+    the window. Two functions with two definitions once put "155" on the card
+    and "3 days" in the finding of the same report.
+
+    Args:
+        commits: The commits in the analysis window.
+
+    Returns:
+        The longest run of commit-free calendar days, or zero when fewer
+        than two days carry a commit.
+    """
+    days = sorted({c.timestamp.date() for c in commits})
+    if len(days) < 2:
+        return 0
+    # A gap of n days between two active days holds n - 1 days with none.
+    return max((b - a).days for a, b in itertools.pairwise(days)) - 1
+
+
 def _plural(count: int, singular: str, plural: str | None = None) -> str:
     """Return `singular` for one, otherwise `plural` (default: +s)."""
     if count == 1:
@@ -173,12 +197,7 @@ def _cadence_finding(commits: list[Commit]) -> Finding | None:
         return None
     gaps = [(b - a).days for a, b in itertools.pairwise(days)]
     median = statistics.median(gaps)
-    # A gap of n days between two active days contains n-1 days with no
-    # commits. The summary card counts inactive calendar days; this once
-    # counted the gap, so the two disagreed by exactly one on every
-    # repository ever analysed -- "Max Inactive Days 13" beside "longest
-    # quiet run of 14 days", in one document, about one fact.
-    longest = max(gaps) - 1
+    longest = longest_quiet_run(commits)
 
     headline = (
         f"Typically {median:.0f} "

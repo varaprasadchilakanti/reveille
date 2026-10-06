@@ -154,7 +154,9 @@ analysed one — see [ADR 0008](adr/0008-output-provenance-and-schema-version.md
 **`AnalysisProvenance`** — `reveille_version`, `schema_version`, `head_sha`,
 the filters *as requested* (`requested_branch`, `requested_since`,
 `requested_until`, `exclude_authors_count`, `min_commits`), `ranking_enabled`,
-`ranking_weights`, `mailmap_applied`, `deterministic`.
+`ranking_weights`, `mailmap_applied`, `deterministic`,
+`commits_dated_after_window` (commits a default window left out because they
+are dated after today; counted in no figure).
 
 The requested/resolved distinction is the point: `analysis_since` records where
 the window began, `requested_since` records whether anybody asked for it. Note

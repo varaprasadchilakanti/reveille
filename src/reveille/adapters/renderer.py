@@ -64,7 +64,7 @@ from reveille.domain.models import (
     ReportData,
 )
 from reveille.domain.profile import repository_profile
-from reveille.domain.summary import summarise
+from reveille.domain.summary import longest_quiet_run, summarise
 from reveille.exceptions import OutputPathError, RenderError
 
 # Label of the aggregated residual slice, referenced where its colour is chosen.
@@ -346,6 +346,9 @@ class Renderer:
                 "head_sha": data.provenance.head_sha,
                 "deterministic": data.provenance.deterministic,
                 "mailmap_applied": data.provenance.mailmap_applied,
+                # Commits dated after the end of a default window: counted in
+                # no figure, and stated here so the omission is not silent.
+                "commits_dated_after_window": data.provenance.commits_dated_after_window,
                 "filters": {
                     "requested_branch": data.provenance.requested_branch,
                     "requested_since": (
@@ -528,11 +531,7 @@ class Renderer:
             # to infer it from a row count.
             "population_size": len(population),
             "contributors_below_threshold": len(data.suppressed_contributors),
-            "longest_inactive_streak": _compute_longest_inactive_streak(
-                data.commits,
-                data.metadata.analysis_since,
-                data.metadata.analysis_until,
-            ),
+            "longest_inactive_streak": longest_quiet_run(data.commits),
             # A text alternative for the heatmap. Its payload is a daily
             # grid rather than a Plotly figure, so `_accessible_table` has
             # nothing to read, and a day-by-day table would run to
@@ -543,7 +542,12 @@ class Renderer:
             # Written findings, generated from these same numbers by rules.
             # See domain/summary.py: no model, no network, and the same
             # history always produces the same sentences.
-            "findings": summarise(data.commits, _population(data)),
+            # Measured against the end of the window, so a repository that
+            # has gone quiet says so. Without it the dormancy finding was
+            # measured against the last commit and could never appear.
+            "findings": summarise(
+                data.commits, _population(data), today=data.metadata.analysis_until
+            ),
         }
 
     # ------------------------------------------------------------------
@@ -1399,41 +1403,6 @@ def _compute_commit_concentration(counts: list[int]) -> int:
         if cumulative >= threshold:
             return position
     return len(counts)  # pragma: no cover - unreachable, see above
-
-
-def _compute_longest_inactive_streak(
-    commits: list[Commit],
-    window_start: datetime.date,
-    window_end: datetime.date,
-) -> int:
-    """Compute the longest consecutive inactive period in days.
-
-    An inactive day is a calendar day within the analysis window on
-    which no commits were recorded.
-
-    Args:
-        commits: All commits in the analysis window.
-        window_start: Start of the analysis window.
-        window_end: End of the analysis window.
-
-    Returns:
-        The longest inactive streak in days. Zero if every day had a commit.
-    """
-    if not commits:
-        return (window_end - window_start).days
-
-    active_dates = {c.timestamp.date() for c in commits}
-    longest = 0
-    streak = 0
-    current = window_start
-    while current <= window_end:
-        if current not in active_dates:
-            streak += 1
-            longest = max(longest, streak)
-        else:
-            streak = 0
-        current += datetime.timedelta(days=1)
-    return longest
 
 
 # ------------------------------------------------------------------

@@ -137,7 +137,8 @@ Nothing yet.
   a different question, and the difference is now documented rather than accidental.
 - **`schema_version` is `1.1`.** Additive, per ADR 0008: `derived` gains
   `population_size` and `contributors_below_threshold`, so a consumer can
-  reconcile the contributor rows against `total_commits` without arithmetic.
+  reconcile the contributor rows against `total_commits` without arithmetic,
+  and `provenance` gains `commits_dated_after_window`.
 - **A single-contributor report no longer contradicts itself.** The distribution
   caption rendered as "Gini runs 0 (even) to 0.00, which is the most concentrated
   1 contributors can be" — a vacuous range and a grammatical error in shipped
@@ -214,6 +215,26 @@ Nothing yet.
   removed. A test now keeps four of these out of every published file: the
   DORA sentence, "never modifies the repository", "production-grade" and
   "repository health".
+- **The quiet-run card and the quiet-run finding gave different numbers.** The
+  card counted every commit-free day in the window, including those before the
+  first commit and after the last; the finding counted only the days between
+  two commits. One report said 155 and 3 days. Both now use one definition,
+  the days between commits. For JSON consumers this changes the meaning of
+  `derived.longest_inactive_streak`, not its type.
+- **A `--since` before the first commit was counted as quiet time.** A
+  repository three years old analysed with `--since 2000-01-01` reported a
+  longest quiet run of 8,469 days, and its timelines started in 1999. The
+  window now starts at the first commit; `metadata.analysis_since` says where
+  it started and `provenance.filters.requested_since` keeps what was asked for.
+- **Commits dated after today were counted in a window that ended today.** On a
+  repository with clock-skewed commits the header, totals and timelines
+  described different sets of commits. Without `--until` such commits are now
+  counted in no figure, and the header, a note on stderr and
+  `provenance.commits_dated_after_window` say how many. `--deterministic` is
+  unchanged.
+- **The dormancy finding could never appear.** It was measured against the last
+  commit instead of the end of the window, so "No commits in the last N days"
+  was never written, although the Playbook tells readers to look for it.
 
 ### Security
 
