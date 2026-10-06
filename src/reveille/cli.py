@@ -22,6 +22,7 @@ import enum
 import itertools
 import json
 import logging
+import re
 import sys
 import threading
 import time
@@ -73,6 +74,99 @@ class ExitCode(enum.IntEnum):
     """
 
 
+# Characters that make a terminal do something rather than show something: C0
+# controls other than newline and tab, DEL, C1 controls, and the Unicode
+# direction overrides and isolates. A value from a `reveille.toml` reaches
+# these messages, and that file may come from a repository somebody else
+# controls; an escape sequence in it could erase the very warning about it.
+_TERMINAL_UNSAFE_RE = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]")
+
+
+def _printable(text: str) -> str:
+    """Show terminal control characters as escapes instead of obeying them.
+
+    Args:
+        text: A message that may quote configuration values.
+
+    Returns:
+        The message with each unsafe character written as a hexadecimal escape.
+    """
+
+    def escape(match: re.Match[str]) -> str:
+        code = ord(match.group(0))
+        return f"\\x{code:02x}" if code < 0x100 else f"\\u{code:04x}"
+
+    return _TERMINAL_UNSAFE_RE.sub(escape, text)
+
+
+def _err(message: str) -> None:
+    """Write one message to stderr, with terminal control characters escaped.
+
+    Args:
+        message: The message to print.
+    """
+    typer.echo(_printable(message), err=True)
+
+
+# Command-line spelling of the configuration fields a user can get wrong.
+_OPTION_NAMES = {
+    "since": "--since",
+    "until": "--until",
+    "output_format": "--format",
+    "min_commits": "--min-commits",
+    "branch": "--branch",
+    "title": "--title",
+    "output_path": "--output",
+    "repo_path": "--repo",
+    "exclude_authors": "--exclude-author",
+}
+
+
+def _describe_config_error(exc: Exception) -> str:
+    """Say what is wrong with a configuration in plain words.
+
+    Pydantic's own text names the model, dumps every input value and links
+    to its website, and for a date range given in the wrong order the reason
+    was the fourth thing on the line. This keeps the reason and the option it
+    concerns, and nothing else.
+
+    Args:
+        exc: The error raised while building the configuration.
+
+    Returns:
+        One sentence per problem, joined with "; ".
+    """
+    errors = getattr(exc, "errors", None)
+    if not callable(errors):
+        return str(exc)
+    described = []
+    for error in errors():
+        message = str(error.get("msg", "")).removeprefix("Value error, ")
+        fields = [str(part) for part in error.get("loc", ())]
+        option = ", ".join(_OPTION_NAMES.get(f, f) for f in fields)
+        described.append(f"{option}: {message}" if option else message)
+    return "; ".join(described) or str(exc)
+
+
+class _EscapingFormatter(logging.Formatter):
+    """A log formatter that escapes terminal control characters.
+
+    The warning for an `--exclude-author` that matched nobody quotes the value,
+    which may have come from a configuration file.
+    """
+
+    def format(self, record: logging.LogRecord) -> str:
+        """Format the record, then escape it.
+
+        Args:
+            record: The log record.
+
+        Returns:
+            The formatted, escaped line.
+        """
+        return _printable(super().format(record))
+
+
 class _StderrHandler(logging.StreamHandler):  # type: ignore[type-arg]
     """A stderr handler that resolves the stream at emit time.
 
@@ -120,7 +214,7 @@ def _configure_logging(verbose: bool) -> None:
         package_logger.setLevel(level)
         return
     handler = _StderrHandler()
-    handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
+    handler.setFormatter(_EscapingFormatter("%(levelname)s %(name)s: %(message)s"))
     package_logger.addHandler(handler)
     package_logger.setLevel(level)
 
@@ -186,10 +280,7 @@ def _announce_discovered_settings(path: Path, settings: Mapping[str, object]) ->
         settings: The settings it supplied, keyed by `ReportConfig` field.
     """
     keys = ", ".join(_TOML_KEYS.get(name, name) for name in settings)
-    typer.echo(
-        f"Loaded settings from {path}: {keys}. Command-line options override them.",
-        err=True,
-    )
+    _err(f"Loaded settings from {path}: {keys}. Command-line options override them.")
 
 
 def _print_notices(notices: list[str]) -> None:
@@ -199,7 +290,7 @@ def _print_notices(notices: list[str]) -> None:
         notices: Plain sentences, in the order the service raised them.
     """
     for notice in notices:
-        typer.echo(f"Note: {notice}", err=True)
+        _err(f"Note: {notice}")
 
 
 class _StageSpinner:
@@ -406,13 +497,12 @@ def _validate_output_path(output: Path, repo_path: Path, *, from_config: bool = 
         except ValueError:  # pragma: no cover - differing drives on Windows
             inside = False
         if not inside:
-            typer.echo(
+            _err(
                 f"Error: the configuration file sets an output path that resolves "
                 f"outside the repository: '{resolved}'.\n"
                 "A reveille.toml is discovered automatically from the working "
                 "directory, so it may come from a repository you do not control. "
                 "Pass --output explicitly if you intended to write here.",
-                err=True,
             )
             raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
@@ -425,27 +515,31 @@ def _validate_output_path(output: Path, repo_path: Path, *, from_config: bool = 
     if inside_git_dir or any(
         part.casefold() == ".git" for part in (*output.parts, *output.resolve().parts)
     ):
-        typer.echo(
+        _err(
             f"Error: output path '{output}' is inside the repository's Git "
             "directory. Reveille does not write into Git's own files. "
             "Choose another path.",
-            err=True,
+        )
+        raise typer.Exit(code=ExitCode.CANNOT_RUN)
+
+    if output.is_dir():
+        _err(
+            f"Error: output path '{output}' is a directory. Give a file name, "
+            f"for example '{output / 'reveille-report.html'}'."
         )
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
     if ".." in output.parts:
-        typer.echo(
+        _err(
             f"Error: output path '{output}' contains upward traversal components. "
             "Provide an absolute path or a path relative to the current directory.",
-            err=True,
         )
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
     if not output.resolve().is_relative_to(repo_path):
-        typer.echo(
+        _err(
             f"Warning: output path resolves outside the repository root "
             f"'{repo_path}'. Verify this is intentional.",
-            err=True,
         )
 
 
@@ -641,15 +735,14 @@ def generate(
             config_kwargs = load_config_from_toml(_config_path)
         except ConfigurationError as exc:
             if _auto_discovered:
-                typer.echo(
+                _err(
                     f"Configuration error in the auto-discovered "
-                    f"{_CONVENTIONAL_CONFIG}.\nDetail: {exc}\n"
+                    f"{_CONVENTIONAL_CONFIG}.\nDetail: {_describe_config_error(exc)}\n"
                     f"Correct the file, or regenerate it with: "
                     f"reveille init --force",
-                    err=True,
                 )
             else:
-                typer.echo(f"Configuration error: {exc}", err=True)
+                _err(f"Configuration error: {_describe_config_error(exc)}")
             raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
         if _auto_discovered and config_kwargs:
             _announce_discovered_settings(_config_path, config_kwargs)
@@ -694,7 +787,7 @@ def generate(
     try:
         report_config = ReportConfig(**merged)
     except ValueError as exc:
-        typer.echo(f"Configuration error: {exc}", err=True)
+        _err(f"Configuration error: {_describe_config_error(exc)}")
         raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
 
     _logger.debug(
@@ -723,11 +816,11 @@ def generate(
         )
     except EmptyRepositoryError as exc:
         spinner.complete()
-        typer.echo(f"Error: {exc}", err=True)
+        _err(f"Error: {exc}")
         raise typer.Exit(code=ExitCode.NEGATIVE) from exc
     except ReveilleError as exc:
         spinner.complete()
-        typer.echo(f"Error: {exc}", err=True)
+        _err(f"Error: {exc}")
         raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
     else:
         spinner.complete()
@@ -758,19 +851,16 @@ def validate(
     try:
         reader = GitReader(resolved)
     except ReveilleError as exc:
-        typer.echo(f"Error: {exc}", err=True)
+        _err(f"Error: {exc}")
         raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
 
     try:
         reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
     except EmptyRepositoryError:
-        typer.echo(
-            f"Error: repository at '{resolved}' contains no commits.",
-            err=True,
-        )
+        _err(f"Error: repository at '{resolved}' contains no commits.")
         raise typer.Exit(code=ExitCode.NEGATIVE) from None
     except ReveilleError as exc:
-        typer.echo(f"Error: {exc}", err=True)
+        _err(f"Error: {exc}")
         raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
 
     typer.echo(f"Repository at {resolved} is valid.")
@@ -811,10 +901,9 @@ def init(
     """
     cwd = Path(".").resolve()
     if not (cwd / ".git").exists():
-        typer.echo(
+        _err(
             f"Error: '{cwd}' is not a Git repository root. "
             "Run reveille init from within a repository root.",
-            err=True,
         )
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
@@ -826,14 +915,14 @@ def init(
         written_path = write_init_config(output, force=force)
         typer.echo(f"Configuration file written to: {written_path}")
     except ReveilleError as exc:
-        typer.echo(f"Error: {exc}", err=True)
+        _err(f"Error: {exc}")
         raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
 
     if mailmap:
         try:
             mailmap_result = write_mailmap_template(cwd / ".mailmap", force=force)
         except ReveilleError as exc:
-            typer.echo(f"Error: {exc}", err=True)
+            _err(f"Error: {exc}")
             raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
         if mailmap_result is not None:
             typer.echo(f".mailmap template written to: {mailmap_result}")
@@ -855,10 +944,7 @@ def capabilities(
     from reveille.capabilities import build_capabilities, render_text
 
     if output_format not in {"text", "json"}:
-        typer.echo(
-            f"Error: unsupported format '{output_format}'. Accepted values: text, json.",
-            err=True,
-        )
+        _err(f"Error: unsupported format '{output_format}'. Accepted values: text, json.")
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
     document = build_capabilities(app, ExitCode)
@@ -893,8 +979,5 @@ def _parse_date(value: str, flag_name: str) -> datetime.date:
     try:
         return datetime.date.fromisoformat(value)
     except ValueError as exc:
-        typer.echo(
-            f"Error: {flag_name} must be in YYYY-MM-DD format, got '{value}'.",
-            err=True,
-        )
+        _err(f"Error: {flag_name} must be in YYYY-MM-DD format, got '{value}'.")
         raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc

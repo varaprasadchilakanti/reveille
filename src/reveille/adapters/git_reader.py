@@ -365,7 +365,7 @@ class GitReader:
         except InvalidGitRepositoryError as exc:
             # A `.git` that exists but cannot be read raises the same
             # exception as one that is not there, and the generic message --
-            # "ensure the path contains a .git directory" -- sends the reader
+            # "give the root of a working tree" -- sends the reader
             # to check something that is already true. Distinguish the two,
             # since the fixes are entirely different.
             git_dir = repo_path / ".git"
@@ -376,7 +376,7 @@ class GitReader:
                 ) from exc
             raise RepositoryError(
                 f"'{repo_path}' is not a valid Git repository. "
-                "Ensure the path contains a .git directory."
+                "Give the root of a working tree or a bare repository."
             ) from exc
         except NoSuchPathError as exc:
             raise RepositoryError(f"'{repo_path}' does not exist.") from exc

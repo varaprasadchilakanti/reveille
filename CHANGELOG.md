@@ -248,6 +248,13 @@ Nothing yet.
 - **The Contributors card counted table rows.** With `--min-commits 999` it
   read 0 beside "1 hold half the commits". It now counts everybody the figures
   describe; the header already states how many are listed.
+- **Invalid options were reported in the validation library's words.** A date
+  range in the wrong order, an unknown `--format` or a negative
+  `--min-commits` printed "1 validation error for ReportConfig", the whole
+  configuration and a link to the library's website. Each now prints one line
+  naming the option and what is wrong with it. An `--output` that names a
+  directory says so instead of printing `[Errno 21]`, and `validate` no longer
+  asks for a `.git` directory, which a bare repository does not have.
 
 ### Security
 
@@ -281,6 +288,11 @@ Nothing yet.
   are kept, and addresses are not changed, since an address is the identity
   key. `--exclude-author` matches the name as `git log` prints it or as the
   report shows it.
+- **Values from `reveille.toml` could drive the terminal.** An `exclude_authors`
+  entry that matched nothing, or a `branch` that does not exist, was printed on
+  stderr with its control sequences intact, so a configuration file could erase
+  the warning about itself. Every message and warning now shows such
+  characters as escapes, for example `\x1b`.
 
 ### Known issues
 
@@ -291,11 +303,6 @@ These are known and not fixed in this release.
   list order only. Changing it changes the schema, so it waits for the next one.
 - Git honours a repository's own `.git/config`, including settings that name a
   program to run. `git clone` does not copy that file; see `SECURITY.md`.
-- Some error and warning messages print values from `reveille.toml` unescaped
-  on stderr: an `exclude_authors` entry that matches nothing, and a `branch`
-  that does not exist. A value containing terminal control sequences can change
-  what the terminal shows, for example erase the warning itself. Only a
-  configuration file you run Reveille next to can supply such a value.
 
 ## [0.8.1] — 2026-09-03 — Charts a Screen Reader Can Read
 
