@@ -241,6 +241,13 @@ class TestBehaviouralFindingsAreWithheldInSmallTeams:
             "the repository-level measure should still be reported"
         )
 
+    def test_the_pointer_to_the_shares_holds_where_no_table_follows(self) -> None:
+        """`reveille summary` prints this finding with no table after it."""
+        findings = summarise(_commits(40), _stats([202, 78]))
+        detail = next(f for f in findings if "contributor" in f.headline).detail
+        assert "below" not in detail
+        assert "contributor table" in detail
+
     def test_volume_is_reported_at_any_size(self) -> None:
         """A commit count describes the repository, not a person."""
         findings = summarise(_commits(40), _stats([40]))

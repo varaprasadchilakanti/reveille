@@ -148,13 +148,15 @@ def _distribution_finding(contributors: list[ContributorStats]) -> Finding | Non
     # coefficient is reported as the evidence behind it.
     if len(counts) < _MINIMUM_CONTRIBUTORS_FOR_BEHAVIOUR:
         # With two contributors, a leading share is a statement about one
-        # named person in a table four sections below. The Gini describes
-        # the same distribution without singling anyone out.
+        # named person in the contributor table. The Gini describes the
+        # same distribution without singling anyone out. The finding is also
+        # what `reveille summary` prints, where no table follows, so the
+        # sentence names the table rather than saying where it sits.
         return Finding(
             headline=(f"Commits are distributed across {_plural(len(counts), 'contributor')}."),
             detail=(
-                "The share held by each is in the table below. With so few "
-                "contributors a share is a statement about an identifiable "
+                "Each share is in the full report's contributor table. With so "
+                "few contributors a share is a statement about an identifiable "
                 "person, so it is not restated here."
             ),
             evidence=f"Gini {gini:.2f}",
