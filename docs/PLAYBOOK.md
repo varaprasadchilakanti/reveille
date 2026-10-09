@@ -14,12 +14,17 @@ is [USER_GUIDE.md](USER_GUIDE.md), and the machine-readable version is
 
 | # | Section | The question it answers |
 |---|---|---|
-| 1 | What the History Shows | What am I looking at, in five sentences? |
-| 2 | Header figures | How much history, how many people, how recent? |
-| 3 | Commit Activity Heatmap | When was work actually happening? |
-| 4 | Weekly Commit Timeline | Is the pace steady, spiky, or stopped? |
-| 5 | Contribution Distribution | Is this one person's repository or a team's? |
-| 6 | Contributors | The same figures as text, per person. |
+| 1 | Header, notice and cards | How much history, how many people, how recent? |
+| 2 | What the History Shows | What am I looking at, in a few sentences? |
+| 3 | Contribution Distribution | Is this one person's repository or a team's? |
+| 4 | Commit Activity Heatmap | When was work actually happening? |
+| 5 | Weekly Commit Timeline | Is the pace steady, spiky, or stopped? |
+| 6 | Repository Profile | What shape does the work have, against what chance would give? |
+| 7 | Change Size, Where Change Concentrates, Change by File Type | How big are changes, where do they land, and what kind of work is it? |
+| 8 | Contributors | The figures per person, as text. |
+
+This is the order the report shows them in. What each section contains is in
+[USER_GUIDE.md](USER_GUIDE.md#understanding-the-report).
 
 Stop at the first section that answers your question. The order is
 deliberate: findings first, evidence after.
@@ -29,6 +34,7 @@ deliberate: findings first, evidence after.
 | Measure | Supports | Does **not** support |
 |---|---|---|
 | Commit count | How much recorded activity there was | How much work was done |
+| Contributors, Gini, Hold Half | How activity is spread across people; automated accounts with `[bot]` are stated apart | How many people work on the code: review, pairing and unmerged work leave no commit |
 | Gini / Lorenz | Whether activity is concentrated | Whether that is a problem |
 | Commit concentration | How few people hold most commits | A bus factor — it says nothing about who *knows* the code |
 | Active days | Regularity of committing | Hours worked |
@@ -66,6 +72,21 @@ json` so a diff is meaningful.
 - **Anything about an individual.** See the table above.
 - **Anything about code quality.** Reveille reads history, never
   content. It cannot see a test, a review, or a defect.
+
+## For an audit or due diligence
+
+1. **Make the run repeatable.** `--deterministic` takes the end of the window
+   and the generation time from the last commit, so the same repository gives
+   the same bytes. Keep the JSON: `provenance` records the Reveille version,
+   the analysed commit hash, whether a `.mailmap` was applied, whether the
+   clone was shallow, and the filters as requested.
+2. **Reconcile before relying.** `total_commits` should match
+   `git rev-list --no-merges --count <commit>` over the same window; merge
+   commits are excluded by design.
+3. **Know what it is not evidence of.** Author names and addresses are
+   whatever the committer's Git was set to; Reveille does not verify them,
+   and it does not read who reviewed, approved or merged a change. Commit
+   history shows that changes were made, not that they were authorised.
 
 ## For agents and scripts
 
@@ -113,8 +134,7 @@ and enforced elsewhere:
   the thing a new test protects, watch it fail, restore it.
 - **An empty result from a tool that did not run is not evidence.**
   Check exit codes.
-- **Execute the documentation; do not read it.** Every command on this
-  page is run by the test suite.
+- **Execute the documentation; do not read it.**
 - **One branch, one purpose.**
 
 Full contributor detail is in [CONTRIBUTING.md](../CONTRIBUTING.md); the

@@ -162,6 +162,15 @@ class TestTheGdprPositionIsStatedCorrectly:
             "the README no longer states the maintainer's actual GDPR position"
         )
 
+    def test_llms_txt_does_not_list_the_gdpr_among_regimes_that_do_not_engage(self) -> None:
+        """The index an assistant reads first said "why GDPR, the Cyber Resilience
+        Act, ... do not engage" until 0.9.0, a sentence the README guard above
+        could not see. An assistant repeating it would tell a user the opposite
+        of what docs/COMPLIANCE.md concludes."""
+        line = next(line for line in self._text("llms.txt").splitlines() if "COMPLIANCE.md" in line)
+        assert "neither controller nor processor under the GDPR" in line
+        assert "why GDPR," not in line
+
     def test_the_readme_does_not_send_users_to_the_contributor_notice(self) -> None:
         """`PRIVACY.md` is a notice for contributors, not for users of the tool.
 

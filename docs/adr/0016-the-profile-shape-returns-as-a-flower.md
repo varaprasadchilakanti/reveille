@@ -1,4 +1,4 @@
-# 0016 — The repository profile's shape returns, as six separate petals above the table
+# 0016 — The repository profile's shape returns, as six separate petals beside the table
 
 **Status:** Proposed. Supersedes the "no shape" part of ADR 0012; its table, its reference
 values and its reasons stand.
@@ -23,7 +23,9 @@ marks of length.
 
 ## Decision
 
-- **A flower of six petals sits above the existing table.** Each petal's length is its share, from
+- **A flower of six petals sits beside the existing table** where the screen is 901 px or wider,
+  and above it on a narrower one, so the shape and its figures are read together. Each petal's
+  length is its share, from
   0% at the centre to 100% at the rim; petals are separate wedges, never joined into a polygon,
   so no area depends on axis order. Each carries its value as text, and where an expectation can
   be computed (ADR 0012) a mark across the petal shows it.

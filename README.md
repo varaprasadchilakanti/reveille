@@ -43,161 +43,155 @@ a copied directory or an archive does.
   anyone's contribution, productivity or value.
 - **Not a ranking, unless you ask.** Ranking people needs `--ranking`, and the report then states
   what the score measures and what it does not.
-- **Not anonymous.** The report lists contributor names and email addresses. Whoever shares it is
-  handling personal data; [docs/COMPLIANCE.md](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/COMPLIANCE.md) sets out who is
-  responsible for what.
+- **Not anonymous.** Every report names the people in the history and carries their email
+  addresses and activity. [What the report contains about people](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md#what-the-report-contains-about-people)
+  lists it field by field, and [Before you share a report](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md#before-you-share-a-report)
+  says what to check.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/varaprasadchilakanti/reveille/main/docs/images/how-it-fits-dark.svg">
   <img src="https://raw.githubusercontent.com/varaprasadchilakanti/reveille/main/docs/images/how-it-fits-light.svg" width="860" alt="A local Git repository goes into Reveille, which reads commit metadata and per-file line counts only, makes no network calls and never changes Git data. Out come one self-contained HTML report for people, and JSON (with a schema version) or CSV for scripts and AI assistants.">
 </picture>
 
-**For AI assistants and scripts.** `reveille capabilities --format json` describes what the tool
-can and cannot do. `reveille generate --format json` writes the figures to `reveille-report.json`.
-Anything that reads that file receives contributor names and email addresses; if it is a hosted
-model, they leave your machine.
+**For AI assistants and scripts.** `reveille summary --format json` describes the repository in
+about 2 KB and names nobody. `reveille capabilities --format json` describes what the tool can and
+cannot do. `reveille generate --format json --output -` prints every figure, including contributor
+names and email addresses; given to a hosted model, they leave your machine.
 
 ---
 
 ## Contents
 
-- [Overview](#overview)
+- [Who It Is For](#who-it-is-for)
 - [Installation](#installation)
 - [Quickstart](#quickstart)
+- [Reading the Report](#reading-the-report)
 - [CLI Reference](#cli-reference)
-- [Output Description](#output-description)
-- [Contributor Ranking System](#contributor-ranking-system)
+- [Output Formats](#output-formats)
+- [Contributor Ranking](#contributor-ranking)
 - [Configuration](#configuration)
 - [Documentation](#documentation)
-- [Development Setup](#development-setup)
-- [Running Tests](#running-tests)
 - [Contributing](#contributing)
-- [Changelog](#changelog)
 - [Legal and Privacy](#legal-and-privacy)
 - [Licence](#licence)
 
 ---
 
-## Overview
+## Who It Is For
 
-Reveille is for engineering leads, maintainers and reviewers who need to answer questions about a
-repository's history — when work happened, how concentrated it is, who has been active — without
-sending that history to a service.
+- **An engineer or lead with a question about a repository's history** — when work happened, how
+  concentrated it is, who changed a file — who wants the answer without sending the history to a
+  service. It reads any local Git repository, so Bitbucket, GitLab, GitHub and self-hosted
+  repositories work alike.
+- **Someone reviewing a codebase for an audit or due diligence**, who needs a figure they can
+  reproduce: `--deterministic` gives the same bytes for the same repository, and the JSON records
+  the analysed commit and the options used. The
+  [Playbook](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/PLAYBOOK.md#for-an-audit-or-due-diligence)
+  says what the history is and is not evidence of.
+- **An AI assistant or a script**, through `summary`, `who-changed`, JSON on stdout, a declared
+  schema version and exit codes that separate "no" from "could not run".
 
-**What the HTML report contains:**
-
-- A contribution calendar of commits per day, by year, for the whole repository or one contributor.
-- Weekly commit counts for the repository and for each contributor. Weeks with no commits are
-  drawn as zero.
-- How evenly commits are spread: a Lorenz curve and its Gini coefficient, and how many
-  contributors hold half the commits.
-- A repository profile of six measures — continuity, recent work, shared, collaboration,
-  revisiting and automation — drawn as separate petals above a table, each shown against what
-  chance alone would give where that can be computed.
-- A table of each contributor's commits, lines added and removed, and active days.
-- An optional ranking table (`--ranking`). Off by default; read
-  [Contributor Ranking System](#contributor-ranking-system) before turning it on.
-
-**Other formats:** JSON (`--format json`) with a declared `schema_version` and a `provenance`
-block, and CSV (`--format csv`) encoded for Excel.
-
-**Checks on the project itself:** CodeQL runs on every pull request and every push to `main`;
-OpenSSF Scorecard runs on every push to `main` and weekly.
+It is not for judging people. The project's position on that is in
+[Contributor Ranking](#contributor-ranking).
 
 ---
 
 ## Installation
 
-Reveille requires Python 3.11 or later.
+Reveille needs Python 3.11 or later and Git (`git --version`).
 
-<details open>
-<summary><strong>pip</strong></summary>
+```bash
+pipx install reveille        # recommended: an isolated command-line tool
+```
+
+Or, equally:
 
 ```bash
 pip install reveille
+uv tool install reveille     # or run once without installing: uvx reveille generate
+poetry add reveille          # inside a Poetry-managed project
 ```
 
-</details>
-
-<details>
-<summary><strong>pipx (recommended for CLI tools)</strong></summary>
-
-```bash
-pipx install reveille
-```
-
-</details>
-
-<details>
-<summary><strong>uv</strong></summary>
-
-Install permanently as a tool:
-
-```bash
-uv tool install reveille
-```
-
-Run without a permanent install:
-
-```bash
-uvx reveille generate --repo /path/to/repository
-```
-
-</details>
-
-<details>
-<summary><strong>Poetry (within a Poetry-managed project)</strong></summary>
-
-```bash
-poetry add reveille
-```
-
-</details>
-
-**Verify the installation:**
+Check it:
 
 ```bash
 reveille --version
 ```
 
+To remove it, use the tool that installed it: `pipx uninstall reveille`, `pip uninstall reveille`
+or `uv tool uninstall reveille`. Reveille keeps no cache or settings of its own; it leaves only
+the files you asked it to write.
+
 ---
 
 ## Quickstart
-
-Navigate to any Git repository on your machine and run:
 
 ```bash
 cd /path/to/your/repository
 reveille generate
 ```
 
-Reveille reads the local Git history and writes a report to the current directory. The output file is named `reveille-report.html` by default. Open it in any browser.
+Reveille reads the local Git history and writes `reveille-report.html` in the repository root.
+Open it in any browser; it needs no network. The header, summary cards, written findings,
+repository profile and contributor table are plain HTML; the other charts need JavaScript.
 
-**Scaffold a configuration file before your first run:**
-
-```bash
-reveille init
-```
-
-This writes an annotated `reveille.toml` to the current directory with every available configuration key present and commented out. Edit only the keys you need. On all subsequent invocations, `reveille generate` will detect and load `reveille.toml` automatically — no `--config` flag required — and print which settings it loaded.
-
-**Generate a report for a specific date range:**
+A date range:
 
 ```bash
 reveille generate --since 2024-01-01 --until 2024-12-31
 ```
 
-**Write the output to a specific path:**
+Another output path (a path outside the repository is written, with a warning):
 
 ```bash
 reveille generate --output /tmp/q4-report.html
 ```
 
-**Specify the repository path explicitly:**
+Another repository:
 
 ```bash
 reveille generate --repo /path/to/repository
 ```
+
+A configuration file, so options need not be repeated:
+
+```bash
+reveille init
+```
+
+This writes an annotated `reveille.toml` with every key commented out. From then on
+`reveille generate`, run from that directory, loads it and prints which settings it applied.
+
+---
+
+## Reading the Report
+
+The report reads top to bottom, findings first and evidence after:
+
+1. **Header, notice and summary cards** — the window, branch and remote; total commits; the
+   number of people; how many of them hold half the commits; the longest quiet run; the Gini
+   coefficient. Automated accounts (`[bot]` in the name or address) are counted in the commit
+   totals and stated under the cards, not counted as people.
+2. **What the History Shows** — a few sentences generated by fixed rules, naming nobody.
+3. **Contribution Distribution** — a Lorenz curve and the Gini: how evenly commits are spread
+   across people.
+4. **Commit Activity Heatmap** and **Weekly Commit Timeline** — when the work happened.
+5. **Repository Profile** — six shares (continuity, recent work, shared, collaboration,
+   revisiting, automation) drawn as petals beside a table, each against what chance would give
+   where that can be computed.
+6. **Change Size per Commit**, **Where Change Concentrates** and **Change by File Type** — how
+   big changes are, which paths absorb them, and what kind of files they touch.
+7. **Per-Contributor Commit Frequency**, **Contributors** and **Contribution Breakdown** — the
+   figures per person.
+
+Two sections appear only when asked for: **Who Changed Each Area** (`--area-authors`) and the
+**Contributor Rankings** form of the table (`--ranking`).
+
+Every section is described in the
+[User Guide](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md#understanding-the-report);
+what each figure supports, and what it does not, is in the
+[Playbook](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/PLAYBOOK.md).
+Commit counts are lower than `git log` shows, because merge commits are excluded.
 
 ---
 
@@ -210,16 +204,16 @@ Generates the HTML activity report for the target repository.
 | Flag | Short | Type | Default | Description |
 |---|---|---|---|---|
 | `--repo` | `-r` | `PATH` | `.` (current directory) | Path to a Git repository: a working tree's root, or a bare repository. |
-| `--output` | `-o` | `PATH` | `reveille-report.html` in the repository root | Path for the generated HTML file. Parent directories must exist. `-` writes the report, in any format, to stdout, and nothing else goes there. |
+| `--output` | `-o` | `PATH` | `reveille-report.html` in the repository root | Path for the generated file. Parent directories must exist. A path inside `.git`, or containing `..`, is refused; one outside the repository is written with a warning. `-` writes the report, in any format, to stdout, and nothing else goes there. |
 | `--since` | | `DATE` | The first commit | Include only commits on or after this date. Accepts `YYYY-MM-DD`. A date before the first commit changes nothing: the days before a repository existed are not quiet days. |
 | `--until` | | `DATE` | Today (UTC) | Include only commits on or before this date. Accepts `YYYY-MM-DD`. Without it, commits dated after today are counted in no figure, and the report and a note on stderr say how many. |
 | `--branch` | `-b` | `TEXT` | The checked-out branch | Analyse commits reachable from this branch only. Defaults to whichever branch is currently checked out, which is not necessarily the repository's default branch. |
 | `--exclude-author` | | `TEXT` | None | Exclude a contributor by name or email. Repeatable. |
 | `--min-commits` | | `INT` | `1` | List only contributors with at least this many commits in the analysis window. Every figure still counts everyone, and the header says how many are listed. |
 | `--title` | | `TEXT` | Repository name | Override the report title displayed in the HTML output. |
-| `--ranking` | | Flag | Off | Include the contributor ranking table. **Off by default** — it scores and tiers named individuals, which is more than the figures support. See [ADR 0010](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/adr/0010-ranking-is-opt-in.md). |
+| `--ranking` | | Flag | Off | Include the contributor ranking table. **Off by default** — it scores and tiers named individuals, which is more than the figures support. Read [Contributor Ranking](#contributor-ranking) first. |
 | `--no-ranking` | | Flag | Off | Explicitly omit the ranking table. Ranking is already off by default; this exists so existing invocations keep working. |
-| `--area-authors` | | Flag | Off | Add a section listing who changed each of the most-changed directories, and when each was last changed. **Off by default**: it names people, by area. See [ADR 0013](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/adr/0013-who-changes-what-is-opt-in-and-area-first.md). |
+| `--area-authors` | | Flag | Off | Add a section listing who changed each of the most-changed directories, and when each was last changed. **Off by default**: it names people, by area. |
 | `--limit` | | `INT` | None | Bound every list of people in JSON and CSV to this many. JSON states the full total and a `truncated` flag beside each list; a cut CSV is announced on stderr. For assistants: the full JSON of a large repository runs to hundreds of kilobytes. |
 | `--area-depth` | | `INT` | `3` | Directory components that make an area for `--area-authors`. |
 | `--format` | | `TEXT` | `html` | Output format. Accepted values: `html`, `json`, `csv`. `json` and `csv` write files at the same path stem as `--output`. |
@@ -248,7 +242,7 @@ reveille --version
 
 ### `reveille validate`
 
-Validates that the target path is a readable Git repository and that the analysis window contains at least one commit. Exits with a non-zero status code if validation fails. Useful for CI integration.
+Checks that the target path is a readable Git repository with at least one commit: exit 0 if so, 1 if it has none, 2 if it cannot be read. It takes no date options. Useful in CI before `generate`.
 
 ```bash
 reveille validate --repo /path/to/repository
@@ -323,114 +317,49 @@ reveille help
 
 ---
 
-## Output Description
+## Output Formats
 
-The generated HTML file is structured as a formal report with the following sections.
+- **HTML** (default) — one self-contained file of about 4.9 MB, almost all of it the embedded
+  chart library; it opens offline in any browser.
+- **JSON** (`--format json`) — opens with `schema_version`, then `metadata`, `provenance` (the
+  Reveille version, the analysed commit, whether a `.mailmap` was applied, whether the clone was
+  shallow, and the filters as requested), the contributors and the `derived` figures. The scoring
+  fields are present only with `--ranking`; a `rank` field, in table order, is always present. Full shape in the
+  [User Guide](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md#structured-output).
+- **CSV** (`--format csv`) — the contributor table alone, UTF-8 with a byte-order mark so Excel
+  reads it correctly. Columns: `rank` (table order; a ranking only with `--ranking`), `name`,
+  `email`, `commits`, `lines_added`, `lines_deleted`, `net_lines`, `active_days`,
+  `last_commit_date`, `co_authored_commits`. With `--ranking`, `designation`, `tier`,
+  `composite_score` and `percentile` are added.
 
-**Repository Summary** — Name, remote URL if present, analysed branch, period, and report generation timestamp; when they apply, lines stating how many contributors are listed, how many commits are dated after the window, and that the repository is a shallow clone. Summary cards give total commits, contributors, commit concentration, the longest quiet run and the Gini coefficient.
-
-**Activity Heatmap** — A GitHub-style year-navigable grid showing commit frequency by calendar day, drawn over the weeks of the analysis window only. Rows represent days of the week (Monday–Sunday); columns represent calendar weeks. Year tabs derived from the analysis window allow switching between calendar years without regenerating the report. A contributor dropdown provides per-contributor views alongside the aggregated default; single-contributor repositories hide the dropdown automatically.
-
-**Commit Timeline** — A rolling area chart showing commit volume per calendar week over the analysis window. Highlights periods of high and low activity.
-
-**Per-Contributor Commit Frequency** — A multi-trace line chart showing weekly commit frequency for each contributor individually across the analysis window. Each contributor is represented as a separate trace, enabling direct comparison of burst contributors versus those with sustained low-volume engagement — a distinction the aggregate timeline cannot convey.
-
-**Contributor Summary Table** — A table listing each contributor with their commit count, lines added, lines removed, net line delta, active days, and most recent commit date, ordered by commit count. With `--ranking` it additionally carries a rank, a tier designation and a composite score, and is headed *Contributor Rankings*.
-
-**Contribution Breakdown Charts** — A donut chart of each contributor's share of all commits, with contributors beyond four and anyone held back by `--min-commits` pooled as "Other Contributors", and a grouped bar chart of lines added and deleted per listed contributor.
-
-**Who Changed Each Area** (with `--area-authors`) — For the eight most-changed directories: commits, authors, when the area was last changed, and the authors' names alphabetically. No count or date per person. It says who changed each area, not who knows or owns it.
-
-**Repository Activity Indicators** — Commit concentration (the minimum number of contributors accounting for 50% of commits) and the longest quiet run: the most consecutive days without a commit between two days that had one. Silence since the last commit is stated separately, by the dormancy finding. Commit concentration is a measure of how concentrated the commit history is, not a bus factor: bus factor is a property of line ownership across the surviving codebase, which commit counts cannot establish. See the [User Guide](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md#repository-summary) for how to read it.
-
-**JSON export** — When `--format json` is used, a structured JSON file is written at the same path stem as the HTML output. The payload contains repository metadata, contributor statistics, and the derived summary measures; the scoring fields are present only with `--ranking`. Suitable for dashboards, data warehouses, and CI integrations without parsing HTML.
-
-**CSV export** — When `--format csv` is used, the contributor table is written as a UTF-8 CSV file with BOM encoding. BOM ensures correct column rendering in Microsoft Excel on Windows without requiring a manual import wizard. Columns: `rank`, `name`, `email`, `commits`, `lines_added`, `lines_deleted`, `net_lines`, `active_days`, `last_commit_date`, `co_authored_commits` (commits a `Co-authored-by` trailer credits them on; not authorship). With `--ranking`, `designation` and `tier` follow `email`, and `composite_score` and `percentile` are appended. As in the JSON payload, the ranking columns are omitted entirely rather than written as zeroes — a `0` in a spreadsheet is a number someone will sort on.
-
-All charts are rendered with Plotly and are fully interactive — hover states, zoom, pan, and legend toggling are available without any external dependencies.
+JSON and CSV are written at the `--output` path with the matching extension, or to stdout with
+`--output -`. `--limit` bounds every list of people in them and says so.
 
 ---
 
-### Contribution Distribution
+## Contributor Ranking
 
-A Lorenz curve of how evenly commits are spread across contributors, with the
-Gini coefficient as a single-number summary. It describes the repository and
-names nobody, which is why it is in the default report while the per-contributor
-ranking is not. A high value is not a fault: a single-maintainer project scores 0
-by definition, and the maximum for *n* contributors is `(n-1)/n`, so the number is
-comparable against the same repository over time rather than against a different
-one.
+`--ranking` adds a rank, one of seven tiers and a composite score to each listed contributor.
+The score weights commit volume (30%), lines added plus deleted (25%), active days over the
+window (25%) and recency (20%); the weights are configurable, and the tiers are percentiles of
+the listed contributors in the window, not fixed thresholds.
 
-### Structured Output
-
-`--format json` emits a document whose first key is `schema_version`, so a
-consumer can decide whether it can parse the rest before trying, and a
-`provenance` block recording what produced the numbers: the Reveille version, the
-analysed commit SHA, whether a `.mailmap` was applied, the ranking weights if
-ranking ran, and the filters **as requested**. Full shape in the
-[User Guide](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md#structured-output).
-
-## Contributor Ranking System
-
-Reveille assigns each contributor a tier designation based on a weighted composite of four metrics.
-
-| Metric | Default Weight |
-|---|---|
-| Commit volume | 30% |
-| Lines contributed (additions + deletions) | 25% |
-| Activity consistency (active days / total days) | 25% |
-| Recency (decay-weighted recent activity) | 20% |
-
-Weights are configurable. See [Configuration](#configuration).
-
-**These defaults are a documented judgement, not a derived model.** No study
-establishes that these four signals in this proportion measure anything in
-particular. Commit volume is weighted highest because it is the least easily distorted of
-the four — insensitive to file type and to how a change is split across lines.
-Lines are weighted lower because a lockfile or a reformatting pass can dwarf
-months of considered work. Recency is weighted lowest deliberately: recency is a
-property of the analysis window rather than of the person, so weighting it higher
-makes the same contributor's tier swing on the choice of end date.
-
-**What this measures is the volume and regularity of commits — not
-contribution, productivity, or value.** The SPACE framework (Forsgren et al.,
-2021) says activity counts should never be used on their own to reward or
-penalise developers, and recommends reporting only anonymised, aggregate results.
-DORA's metrics are defined for applications and services, not people. Activity metrics are easy
-to game and systematically misread review-heavy, mentoring, part-time, and
-on-call work as low output. A contributor who spends a quarter unblocking others
-and deleting a subsystem will rank below one who committed generated files.
-
-Read a tier as a description of the shape of participation in one window, never
-as a judgement about a person. If that framing does not fit your use, turn
-ranking off with `--no-ranking` or `ranking.enabled = false`; the plain
-contributor table remains.
-
-The composite score maps to the following tier designations, applied relative to the contributor population in the analysis window.
-
-| Tier | Designation | Composite Score Percentile |
-|---|---|---|
-| I | Private | 0 – 20th |
-| II | Corporal | 21st – 40th |
-| III | Sergeant | 41st – 60th |
-| IV | Lieutenant | 61st – 75th |
-| V | Captain | 76th – 88th |
-| VI | Major | 89th – 95th |
-| VII | Commander | 96th – 100th |
-
-Tier boundaries and weights are documented defaults and are fully reproducible from the source. Changing the weights changes the scores but not the tier logic. Tiers are always relative to the contributor population within the analysis window, not absolute thresholds.
+**What this measures is the volume and regularity of commits — not contribution, productivity,
+or value.** The weights are a documented judgement, not a derived model. The SPACE framework
+(Forsgren et al., 2021) says activity counts should never be used on their own to reward or
+penalise developers. A contributor who spends a quarter reviewing others' work and deleting a
+subsystem will rank below one who committed generated files. The military tier names are a
+visual device, not a rank. That is why ranking is off by default; the formula, the tier table and
+what it does not measure are in the
+[User Guide](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md#the-ranking-algorithm).
 
 ---
 
 ## Configuration
 
-Reveille accepts a TOML configuration file for parameters that are cumbersome to pass on the command line on every invocation.
-
-**Canonical workflow.** Run `reveille init` from your repository root to generate an annotated `reveille.toml`. Edit only the keys relevant to your analysis. From that point, `reveille generate` detects and loads `reveille.toml` automatically on every invocation — no flag required.
-
-**Non-standard paths.** If the configuration file is named differently or stored outside the repository root, pass its path explicitly with `--config`. This is also the appropriate path for automation scripts that maintain multiple named configuration files for different analysis windows.
-
-A fully commented `reveille.toml` is equivalent to no configuration file: all built-in defaults apply. A partially configured file applies only the keys present; absent keys fall back to defaults. A malformed file causes `reveille generate` to exit with a non-zero status, a parse error detail, and a remediation hint.
+`reveille init` writes an annotated `reveille.toml`; `reveille generate` loads `reveille.toml` from
+the current directory when present, or the file given with `--config`. Command-line options
+always win over the file. A key left out keeps its default.
 
 ```toml
 [report]
@@ -444,138 +373,60 @@ format = "html"
 [filters]
 min_commits = 2
 exclude_authors = [
-    "dependabot[bot]",
-    "github-actions[bot]",
+    "renovate[bot]",
 ]
 
 [ranking]
-enabled = true
-weights = { commits = 0.30, lines = 0.25, consistency = 0.25, recency = 0.20 }
+enabled = false
 ```
 
-CLI flags always take precedence over configuration file values. The configuration file is entirely optional — all values have defaults.
+An output path in the file that resolves outside the repository is refused, because a
+configuration file is found automatically and may not be yours. Every key is in the
+[TOML Configuration Reference](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md#toml-configuration-reference).
 
 ---
 
 ## Documentation
 
-A full operational reference is available at [docs/USER_GUIDE.md](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md).
-For how to *read* a report — the order to take it in, and what each measure does not support — see [docs/PLAYBOOK.md](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/PLAYBOOK.md).
-It covers every CLI flag and its interaction effects, every TOML key with
-annotated examples, the ranking algorithm in plain language, how to interpret
-each section of the generated report, and practical patterns for common use
-cases.
-
-For how Reveille is built rather than how it is used, see
-[docs/ARCHITECTURE.md](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/ARCHITECTURE.md)
-— the layering contract, the domain model, the analysis pipeline, and the
-invariants the test suite protects. Individual design decisions and the
-reasoning behind them are recorded in
-[docs/adr/](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/adr/).
-
-The repository also carries an
-[llms.txt](https://github.com/varaprasadchilakanti/reveille/blob/main/llms.txt)
-index, which points a coding assistant at the right document and states the
-handful of facts about Reveille that are easy to get wrong. `llms.txt` is a
-proposed convention rather than a standard, and nothing depends on it.
-
----
-
-## Development Setup
-
-**Prerequisites:** Python 3.11 or later, `git`.
-
-```bash
-git clone git@github.com:varaprasadchilakanti/reveille.git
-cd reveille
-poetry install
-```
-
-**Verify the environment:**
-
-```bash
-poetry run reveille --version
-poetry run mypy src/
-poetry run ruff check src/
-```
-
----
-
-## Running Tests
-
-```bash
-pytest
-```
-
-**With coverage report:**
-
-```bash
-pytest --cov=reveille --cov-report=term-missing
-```
-
-**Type checking only:**
-
-```bash
-mypy src/
-```
-
-**Linting only:**
-
-```bash
-ruff check src/
-```
-
----
-
-
-## Changelog
-
-See [CHANGELOG.md](https://github.com/varaprasadchilakanti/reveille/blob/main/CHANGELOG.md) for the full release history. Reveille follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format and [Semantic Versioning 2.0](https://semver.org/).
+| If you want to | Read |
+|---|---|
+| use every option, read every section of the report, or check what it contains about people | [User Guide](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md) |
+| know what a figure supports and what it does not | [Playbook](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/PLAYBOOK.md) |
+| know who is responsible for the personal data in a report | [Compliance](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/COMPLIANCE.md) |
+| report a vulnerability or verify a release | [Security](https://github.com/varaprasadchilakanti/reveille/blob/main/SECURITY.md) |
+| see what changed in each version | [Changelog](https://github.com/varaprasadchilakanti/reveille/blob/main/CHANGELOG.md) |
+| point an assistant at the right document | [llms.txt](https://github.com/varaprasadchilakanti/reveille/blob/main/llms.txt) |
+| understand how it is built, or why a decision was made | [Architecture](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/ARCHITECTURE.md) and the [decision records](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/adr/README.md) |
 
 ---
 
 ## Contributing
 
-Contributions are welcome. Please read [CONTRIBUTING.md](https://github.com/varaprasadchilakanti/reveille/blob/main/CONTRIBUTING.md) before opening a pull request. It covers the development environment setup, architecture overview, pull request contract, code style requirements, and commit message conventions.
-
-Pull requests carry two requirements beyond passing CI: each commit must be signed off (`git commit --signoff`), and the contributor-agreement box in the pull request template must be ticked. The agreement is [CLA.md](https://github.com/varaprasadchilakanti/reveille/blob/main/CLA.md); it opens with a plain-English explanation, and it does **not** transfer your copyright — you keep it, and you remain free to reuse your own code anywhere else. Filing issues and taking part in design discussions requires neither.
-
-Participation is governed by the [Code of Conduct](https://github.com/varaprasadchilakanti/reveille/blob/main/CODE_OF_CONDUCT.md).
+Contributions are welcome. [CONTRIBUTING.md](https://github.com/varaprasadchilakanti/reveille/blob/main/CONTRIBUTING.md)
+covers the development setup, the tests, the pull request contract and the commit conventions.
+Each commit must be signed off, and pull requests accept the
+[contributor agreement](https://github.com/varaprasadchilakanti/reveille/blob/main/CLA.md), which
+does **not** transfer your copyright. Filing an issue needs neither. Participation is governed by
+the [Code of Conduct](https://github.com/varaprasadchilakanti/reveille/blob/main/CODE_OF_CONDUCT.md).
 
 ---
 
 ## Legal and Privacy
 
-Reveille runs entirely on your machine and sends nothing anywhere. The report it
-writes contains contributor names and email addresses, so circulating it means
-handling personal data. [docs/COMPLIANCE.md](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/COMPLIANCE.md)
-sets out who is responsible for what when you run it; [PRIVACY.md](https://github.com/varaprasadchilakanti/reveille/blob/main/PRIVACY.md)
-is a notice for *contributors to this project*, not for users of the tool.
-`--exclude-author` removes a person, matching the value you give plus every
-identity a `.mailmap` ties it to.
-
-[docs/COMPLIANCE.md](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/COMPLIANCE.md) records why the maintainer is neither
-controller nor processor under the GDPR — which plainly does engage, since commit
-author names and addresses are personal data — and why the EU Cyber Resilience
-Act, the Product Liability Directive, the AI Act, US export control and the EU
-accessibility rules do not engage, citing the provision each conclusion rests
-on. It is research rather than legal advice, written so the
-reasoning can be argued with instead of assumed.
+Reveille runs entirely on your machine and sends nothing anywhere. The report it writes contains
+contributor names and email addresses, so whoever runs it and circulates it is handling personal
+data. [docs/COMPLIANCE.md](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/COMPLIANCE.md)
+records why the maintainer is neither controller nor processor under the GDPR — which plainly
+does engage, since commit author names and addresses are personal data — and sets out who is
+responsible for what. It is research, not legal advice.
+[PRIVACY.md](https://github.com/varaprasadchilakanti/reveille/blob/main/PRIVACY.md) is a notice
+for *contributors to this project*, not for users of the tool.
 
 ---
 
 ## Licence
 
 Reveille is released under the [Apache Licence 2.0](https://github.com/varaprasadchilakanti/reveille/blob/main/LICENSE).
-Copyright 2026 Vara Prasad Chilakanti.
-
-**Versions up to and including 0.7.0 were released under the MIT Licence.** That
-grant is unaffected: anything already obtained under MIT stays under MIT, and MIT
-remains available for those versions in the Git history. The change applies from
-0.8.0 onward.
-
-Apache-2.0 was chosen for three things MIT does not provide: an express patent
-grant (§3), an automatic inbound-equals-outbound rule for contributions (§5), and
-an explicit statement that the licence grants no trademark rights (§6). The
-reasoning, including what the change costs, is recorded in
+Copyright 2026 Vara Prasad Chilakanti. Versions up to and including 0.7.0 were released under the
+MIT Licence, and anything obtained under it stays under it; the reasons for the change are in
 [ADR 0007](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/adr/0007-apache-2-0-licence.md).

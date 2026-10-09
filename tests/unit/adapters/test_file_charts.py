@@ -320,7 +320,7 @@ class TestTheContributionBreakdownUsesOneFormPerQuestion:
 
 @pytest.mark.unit
 class TestTheProfileFlower:
-    """ADR 0016: separate petals above the table, drawn without a script."""
+    """ADR 0016: separate petals beside the table, drawn without a script."""
 
     def _html(self, tmp_path: Path) -> str:
         return TestTheRepositoryProfileSection()._rendered(tmp_path)
