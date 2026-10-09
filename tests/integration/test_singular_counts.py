@@ -63,3 +63,26 @@ def test_the_lock_file_caption_says_one_line(repo: Path) -> None:
     out = _out("generate", "--repo", str(repo), "--deterministic", "-o", "-")
 
     assert "1 lock file (1 line changed) is left out" in out
+
+
+@pytest.mark.integration
+def test_a_zero_carries_no_sign(tmp_path: Path) -> None:
+    """Only additions: deletions are 0, not a red minus zero that reads as a loss."""
+    path = tmp_path / "adds"
+    path.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=path, check=True)
+    (path / "a.txt").write_text("x\n", encoding="utf-8")
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "Ana",
+        "GIT_AUTHOR_EMAIL": "ana@e.test",
+        "GIT_COMMITTER_NAME": "Ana",
+        "GIT_COMMITTER_EMAIL": "ana@e.test",
+    }
+    subprocess.run(["git", "add", "-A"], cwd=path, check=True, env=env)
+    subprocess.run(["git", "commit", "-qm", "c"], cwd=path, check=True, env=env)
+
+    html = CliRunner().invoke(app, ["generate", "--repo", str(path), "-o", "-"]).stdout
+
+    assert "&#8722;0" not in html
+    assert re.search(r'class="num-neutral">\s*0\s*</td>', html)

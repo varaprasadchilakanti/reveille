@@ -105,6 +105,8 @@ Everything below is measured against 0.8.1.
   `co_authors_only` with its total and flags,
   `contributors_total` and `contributors_truncated`, `areas` with `--area-authors`, and
   `co_authored_commits` on each contributor.
+- **The report opens in the reader's system theme**, dark or light, until a theme is chosen on
+  the page; it always opened light.
 - **A `reveille.toml` picked up from the working directory says so**, on stderr, naming every
   setting it applied.
 - **The README and User Guide are written for the people who download it**: who it is for,
@@ -146,6 +148,9 @@ Everything below is measured against 0.8.1.
   text table.
 - **Printing to PDF cut the report.** Charts are redrawn at the page's width, the table prints
   whole, sections break where they fall, and charts print light from dark mode.
+- **A zero showed as a red "−0"** in the contributor table, reading as a loss where there was
+  none; zeros now carry no sign or colour. With `--ranking`, the score's figure was cut off at
+  the table's edge on a 1440 px screen; the bar beside it is narrower and the figure shows.
 - **Numbers were spelled three ways** ("30000", "30,000", "25k"); every card, label and axis now
   writes them in full with separators.
 - **One long name pushed every figure off the contributor table**; names and addresses wrap.

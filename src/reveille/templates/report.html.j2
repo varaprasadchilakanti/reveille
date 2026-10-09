@@ -865,8 +865,10 @@
             white-space: nowrap;
         }
 
+        /* 72 px, not 120: with every ranking column the table ran past a
+           1440 px page and cut the score's figure off at the panel edge. */
         .score-bar-track {
-            width: 120px;
+            width: 72px;
             height: 8px;
             flex-shrink: 0;
             background: var(--color-border);
@@ -1533,14 +1535,18 @@
                         <td style="text-align:right">
                             {{ "{:,}".format(contributor.stats.commit_count) }}
                         </td>
-                        <td style="text-align:right" class="num-positive">
-                            +{{ "{:,}".format(contributor.stats.lines_added) }}
+                        {# A zero carries no sign and no colour: "−0" in red read as
+                           a loss where there was none. #}
+                        <td style="text-align:right" class="{{ 'num-positive' if contributor.stats.lines_added else 'num-neutral' }}">
+                            {{ '+' if contributor.stats.lines_added }}{{ "{:,}".format(contributor.stats.lines_added) }}
                         </td>
-                        <td style="text-align:right" class="num-negative">
-                            &#8722;{{ "{:,}".format(contributor.stats.lines_deleted) }}
+                        <td style="text-align:right" class="{{ 'num-negative' if contributor.stats.lines_deleted else 'num-neutral' }}">
+                            {% if contributor.stats.lines_deleted %}&#8722;{% endif %}{{ "{:,}".format(contributor.stats.lines_deleted) }}
                         </td>
                         <td style="text-align:right">
-                            {% if contributor.stats.net_lines >= 0 %}
+                            {% if contributor.stats.net_lines == 0 %}
+                                <span class="num-neutral">0</span>
+                            {% elif contributor.stats.net_lines > 0 %}
                                 <span class="num-positive">
                                     +{{ "{:,}".format(contributor.stats.net_lines) }}
                                 </span>
@@ -1868,9 +1874,19 @@
     // Theme persistence
     // ------------------------------------------------------------------
 
+    // A choice made on this page wins. Without one, the report follows the
+    // reader's system setting: it always opened light, so a reader whose
+    // system is dark got a white page they had to switch by hand.
     function readTheme() {
-        try { return localStorage.getItem(THEME_KEY) || 'light'; }
-        catch (e) { return 'light'; }
+        var stored = null;
+        try { stored = localStorage.getItem(THEME_KEY); } catch (e) { stored = null; }
+        if (stored === 'light' || stored === 'dark') return stored;
+        try {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                return 'dark';
+            }
+        } catch (e) { /* no media queries: the default stands */ }
+        return 'light';
     }
 
     function writeTheme(theme) {
