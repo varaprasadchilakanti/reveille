@@ -376,9 +376,9 @@ was misconfigured. It replaced a silent `return "Recruit"` default that
 would have hidden exactly that.
 
 > **On interpreting these numbers.** Ranking measures commit and line
-> volume. It does not measure contribution. The SPACE framework advises
-> against judging individuals by activity counts and recommends aggregate
-> reporting; DORA's metrics describe applications and services, not people. The rankings exist to
+> volume. It does not measure contribution. The SPACE framework holds that
+> "developer productivity is about more than an individual's activity
+> levels"; DORA's metrics describe applications and services, not people. The rankings exist to
 > show *shape of participation*, not to grade people. See the User
 > Guide for the caveat that ships to users.
 

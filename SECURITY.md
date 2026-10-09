@@ -19,7 +19,7 @@ Use GitHub's private vulnerability reporting:
 Include a description of the vulnerability and its potential impact,
 steps to reproduce it, and the version of Reveille and Python in use.
 
-You can expect an acknowledgement within 48 hours. Confirmed
+The maintainer aims to acknowledge a report within 48 hours. Confirmed
 vulnerabilities will receive a resolution timeline within 7 days.
 
 ## Release Integrity

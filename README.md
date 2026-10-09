@@ -24,18 +24,24 @@ cd /path/to/repository
 reveille generate
 ```
 
-**What it guarantees.** Each of these is checked by the test suite on every change.
+**What it is designed and tested to do.** Each of these is checked by the test suite on every change.
 [SECURITY.md](https://github.com/varaprasadchilakanti/reveille/blob/main/SECURITY.md) covers the threat model and how to verify a release.
 
 - **No network calls.** The report loads no remote resource and opens with no internet connection.
 - **No changes to Git data.** History, refs, index, objects and configuration are never changed,
   and an output path inside the repository's Git directory is refused.
 - **Same input, same output.** With `--deterministic`, an unchanged repository produces a
-  byte-identical report.
+  byte-identical report from the same Reveille version.
 
 One limit: Reveille runs Git, and Git obeys a repository's own `.git/config`, which can name a
-program to run. Such a program is outside these guarantees. `git clone` does not copy that file;
-a copied directory or an archive does.
+program to run. Such a program is outside these properties. `git clone` does not copy that file;
+a copied directory or an archive does. A partial clone (`git clone --filter`) is refused, because
+reading it would make Git fetch.
+
+Reveille is provided under the Apache Licence 2.0 "AS IS", without warranties or conditions of
+any kind; sections 7 and 8 of the [LICENSE](https://github.com/varaprasadchilakanti/reveille/blob/main/LICENSE) set out the disclaimer of warranty and the
+limitation of liability. The properties above describe what the software is designed and tested
+to do; they are not a warranty.
 
 **What it is not.**
 
@@ -54,7 +60,8 @@ a copied directory or an archive does.
 </picture>
 
 **For AI assistants and scripts.** `reveille summary --format json` describes the repository in
-about 2 KB and names nobody. `reveille capabilities --format json` describes what the tool can and
+about 2 KB and names no contributor; it does carry the repository and branch names, and with one
+or two people its figures describe identifiable individuals. `reveille capabilities --format json` describes what the tool can and
 cannot do. `reveille generate --format json --output -` prints every figure, including contributor
 names and email addresses; given to a hosted model, they leave your machine.
 
@@ -91,7 +98,7 @@ names and email addresses; given to a hosted model, they leave your machine.
 - **An AI assistant or a script**, through `summary`, `who-changed`, JSON on stdout, a declared
   schema version and exit codes that separate "no" from "could not run".
 
-It is not for judging people. The project's position on that is in
+Its figures do not support judging people. The project's position on that is in
 [Contributor Ranking](#contributor-ranking).
 
 ---
@@ -203,12 +210,12 @@ Generates the HTML activity report for the target repository.
 
 | Flag | Short | Type | Default | Description |
 |---|---|---|---|---|
-| `--repo` | `-r` | `PATH` | `.` (current directory) | Path to a Git repository: a working tree's root, or a bare repository. |
+| `--repo` | `-r` | `PATH` | `.` (current directory) | Path to a Git repository: a working tree's root, or a bare repository (which needs `--output`, since its root is Git's own directory). |
 | `--output` | `-o` | `PATH` | `reveille-report.html` in the repository root | Path for the generated file. Parent directories must exist. A path inside `.git`, or containing `..`, is refused; one outside the repository is written with a warning. `-` writes the report, in any format, to stdout, and nothing else goes there. |
 | `--since` | | `DATE` | The first commit | Include only commits on or after this date. Accepts `YYYY-MM-DD`. A date before the first commit changes nothing: the days before a repository existed are not quiet days. |
 | `--until` | | `DATE` | Today (UTC) | Include only commits on or before this date. Accepts `YYYY-MM-DD`. Without it, commits dated after today are counted in no figure, and the report and a note on stderr say how many. |
 | `--branch` | `-b` | `TEXT` | The checked-out branch | Analyse commits reachable from this branch only. Defaults to whichever branch is currently checked out, which is not necessarily the repository's default branch. |
-| `--exclude-author` | | `TEXT` | None | Exclude a contributor by name or email. Repeatable. |
+| `--exclude-author` | | `TEXT` | None | Exclude a person: every commit made under an address that a matching name or address was used with, and every address a `.mailmap` ties to it. Repeatable. |
 | `--min-commits` | | `INT` | `1` | List only contributors with at least this many commits in the analysis window. Every figure still counts everyone, and the header says how many are listed. |
 | `--title` | | `TEXT` | Repository name | Override the report title displayed in the HTML output. |
 | `--ranking` | | Flag | Off | Include the contributor ranking table. **Off by default** — it scores and tiers named individuals, which is more than the figures support. Read [Contributor Ranking](#contributor-ranking) first. |
@@ -346,8 +353,8 @@ the listed contributors in the window, not fixed thresholds.
 
 **What this measures is the volume and regularity of commits — not contribution, productivity,
 or value.** The weights are a documented judgement, not a derived model. The SPACE framework
-(Forsgren et al., 2021) says activity counts should never be used on their own to reward or
-penalise developers. A contributor who spends a quarter reviewing others' work and deleting a
+(Forsgren et al., 2021) holds that "developer productivity is about more than an individual's
+activity levels". A contributor who spends a quarter reviewing others' work and deleting a
 subsystem will rank below one who committed generated files. The military tier names are a
 visual device, not a rank. That is why ranking is off by default; the formula, the tier table and
 what it does not measure are in the
@@ -427,6 +434,11 @@ for *contributors to this project*, not for users of the tool.
 ## Licence
 
 Reveille is released under the [Apache Licence 2.0](https://github.com/varaprasadchilakanti/reveille/blob/main/LICENSE).
-Copyright 2026 Vara Prasad Chilakanti. Versions up to and including 0.7.0 were released under the
+Copyright 2026 Vara Prasad Chilakanti. The software is provided "AS IS"; sections 7 and 8 of the
+licence disclaim warranties and limit liability. Versions up to and including 0.7.0 were released under the
 MIT Licence, and anything obtained under it stays under it; the reasons for the change are in
 [ADR 0007](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/adr/0007-apache-2-0-licence.md).
+
+Git is a trademark of the Software Freedom Conservancy. Reveille is not affiliated with
+or endorsed by the Git project, GitHub, GitLab, Atlassian or Plotly; their names are used only to
+say what Reveille works with.

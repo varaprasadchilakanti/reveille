@@ -42,9 +42,9 @@ personal data on behalf of the controller" (Art. 4(8)); the maintainer processes
 nothing, because no data ever reaches them.
 
 **The maintainer is therefore neither controller nor processor for the tool's
-operation. The user is the controller.** Where that user is an organisation
-analysing its own repositories, this is ordinary employment-context processing
-and their existing basis covers it.
+operation. The user is the controller.** Which lawful basis applies, and whether
+any employment or works-council rule applies, is for that controller to determine;
+this document does not answer it for them.
 
 Recital 78 addresses software producers only in hortatory terms — they "should be
 encouraged" to consider data protection in design — while Art. 25's binding

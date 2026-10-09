@@ -213,8 +213,12 @@ class TestTheFuzzingClaimMatchesScorecard:
 # across two lines is still the same claim.
 _UNSUPPORTED = (
     # DORA's guide defines its metrics for applications and services; it has
-    # no explicit statement about individuals. SPACE does, and is cited alone.
+    # no explicit statement about individuals. SPACE is quoted from its abstract.
     "dora and space",
+    # A paraphrase of SPACE that could not be checked against the paper (its
+    # full text was unreachable on 2026-10-09); the abstract is quoted instead.
+    "never be used on their own to reward",
+    "reporting only anonymised, aggregate",
     # A reveille.toml naming .git/HEAD disproved it; the exact claim replaced it.
     "never modifies the repository",
     "production-grade",

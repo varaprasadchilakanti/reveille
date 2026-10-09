@@ -15,10 +15,9 @@ Git records. It does not measure contribution, productivity, or value.
 The distance between those two sentences is the whole caveat.
 
 This is not a matter of taste. The SPACE framework (Forsgren et al.,
-2021) says activity counts should never be used on their own to reward
-or penalise developers, and recommends reporting only anonymised,
-aggregate results; DORA's metrics are defined for applications and
-services, not people. Activity metrics are easy to game and
+2021) holds that "developer productivity is about more than an
+individual's activity levels"; DORA's metrics are defined for
+applications and services, not people. Activity metrics are easy to game and
 systematically misread part-time, review-heavy, mentoring, and on-call
 work as low output.
 

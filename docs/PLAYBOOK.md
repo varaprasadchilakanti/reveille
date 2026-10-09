@@ -43,9 +43,10 @@ deliberate: findings first, evidence after.
 | Ranking (`--ranking`) | Volume and regularity, nothing else | Any assessment of a person |
 
 The ranking is off by default and should usually stay off. The SPACE
-framework says activity counts should never be used on their own to
-reward or penalise developers; [ADR 0010](adr/0010-ranking-is-opt-in.md) records why
-this project agrees.
+framework (Forsgren et al., 2021) holds that "developer productivity is
+about more than an individual's activity levels";
+[ADR 0010](adr/0010-ranking-is-opt-in.md) records why this project does
+not rank people by default.
 
 ## Three questions it answers well
 

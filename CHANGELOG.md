@@ -29,12 +29,13 @@ a report contains about the people in it. Everything below is measured against 0
 - **A partial clone is refused, so Git is never made to fetch.** On a clone made with
   `git clone --filter=blob:none`, 0.8.1 exited 0 after Git had run `git fetch origin` and written
   the missing objects into `.git/objects`: a network call and a change to Git data, the two things
-  the README promises never happen. Every command now refuses such a clone with exit 2 and says
-  why. `GIT_NO_LAZY_FETCH` is set too, but it exists only from Git 2.44, so the refusal is what
-  keeps the promise on every Git.
+  the README says the software is designed never to do. Every command that reads history now
+  refuses such a clone with exit 2 and says why. `GIT_NO_LAZY_FETCH` is set too, but it exists
+  only from Git 2.44, so the refusal is what holds on every Git.
 - **The report describes the objects its hashes name.** A `git replace` ref could substitute a
   commit by another author, and the report named that author while `provenance.head_sha`
-  recorded the original commit. Replace refs, grafts included, are no longer followed. See
+  recorded the original commit. Replace refs, and grafts whether made with `git replace` or
+  written to the deprecated `.git/info/grafts`, are no longer followed. See
   [ADR 0018](docs/adr/0018-replace-refs-are-not-honoured.md).
 - **A token in the remote URL no longer reaches the report.** A remote added as
   `https://user:token@host/...` was printed in the HTML header and in `metadata.remote_url`. For
@@ -67,6 +68,10 @@ a report contains about the people in it. Everything below is measured against 0
 
 ### Privacy
 
+- **`--exclude-author` removes the person, not one spelling of their name.** An identity is its
+  address, and the match was made per commit: with one address committing as "Alice" and
+  "Alice Smith", excluding "Alice Smith" left "Alice" in the report, exit 0, no warning. Every
+  commit made under an address the value matched is now removed, whatever name it carries.
 - **The documentation says what a report contains about people.** A new User Guide section lists,
   per format, every field about a person, and another says what to check before sharing a
   report — including that `--min-commits` hides rows but is not a privacy control.
@@ -174,8 +179,11 @@ a report contains about the people in it. Everything below is measured against 0
 - **The heatmap drew the whole calendar year**, days before the repository and in the future
   included. It now covers the window, its year buttons wrap, and on a phone it keeps its size,
   scrolls sideways, opens on the latest week and says it scrolls.
-- **On a phone** the page scrolled sideways, the chart toolbar covered data, and the donut's
-  labels ran off its panel. None does now.
+- **On a phone** the page scrolled sideways, the chart toolbar covered data, the donut's labels
+  ran off its panel, and Where Change Concentrates cut long paths at the panel's edge, so
+  `src/reveille/adapters/renderer.py` read as `c/reveille/adapters/renderer.py`. Long paths are
+  now shortened behind an ellipsis below 560 px, with the full path kept in the hover and the
+  text table.
 - **Printing to PDF cut the report.** Charts are redrawn at the page's width, the table prints
   whole, sections break where they fall, and charts print light from dark mode.
 - **Numbers were spelled three ways** ("30000", "30,000", "25k"); every card, label and axis now
@@ -195,6 +203,9 @@ a report contains about the people in it. Everything below is measured against 0
   backticks in two findings, a Gini note claiming a maximum of 1.00 from 200 contributors up,
   "Branch: HEAD" for a detached checkout, "1 commits" in the progress line, and a warning printed
   on the end of it. With `--ranking`, a card's hidden label named an order the list did not have.
+- **`reveille capabilities` stated three properties without their conditions**: byte-identical
+  output without `--deterministic`, the default report in the current directory (it is the
+  repository root), and "no network call" without the `.git/config` limit the README states.
 - **With two people, a finding pointed to "the table below"**, which `reveille summary` prints
   without; it now names the contributor table.
 - **Documentation that was false.** The README said `docs/COMPLIANCE.md` records why the GDPR
@@ -203,7 +214,8 @@ a report contains about the people in it. Everything below is measured against 0
   a notice for contributors; `PRIVACY.md` named a contact address that does not exist and stated
   its Cyber Resilience Act and Product Liability Directive conclusions without their condition
   (no monetisation); `SECURITY.md` made a false claim about Scorecard's Fuzzing check. "Both DORA
-  and SPACE" was cited at eight places where only SPACE says it; "never modifies the repository",
+  and SPACE state that their metrics must not be applied to individuals" appeared at eight
+  places, though the DORA guide says no such thing; SPACE is now quoted from its abstract; "never modifies the repository",
   "production-grade" and "repository health" were removed, and a test keeps them out. The guides
   placed the default report in the current directory (it is the repository root), said
   `--format` takes four values (three), described the ranking setting backwards, put a size
