@@ -17,101 +17,13 @@ Nothing yet.
 
 ---
 
-## [0.9.0] — 2026-10-09 — Say Only What Is True
+## [0.9.0] — 2026-10-09 — Privacy, Integrity, and an Interface for Assistants
 
 A release about trust. The ways found for a repository to make Git reach the network, run a
 program it names, or report history other than the one it records are closed; the report states
 its own limits, counts people as people, and names fewer of them by default; and the
 documentation now says, field by field, what a report contains about the people in it.
 Everything below is measured against 0.8.1.
-
-### Security
-
-- **A partial clone is refused, so Git is never made to fetch.** On a clone made with
-  `git clone --filter=blob:none`, 0.8.1 exited 0 after Git had run `git fetch origin` and written
-  the missing objects into `.git/objects`: a network call and a change to Git data, the two things
-  the README says the software is designed never to do. Every command that reads history now
-  refuses such a clone with exit 2 and says why. `GIT_NO_LAZY_FETCH` is set too, but it exists
-  only from Git 2.44, so the refusal is what holds on every Git.
-- **The report describes the objects its hashes name.** A `git replace` ref could substitute a
-  commit by another author, and the report named that author while `provenance.head_sha`
-  recorded the original commit. Replace refs, and grafts whether made with `git replace` or
-  written to the deprecated `.git/info/grafts`, are no longer followed, and their presence is
-  stated in the header, on stderr and in `provenance`, so a comparison with `git log` can be
-  reconciled. See
-  [ADR 0018](docs/adr/0018-replace-refs-are-not-honoured.md).
-- **A repository's own `.git/config` can no longer make a read run its signing program.** With
-  `log.showSignature` on and `gpg.program` naming a script, every command ran the script on a
-  commit carrying a signature header. Every read now pins `log.showSignature=false`; a test runs
-  all four commands against such a repository and fails without the pin.
-- **A commit the read cannot parse is counted and stated.** An author field carrying the
-  separator the read splits on makes a commit's record unreadable; the record is dropped, which is
-  the defence against a forged one, but 0.8.1 dropped it without a word. The report's header,
-  stderr and `provenance.commits_unreadable` now say how many. See
-  [ADR 0019](docs/adr/0019-how-history-is-read.md), which replaces ADR 0004's statement that no
-  author could break the parse.
-- **A token in the remote URL no longer reaches the report.** A remote added as
-  `https://user:token@host/...` was printed in the HTML header and in `metadata.remote_url`. For
-  `http` and `https` the user part is now removed, since a token is often given as the user name
-  alone; for other schemes only a password is removed, so `ssh://git@host/...` keeps its login.
-  Query string and fragment are removed too.
-- **A `reveille.toml` can no longer overwrite `.git/HEAD`.** Any output path inside the
-  repository's Git directory is refused with exit 2, whoever chose it, including in a bare
-  repository and with `--separate-git-dir`. An output path in a `reveille.toml` that resolves
-  outside the repository is refused too, because the file is found automatically.
-- **A bare repository reads the `.mailmap` committed at `HEAD`**, as Git does; it read none, so
-  one person with two addresses was two rows in a bare clone and one in its original. A committed
-  `.mailmap` over 1 MiB is ignored rather than read into memory.
-- **`.mailmap` is treated as untrusted input.** Names and addresses it substitutes get the same
-  scrubbing and length limits as author fields; a symlinked `.mailmap` is ignored, as Git ignores
-  it; undecodable bytes no longer crash the run.
-- **A name can no longer display as text it does not contain.** Direction overrides and isolates,
-  the zero-width space and the byte-order mark are removed from names, so `‮evil‬ Name`
-  no longer displays as "live Name" and two identical-looking names are no longer two people. The
-  joiners and direction marks that Persian, Indic, Arabic and Hebrew names use are kept, and
-  addresses are not changed.
-- **Values from `reveille.toml` can no longer drive the terminal.** Every message and warning shows
-  control characters as escapes, for example `\x1b`.
-- **Four escapes in the report gained tests** — the `</` escape in the heatmap data, HTML escaping
-  of the email cell, the spreadsheet-formula guard on the CSV email column, and the symbolic-link
-  refusal for JSON and CSV. Each could be removed with every test passing; each now has a test
-  seen to fail without it.
-- **A tagged release carries its SBOM's Sigstore attestation as a second asset**,
-  `<sbom filename>.sigstore.json`, so `gh attestation verify --bundle` can check a downloaded SBOM
-  without asking the host that served it. `SECURITY.md` has the command.
-- The development lock's `virtualenv`, a dependency of `pre-commit` that was never in the wheel,
-  carried four published advisories (PYSEC-2026-4011 to -4014); it is now 21.14.5.
-
-### Privacy
-
-- **`--exclude-author` removes the person, not one spelling of their name.** An identity is its
-  address, and the match was made per commit: with one address committing as "Alice" and
-  "Alice Smith", excluding "Alice Smith" left "Alice" in the report, exit 0, no warning. Every
-  commit made under an address the value matched anywhere in the branch's history is now
-  removed, whatever name it carries; a value that reaches more than one address removes them all
-  and says so on stderr, with the addresses.
-  See [ADR 0020](docs/adr/0020-exclude-author-removes-a-person-by-address.md).
-- **The documentation says what a report contains about people.** A new User Guide section lists,
-  per format, every field about a person, and another says what to check before sharing a
-  report — including that `--min-commits` hides rows but is not a privacy control.
-- **The statement of what Reveille reads was incomplete.** `docs/COMPLIANCE.md` and
-  `reveille capabilities` listed object name, author name, author email and timestamp, but
-  `git log --numstat` also yields each changed file's path and line counts, which the report
-  prints. Both now say so. Still true: no source code, no commit messages beyond `Co-authored-by`
-  trailers, no diff content.
-- **The repository profile names nobody.** Its `Spread` axis was a transform of the per-person
-  distribution; it is gone, and the profile is computed from commits, files and a window, never
-  from contributor rows.
-- **With `--ranking`, no summary card carries a name.** The fifth card showed the top scorer's
-  first name on a page whose findings say nobody is named; it now shows the Gini in every mode,
-  and the ranked table opens with the weights used and what the score does not measure.
-- **The output is no longer called a "performance report"**, in eleven places from the PyPI
-  description to `--help`. It reports the volume and regularity of commits, and
-  `reveille capabilities` already refused to support performance review. A test keeps the
-  phrase out.
-- **Lists of people can be bounded.** `--limit` (or `[report] limit`) bounds every list of people
-  in JSON and CSV; the JSON states the full total and a `truncated` flag, and a cut CSV is
-  announced on stderr.
 
 ### Added
 
@@ -138,9 +50,28 @@ Everything below is measured against 0.8.1.
   incomplete or wrong; check before relying on it for a decision.
 - **A long contributor table scrolls in its own panel**, with its header kept in view, a count of
   its rows and keyboard scrolling; it prints in full.
+- **Lists of people can be bounded.** `--limit` (or `[report] limit`) bounds every list of people
+  in JSON and CSV; the JSON states the full total and a `truncated` flag, and a cut CSV is
+  announced on stderr.
+- **The documentation says what a report contains about people.** A new User Guide section lists,
+  per format, every field about a person, and another says what to check before sharing a
+  report — including that `--min-commits` hides rows but is not a privacy control.
+- **A tagged release carries its SBOM's Sigstore attestation as a second asset**,
+  `<sbom filename>.sigstore.json`, so `gh attestation verify --bundle` can check a downloaded SBOM
+  without asking the host that served it. `SECURITY.md` has the command.
 
 ### Changed
 
+- **The repository profile names nobody.** Its `Spread` axis was a transform of the per-person
+  distribution; it is gone, and the profile is computed from commits, files and a window, never
+  from contributor rows.
+- **With `--ranking`, no summary card carries a name.** The fifth card showed the top scorer's
+  first name on a page whose findings say nobody is named; it now shows the Gini in every mode,
+  and the ranked table opens with the weights used and what the score does not measure.
+- **The output is no longer called a "performance report"**, in eleven places from the PyPI
+  description to `--help`. It reports the volume and regularity of commits, and
+  `reveille capabilities` already refused to support performance review. A test keeps the
+  phrase out.
 - **The repository profile is six shares drawn as separate petals beside a table**, replacing
   0.8.1's five-axis radar. A radar's area depends on an arbitrary axis order and is read far less
   accurately than length. The six are Continuity, Recent work, Shared, Collaboration, Revisiting
@@ -182,6 +113,14 @@ Everything below is measured against 0.8.1.
 
 ### Fixed
 
+- **The statement of what Reveille reads was incomplete.** `docs/COMPLIANCE.md` and
+  `reveille capabilities` listed object name, author name, author email and timestamp, but
+  `git log --numstat` also yields each changed file's path and line counts, which the report
+  prints. Both now say so. Still true: no source code, no commit messages beyond `Co-authored-by`
+  trailers, no diff content.
+- **A bare repository reads the `.mailmap` committed at `HEAD`**, as Git does; it read none, so
+  one person with two addresses was two rows in a bare clone and one in its original. A committed
+  `.mailmap` over 1 MiB is ignored rather than read into memory.
 - **The analysis window.** A `--since` before the first commit was counted as quiet time (8,469
   days on a three-year-old repository); the window now starts at the first commit. Commits dated
   after today were counted in a window that ended today; without `--until` they are now counted in
@@ -243,6 +182,64 @@ Everything below is measured against 0.8.1.
   `--format` takes four values (three), described the ranking setting backwards, put a size
   range of 3.5–5 MB (it is 4.9 MB, measured), and claimed a test runs every command in the
   Playbook (none did).
+
+### Security
+
+- **A partial clone is refused, so Git is never made to fetch.** On a clone made with
+  `git clone --filter=blob:none`, 0.8.1 exited 0 after Git had run `git fetch origin` and written
+  the missing objects into `.git/objects`: a network call and a change to Git data, the two things
+  the README says the software is designed never to do. Every command that reads history now
+  refuses such a clone with exit 2 and says why. `GIT_NO_LAZY_FETCH` is set too, but it exists
+  only from Git 2.44, so the refusal is what holds on every Git.
+- **The report describes the objects its hashes name.** A `git replace` ref could substitute a
+  commit by another author, and the report named that author while `provenance.head_sha`
+  recorded the original commit. Replace refs, and grafts whether made with `git replace` or
+  written to the deprecated `.git/info/grafts`, are no longer followed, and their presence is
+  stated in the header, on stderr and in `provenance`, so a comparison with `git log` can be
+  reconciled. See
+  [ADR 0018](docs/adr/0018-replace-refs-are-not-honoured.md).
+- **A repository's own `.git/config` can no longer make a read run its signing program.** With
+  `log.showSignature` on and `gpg.program` naming a script, every command ran the script on a
+  commit carrying a signature header. Every read now pins `log.showSignature=false`; a test runs
+  all four commands against such a repository and fails without the pin.
+- **A commit the read cannot parse is counted and stated.** An author field carrying the
+  separator the read splits on makes a commit's record unreadable; the record is dropped, which is
+  the defence against a forged one, but 0.8.1 dropped it without a word. The report's header,
+  stderr and `provenance.commits_unreadable` now say how many. See
+  [ADR 0019](docs/adr/0019-how-history-is-read.md), which replaces ADR 0004's statement that no
+  author could break the parse.
+- **A token in the remote URL no longer reaches the report.** A remote added as
+  `https://user:token@host/...` was printed in the HTML header and in `metadata.remote_url`. For
+  `http` and `https` the user part is now removed, since a token is often given as the user name
+  alone; for other schemes only a password is removed, so `ssh://git@host/...` keeps its login.
+  Query string and fragment are removed too.
+- **A `reveille.toml` can no longer overwrite `.git/HEAD`.** Any output path inside the
+  repository's Git directory is refused with exit 2, whoever chose it, including in a bare
+  repository and with `--separate-git-dir`. An output path in a `reveille.toml` that resolves
+  outside the repository is refused too, because the file is found automatically.
+- **`.mailmap` is treated as untrusted input.** Names and addresses it substitutes get the same
+  scrubbing and length limits as author fields; a symlinked `.mailmap` is ignored, as Git ignores
+  it; undecodable bytes no longer crash the run.
+- **A name can no longer display as text it does not contain.** Direction overrides and isolates,
+  the zero-width space and the byte-order mark are removed from names, so `‮evil‬ Name`
+  no longer displays as "live Name" and two identical-looking names are no longer two people. The
+  joiners and direction marks that Persian, Indic, Arabic and Hebrew names use are kept, and
+  addresses are not changed.
+- **Values from `reveille.toml` can no longer drive the terminal.** Every message and warning shows
+  control characters as escapes, for example `\x1b`.
+- **Four escapes in the report gained tests** — the `</` escape in the heatmap data, HTML escaping
+  of the email cell, the spreadsheet-formula guard on the CSV email column, and the symbolic-link
+  refusal for JSON and CSV. Each could be removed with every test passing; each now has a test
+  seen to fail without it.
+- The development lock's `virtualenv`, a dependency of `pre-commit` that was never in the wheel,
+  carried four published advisories (PYSEC-2026-4011 to -4014); it is now 21.14.5.
+- **`--exclude-author` removes the person, not one spelling of their name.** An identity is its
+  address, and the match was made per commit: with one address committing as "Alice" and
+  "Alice Smith", excluding "Alice Smith" left "Alice" in the report, exit 0, no warning. Every
+  commit made under an address the value matched anywhere in the branch's history is now
+  removed, whatever name it carries; a value that reaches more than one address removes them all
+  and says so on stderr, with the addresses.
+  See [ADR 0020](docs/adr/0020-exclude-author-removes-a-person-by-address.md).
 
 ### Known issues
 
