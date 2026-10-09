@@ -29,7 +29,6 @@ from reveille.adapters.renderer import (
     _build_heatmap_data,
     _build_timeline_chart,
     _compute_commit_concentration,
-    _compute_longest_inactive_streak,
     _sanitise_chart_label,
     _to_json,
 )
@@ -214,6 +213,7 @@ class TestRenderCsv:
         "net_lines",
         "active_days",
         "last_commit_date",
+        "co_authored_commits",
         "composite_score",
         "percentile",
     ]
@@ -313,54 +313,6 @@ class TestComputeCommitConcentration:
 
 
 # ------------------------------------------------------------------
-# _compute_longest_inactive_streak
-# ------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestComputeLongestInactiveStreak:
-    """Tests for the inactive streak derived metric helper."""
-
-    def test_no_commits_returns_full_window_length(self) -> None:
-        streak = _compute_longest_inactive_streak(
-            commits=[],
-            window_start=datetime.date(2024, 1, 1),
-            window_end=datetime.date(2024, 1, 10),
-        )
-        assert streak == 9
-
-    def test_commits_every_day_returns_zero(self) -> None:
-        start = datetime.date(2024, 1, 1)
-        end = datetime.date(2024, 1, 5)
-        commits = [_make_commit(start + datetime.timedelta(days=i)) for i in range(5)]
-        assert (
-            _compute_longest_inactive_streak(commits=commits, window_start=start, window_end=end)
-            == 0
-        )
-
-    def test_gap_in_the_middle_is_detected(self) -> None:
-        commits = [
-            _make_commit(datetime.date(2024, 1, 1)),
-            _make_commit(datetime.date(2024, 1, 8)),
-        ]
-        streak = _compute_longest_inactive_streak(
-            commits=commits,
-            window_start=datetime.date(2024, 1, 1),
-            window_end=datetime.date(2024, 1, 10),
-        )
-        assert streak == 6
-
-    def test_gap_at_start_of_window_is_detected(self) -> None:
-        commits = [_make_commit(datetime.date(2024, 1, 5))]
-        streak = _compute_longest_inactive_streak(
-            commits=commits,
-            window_start=datetime.date(2024, 1, 1),
-            window_end=datetime.date(2024, 1, 5),
-        )
-        assert streak == 4
-
-
-# ------------------------------------------------------------------
 # _build_timeline_chart
 # ------------------------------------------------------------------
 
@@ -420,13 +372,44 @@ class TestBuildTimelineChart:
         assert "paper_bgcolor" not in layout
         assert "plot_bgcolor" not in layout
 
-    def test_xaxis_type_is_category(self) -> None:
+    def test_xaxis_is_a_date_axis(self) -> None:
+        """A category axis printed one label per week: hundreds of rotated
+        labels over a long window, an illegible band. A date axis spaces its
+        own ticks by month or year; the hover still names the exact week."""
         commits = [
             _make_commit(datetime.date(2024, 1, 8)),
             _make_commit(datetime.date(2024, 1, 15)),
         ]
         result = json.loads(_build_timeline_chart(commits))
-        assert result["layout"]["xaxis"]["type"] == "category"
+        assert result["layout"]["xaxis"]["type"] == "date"
+        assert "tickangle" not in result["layout"]["xaxis"]
+        assert "%{x|%Y-%m-%d}" in result["data"][0]["hovertemplate"]
+
+    def test_a_quiet_week_is_drawn_as_zero_not_skipped(self) -> None:
+        """A skipped week let the line run straight across a gap.
+
+        The chart is where PLAYBOOK sends a reader asking whether a project is
+        still active, so a quiet spell must show as quiet.
+        """
+        commits = [
+            _make_commit(datetime.date(2026, 6, 1)),
+            _make_commit(datetime.date(2026, 7, 20)),
+        ]
+        trace = json.loads(_build_timeline_chart(commits))["data"][0]
+        weeks = dict(zip(trace["x"], trace["y"], strict=True))
+
+        assert weeks["2026-07-06"] == 0
+        assert len(weeks) == 8, "every Monday from 1 June to 20 July"
+
+    def test_the_whole_analysis_window_is_drawn(self) -> None:
+        """Quiet weeks before the first commit and after the last count too."""
+        commits = [_make_commit(datetime.date(2026, 6, 3))]
+        window = (datetime.date(2026, 5, 20), datetime.date(2026, 6, 20))
+        trace = json.loads(_build_timeline_chart(commits, window))["data"][0]
+
+        assert trace["x"][0] == "2026-05-18"
+        assert trace["x"][-1] == "2026-06-15"
+        assert sum(trace["y"]) == 1
 
 
 @pytest.mark.unit
@@ -444,6 +427,22 @@ class TestBuildContributorTimelineChart:
         commits = [_make_commit(datetime.date(2024, 3, 11), email="alice@example.com")]
         ranked = [_make_ranked("Alice", commit_count=1)]
         assert _build_contributor_timeline_chart(commits, ranked) == "null"
+
+    def test_a_week_nobody_committed_is_drawn_as_zero_for_everyone(self) -> None:
+        """Weeks were the union of weeks someone committed; a shared gap vanished."""
+        commits = [
+            _make_commit(datetime.date(2024, 3, 4), email="alice@example.com"),
+            _make_commit(datetime.date(2024, 3, 25), email="bob@example.com"),
+        ]
+        ranked = [
+            _make_ranked("Alice", commit_count=1),
+            _make_ranked("Bob", commit_count=1),
+        ]
+        traces = json.loads(_build_contributor_timeline_chart(commits, ranked))["data"]
+
+        for trace in traces:
+            assert trace["x"] == ["2024-03-04", "2024-03-11", "2024-03-18", "2024-03-25"]
+            assert trace["y"][1:3] == [0, 0]
 
     def test_two_contributors_return_valid_chart_json(self) -> None:
         commits = [
@@ -470,7 +469,7 @@ class TestBuildContributorTimelineChart:
         parsed = json.loads(_build_contributor_timeline_chart(commits, ranked))
         assert len(parsed["data"]) == 3
 
-    def test_xaxis_type_is_category(self) -> None:
+    def test_xaxis_is_a_date_axis(self) -> None:
         commits = [
             _make_commit(datetime.date(2024, 3, 11), email="alice@example.com"),
             _make_commit(datetime.date(2024, 3, 18), email="bob@example.com"),
@@ -480,7 +479,8 @@ class TestBuildContributorTimelineChart:
             _make_ranked("Bob", commit_count=1),
         ]
         parsed = json.loads(_build_contributor_timeline_chart(commits, ranked))
-        assert parsed["layout"]["xaxis"]["type"] == "category"
+        assert parsed["layout"]["xaxis"]["type"] == "date"
+        assert all("%{x|%Y-%m-%d}" in t["hovertemplate"] for t in parsed["data"])
 
     def test_layout_does_not_contain_bgcolor_keys(self) -> None:
         commits = [
@@ -784,3 +784,41 @@ class TestToJson:
         result = _to_json(fig)
         assert "</script>" not in result
         assert "<\\/script>" in result
+
+
+@pytest.mark.unit
+class TestAOneWeekTimeline:
+    """A single point gives a date axis no span to scale to, and Plotly drew
+    millisecond ticks: "23:59:59.999 Aug 30, 2026", "23:59:59.9995", ..."""
+
+    @staticmethod
+    def _span(layout: dict) -> datetime.timedelta:
+        start, end = (datetime.date.fromisoformat(v[:10]) for v in layout["xaxis"]["range"])
+        return end - start
+
+    def test_the_weekly_timeline_spans_days(self) -> None:
+        commits = [
+            _make_commit(datetime.date(2026, 8, 31)),
+            _make_commit(datetime.date(2026, 9, 2)),
+        ]
+        figure = json.loads(_build_timeline_chart(commits))
+        layout = figure["layout"]
+
+        assert self._span(layout) >= datetime.timedelta(days=7)
+        assert "markers" in figure["data"][0]["mode"], "one point draws no line"
+
+    def test_the_contributor_timeline_spans_days(self) -> None:
+        commits = [
+            _make_commit(datetime.date(2026, 8, 31), email="alice@example.com"),
+            _make_commit(datetime.date(2026, 9, 1), email="bob@example.com"),
+        ]
+        ranked = [_make_ranked("Alice", commit_count=1), _make_ranked("Bob", commit_count=1)]
+        layout = json.loads(_build_contributor_timeline_chart(commits, ranked))["layout"]
+
+        assert self._span(layout) >= datetime.timedelta(days=7)
+
+    def test_a_longer_timeline_is_left_to_scale_itself(self) -> None:
+        commits = [_make_commit(datetime.date(2026, 8, 3)), _make_commit(datetime.date(2026, 9, 2))]
+        layout = json.loads(_build_timeline_chart(commits))["layout"]
+
+        assert "range" not in layout["xaxis"]

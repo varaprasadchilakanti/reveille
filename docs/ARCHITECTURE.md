@@ -23,16 +23,18 @@ single self-contained HTML file describing its contribution history.
 Three properties constrain nearly every design decision, and are worth
 stating before anything else:
 
-**It is read-only.** Reveille opens a repository, reads history, and
-writes one output file at a path you name. It never writes to `.git`,
-never creates commits or branches, and never runs a mutating Git
-command. Anything that would change repository state is out of scope by
+**It does not change Git data.** Reveille opens a repository, reads
+history, and writes one output file. It refuses any output path inside
+`.git`, never creates commits or branches, and never runs a mutating Git
+command. The report goes where you point it, by default
+`reveille-report.html` in the current directory, which is often the
+repository's working tree. Anything that would change repository state is out of scope by
 construction, not by omission.
 
 **It is offline.** Nothing is transmitted anywhere. The generated report
 loads no CDN, no web font, and no remote image — the ~4.8 MB Plotly
-bundle is embedded in the file itself. This is what makes the output
-safe to attach to an email or embed in Confluence, and it is enforced by
+bundle is embedded in the file itself. This is what lets the output be
+opened from an email attachment or a downloaded file, and it is enforced by
 a test asserting no `<link>`, `<script>`, or `<img>` in the template
 references a remote host.
 
@@ -152,7 +154,21 @@ analysed one — see [ADR 0008](adr/0008-output-provenance-and-schema-version.md
 **`AnalysisProvenance`** — `reveille_version`, `schema_version`, `head_sha`,
 the filters *as requested* (`requested_branch`, `requested_since`,
 `requested_until`, `exclude_authors_count`, `min_commits`), `ranking_enabled`,
-`ranking_weights`, `mailmap_applied`, `deterministic`.
+`ranking_weights`, `mailmap_applied`, `deterministic`,
+`commits_dated_after_window` (commits a default window left out because they
+are dated after today; counted in no figure), `shallow_clone` (the repository
+holds only part of its history), `area_authors_enabled` and `area_depth`
+(whether the opt-in "who changed each area" section was asked for; ADR 0013).
+
+**`CoAuthor`** and `Commit.co_authors` — identities a `Co-authored-by` trailer
+credits, read in a separate NUL-separated pass that must line up with
+`rev-list` one for one, resolved like authors (ADR 0014). `domain/coauthors.py`
+lists those credited only as co-authors; authorship figures never use them.
+
+**`AreaActivity`** — `area`, `commits`, `last_changed`, and each author's address
+with the date they last changed the area. Collected by the reader only under
+`--area-authors`; `domain/areas.py` turns it into statements that name authors
+alphabetically and never print a per-person count or date.
 
 The requested/resolved distinction is the point: `analysis_since` records where
 the window began, `requested_since` records whether anybody asked for it. Note
@@ -277,7 +293,8 @@ the template checks for that sentinel rather than the renderer deciding
 what the page looks like.
 
 The heatmap is the exception: it ships a compact daily-count payload,
-not a Plotly figure, and client-side JavaScript builds the Mon–Sun grid.
+not a Plotly figure, and client-side JavaScript builds the Mon–Sun grid
+over the weeks of the analysis window, whose bounds the payload carries.
 A per-day Plotly spec for a multi-year repository is far larger than the
 counts it encodes.
 
@@ -359,9 +376,9 @@ was misconfigured. It replaced a silent `return "Recruit"` default that
 would have hidden exactly that.
 
 > **On interpreting these numbers.** Ranking measures commit and line
-> volume. It does not measure contribution, and the professional
-> consensus — DORA and SPACE both state this explicitly — is against
-> using such metrics for individual assessment. The rankings exist to
+> volume. It does not measure contribution. The SPACE framework holds that
+> "developer productivity is about more than an individual's activity
+> levels"; DORA's metrics describe applications and services, not people. The rankings exist to
 > show *shape of participation*, not to grade people. See the User
 > Guide for the caveat that ships to users.
 
@@ -424,7 +441,7 @@ three genuinely local decisions easier to find and argue with.
 | The Lorenz curve and Gini coefficient in `domain/concentration.py` | **Lorenz (1905)**, **Gini (1912)** | Standard instruments for concentration in a population, chosen over a bespoke "how many contributors make up a majority" precisely because a century of interpretation — and of documented weakness — comes with them. |
 | `domain/summary.py` — the written findings at the top of the report | **Data-to-text generation** (Reiter and Dale, *Building Natural Language Generation Systems*, 2000) | Content selected by rules over computed statistics, realised through fixed templates. Deterministic, offline, and no model — which is the only kind of generated prose that can live in a tool making an offline guarantee. The findings are checkable because each carries the figure it rests on. |
 | `domain/files.py` — churn per path, and the hotspot ranking | **Relative code churn** (Nagappan and Ball, *Use of Relative Code Churn Measures to Predict System Defect Density*, ICSE 2005); **hotspot analysis** (Tornhill, *Your Code as a Crime Scene*, 2013) | Churn is added plus deleted, not net. The full hotspot method crosses churn with a complexity measure; Reveille reads history and never file content, so it reports the churn axis alone and says so under the chart. A file that changes often is one to look at, not one that is wrong. |
-| `domain/profile.py` — the five-axis radar, and the decision to label every vertex | **Graphical perception** (Cleveland and McGill, *Graphical Perception: Theory, Experimentation, and Application to the Development of Graphical Methods*, JASA 1984) | Position and length are read far more accurately than angle and area. A radar encodes by area *and* its silhouette depends on the arbitrary axis order, so the order is fixed and never data-dependent, every vertex carries its value as text, and the report states that the area means nothing. The form is used because it is asked for and is recognisable over time — not because it is accurate. |
+| `domain/profile.py` and `_profile_flower` — six shares drawn as separate petals beside a table (above it on a narrow screen) | **Graphical perception** (Cleveland and McGill, *Graphical Perception: Theory, Experimentation, and Application to the Development of Graphical Methods*, JASA 1984); **radial indicators** (Albo, Lanir, Bak and Rafaeli, *Off the Radar*, IEEE TVCG 2016; Fuchs et al., IEEE TVCG 2014) | Length is read far more accurately than area, and a radar's area depends on an arbitrary axis order (ADR 0012). The flower was preferred over the radar in Albo et al.'s comparison, and star glyphs compare better without a contour, so each share is a separate petal of length, never joined into a polygon; every petal carries its value as text and the table is the authoritative figure (ADR 0016). Expectations are computed from each measure's arithmetic, never chosen. |
 | `_CATEGORICAL_PALETTE`, and the decision that four is the maximum | **Color Universal Design** (Okabe and Ito, 2008); **dichromat simulation** (Viénot, Brettel and Mollon, 1999); **WCAG 2.1** contrast | A series colour must clear three constraints at once — contrast against both plot surfaces, separation in normal vision, and separation under simulated colour blindness. Over a 29-candidate pool the largest satisfying set is four, so beyond four the report aggregates rather than inventing a fifth hue. `tests/unit/adapters/test_palette.py` carries the arithmetic and recomputes it on every run. |
 | `.mailmap` handling, and email as the identity key | **`gitmailmap(5)`** | All four documented forms, with Git's own matching precedence, so a `.mailmap` that works with `git shortlog` works here. |
 | `docs/adr/` | **Architecture decision records** (Nygard, 2011) | Immutable once accepted; a changed decision gets a new record that supersedes the old one. |

@@ -35,7 +35,7 @@ _DEFAULT_CONFIG_TEMPLATE: str = """\
 
 # Output path for the generated HTML file.
 # The parent directory must exist at generation time.
-# Defaults to ./reveille-report.html at the repository root.
+# Defaults to reveille-report.html in the repository root.
 # output = "./reveille-report.html"
 
 # Analyse commits reachable from this branch only.
@@ -43,11 +43,13 @@ _DEFAULT_CONFIG_TEMPLATE: str = """\
 # branch = "main"
 
 # Include only commits on or after this date (YYYY-MM-DD).
-# Defaults to the date of the repository's first commit.
+# Defaults to the date of the repository's first commit; an earlier date
+# changes nothing.
 # since = "2024-01-01"
 
 # Include only commits on or before this date (YYYY-MM-DD).
-# Defaults to today.
+# Defaults to today (UTC). Commits dated later are then counted in no figure,
+# and the report says how many.
 # until = "2024-12-31"
 
 # Output format for the generated report.
@@ -69,6 +71,10 @@ _DEFAULT_CONFIG_TEMPLATE: str = """\
 # scores too. That is why it is opt-in.
 # deterministic = false
 
+# Bound every list of people in JSON and CSV output to this many entries; the
+# full total is written beside each list. Equivalent to --limit.
+# limit = 50
+
 
 # ------------------------------------------------------------------------------
 # [filters] -- Contributor and commit filtering
@@ -76,7 +82,8 @@ _DEFAULT_CONFIG_TEMPLATE: str = """\
 
 [filters]
 
-# Exclude contributors with fewer than this many commits in the analysis window.
+# List only contributors with at least this many commits in the analysis window.
+# Every figure still counts everybody; the report header says how many are listed.
 # Must be a positive integer. Useful for filtering one-off contributors that
 # would otherwise distort ranking percentiles in small populations.
 # min_commits = 1
@@ -112,6 +119,22 @@ _DEFAULT_CONFIG_TEMPLATE: str = """\
 #                  analysis window end date.
 #
 # weights = { commits = 0.30, lines = 0.25, consistency = 0.25, recency = 0.20 }
+
+
+# ------------------------------------------------------------------------------
+# [areas] -- Who changed each area
+# ------------------------------------------------------------------------------
+
+[areas]
+
+# Adds a "Who Changed Each Area" section: the most-changed directories, and for
+# each the authors who changed it, alphabetically, with when it was last
+# changed. OFF by default, and not switched on by the ranking: it names people,
+# organised by directory. It says who changed an area, not who knows or owns it.
+# enabled = false
+
+# Directory components that make an area: 3 makes src/app/core one area.
+# depth = 3
 """
 
 _DEFAULT_MAILMAP_TEMPLATE: str = """\

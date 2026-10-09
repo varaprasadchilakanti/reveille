@@ -83,6 +83,30 @@ class Finding:
     evidence: str
 
 
+def longest_quiet_run(commits: list[Commit]) -> int:
+    """Return the most consecutive days without a commit between two that had one.
+
+    This is the single definition the summary card, the cadence finding and
+    the JSON all use. Days before the first commit and after the last are not
+    counted: before the first there was nothing to be quiet, and the silence
+    after the last is what the dormancy finding states, against the end of
+    the window. Two functions with two definitions once put "155" on the card
+    and "3 days" in the finding of the same report.
+
+    Args:
+        commits: The commits in the analysis window.
+
+    Returns:
+        The longest run of commit-free calendar days, or zero when fewer
+        than two days carry a commit.
+    """
+    days = sorted({c.timestamp.date() for c in commits})
+    if len(days) < 2:
+        return 0
+    # A gap of n days between two active days holds n - 1 days with none.
+    return max((b - a).days for a, b in itertools.pairwise(days)) - 1
+
+
 def _plural(count: int, singular: str, plural: str | None = None) -> str:
     """Return `singular` for one, otherwise `plural` (default: +s)."""
     if count == 1:
@@ -101,7 +125,9 @@ def _span_finding(commits: list[Commit]) -> Finding:
             f"{_plural(len(commits), 'commit')} over {_plural(days, 'day')}, "
             f"landing on {_plural(active, 'distinct day')}."
         ),
-        detail=("Merge commits are excluded, so this is lower than raw `git log`."),
+        # Plain text: the sentence is rendered as HTML, where Markdown
+        # backticks printed literally.
+        detail="Merge commits are excluded, so this is lower than a raw git log count.",
         evidence=f"{first.isoformat()} to {last.isoformat()}",
     )
 
@@ -122,13 +148,15 @@ def _distribution_finding(contributors: list[ContributorStats]) -> Finding | Non
     # coefficient is reported as the evidence behind it.
     if len(counts) < _MINIMUM_CONTRIBUTORS_FOR_BEHAVIOUR:
         # With two contributors, a leading share is a statement about one
-        # named person in a table four sections below. The Gini describes
-        # the same distribution without singling anyone out.
+        # named person in the contributor table. The Gini describes the
+        # same distribution without singling anyone out. The finding is also
+        # what `reveille summary` prints, where no table follows, so the
+        # sentence names the table rather than saying where it sits.
         return Finding(
             headline=(f"Commits are distributed across {_plural(len(counts), 'contributor')}."),
             detail=(
-                "The share held by each is in the table below. With so few "
-                "contributors a share is a statement about an identifiable "
+                "Each share is in the full report's contributor table. With so "
+                "few contributors a share is a statement about an identifiable "
                 "person, so it is not restated here."
             ),
             evidence=f"Gini {gini:.2f}",
@@ -173,12 +201,7 @@ def _cadence_finding(commits: list[Commit]) -> Finding | None:
         return None
     gaps = [(b - a).days for a, b in itertools.pairwise(days)]
     median = statistics.median(gaps)
-    # A gap of n days between two active days contains n-1 days with no
-    # commits. The summary card counts inactive calendar days; this once
-    # counted the gap, so the two disagreed by exactly one on every
-    # repository ever analysed -- "Max Inactive Days 13" beside "longest
-    # quiet run of 14 days", in one document, about one fact.
-    longest = max(gaps) - 1
+    longest = longest_quiet_run(commits)
 
     headline = (
         f"Typically {median:.0f} "
@@ -223,6 +246,21 @@ def _weekend_finding(
     )
 
 
+def _co_author_finding(commits: list[Commit]) -> Finding | None:
+    """State how many commits credit a co-author, naming nobody (ADR 0014)."""
+    credited = sum(1 for c in commits if c.co_authors)
+    if not credited:
+        return None
+    return Finding(
+        headline=f"{_plural(credited, 'commit')} {'credits' if credited == 1 else 'credit'} a co-author.",
+        detail=(
+            "Credited by a Co-authored-by trailer, which is not verified. "
+            "The charts count authors only."
+        ),
+        evidence=f"{credited:,} of {len(commits):,}",
+    )
+
+
 def _recency_finding(commits: list[Commit], today: datetime.date) -> Finding | None:
     """State how current the history is, relative to when it was read."""
     last = max(c.timestamp for c in commits).date()
@@ -233,7 +271,7 @@ def _recency_finding(commits: list[Commit], today: datetime.date) -> Finding | N
         headline=f"No commits in the last {_plural(idle, 'day')}.",
         detail=(
             "The analysis window may simply end before the most recent work; "
-            "check `--since` and `--until` before reading this as dormancy."
+            "check --since and --until before reading this as dormancy."
         ),
         evidence=f"last commit {last.isoformat()}",
     )
@@ -266,6 +304,7 @@ def summarise(
         _distribution_finding(contributors),
         _cadence_finding(commits),
         _weekend_finding(commits, contributors),
+        _co_author_finding(commits),
         _recency_finding(commits, reference),
     ]
     return [finding for finding in candidates if finding is not None]

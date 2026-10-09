@@ -35,6 +35,7 @@ import os
 import re
 import subprocess
 import sys
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
@@ -204,11 +205,11 @@ class TestRecordForgery:
         assert len(commits) >= 1
 
 
-def _report_with_name(name: str) -> ReportData:
+def _report_with_name(name: str, email: str = "a@example.com") -> ReportData:
     """A one-contributor report whose display name is attacker-controlled."""
     stats = ContributorStats(
         name=name,
-        email="a@example.com",
+        email=email,
         commit_count=1,
         lines_added=1,
         lines_deleted=0,
@@ -290,6 +291,16 @@ class TestCsvFormulaInjection:
         assert rows[0]["name"] == "Ada Lovelace"
 
 
+def _run_console_script(args: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+    """Run the installed `reveille` command the way a user would.
+
+    The console script, not `python -m reveille.cli`: the module has no
+    __main__ guard, so `-m` imports it, runs nothing and exits 0.
+    """
+    console_script = Path(sys.executable).parent / "reveille"
+    return subprocess.run([str(console_script), *args], cwd=cwd, capture_output=True, text=True)
+
+
 @pytest.mark.integration
 class TestOutputPathSafety:
     """The path actually written must be the path that was checked."""
@@ -330,6 +341,222 @@ class TestOutputPathSafety:
 
         assert written[0].parent == tmp_path
         assert not (repo / "escaped.html").exists()
+
+
+@pytest.mark.integration
+class TestRemoteUrlCarriesNoCredentials:
+    """A token in the remote URL must not reach any report.
+
+    The URL was printed exactly as `.git/config` stores it, so a remote added
+    as `https://user:token@host/...` put the token in the HTML header and the
+    JSON metadata of every report of that repository.
+    """
+
+    @pytest.mark.parametrize("output_format", ["html", "json", "csv"])
+    def test_no_output_format_contains_the_secret(self, tmp_path: Path, output_format: str) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        subprocess.run(
+            [
+                "git",
+                "remote",
+                "add",
+                "origin",
+                "https://USER-SECRET:PLACEHOLDER-SECRET@example.test/r.git?private_token=QUERY-SECRET",
+            ],
+            cwd=repo,
+            check=True,
+        )
+        config = ReportConfig(
+            repo_path=repo,
+            output_path=tmp_path / "report.html",
+            output_format=output_format,
+            deterministic=True,
+        )
+
+        written = generate_report(config)
+        text = written[0].read_text(encoding="utf-8-sig")
+
+        assert "PLACEHOLDER-SECRET" not in text
+        assert "QUERY-SECRET" not in text
+        assert "USER-SECRET" not in text
+        if output_format != "csv":
+            # Positive control: the remote is still reported, only cleaned.
+            assert "https://example.test/r.git" in text
+
+    def test_an_ssh_address_is_reported_unchanged(self, tmp_path: Path) -> None:
+        """`git@host:path` names a login, not a secret, and stays readable."""
+        repo = _init_repo(tmp_path / "repo")
+        subprocess.run(
+            ["git", "remote", "add", "origin", "git@example.test:team/r.git"],
+            cwd=repo,
+            check=True,
+        )
+        config = ReportConfig(
+            repo_path=repo,
+            output_path=tmp_path / "report.html",
+            output_format="json",
+            deterministic=True,
+        )
+
+        text = generate_report(config)[0].read_text(encoding="utf-8")
+
+        assert '"remote_url": "git@example.test:team/r.git"' in text
+
+
+def _contributor_names(repo: Path, tmp_path: Path) -> list[str]:
+    """Generate a JSON report and return every contributor name in it."""
+    import json
+
+    config = ReportConfig(
+        repo_path=repo,
+        output_path=tmp_path / "report.json",
+        output_format="json",
+        deterministic=True,
+    )
+    payload = json.loads(generate_report(config)[0].read_text(encoding="utf-8"))
+    return [c["name"] for c in payload["contributors"]]
+
+
+@pytest.mark.integration
+class TestMailmapIsUntrustedInput:
+    """A `.mailmap` is written by whoever controls the repository.
+
+    Its substitutions skipped the scrub and the length bounds applied to the
+    commit's own author fields, so a mapped name reached the CSV with escape
+    sequences intact and at any length.
+    """
+
+    def test_a_mapped_name_is_scrubbed_and_bounded(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        hostile = "\x1b[2J" + "Z" * 5000
+        (repo / ".mailmap").write_text(f"{hostile} <real@example.com>\n", encoding="utf-8")
+
+        (name,) = _contributor_names(repo, tmp_path)
+
+        assert "\x1b" not in name
+        assert len(name) <= 257
+        assert name.startswith("[2JZZZ"), "positive control: the mapping applied"
+
+    def test_a_symlinked_mailmap_is_ignored(self, tmp_path: Path) -> None:
+        """Git refuses one; following it let a repository point it at /dev/zero."""
+        repo = _init_repo(tmp_path / "repo")
+        target = tmp_path / "elsewhere"
+        target.write_text("Mapped Name <real@example.com>\n", encoding="utf-8")
+        (repo / ".mailmap").symlink_to(target)
+
+        assert _contributor_names(repo, tmp_path) == ["Real"]
+
+    def test_an_undecodable_mailmap_does_not_crash_the_run(self, tmp_path: Path) -> None:
+        """A Latin-1 byte used to raise and exit 1, the "negative answer" code."""
+        repo = _init_repo(tmp_path / "repo")
+        (repo / ".mailmap").write_bytes(b"Mapped Name <real@example.com>\n# caf\xe9\n")
+
+        assert _contributor_names(repo, tmp_path) == ["Mapped Name"]
+
+
+@pytest.mark.integration
+class TestUnreadableConfigIsCannotRun:
+    """A configuration file that cannot be read is exit 2, never exit 1.
+
+    Exit 1 means "ran correctly, negative answer". A Latin-1 reveille.toml and a
+    directory of that name both escaped as tracebacks with exit 1.
+    """
+
+    def test_a_non_utf8_config_exits_2(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        (repo / "reveille.toml").write_bytes(b'[report]\ntitle = "caf\xe9"\n')
+
+        result = _run_console_script(["generate", "-o", str(tmp_path / "r.html")], cwd=repo)
+
+        assert result.returncode == 2
+        assert "Traceback" not in result.stderr
+
+    def test_a_directory_named_like_the_config_exits_2(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        (repo / "reveille.toml").mkdir()
+
+        result = _run_console_script(["generate", "-o", str(tmp_path / "r.html")], cwd=repo)
+
+        assert result.returncode == 2
+        assert "Traceback" not in result.stderr
+
+
+class _ElementCollector(HTMLParser):
+    """Every start tag a browser's tokenizer would see, with its attributes."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.elements: list[tuple[str, dict[str, str | None]]] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.elements.append((tag, dict(attrs)))
+
+
+def _elements(html: str) -> list[tuple[str, dict[str, str | None]]]:
+    collector = _ElementCollector()
+    collector.feed(html)
+    return collector.elements
+
+
+@pytest.mark.integration
+class TestEveryEscapeHasAGuard:
+    """Four escapes were each removable with the whole suite still passing.
+
+    Each test below was watched failing with its escape removed. Without the
+    first, a `.mailmap` entry could end a `<script>` block early.
+    """
+
+    def test_an_address_cannot_close_the_script_that_carries_the_chart_data(
+        self, tmp_path: Path
+    ) -> None:
+        """Heatmap data is JSON inside `<script>`, keyed by address.
+
+        A `.mailmap` address may contain `</script`, which ends the block in
+        every browser and turns the rest of the JSON into markup. JSON
+        encoding alone does not prevent it; the `</` escape does.
+        """
+        repo = _init_repo(tmp_path / "repo")
+        (repo / ".mailmap").write_text(
+            "Mal <a</script x@e.test> <real@example.com>\n", encoding="utf-8"
+        )
+        out = tmp_path / "r.html"
+        generate_report(ReportConfig(repo_path=repo, output_path=out, deterministic=True))
+        html = out.read_text(encoding="utf-8")
+
+        assert "a<\\/script x@e.test" in html, "positive control: address embedded"
+        assert "a</script" not in html
+
+    def test_an_email_is_escaped_in_the_html_table(self, tmp_path: Path) -> None:
+        out = tmp_path / "r.html"
+        Renderer().render(
+            _report_with_name("Ada", email='x"><img src=x onerror=alert(1)>@e.test'), out
+        )
+
+        assert not [
+            attrs for tag, attrs in _elements(out.read_text(encoding="utf-8")) if "onerror" in attrs
+        ]
+
+    def test_an_email_cannot_become_a_spreadsheet_formula(self, tmp_path: Path) -> None:
+        out = Renderer().render_csv(
+            _report_with_name("Ada", email='=HYPERLINK("http://evil.test")'), tmp_path / "r.csv"
+        )
+        rows = list(csv.DictReader(out.read_text(encoding="utf-8-sig").splitlines()))
+
+        assert rows[0]["email"].startswith("'=")
+
+    @pytest.mark.parametrize("writer", ["render_json", "render_csv"])
+    def test_structured_output_is_not_written_through_a_symlink(
+        self, tmp_path: Path, writer: str
+    ) -> None:
+        target = tmp_path / "target.txt"
+        target.write_text("TARGET", encoding="utf-8")
+        link = tmp_path / "report.out"
+        link.symlink_to(target)
+
+        with pytest.raises(OutputPathError, match="symbolic link"):
+            getattr(Renderer(), writer)(_report_with_name("Ada"), link)
+
+        assert target.read_text(encoding="utf-8") == "TARGET"
 
 
 @pytest.mark.integration
@@ -393,6 +620,87 @@ class TestSecondPassFindings:
 
         assert result.returncode != 0
         assert victim.read_text(encoding="utf-8") == "IMPORTANT"
+
+    def test_a_config_file_cannot_write_into_the_git_directory(self, tmp_path: Path) -> None:
+        """A reveille.toml naming `.git/HEAD` once overwrote it and broke the clone.
+
+        The path stayed inside the repository, so the outside-the-repository
+        check passed it. `git status` then exited 128 on the victim's clone.
+        """
+        repo = _init_repo(tmp_path / "hostile")
+        head_before = (repo / ".git" / "HEAD").read_bytes()
+        (repo / "reveille.toml").write_text('[report]\noutput = ".git/HEAD"\n', encoding="utf-8")
+
+        result = _run_console_script(["generate"], cwd=repo)
+
+        assert result.returncode == 2
+        assert (repo / ".git" / "HEAD").read_bytes() == head_before
+        assert subprocess.run(["git", "status"], cwd=repo, capture_output=True).returncode == 0
+
+    def test_an_explicit_output_flag_cannot_write_into_the_git_directory(
+        self, tmp_path: Path
+    ) -> None:
+        """The refusal holds whoever chose the path, not only a configuration file."""
+        repo = _init_repo(tmp_path / "repo")
+
+        result = _run_console_script(["generate", "--output", ".git/report.html"], cwd=repo)
+
+        assert result.returncode == 2
+        assert not (repo / ".git" / "report.html").exists()
+
+    def test_a_bare_repository_keeps_its_head(self, tmp_path: Path) -> None:
+        """A bare repository has no `.git`; its HEAD sits at the top level."""
+        source = _init_repo(tmp_path / "source")
+        bare = tmp_path / "bare.git"
+        subprocess.run(["git", "clone", "-q", "--bare", str(source), str(bare)], check=True)
+        head_before = (bare / "HEAD").read_bytes()
+
+        result = _run_console_script(["generate", "--output", "HEAD"], cwd=bare)
+
+        assert result.returncode == 2
+        assert (bare / "HEAD").read_bytes() == head_before
+
+    def test_a_separate_git_directory_is_protected(self, tmp_path: Path) -> None:
+        """`--separate-git-dir` leaves a `.git` file pointing elsewhere."""
+        work = tmp_path / "work"
+        store = tmp_path / "store"
+        subprocess.run(["git", "init", "-q", f"--separate-git-dir={store}", str(work)], check=True)
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=A",
+                "-c",
+                "user.email=a@example.com",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "c",
+            ],
+            cwd=work,
+            check=True,
+        )
+        head_before = (store / "HEAD").read_bytes()
+
+        result = _run_console_script(["generate", "--output", str(store / "HEAD")], cwd=work)
+
+        assert result.returncode == 2
+        assert (store / "HEAD").read_bytes() == head_before
+
+    def test_a_discovered_config_file_says_what_it_changed(self, tmp_path: Path) -> None:
+        """Turning the ranking on from a file nobody asked for must not be silent."""
+        repo = _init_repo(tmp_path / "repo")
+        (repo / "reveille.toml").write_text(
+            '[ranking]\nenabled = true\n[filters]\nexclude_authors = ["Bob"]\n',
+            encoding="utf-8",
+        )
+
+        result = _run_console_script(["generate", "--output", str(tmp_path / "r.html")], cwd=repo)
+
+        assert result.returncode == 0
+        assert "ranking.enabled" in result.stderr
+        assert "filters.exclude_authors" in result.stderr
 
     def test_init_refuses_a_symlinked_config_destination(self, tmp_path: Path) -> None:
         """A dangling link passes an `exists()` check and still redirects."""
@@ -721,9 +1029,10 @@ def _repository_manifest(root: Path) -> dict[str, str]:
 class TestAnalysisNeverModifiesTheRepository:
     """`reveille capabilities` publishes this, so it is asserted here.
 
-    The claim, verbatim: "Analysis never modifies the repository it reads.
-    `reveille init` is the one command that writes into a repository, and
-    only the files you ask it for." The refusal beside it is stronger
+    The claim, verbatim: "Analysis never changes the repository's Git data:
+    its history, refs, index, objects or configuration." It once read "never
+    modifies the repository", which a reveille.toml naming `.git/HEAD`
+    disproved; that path is now refused. The refusal beside it is stronger
     still: Reveille will not "alter the contents, history, index or refs
     of a repository".
 
@@ -894,3 +1203,96 @@ class TestTheManifestIsNotFooledByGitHousekeeping:
         assert _git_locks(repo) == []
         assert "poetry.lock" in _content_manifest(repo)
         assert not _is_transient_git_lock("poetry.lock")
+
+
+def _commit_as(repo: Path, name: str, email: str) -> None:
+    _run(
+        ["git", "commit", "-qm", "c", "--allow-empty"],
+        repo,
+        {
+            "GIT_AUTHOR_NAME": name,
+            "GIT_AUTHOR_EMAIL": email,
+            "GIT_COMMITTER_NAME": name,
+            "GIT_COMMITTER_EMAIL": email,
+            "GIT_AUTHOR_DATE": "2024-03-02T10:00:00+00:00",
+            "GIT_COMMITTER_DATE": "2024-03-02T10:00:00+00:00",
+        },
+    )
+
+
+def _identities(repo: Path, exclude: list[str] | None = None) -> set[tuple[str, str]]:
+    commits = GitReader(repo).read_commits(
+        branch="main", since=None, until=None, exclude_authors=exclude or []
+    )
+    return {(c.author_name, c.author_email) for c in commits}
+
+
+@pytest.mark.integration
+class TestNamesCannotHideTheirOwnText:
+    """A name must display as the characters it contains, in their order.
+
+    A right-to-left override made "\\u202eevil\\u202c Name" display as
+    "live Name" in the contributor table and the chart legend, and a
+    zero-width space let two names that look identical be different
+    contributors. Direction overrides and isolates, the zero-width space and
+    the byte-order mark are removed from names. The joiners and direction
+    marks that real Arabic, Hebrew, Persian and Indic names use are kept, and
+    addresses are left alone: an address is the identity key (ADR 0002), so
+    changing one could merge two people.
+    """
+
+    def test_a_direction_override_is_removed(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        _commit_as(repo, "‮evil‬ Name", "s@example.com")
+
+        assert ("evil Name", "s@example.com") in _identities(repo)
+
+    def test_isolates_zero_width_space_and_bom_are_removed(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        _commit_as(repo, "⁧Zero​Width﻿⁩", "z@example.com")
+
+        assert ("ZeroWidth", "z@example.com") in _identities(repo)
+
+    def test_characters_real_names_need_are_kept(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        persian = "می‌رزا"  # ZWNJ
+        devanagari = "क्‍ष"  # ZWJ
+        hebrew = "דוד ‏(2)"  # RLM
+        for index, name in enumerate((persian, devanagari, hebrew)):
+            _commit_as(repo, name, f"n{index}@example.com")
+
+        names = {name for name, _ in _identities(repo)}
+
+        assert {persian, devanagari, hebrew} <= names
+
+    def test_an_address_is_not_changed(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        _commit_as(repo, "Plain", "a​b@example.com")
+
+        assert ("Plain", "a​b@example.com") in _identities(repo)
+
+    def test_a_mapped_name_is_cleaned_too(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        (repo / ".mailmap").write_text("‮evil‬ Name <real@example.com>\n", encoding="utf-8")
+
+        assert _contributor_names(repo, tmp_path) == ["evil Name"]
+
+    @pytest.mark.parametrize("given", ["‮evil‬ Name", "evil Name"])
+    def test_either_spelling_excludes_the_author(self, tmp_path: Path, given: str) -> None:
+        """The raw name is what `git log` shows; the clean one is what the report shows."""
+        repo = _init_repo(tmp_path / "repo")
+        _commit_as(repo, "‮evil‬ Name", "s@example.com")
+
+        addresses = {email for _, email in _identities(repo, exclude=[given])}
+
+        assert "s@example.com" not in addresses
+        assert "real@example.com" in addresses, "positive control: only one author left"
+
+
+@pytest.mark.integration
+def test_a_name_of_invisible_characters_only_shows_the_address(tmp_path: Path) -> None:
+    """Stripped, it was an empty cell in the table and an empty legend entry."""
+    repo = _init_repo(tmp_path / "repo")
+    _commit_as(repo, "‮​﻿", "ghost@example.com")
+
+    assert ("ghost@example.com", "ghost@example.com") in _identities(repo)

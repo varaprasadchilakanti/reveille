@@ -14,13 +14,20 @@ from __future__ import annotations
 
 import datetime
 import json
+import math
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
 
 from reveille.adapters.git_reader import _iter_numstat, _rename_destination
-from reveille.adapters.renderer import _build_extension_chart, _build_hotspot_chart
+from reveille.adapters.renderer import (
+    _build_extension_chart,
+    _build_hotspot_chart,
+    _shorten_path,
+)
 from reveille.domain.models import (
     SCHEMA_VERSION,
     AnalysisProvenance,
@@ -226,7 +233,7 @@ class TestTheRepositoryProfileSection:
         assert 'id="spec-profile"' not in html, "the profile is no longer a Plotly chart"
         assert 'id="chart-profile"' not in html
         body = html[html.index("Repository Profile") :]
-        assert "profile-value" in body[:4000]
+        assert "profile-value" in body[: body.index("</table>")]
 
     def test_one_row_per_axis(self, tmp_path: Path) -> None:
         from reveille.domain.profile import AXIS_ORDER
@@ -315,3 +322,226 @@ class TestTheContributionBreakdownUsesOneFormPerQuestion:
             if name == "_build_heatmap_data":
                 continue  # consumed by the client script, not a chart spec
             assert name in source, f"{name} is never called by _build_charts"
+
+
+@pytest.mark.unit
+class TestTheProfileFlower:
+    """ADR 0016: separate petals beside the table, drawn without a script."""
+
+    def _html(self, tmp_path: Path) -> str:
+        return TestTheRepositoryProfileSection()._rendered(tmp_path)
+
+    def test_six_separate_petals_in_inline_svg(self, tmp_path: Path) -> None:
+        html = self._html(tmp_path)
+        flower = html[html.index('<figure class="profile-flower">') : html.index("</figure>")]
+
+        assert flower.count('class="flower-track"') == 6
+        assert "polygon" not in flower, "never joined into a shape whose area misleads"
+        assert 'id="spec-profile"' not in html
+
+    def test_the_label_carries_every_value(self, tmp_path: Path) -> None:
+        html = self._html(tmp_path)
+        label = re.search(r'<svg viewBox="[\d ]+" role="img"\s+aria-label="([^"]*)"', html)
+
+        assert label
+        for name in (
+            "Continuity",
+            "Recent work",
+            "Shared",
+            "Collaboration",
+            "Revisiting",
+            "Automation",
+        ):
+            assert re.search(rf"{name} \d+%", label.group(1)), name
+
+    def test_expectations_are_marked_where_computable(self, tmp_path: Path) -> None:
+        html = self._html(tmp_path)
+
+        assert html.count('class="flower-expected"') == html.count('class="meter-tick"')
+        # On a ring of the page colour, or it falls below 3:1 against a petal.
+        assert html.count('class="flower-expected-halo"') == html.count('class="flower-expected"')
+
+
+def _radius(path: str) -> float:
+    """The radius of a petal wedge or expectation arc, from its `A` command."""
+    match = re.search(r"A ([\d.]+) ", path)
+    assert match, path
+    return float(match.group(1))
+
+
+@pytest.mark.unit
+class TestTheFlowerGeometry:
+    """The petal is the figure: its length, its mark and its place are checked."""
+
+    def _petals(self, values: list[float], expected: list[float | None]) -> list[dict]:
+        from reveille.adapters.renderer import _profile_flower
+        from reveille.domain.profile import AXIS_ORDER, ProfileAxis
+
+        return _profile_flower(
+            [
+                ProfileAxis(name=name, value=value, description="", expected=mark)
+                for name, value, mark in zip(AXIS_ORDER, values, expected, strict=True)
+            ]
+        )
+
+    def test_length_is_the_share_from_centre_to_rim(self) -> None:
+        petals = self._petals([1.0, 0.5, 0.25, 0.1, 0.75, 0.0], [None] * 6)
+
+        assert [_radius(p["petal"]) for p in petals[:5]] == [120.0, 60.0, 30.0, 12.0, 90.0]
+        assert petals[5]["petal"] == "", "0% draws no petal"
+        assert all(_radius(p["track"]) == 120.0 for p in petals), "every track reaches the rim"
+
+    def test_the_mark_sits_at_the_expected_value_not_the_value(self) -> None:
+        petals = self._petals([0.9, 0.2, 0.5, 0.1, 0.1, 0.1], [0.5, 0.25, None, None, None, None])
+
+        assert _radius(petals[0]["expected"]) == 60.0
+        assert _radius(petals[1]["expected"]) == 30.0
+        assert petals[2]["expected"] is None
+
+    def test_the_order_runs_clockwise_from_the_top(self) -> None:
+        """Continuity at twelve o'clock, then clockwise in `AXIS_ORDER`."""
+        petals = self._petals([0.5] * 6, [None] * 6)
+        angles = [
+            math.degrees(math.atan2(float(p["label_y"]) - 220, float(p["label_x"]) - 220))
+            for p in petals
+        ]
+
+        assert [round(a) for a in angles] == [-90, -30, 30, 90, 150, -150]
+
+    def test_colours_come_from_the_theme(self) -> None:
+        from reveille.adapters import renderer
+
+        template = (
+            Path(renderer.__file__).parent.parent / "templates" / "report.html.j2"
+        ).read_text(encoding="utf-8")
+        rules = re.findall(r"\.flower-[\w-]+\s*\{([^}]*)\}", template)
+
+        assert len(rules) >= 6
+        for rule in rules:
+            assert "#" not in rule, f"a fixed colour cannot follow dark mode: {rule.strip()}"
+            for colour in re.findall(r"(?:fill|stroke):\s*([^;]+);", rule):
+                assert colour.startswith("var(--color-") or colour == "none", colour
+
+
+@pytest.mark.unit
+class TestTheProfileFitsTheScreen:
+    """The shape and its figures are read together, at every width."""
+
+    @staticmethod
+    def _template() -> str:
+        from reveille.adapters import renderer
+
+        return (Path(renderer.__file__).parent.parent / "templates" / "report.html.j2").read_text(
+            encoding="utf-8"
+        )
+
+    def test_the_flower_and_the_table_share_one_layout(self, tmp_path: Path) -> None:
+        html = TestTheRepositoryProfileSection()._rendered(tmp_path)
+        layout = html[html.index('<div class="profile-layout">') :]
+
+        assert (
+            layout.index('<figure class="profile-flower">')
+            < layout.index('<table class="profile">')
+            < layout.index("</div>")
+        )
+
+    def test_side_by_side_only_where_there_is_room(self) -> None:
+        css = re.sub(r"\s+", " ", self._template())
+
+        assert re.search(
+            r"@media \(min-width: 901px\) \{ \.profile-layout \{ grid-template-columns: "
+            r"minmax\(300px, 380px\) minmax\(0, 1fr\);",
+            css,
+        )
+
+    def test_a_phone_drops_the_bar_not_the_figures(self) -> None:
+        css = re.sub(r"\s+", " ", self._template())
+        phone = css[css.index("@media (max-width: 560px)") :]
+        phone = phone[: phone.index("} }") + 3]
+
+        assert ".profile-meter .meter" in phone and "display: none" in phone
+        assert ".profile-value" not in phone, "the share itself stays"
+
+    def test_every_label_sits_inside_the_drawing(self) -> None:
+        """The canvas is cropped to the labels; an anchor near its edge clips.
+
+        Text runs about 15 units above its baseline and the value line
+        16 below; a side label needs room for a word about 90 units wide.
+        """
+        from reveille.adapters.renderer import _profile_flower
+        from reveille.domain.profile import AXIS_ORDER, ProfileAxis
+
+        box = re.search(r'<svg viewBox="([\d ]+)" role="img"', self._template())
+        assert box
+        left, top, width, height = (float(v) for v in box.group(1).split())
+        petals = _profile_flower(
+            [ProfileAxis(name=n, value=0.5, description="") for n in AXIS_ORDER]
+        )
+
+        for petal in petals:
+            x, y = float(petal["label_x"]), float(petal["label_y"])
+            assert top <= y - 15 and y + 16 + 4 <= top + height, petal["name"]
+            if petal["anchor"] == "start":
+                assert x + 90 <= left + width, petal["name"]
+            elif petal["anchor"] == "end":
+                assert x - 90 >= left, petal["name"]
+
+
+@pytest.mark.unit
+class TestAPhoneSeesAShortenedPathNotACutOne:
+    """At 360 px Plotly cut "src/reveille/adapters/renderer.py" at the panel
+    edge, so the axis read "c/reveille/adapters/renderer.py", a path that does
+    not exist. A shortened label says, with an ellipsis, that it is shortened."""
+
+    def test_a_path_that_fits_is_unchanged(self) -> None:
+        assert _shorten_path("README.md") == "README.md"
+
+    def test_whole_trailing_components_are_kept_behind_an_ellipsis(self) -> None:
+        assert _shorten_path("src/reveille/adapters/renderer.py") == "…/adapters/renderer.py"
+
+    def test_a_long_file_name_keeps_its_end(self) -> None:
+        label = _shorten_path("a/" + "x" * 40 + ".py")
+        assert label.startswith("…") and label.endswith("x.py") and len(label) == 26
+
+    def test_the_chart_keeps_full_paths_as_data_and_short_ones_for_phones(self) -> None:
+        files = [_file("src/reveille/adapters/renderer.py", added=9), _file("README.md", added=3)]
+        figure = json.loads(_build_hotspot_chart(files))
+        narrow = figure["layout"]["meta"]["narrow_layout"]["yaxis"]
+
+        assert narrow["tickvals"] == figure["data"][0]["y"], "the data stays the full path"
+        assert "src/reveille/adapters/renderer.py" in figure["data"][0]["y"]
+        assert narrow["ticktext"] == ["README.md", "…/adapters/renderer.py"]
+
+    def test_the_type_chart_grows_on_a_phone(self) -> None:
+        figure = json.loads(_build_extension_chart([_file("a.py", added=1)]))
+        assert figure["layout"]["meta"]["narrow_layout"]["height"] > figure["layout"]["height"]
+
+
+def _narrow(width: int) -> dict:
+    source = _TEMPLATE.read_text(encoding="utf-8")
+    functions = [
+        re.search(rf"    function {name}\(.*?\n    \}}\n", source, re.DOTALL)
+        for name in ("mergeLayout", "applyNarrowLayout")
+    ]
+    assert all(functions), "mergeLayout or applyNarrowLayout is missing from the template"
+    spec = {"layout": {"meta": {"narrow_layout": {"height": 360, "xaxis": {"nticks": 3}}}}}
+    script = (
+        "".join(f.group(0) for f in functions if f)
+        + "process.stdout.write(JSON.stringify(applyNarrowLayout("
+        + f"{{height: 280, xaxis: {{title: 'kept'}}}}, {json.dumps(spec)}, {width})));\n"
+    )
+    node = shutil.which("node")
+    assert node
+    return json.loads(
+        subprocess.run([node, "-e", script], check=True, capture_output=True, text=True).stdout
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.skipif(shutil.which("node") is None, reason="needs Node.js to run the template code")
+class TestNarrowOverridesApplyOnlyBelow560:
+    def test_a_phone_gets_them_merged(self) -> None:
+        assert _narrow(360) == {"height": 360, "xaxis": {"title": "kept", "nticks": 3}}
+
+    def test_a_desktop_does_not(self) -> None:
+        assert _narrow(1024) == {"height": 280, "xaxis": {"title": "kept"}}

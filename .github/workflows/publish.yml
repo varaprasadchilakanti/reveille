@@ -31,6 +31,10 @@ on:
         required: true
         type: string
 
+# No token rights unless a job asks for them: every job below declares its
+# own, and a job added later without a block starts with none.
+permissions: {}
+
 jobs:
   # ----------------------------------------------------------------
   # Release-time vulnerability gate

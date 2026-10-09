@@ -24,6 +24,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# No token rights unless a job asks for them: every job below declares its
+# own, and a job added later without a block starts with none.
+permissions: {}
+
 jobs:
 
   # ----------------------------------------------------------------

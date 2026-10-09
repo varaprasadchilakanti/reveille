@@ -34,6 +34,9 @@ class Commit:
     timestamp: datetime.datetime
     lines_added: int
     lines_deleted: int
+    #: `(name, address)` of each identity a `Co-authored-by` trailer credits,
+    #: resolved like an author (ADR 0014). Never counted as authorship.
+    co_authors: tuple[tuple[str, str], ...] = ()
 
     @property
     def lines_changed(self) -> int:
@@ -82,6 +85,9 @@ class ContributorStats:
     active_days: int
     first_commit_date: datetime.date
     last_commit_date: datetime.date
+    #: Commits this contributor is credited on as a co-author (ADR 0014). A
+    #: plain count beside the authored one; never part of the ranking.
+    co_authored_commits: int = 0
 
     @property
     def net_lines(self) -> int:
@@ -164,6 +170,71 @@ class AnalysisProvenance:
     ranking_weights: dict[str, float] | None
     mailmap_applied: bool
     deterministic: bool
+    # Commits dated after the end of a default window -- a wrong clock, or a
+    # rebase that kept a future date. They are counted in no figure; this is
+    # where that is recorded, so the report never silently holds fewer
+    # commits than the branch.
+    commits_dated_after_window: int = 0
+    # Commits Git reported whose record could not be read (ADR 0019). Counted
+    # in no figure, and recorded so the omission is never silent.
+    commits_unreadable: int = 0
+    # A shallow clone holds only its most recent commits. Every figure then
+    # describes the clone, not the project, and the window starts where the
+    # clone's history does.
+    shallow_clone: bool = False
+    # Replace refs and a graft file present in the repository and not
+    # followed (ADR 0018). The figures are unaffected; recorded because
+    # `git log` follows them and would show a different history.
+    replace_refs_not_followed: int = 0
+    graft_file_not_followed: bool = False
+    # Whether the "who changed each area" section was asked for, and at what
+    # depth (ADR 0013). Recorded either way, so a report states that it does
+    # not name people by area as plainly as one that does.
+    area_authors_enabled: bool = False
+    area_depth: int | None = None
+    # The most entries any list of people in JSON or CSV carries (ADR 0015),
+    # or None for every one.
+    limit: int | None = None
+
+
+@dataclass(frozen=True)
+class CoAuthor:
+    """An identity credited only as a co-author in the window (ADR 0014).
+
+    Attributes:
+        name: Display name, resolved like an author's.
+        email: Lower-cased address, the identity key.
+        co_authored_commits: Commits whose trailers credit this identity.
+    """
+
+    name: str
+    email: str
+    co_authored_commits: int
+
+
+@dataclass(frozen=True)
+class AreaActivity:
+    """Who changed one directory in the analysis window (ADR 0013).
+
+    An area, not a person: it records which identities changed it and when
+    it was last changed, and deliberately no count per person, which would
+    be a share of the area per person.
+
+    Attributes:
+        area: The directory, at most `--area-depth` components, or "(root)"
+            for files at the top level.
+        commits: Commits that changed at least one file in the area.
+        last_changed: The date of the most recent of those commits.
+        authors: Lower-cased address of everybody who made them, mapped to
+            the date they last changed the area. Used only to choose which
+            names a long list shows; never printed or written out, since a
+            person's last date reads as a departure date.
+    """
+
+    area: str
+    commits: int
+    last_changed: datetime.date
+    authors: dict[str, datetime.date]
 
 
 @dataclass(frozen=True)
@@ -203,3 +274,8 @@ class ReportData:
     #: listing, not the analysis. Defaults to empty, so a caller
     #: constructing a report without it keeps working.
     suppressed_contributors: list[ContributorStats] = field(default_factory=list)
+    #: Per-directory activity, present only when `--area-authors` asked for
+    #: it (ADR 0013). Empty otherwise, and the section is then absent.
+    areas: list[AreaActivity] = field(default_factory=list)
+    #: Identities credited only as co-authors, alphabetically (ADR 0014).
+    co_authors_only: list[CoAuthor] = field(default_factory=list)

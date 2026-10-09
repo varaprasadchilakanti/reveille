@@ -14,12 +14,12 @@ It measures the volume and regularity of commits, because that is what
 Git records. It does not measure contribution, productivity, or value.
 The distance between those two sentences is the whole caveat.
 
-This is not a matter of taste. Both DORA and SPACE -- the two most
-widely cited bodies of research on software delivery measurement --
-state explicitly that their metrics must not be used to assess
-individuals, because activity metrics are trivially gameable and
-systematically misread part-time, review-heavy, mentoring, and
-on-call work as low output.
+This is not a matter of taste. The SPACE framework (Forsgren et al.,
+2021) holds that "developer productivity is about more than an
+individual's activity levels"; DORA's metrics are defined for
+applications and services, not people. Activity metrics are easy to game and
+systematically misread part-time, review-heavy, mentoring, and on-call
+work as low output.
 
 A contributor who spends a quarter reviewing others' code, unblocking
 people, and deleting a subsystem will rank below one who committed

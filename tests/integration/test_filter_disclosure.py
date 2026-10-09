@@ -258,9 +258,9 @@ class TestTheReportSaysWhichPopulationItDescribes:
         generate_report(ReportConfig(repo_path=repo, output_path=out, deterministic=True))
         text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", out.read_text(encoding="utf-8")))
 
-        assert "1 contributors can be" not in text
+        assert "1 people can be" not in text
         assert "Gini runs 0 (even) to 0.00" not in text
-        assert "With a single contributor there is no distribution to measure" in text
+        assert "With one person there is no distribution to measure" in text
 
     def test_one_listed_contributor_is_not_mistaken_for_one_contributor(
         self,
@@ -291,8 +291,8 @@ class TestTheReportSaysWhichPopulationItDescribes:
         )
         text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", out.read_text(encoding="utf-8")))
 
-        assert "most concentrated 2 contributors can be" in text
-        assert "With a single contributor" not in text
+        assert "most concentrated 2 people can be" in text
+        assert "With one person" not in text
 
 
 @pytest.mark.parametrize("threshold", [1, 2, 5, 100])
@@ -307,3 +307,54 @@ def test_the_population_is_the_repository_at_every_threshold(
     assert derived["_total_commits"] == 12
     assert derived["population_size"] == 2
     assert derived["gini_coefficient"] == 0.25
+
+
+class TestTheContributorsCardCountsThePopulation:
+    """The card describes the repository, like every figure beside it.
+
+    With `--min-commits 999` it read "Contributors 0" next to "1 hold half
+    the commits": it counted the rows the threshold left in the table, while
+    every other card counted the contributors the figures are about.
+    """
+
+    def test_a_threshold_does_not_change_the_card(self, tmp_path: Path) -> None:
+        repo = _repo_with_two_contributors(tmp_path / "repo", major=9, minor=3)
+        out = tmp_path / "r.html"
+        generate_report(
+            ReportConfig(repo_path=repo, output_path=out, min_commits=999, deterministic=True)
+        )
+        html = out.read_text(encoding="utf-8")
+
+        assert "Contributors: 2</span>" in html
+        assert "0 of 2 contributors" in " ".join(html.split()), "positive control"
+
+
+class TestTheCommitShareIsAShareOfEveryCommit:
+    """The donut said a listed contributor held 75% when they held 75% of
+    the *listed* commits. The header says suppressed contributors' commits
+    are counted in every figure; this one did not count them."""
+
+    def _pie(self, repo: Path, out: Path, min_commits: int) -> dict[str, object]:
+        generate_report(
+            ReportConfig(
+                repo_path=repo, output_path=out, min_commits=min_commits, deterministic=True
+            )
+        )
+        html = out.read_text(encoding="utf-8")
+        spec = re.search(r'id="spec-pie_commits">(.*?)</script>', html, re.DOTALL)
+        assert spec, "the report has no commit-share chart"
+        trace = json.loads(spec.group(1))["data"][0]
+        return dict(zip(trace["labels"], trace["values"], strict=True))
+
+    def test_suppressed_commits_go_to_the_residual_slice(self, tmp_path: Path) -> None:
+        repo = _repo_with_two_contributors(tmp_path / "repo", major=9, minor=3)
+
+        assert self._pie(repo, tmp_path / "r.html", min_commits=5) == {
+            "Major": 9,
+            "Other Contributors": 3,
+        }
+
+    def test_without_a_threshold_nothing_changes(self, tmp_path: Path) -> None:
+        repo = _repo_with_two_contributors(tmp_path / "repo", major=9, minor=3)
+
+        assert self._pie(repo, tmp_path / "r.html", min_commits=1) == {"Major": 9, "Minor": 3}

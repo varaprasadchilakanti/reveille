@@ -17,8 +17,11 @@ the [README](../README.md).
 - [The reveille init Command](#the-reveille-init-command)
 - [TOML Configuration Reference](#toml-configuration-reference)
 - [Understanding the Report](#understanding-the-report)
+- [What the Report Contains About People](#what-the-report-contains-about-people)
+- [Before You Share a Report](#before-you-share-a-report)
 - [The Ranking Algorithm](#the-ranking-algorithm)
 - [Practical Patterns](#practical-patterns)
+- [Troubleshooting and Questions](#troubleshooting-and-questions)
 
 ---
 
@@ -30,17 +33,21 @@ diagnose unexpected results.
 
 First, Reveille opens the target repository using GitPython and reads the
 raw commit log for the specified branch and date range. Merge commits are
-unconditionally excluded at this stage because they inflate both commit
-counts and line change volumes without reflecting individual contributor
-activity.
+unconditionally excluded at this stage: a merge repeats work already counted
+in the commits it joins, and counting it would credit whoever merged. A change
+made only in a merge commit, such as a conflict resolution, is therefore not
+counted either.
 
-This is a single `git log --numstat` pass over the requested range,
-which is why the read scales to large repositories: it costs roughly
-0.8 milliseconds per commit, so a 50,000-commit history is read in
-under a minute rather than the several minutes a per-commit diff would
-take. Reveille never writes to the repository — no commits, no
-branches, no configuration changes, no mutating Git command at any
-point. The only file it writes is the output file you name.
+This is one `git log --numstat` read over the requested range rather than
+one diff per commit, beside a `git rev-list` that authenticates each record
+and a second `git log` that reads only `Co-authored-by` trailers. That is why
+the read scales: on llama.cpp, 9,015
+commits, the full JSON took 10 seconds and `reveille summary`, which skips the
+line counts, 1.7 seconds. Reveille never changes the repository's Git data —
+no commits, no branches, no configuration changes, no mutating Git command at
+any point, and any output path inside `.git` is refused. It writes one file:
+the report, at the path you give or `reveille-report.html` in the repository
+root.
 
 Second, raw commits are aggregated into per-contributor statistics. A
 contributor's identity is keyed on their author email address, not their
@@ -48,7 +55,8 @@ display name. This means that a contributor who has committed under two
 different names — common after a name change or when work and personal
 accounts are mixed — is correctly treated as a single person, using the
 name from their most recent commit. If a `.mailmap` file is present at
-the repository root, email aliases are resolved to their canonical
+the repository root (in a bare repository, the `.mailmap` committed at
+`HEAD`, as Git reads it), email aliases are resolved to their canonical
 identity before aggregation. A contributor who has committed under
 multiple email addresses is counted once, under the canonical identity
 declared in `.mailmap`, rather than once per address.
@@ -78,14 +86,14 @@ Reveille's own [`.mailmap`](https://github.com/varaprasadchilakanti/reveille/blo
 is a worked example of exactly that case. `reveille init --mailmap`
 generates an annotated template covering all four forms.
 
-Third, each contributor is scored using the weighted composite ranking
-algorithm and assigned a tier designation relative to the other
-contributors in this specific analysis window. Tiers are not absolute —
-a contributor ranked Captain in a ten-person team may rank Sergeant in a
-thirty-person team analysed over a longer window.
+Third, only with `--ranking`, each listed contributor is scored using the
+weighted composite algorithm and assigned a tier relative to the other
+contributors in this analysis window. Tiers are not absolute — a contributor
+ranked Captain in a ten-person team may rank Sergeant in a thirty-person team
+analysed over a longer window.
 
 Fourth, the Renderer assembles all data, computes derived metrics such as
-commit concentration and longest inactive streak, builds Plotly chart specifications,
+commit concentration and the longest quiet run between commits, builds Plotly chart specifications,
 and writes a single self-contained HTML file. All JavaScript and chart
 data are embedded inline. The output file has no external dependencies and
 can be opened in any modern browser without an internet connection.
@@ -96,10 +104,11 @@ can be opened in any modern browser without an internet connection.
 
 ### `--repo` / `-r`
 
-The path to the Git repository root. This must be a directory containing
-a `.git` subdirectory. Defaults to the current working directory, which
+The path to a Git repository: the root of a working tree, or a bare
+repository. Defaults to the current working directory, which
 means running `reveille generate` from inside a repository requires no
-explicit flag.
+explicit flag. A bare repository needs `--output`: its root is Git's own
+directory, where Reveille does not write.
 
 ```bash
 reveille generate --repo /path/to/my-service
@@ -110,7 +119,12 @@ reveille generate --repo /path/to/my-service
 The destination path for the generated HTML file. The parent directory
 must exist — Reveille will not create intermediate directories. Defaults
 to `reveille-report.html` placed at the repository root when no output
-flag is provided.
+flag is provided, so by default the report is written into the working tree.
+A path inside the Git directory, a path containing `..`, and a directory are
+refused (exit 2). A path outside the repository given with `--output` is
+written, with a warning on stderr; the same path set in `reveille.toml` is
+refused, because a configuration file is found automatically and may come from
+a repository you do not control.
 
 ```bash
 reveille generate --output /tmp/reports/q4-2024.html
@@ -121,7 +135,19 @@ reveille generate --output /tmp/reports/q4-2024.html
 Both flags accept dates in `YYYY-MM-DD` format. The `--since` boundary
 is inclusive: commits on that calendar day are included. The `--until`
 boundary is also inclusive. If neither is provided, the full commit
-history on the target branch is analysed.
+history on the target branch is analysed, up to today.
+
+The window starts at the first commit, however early `--since` is: days
+before a repository's first commit are not quiet days. Without `--until`,
+a commit dated after today (a wrong clock, or a rebase that kept a future
+date) is counted in no figure; the report header and a note on stderr say
+how many, and `--until` with a later date includes them. With
+`--deterministic` the window closes on the last commit instead, so nothing
+is left out.
+
+In a shallow clone, which CI checkouts are by default, only the history the
+clone holds is analysed. The report header and a note on stderr say so; run
+`git fetch --unshallow`, or check out with full depth, for the whole history.
 
 ```bash
 reveille generate --since 2024-01-01 --until 2024-03-31
@@ -130,7 +156,8 @@ reveille generate --since 2024-01-01 --until 2024-03-31
 When `--since` is omitted but `--until` is provided, the window runs
 from the repository's first commit up to the specified end date.
 When `--until` is omitted but `--since` is provided, the window runs
-from the specified start date up to the current day.
+from the later of the specified start date and the first commit up to
+the current day (UTC).
 
 ### `--branch` / `-b`
 
@@ -145,9 +172,14 @@ reveille generate --branch release/2.0
 
 ### `--exclude-author`
 
-Excludes a contributor by name or email address. The match is
-case-insensitive. The flag is repeatable, so multiple authors can be
-excluded in a single invocation.
+Excludes a person by name or email address. The match is case-insensitive.
+An identity is its address, so every commit made under an address that the
+value matched anywhere in the branch's history (not only in the window) is
+removed, whatever name it carries, as is every address a
+`.mailmap` ties to it. A name that reaches more than one address removes all
+of them, and stderr names the addresses so you can give one instead. A value
+that matches nothing is reported on stderr. The flag is repeatable. See
+[ADR 0020](adr/0020-exclude-author-removes-a-person-by-address.md).
 
 ```bash
 reveille generate \
@@ -156,17 +188,18 @@ reveille generate \
   --exclude-author "release-bot@example.com"
 ```
 
-This flag is essential for repositories with active automation. Bot
-commits inflate commit counts and active day metrics, which distorts both
-the heatmap and the contributor rankings.
+Accounts with `[bot]` in the name or address are already kept out of the
+people figures (see [Summary cards](#summary-cards)); excluding one removes
+its commits from every figure as well.
 
 ### `--min-commits`
 
-Excludes contributors whose commit count within the analysis window falls
-below the specified threshold. Defaults to `1`, meaning all contributors
-with at least one commit are included. Setting this to `5` or `10` is
-useful for retrospective reports where you want to surface sustained
-contributors rather than one-off patches.
+Lists only contributors whose commit count within the analysis window is at
+least this threshold. Defaults to `1`, meaning everyone is listed. It chooses
+who is *listed*, not who is counted: every figure still describes everyone,
+and the header says how many are listed
+([ADR 0011](adr/0011-filters-choose-the-listing-not-the-analysis.md)). It is
+not a privacy control.
 
 ```bash
 reveille generate --min-commits 5
@@ -205,8 +238,9 @@ the activity heatmap, the timelines, and the distribution chart.
 **Why it is off.** The ranking assigns named individuals a composite score, a
 percentile and a tier designation, weighted 30% commits and 25% lines changed.
 Those figures measure the volume and regularity of commits and nothing else — not
-contribution, not productivity, not value — and both DORA and SPACE state that
-such measures must not be used to assess individuals. The caveats were always
+contribution, not productivity, not value — and the SPACE framework says such
+measures say little about a person: SPACE (Forsgren et al., 2021) holds that "developer
+productivity is about more than an individual's activity levels". The caveats were always
 documented, but documentation does not travel with the artefact: the HTML report
 is built to be forwarded, and the caveats stay in this repository. See
 [ADR 0010](adr/0010-ranking-is-opt-in.md).
@@ -223,6 +257,101 @@ enabled = true
 
 It must be a real boolean. `enabled = "false"` is a *string*, and would be
 rejected rather than quietly read as true.
+
+### `--area-authors` and `--area-depth`
+
+**Off by default.** `--area-authors` adds a section, *Who Changed Each Area*,
+that lists the most-changed directories and, for each, how many commits changed
+it, how many authors made them, who they are, and when it was last changed. It
+names people, organised by directory rather than by person, so it is a separate
+choice from `--ranking` and is not switched on by it. See
+[ADR 0013](adr/0013-who-changes-what-is-opt-in-and-area-first.md).
+
+```bash
+reveille generate --area-authors
+reveille generate --area-authors --area-depth 2
+```
+
+An area is a directory of at most `--area-depth` components (default 3, so
+`src/app/core` rather than `src/app`); a file in a shallower directory belongs to
+that directory, and files at the top level form the area `(root)`. Generated lock
+files are left out. The eight areas with the most commits are shown.
+
+Names are alphabetical, with no date or count beside any person; the one date
+belongs to the area. When an area has more than five authors, the five shown are
+those who changed it most recently, still alphabetical, and the line says so.
+Identities whose name or address carries the `[bot]` suffix are listed on an
+*Automated* line, by the same rule. An author
+below `--min-commits` is counted and not named; an excluded author is neither.
+The section says who changed each area, not who knows or owns it.
+
+In `reveille.toml`:
+
+```toml
+[areas]
+enabled = true
+depth = 3
+```
+
+### A short answer: `reveille summary`
+
+The repository in a few lines, naming no contributor: the window, commits,
+people and automated accounts, the Gini, commit concentration, the longest
+quiet run, days since the last commit, the written findings and the notice
+that the figures need checking. It reads no line counts and no
+`reveille.toml`. Takes `--repo`, `--since`, `--until`, `--branch`,
+`--exclude-author`, `--deterministic` and `--format text|json`.
+
+```bash
+reveille summary
+reveille summary --format json
+```
+
+It is the starting point for an assistant or a script: about 2 KB, and it
+carries no contributor name or address. It does carry the repository and
+branch names, which can name someone, and with one or two people its figures
+describe identifiable individuals. Check it before sending it to a hosted
+model.
+
+### Who changed a file: `reveille who-changed`
+
+A bug turns up in `src/parser/lexer.c`. Who should you ask?
+
+```bash
+reveille who-changed src/parser/lexer.c --since 2026-01-01
+```
+
+The answer names the path's authors alphabetically, the five who changed it
+most recently (the people to ask first), automated accounts and co-authors
+apart, and when the path was last changed. It gives no count or date for any
+person: who changed a file is a fact the history records, while "who did the
+most" is not what it is for. It reads only the commits that changed the path
+and no line counts, so it answers in well under a second on a large history.
+The path is taken literally and must be inside the repository.
+
+### Output to stdout
+
+`--output -` writes the report to stdout instead of a file, in any format, and
+nothing else goes there: progress, notes and errors are on stderr. It is meant
+for scripts and assistants that read the result directly.
+
+```bash
+reveille generate --format json --output - | jq .derived
+```
+
+CSV on stdout carries no byte-order mark; the BOM in a CSV file is there for
+spreadsheet programs opening it.
+
+### Co-authors
+
+A commit made together credits its other authors with a `Co-authored-by:
+Name <address>` trailer. Reveille reads those trailers (and nothing else in a
+commit message) and reports them beside authorship, never inside it: each
+contributor's co-authored count, a line naming identities credited only as
+co-authors, and a finding with the number of commits that credit one. The
+charts and every authorship figure count authors only. A trailer is written by
+whoever wrote the commit and is not verified. See
+[ADR 0014](adr/0014-co-authors-are-a-separate-fact.md).
 
 ### `--deterministic`
 
@@ -260,11 +389,11 @@ reveille generate --config ./reveille.toml
 
 ### `--format`
 
-Controls the output format for `reveille generate`. Accepts four values.
+Controls the output format for `reveille generate`. Accepts three values.
 
 `html` is the default and produces the single self-contained HTML file at the path specified by `--output`.
 
-`json` writes a structured JSON file at the same path stem as `--output` with a `.json` extension. The payload contains repository metadata, ranked contributor statistics with all scoring fields, and derived health metrics. The raw commits list is excluded. Suitable for consumption by dashboards and data warehouses without parsing HTML.
+`json` writes a structured JSON file at the same path stem as `--output` with a `.json` extension. The payload contains repository metadata, contributor statistics, and the derived summary measures; the scoring fields are present only with `--ranking`. The raw commits list is excluded. Suitable for consumption by dashboards and data warehouses without parsing HTML.
 
 `csv` writes the ranked contributor table as a UTF-8 CSV file with BOM encoding at the same path stem as `--output` with a `.csv` extension. BOM ensures correct column rendering in Microsoft Excel on Windows without requiring a manual import wizard configuration.
 
@@ -356,13 +485,15 @@ consumer can decide whether it can parse the rest before trying.
 
 ```json
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "metadata": { "name": "...", "analysed_branch": "main", "...": "..." },
   "provenance": {
-    "reveille_version": "0.8.0",
+    "reveille_version": "0.9.0",
     "head_sha": "…",
     "deterministic": false,
     "mailmap_applied": true,
+    "commits_dated_after_window": 0,
+    "shallow_clone": false,
     "filters": {
       "requested_branch": "main",
       "requested_since": null,
@@ -373,9 +504,20 @@ consumer can decide whether it can parse the rest before trying.
     "ranking": { "enabled": false, "weights": null }
   },
   "contributors": [ "..." ],
-  "derived": { "commit_concentration": 2, "gini_coefficient": 0.46, "...": "..." }
+  "derived": {
+    "commit_concentration": 2,
+    "gini_coefficient": 0.46,
+    "population_size": 5,
+    "contributors_below_threshold": 0,
+    "...": "..."
+  },
+  "notice": "Computed from Git history by fixed rules, offline. History can be incomplete or wrong (rewritten, shallow, misdated, split identities); check before relying on it for a decision."
 }
 ```
+
+**`notice` travels with the figures.** It is the sentence printed under the HTML
+report's header and with every `summary`, so a document passed on without the
+page around it still says what it cannot carry.
 
 **`schema_version` changes when the shape changes**, not when the tool does.
 A major bump means a removal or a rename; a minor bump means a purely additive
@@ -395,7 +537,8 @@ put it back.
 ## The `reveille init` Command
 
 `reveille init` scaffolds a fully annotated `reveille.toml` configuration
-file in the current directory. Every available configuration key is
+file in the current directory, which must be the root of a repository; run
+anywhere else, it stops with exit 2, even with `--output`. Every available configuration key is
 present, commented out, and accompanied by an inline description of its
 purpose and accepted values. Run it once at the root of a repository
 before your first `reveille generate` invocation to produce a starting
@@ -447,11 +590,17 @@ reveille init --mailmap --force
 ## TOML Configuration Reference
 
 A TOML configuration file is useful when you run Reveille regularly
-against the same repository with the same parameters. Place it at the
-repository root as `reveille.toml` or pass its path explicitly with
-`--config`. Use `reveille init` to generate an annotated starting point.
+against the same repository with the same parameters. Pass its path with
+`--config`, or name it `reveille.toml` in the directory you run Reveille
+from, where it is loaded without being asked for. Use `reveille init` to
+generate an annotated starting point.
 
-The file is divided into three sections. All sections and all keys are
+A file loaded without `--config` is announced on stderr, with every setting
+it applied, because the directory may belong to someone else. An output path
+inside the repository's Git directory is refused with exit code 2, whether it
+comes from the file or the command line.
+
+The file is divided into four sections. All sections and all keys are
 optional.
 
 ```toml
@@ -471,13 +620,16 @@ since = "2024-10-01"
 # Analysis window end date. Equivalent to --until.
 until = "2024-12-31"
 
+# The most entries any list of people carries in JSON and CSV. Equivalent to --limit.
+limit = 50
+
 # Output format. Equivalent to --format.
 # Accepted values: html (default), json, csv.
 # format = "html"
 
 
 [filters]
-# Minimum commits to include a contributor. Equivalent to --min-commits.
+# Minimum commits to list a contributor. Equivalent to --min-commits.
 min_commits = 2
 
 # Authors to exclude by name or email. Equivalent to repeating --exclude-author.
@@ -488,12 +640,22 @@ exclude_authors = [
 
 
 [ranking]
-# Set to false to omit the ranking table. Equivalent to --no-ranking.
-enabled = true
+# Set to true to include the ranking table. Equivalent to --ranking.
+# Off by default; read "The Ranking Algorithm" first.
+enabled = false
 
 # Metric weights for the composite score. All four values must sum to 1.0.
 # The defaults shown here are the documented reproducible defaults.
 weights = { commits = 0.30, lines = 0.25, consistency = 0.25, recency = 0.20 }
+
+
+[areas]
+# Set to true to add the "Who Changed Each Area" section, which names people.
+# Equivalent to --area-authors. Off by default.
+enabled = false
+
+# Directory components that make an area. Equivalent to --area-depth.
+depth = 3
 ```
 
 When a key is absent from the configuration file, the CLI default for
@@ -514,123 +676,234 @@ string and is rejected rather than read as true.
 
 ## Understanding the Report
 
-### Repository Summary
+The sections below are in the order the report shows them. Two of them,
+**Who Changed Each Area** and **Contributor Rankings**, appear only when asked
+for. For the order to read them in and what each supports, see
+[PLAYBOOK.md](PLAYBOOK.md).
 
-The summary cards at the top of the report provide four at-a-glance
-metrics. Total commits and unique contributors reflect the analysis
-window after all filters have been applied. Commit concentration is the
-minimum number of contributors whose combined commit volume accounts for
-at least 50 percent of total commits — a value of 1 means a single person
-authored the majority of the history in the analysis window. Max inactive
-days is the longest consecutive calendar period within the analysis window
-on which no commits were recorded.
+### Header and notice
 
-**Commit concentration is not a bus factor, and should not be read as one.**
-Bus factor asks how much of the surviving code only one person understands.
-That is a property of line ownership — who wrote the code that is still in
-the repository today — and answering it requires `git blame` across every
-file, not commit counts. Commit volume is a weak proxy: a contributor who
-makes many small commits outranks one who wrote an entire subsystem in a
-handful of large ones, and a contributor whose work has since been rewritten
-still counts in full. Treat a low value as a prompt to look at who owns which
-files, not as a measurement of that risk. Reveille reports this metric under
-a name that describes what it actually computes; before v0.7.0 it was
-labelled "bus factor", which overstated it.
+The repository's name, its remote URL with any credential removed, the
+analysed branch, the period and when the report was generated. When they
+apply, lines state how many contributors are listed, how many commits are
+dated after the window, how many could not be read, and that the repository
+is a shallow clone. One
+sentence under the header states the report's limits: the figures are
+computed from Git history by fixed rules, offline, and history can be
+incomplete or wrong, so check before relying on them for a decision.
 
-### Activity Heatmap
+### Summary cards
 
-The heatmap visualises when commits occurred across the analysis window as
-a GitHub-style calendar grid. Rows represent days of the week
-(Monday–Sunday); columns represent calendar weeks. Darker cells indicate
-higher commit volumes. Empty cells — rendered as transparent — indicate
-periods of no activity. Persistent gaps may indicate holidays, sprints
-with no deliverables, or periods of reduced team capacity.
+Total Commits, Contributors, Hold(s) Half the Commits, Longest Quiet Run
+(days) and Distribution (Gini).
 
-Year tabs above the chart allow switching between calendar years covered
-by the analysis window without regenerating the report. The most recent
-year is active by default. A contributor dropdown provides per-contributor
-views alongside the aggregated default. In single-contributor repositories,
-the dropdown is hidden automatically.
+- **Total Commits** counts every non-merge commit in the window, after
+  `--exclude-author`, including commits by automated accounts.
+- **Contributors**, **Hold Half the Commits** and the **Gini** count people.
+  An identity whose name or address carries `[bot]` is an automated account:
+  it is counted in the commit and line totals, and listed in the table if it
+  meets `--min-commits`, but not in these three figures, and a line under the cards says how many
+  accounts and commits that left out. An automated account without the
+  suffix is counted as a person; `--exclude-author` or a `.mailmap` deals with
+  it. See [ADR 0017](adr/0017-distribution-figures-count-people.md).
+- **Hold Half the Commits** is the fewest people whose commits together make
+  at least half of the people's commits. A value of 1 means one person made
+  most of them.
+- **Longest Quiet Run** is the longest run of calendar days with no commit
+  between two days that had one. The silence since the last commit is stated
+  by a finding instead.
+- `--min-commits` changes none of these: it chooses who is listed in the
+  table, not who is counted ([ADR 0011](adr/0011-filters-choose-the-listing-not-the-analysis.md)).
 
-### Weekly Commit Timeline
+**Hold Half the Commits is not a bus factor.** Bus factor asks how much of the
+code still in the repository only one person understands, which needs
+`git blame` across every file, not commit counts. Treat a low value as a
+prompt to look at who owns which files, not as a measurement of that risk.
 
-This chart shows total commit volume per calendar week as a filled area
-chart. It is useful for identifying sustained periods of high or low
-activity, release sprints, and long-term trends in team output across the
-analysis window.
+### What the History Shows
 
-### Contributor Rankings Table
-
-Each row in the table represents one contributor. The columns are as
-follows.
-
-The rank number reflects the contributor's position by composite score
-within this analysis window. It is not a permanent ranking — it changes
-each time the window or weights are adjusted.
-
-The designation is the tier label assigned based on the contributor's
-percentile position within the population. See
-[The Ranking Algorithm](#the-ranking-algorithm) for the full tier table
-and the formula behind it.
-
-Lines Added and Lines Deleted reflect the raw diff statistics from Git.
-These numbers count all lines across all files in every commit and
-include generated files, vendored dependencies, and documentation unless
-those files were explicitly excluded from the repository's tracked
-content. Interpret them as a volume signal, not a quality signal.
-
-Net Lines is additions minus deletions. A large negative value indicates
-a contributor who has been primarily removing code — refactoring, cleaning
-up dead code, or reducing duplication — which is equally valuable work
-but manifests differently in the metrics.
-
-Active Days is the count of distinct calendar dates on which the
-contributor made at least one commit. This is the raw input to the
-consistency metric in the ranking calculation.
-
-The Score bar and numeric value reflect the contributor's normalised
-composite score in the range [0.0, 1.0]. Scores are relative to the
-population — the top contributor always scores near 1.0 regardless of
-absolute activity levels.
-
-### Contribution Breakdown Charts
-
-The two bar charts show commits and lines changed per contributor,
-providing a visual complement to the table. The two donut charts show
-each contributor's proportional share of total commits and total lines
-changed. Contributors beyond eight are aggregated into a single
-"Other Contributors" slice.
-
----
+A few sentences, generated from the figures in the report by fixed rules,
+without a language model: the same history always gives the same sentences.
+They name nobody. With fewer than three people, a sentence that would in
+effect describe one identifiable person, such as a share of commits or a
+weekend-working pattern, is left out.
 
 ### Contribution Distribution
 
-A Lorenz curve of how evenly commits are spread across contributors, with the
-Gini coefficient as a single-number summary. The dotted diagonal is perfect
-equality — every contributor with the same number of commits. The further the
-solid line bows beneath it, the more activity is concentrated in fewer people.
+A Lorenz curve of how evenly commits are spread across the people in the
+window, with the Gini coefficient as one number. The dotted diagonal is
+perfect equality. The further the solid line bows beneath it, the more the
+commits are concentrated.
 
-**Read it as a description, not a score.** A high value is not a fault and a low
-one is not a target:
+**Read it as a description, not a score.**
 
-- A single-maintainer repository has a Gini of **0** by definition. Equality is
-  trivially true in a population of one, which is the opposite of the intuitive
-  reading.
-- A project with one maintainer and many occasional contributors scores high for
-  entirely ordinary reasons.
-- The maximum for a sample of *n* contributors is `(n-1)/n`, never 1.0 — one
-  person holding everything among four gives 0.75. The ceiling rises with the
-  contributor count, so **the value is comparable against this repository over
-  time, not against a different repository.**
+- One person has a Gini of **0** by definition, and the curve is not drawn:
+  there is no distribution to measure.
+- One maintainer with many occasional contributors scores high for entirely
+  ordinary reasons.
+- The maximum for *n* people is `(n-1)/n`, never 1.0, so the value is
+  comparable against this repository over time, not against another
+  repository. The caption states the maximum for the report it is in.
 
-Both instruments are borrowed rather than invented: the Lorenz curve (1905) and
-the Gini coefficient (1912) are the standard measures of concentration in a
-population, and a century of interpretation — and of documented weakness — comes
-with them. They replaced an ad-hoc "how many contributors make up a majority"
-count that had no defined range and jumped whenever somebody crossed half.
+### Commit Activity Heatmap
 
-Unlike the ranking, this names nobody, and the curve is unchanged by who sits
-where in it. That is why it stays in the default report.
+Commits per calendar day, one row per weekday and one column per week, over
+the weeks of the window only. Days outside the window have no cell rather
+than being drawn as days without commits. Year buttons switch between the
+calendar years the window covers. A selector switches between the whole
+repository and any one listed contributor. Where the grid is wider than the
+screen, as on a phone, it opens on the latest week and says it scrolls
+sideways. It needs JavaScript.
+
+### Weekly Commit Timeline
+
+Commits per calendar week across the window. Weeks with no commits are drawn
+as zero. It needs JavaScript.
+
+### Repository Profile
+
+Six shares of the window, each from 0% to 100%, drawn as six separate petals
+and listed in a table beside them on a wide screen, below on a narrow one.
+It is plain HTML and SVG, so it renders without JavaScript and prints.
+
+| Measure | The share of |
+|---|---|
+| Continuity | weeks in the window with at least one commit |
+| Recent work | commits in the final quarter of the window |
+| Shared | people's commits not made by the busiest person; automated accounts are left out |
+| Collaboration | commits that credit a co-author |
+| Revisiting | files touched by more than one commit; lock files are left out |
+| Automation | commits by automated accounts |
+
+**Expected by chance** is what evenly spread activity would give, computed
+from each measure's own arithmetic where that is possible. It is not a target.
+Collaboration, Revisiting and Automation have no such value and show a dash,
+as does Shared when there are no people.
+None of the six describes a person. See
+[ADR 0016](adr/0016-the-profile-shape-returns-as-a-flower.md).
+
+### Change Size per Commit
+
+How many commits changed how many lines (added plus deleted), in buckets that
+double in width: 0–9, 10–49, 50–199, 200–999, 1,000–4,999 and 5,000 or more.
+The buckets widen, so the tallest bar is not the median; the median is marked.
+It needs JavaScript.
+
+### Where Change Concentrates
+
+The twelve paths with the most lines changed (added plus deleted) in the
+window, across everyone. A file that changes often is one to look at, not one
+that is wrong. Lock files are left out, and the caption says how many and how
+many lines. It needs JavaScript.
+
+### Change by File Type
+
+Lines changed per file extension: the eight largest, then the rest pooled as
+"other", so the total is kept. Files without an extension, including
+dotfiles, are one entry; so are lock files, whatever their extension. It
+needs JavaScript.
+
+### Per-Contributor Commit Frequency
+
+Commits per week for up to four listed contributors, in the order of the
+table, one line each, told apart by colour and by dash pattern. It is not
+drawn with fewer than two. It needs JavaScript.
+
+### Who Changed Each Area
+
+Only with `--area-authors`. The eight most-changed directories, up to
+`--area-depth` levels deep (default 3): how many commits changed each, how
+many authors made them, when it was last changed, and the authors' names in
+alphabetical order. No count or date is given per person; automated accounts
+are listed apart; an author below `--min-commits` is counted but not named.
+It says who changed an area, not who knows or owns it. See
+[ADR 0013](adr/0013-who-changes-what-is-opt-in-and-area-first.md).
+
+### Contributors
+
+One row per listed contributor: name and email address, commits, lines added,
+lines deleted, net lines, active days and the date of the last commit. Lines
+count every file in each commit, generated files included, so they are a
+volume signal, not a quality signal. Net lines is added minus deleted; a large
+negative value is usually someone removing code. Active days is the number of
+distinct dates with at least one commit. A long table scrolls inside its own
+panel and prints in full. Identities credited only by a `Co-authored-by`
+trailer are named beneath it; a trailer is not verified.
+
+With `--ranking` this section is headed **Contributor Rankings** and adds a
+rank, a tier and a composite score. Read
+[The Ranking Algorithm](#the-ranking-algorithm) before turning it on.
+
+### Contribution Breakdown
+
+A donut of each contributor's share of all commits, and a bar chart of lines
+added and deleted per listed contributor. Contributors beyond four, and anyone
+`--min-commits` keeps out of the table, are pooled into one "Other
+Contributors" slice, so the slices add up to every commit. It needs
+JavaScript.
+
+### Without JavaScript
+
+The header, the cards, the written findings, the Repository Profile and the
+contributor table are plain HTML. The other eight sections, which hold nine
+charts, need JavaScript. Each
+carries its figures in a table for screen readers, which is not shown on
+screen, so with JavaScript off a sighted reader sees an empty panel.
+
+## What the Report Contains About People
+
+For each listed contributor, the HTML, JSON and CSV carry:
+
+- the name and email address recorded in the commits;
+- commits, lines added, lines deleted, net lines and active days;
+- the date of the last commit (and, in JSON, of the first);
+- how many commits credit the identity as a co-author.
+
+With `--ranking`, each format adds a rank, a tier and a score per listed
+contributor.
+
+The HTML also carries, for each listed contributor, commits per day (the
+heatmap's selector) and up to four contributors' commits per week
+(Per-Contributor Commit Frequency), and file paths with their line counts
+(Where Change Concentrates).
+
+With `--area-authors`, the HTML names the authors of each of the eight
+most-changed directories, and the JSON lists those directories with their
+authors' names and addresses and the date each was last changed.
+
+The HTML and JSON carry the repository's name, the analysed branch and its
+remote URL, with any credential removed, and name the identities credited
+only by a `Co-authored-by` trailer; the JSON gives their addresses and the
+hash of the analysed commit. The CSV is the contributor table alone, with no
+file paths; the JSON carries directory paths only with `--area-authors`.
+
+`--exclude-author` values are recorded only as a count, never by name.
+`reveille summary` names nobody. `reveille who-changed` names the authors of
+one path, with their addresses.
+
+Reveille sends none of this anywhere. The file goes where you write it, and
+anyone who receives it receives all of the above. Given to a hosted AI
+assistant, the JSON goes to that assistant's provider.
+
+## Before You Share a Report
+
+1. **Decide who needs it**, and send it only to them.
+2. **Remove anyone who should not appear** with `--exclude-author`, which also
+   matches every address a `.mailmap` ties to the value you give.
+   `--min-commits` is **not** a privacy control: it hides rows, while their
+   commits stay in every figure and can be worked out from them.
+3. **Leave `--ranking` and `--area-authors` off** unless the question needs
+   them. Both are off by default.
+4. **For an assistant or a script, prefer `reveille summary`**, which names no
+   contributor, or bound the JSON with `--limit`.
+5. **Naming nobody is not anonymity.** With few people, a figure traces to one
+   person; the repository name, branch, remote URL (an SSH login included),
+   title and file paths can identify someone too. A report already sent is not
+   changed by a later `--exclude-author`.
+6. **Whether you may use a report about the people who work with you** is a
+   question for the law and the agreements that apply to you.
+   [COMPLIANCE.md](COMPLIANCE.md) sets out who is responsible for what. This
+   guide is not legal advice.
 
 ## The Ranking Algorithm
 
@@ -646,8 +919,8 @@ contributor with the lowest receives 0.0.
 
 **Lines contributed** measures the total lines changed (additions plus
 deletions) across all commits. It is normalised in the same way as commit
-volume. This metric rewards contributors who work on high-impact changes
-but may commit less frequently.
+volume. It counts lines of any kind, generated files included, so it says
+how much text changed, not how much the change mattered.
 
 **Activity consistency** is computed as the contributor's active days
 divided by the total calendar days in the analysis window. A contributor
@@ -672,7 +945,7 @@ percent, and recency at 20 percent.
 **Why those numbers.** They are a documented judgement, not a derived
 model — no study establishes that these four signals in this proportion
 measure anything in particular. Commit volume is highest because it is
-the most robust of the four: insensitive to file type, to generated
+the least easily distorted of the four: insensitive to file type, to generated
 code, and to how a change happens to be split across lines. Lines are
 lower because they are the easiest to distort — a vendored dependency, a
 lockfile, or a reformatting pass can dwarf months of considered work.
@@ -713,9 +986,9 @@ is what Git records. It does not measure contribution, productivity, or
 value, and it should not be used to assess an individual.
 
 This is the stated position of the research rather than a disclaimer.
-Both DORA and SPACE — the two most widely cited bodies of work on
-software delivery measurement — say explicitly that their metrics must
-not be applied to individuals. Activity metrics are easy to game and
+The SPACE framework (Forsgren et al., 2021) holds that "developer
+productivity is about more than an individual's activity levels". DORA's metrics
+are defined for applications and services, not people. Activity metrics are easy to game and
 systematically misread review-heavy, mentoring, part-time, and on-call
 work as low output. A contributor who spends a quarter unblocking
 colleagues and deleting a subsystem will rank below one who committed
@@ -793,9 +1066,9 @@ reveille generate \
 
 ### Surfacing Sustained Contributors
 
-For a report intended for an engineering director or a quarterly business
-review, filtering out contributors with very few commits focuses the
-output on the people who drove the majority of the work.
+To keep a long table readable, list only contributors with at least ten
+commits. Everyone is still counted in every figure, and the header says how
+many are listed; commit count is not a measure of who did the most work.
 
 ```bash
 reveille generate --min-commits 10 --title "Q3 Core Contributors"
@@ -804,9 +1077,9 @@ reveille generate --min-commits 10 --title "Q3 Core Contributors"
 ### Adjusting Weights for a Maintenance Quarter
 
 In a quarter dominated by bug fixes and refactoring rather than new
-features, commit volume is a less representative signal than consistency
-and recency. Adjusting the weights in `reveille.toml` produces a ranking
-that better reflects the actual nature of the work.
+features, a team may prefer to weight consistency and recency above commit
+volume. Adjusting the weights in `reveille.toml` changes the score; it does
+not make it a measure of contribution.
 
 ```toml
 [ranking]
@@ -818,7 +1091,7 @@ startup and exits with an error if the constraint is violated.
 
 ### Exporting Machine-Readable Output for Downstream Integration
 
-`--format json` produces a structured JSON file at the same path stem as the HTML output. The payload contains repository metadata, ranked contributor statistics, and derived health metrics — suitable for dashboards, data warehouses, and Jira integrations without parsing HTML.
+`--format json` produces a structured JSON file at the same path stem as the HTML output. The payload contains repository metadata, contributor statistics, and the derived summary measures — suitable for dashboards, data warehouses, and scripts without parsing HTML.
 
 ```bash
 reveille generate --format json --output /tmp/reports/q4.html
@@ -836,24 +1109,86 @@ reveille generate --format csv --output /tmp/reports/q4.html
 
 The CSV file is written to `/tmp/reports/q4.csv`.
 
-### Embedding in Confluence
+### Sharing a report
 
-The generated HTML file is self-contained and opens correctly in any
-modern browser. To embed it in Confluence, use the HTML Macro on the
-target page, paste the full content of the generated file into the macro
-body, and save. All charts and styling will render without modification.
+The HTML file is self-contained: the recipient needs only a browser, with
+no server access or internet connection. It is about 4.9 MB, almost all of it
+the embedded chart library, so its size barely depends on the repository:
+4.90 MB for a one-commit repository and 4.92 MB for this one at 0.9.0.
+Before sending it anywhere, read [Before You Share a Report](#before-you-share-a-report).
 
-Alternatively, attach the HTML file directly to the Confluence page as
-a file attachment. Readers can download and open it locally.
+To share it through a wiki such as Confluence, attach the file to the page;
+readers download it and open it locally. Pasting the file into an HTML macro
+has not been tested by this project, and many sites disable that macro.
 
-### Sharing over Email
+Whether a particular mail system accepts a 4.9 MB HTML attachment has not been
+measured. If one refuses it, compress the file or share it through a file
+store.
 
-Because the output is a single file with no external dependencies, it can
-be attached to an email and opened by the recipient without any additional
-tooling, server access, or internet connection.
+For a wider audience, a shared drive or an internal web server and a link
+avoid attaching the file at all; it still names everyone listed in it.
 
-For distribution to a broader audience, consider placing the file on an
-internal web server or a shared drive and sharing a link rather than
-attaching the full file, as the embedded Plotly bundle means the file
-size is typically between 3.5 MB and 5 MB depending on the number of
-charts and contributors.
+## Troubleshooting and Questions
+
+**Why does Reveille count fewer commits than `git log`?** Merge commits are
+excluded. Without `--until` or `--deterministic`, commits dated after today
+(UTC) are not counted;
+the header and stderr say how many there were. `--exclude-author` removes an
+author's commits from every figure.
+
+**It says "No commits found" and exits 1.** No non-merge commit falls in the
+window on the analysed branch. Check `--since`, `--until` and `--branch`; the
+branch defaults to the one checked out.
+
+**The report says the repository is a shallow clone.** Only the fetched
+history was read, so every figure covers that part alone. `git fetch
+--unshallow` fetches the rest.
+
+**Someone who only merged branches is missing.** Merge commits are excluded,
+so a person whose only commits are merges does not appear, and a change made
+only in a merge, such as a conflict resolution, is not counted.
+
+**The header says some commits were not read.** A commit whose author field
+holds the characters Reveille separates records with cannot be read safely,
+so it is left out and counted instead of being guessed at. Ordinary histories
+have none; one that does was most likely written on purpose. See
+[ADR 0019](adr/0019-how-history-is-read.md).
+
+**It says the repository is a partial clone and exits 2.** A clone made with
+`--filter` leaves some objects on the server, and reading them would make Git
+fetch them. Reveille makes no network call and changes no Git data, so it
+refuses. Run it on a clone made without `--filter`.
+
+**`git log` shows history that the report leaves out, after a `git replace`.**
+Reveille reads the objects the commit hashes name and does not follow replace
+refs, grafts included, so the report and its recorded hash always describe the
+same history. When any are present, the header and stderr say so. See [ADR
+0018](adr/0018-replace-refs-are-not-honoured.md).
+
+**One person appears twice.** Their commits carry two addresses. A `.mailmap`
+at the repository root joins them (see
+[How Reveille Works](#how-reveille-works) and `gitmailmap(5)`).
+`reveille init --mailmap` writes an annotated template beside a new
+`reveille.toml` and skips an existing `.mailmap`. If `reveille.toml` already
+exists it stops (exit 2), and `--force` then replaces both files.
+
+**A bot is counted as a person.** Only identities with `[bot]` in the name or
+address are treated as automated. Exclude another with `--exclude-author`.
+
+**The charts are empty.** Eight of the charts need JavaScript. The header,
+cards, findings, Repository Profile and contributor table do not.
+
+**Two runs over the same repository differ.** The end of the window and the
+generation time come from the clock. `--deterministic` takes both from the
+last commit, so an unchanged repository gives identical bytes.
+
+**Is it safe to run on a repository someone sent me?** Git obeys a
+repository's own `.git/config`, which can name a program for Git to run, and
+Reveille runs Git. `git clone` does not copy that file; a copied directory or
+an archive does. Run Reveille on a fresh clone of anything you do not trust.
+See [SECURITY.md](../SECURITY.md).
+
+**How do I uninstall it?** `pipx uninstall reveille`, `pip uninstall
+reveille` or `uv tool uninstall reveille`, whichever installed it. Reveille
+keeps no cache and no settings outside the files it was asked to write: the
+reports, and any `reveille.toml` or `.mailmap` that `reveille init` created.

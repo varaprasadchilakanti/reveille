@@ -70,11 +70,43 @@ _CAPABILITIES: tuple[dict[str, str], ...] = (
     {
         "id": "activity-concentration",
         "description": (
-            "Report how evenly commits are distributed across contributors in "
+            "Report how evenly commits are distributed across the people in "
             "the window: how many account for a majority, and the full "
             "distribution as a Lorenz curve with its Gini coefficient. This "
             "characterises the repository and names nobody, which is why it is "
             "in the default report while the per-person ranking is not."
+        ),
+    },
+    {
+        "id": "repository-summary",
+        "description": (
+            "Summarise a repository in about 2 KB with `reveille summary`: "
+            "window, totals, concentration, quiet run and the written findings, "
+            "naming nobody."
+        ),
+    },
+    {
+        "id": "who-changed",
+        "description": (
+            "Say who changed one file or directory with `reveille who-changed "
+            "<path>`: its authors alphabetically, the five most recent, automated "
+            "accounts and co-authors apart, with no count or date per person."
+        ),
+    },
+    {
+        "id": "co-authors",
+        "description": (
+            "Report identities credited by Co-authored-by trailers beside, not "
+            "inside, authorship: a co-authored count per contributor and the "
+            "identities credited only as co-authors. Trailers are not verified."
+        ),
+    },
+    {
+        "id": "area-authors",
+        "description": (
+            "When asked with --area-authors, list who changed each of the "
+            "most-changed directories and when each was last changed, names "
+            "alphabetically, with no count or date per person."
         ),
     },
     {
@@ -87,8 +119,9 @@ _CAPABILITIES: tuple[dict[str, str], ...] = (
     {
         "id": "reproducible-output",
         "description": (
-            "Produce byte-identical output for an unchanged repository, so a "
-            "report can be regenerated and compared."
+            "With --deterministic, produce byte-identical output for an "
+            "unchanged repository and the same Reveille version, so a report "
+            "can be regenerated and compared."
         ),
     },
 )
@@ -106,8 +139,10 @@ _NOT_CAPABILITIES: tuple[dict[str, str], ...] = (
         ),
         "instead": (
             "For engineering effectiveness, use team-level delivery metrics. "
-            "Both DORA and SPACE state explicitly that their measures must not "
-            "be applied to individuals."
+            "The SPACE framework (Forsgren et al., 2021) holds that developer "
+            "productivity is about more than an individual's activity levels. "
+            "DORA's metrics are defined for applications and services, not "
+            "people."
         ),
     },
     {
@@ -136,11 +171,12 @@ _NOT_CAPABILITIES: tuple[dict[str, str], ...] = (
     {
         "id": "code-analysis",
         "description": (
-            "Read, parse, lint, or evaluate source code, commit messages, "
-            "diff content, or file contents. What is read is commit metadata "
-            "-- object name, author name, author email, timestamp -- and, per "
-            "file in each commit, the path and the number of lines added and "
-            "deleted, as reported by `git log --numstat`. How many lines "
+            "Read, parse, lint, or evaluate source code, diff content, file "
+            "contents, or any part of a commit message other than its "
+            "Co-authored-by trailers. What is read is commit metadata -- object "
+            "name, author name, author email, timestamp -- those trailers, and, "
+            "per file in each commit, the path and the number of lines added "
+            "and deleted, as reported by `git log --numstat`. How many lines "
             "changed in a file, never which lines."
         ),
         "instead": "Use a static analysis tool or a code search tool.",
@@ -184,6 +220,15 @@ _CAVEATS: tuple[dict[str, str], ...] = (
         ),
     },
     {
+        "id": "automated-accounts-are-not-people",
+        "description": (
+            "Contributor counts, commit concentration and the Gini count people. "
+            "An account whose name or address carries [bot] is counted in the "
+            "commit and line totals and stated separately, not in those figures; "
+            "an automated account without that suffix is counted as a person."
+        ),
+    },
+    {
         "id": "identity-is-self-asserted",
         "description": (
             "Author name and email come from commit metadata, which the author "
@@ -206,11 +251,21 @@ _CAVEATS: tuple[dict[str, str], ...] = (
         ),
     },
     {
+        "id": "history-may-be-partial",
+        "description": (
+            "A shallow clone is analysed as the history it holds, and commits "
+            "dated after the end of a default window are counted in no figure. "
+            "Both are stated in the report and in provenance (shallow_clone, "
+            "commits_dated_after_window); read them before reading the totals."
+        ),
+    },
+    {
         "id": "output-contains-personal-data",
         "description": (
             "The report includes contributor names and email addresses. It is a "
             "document containing personal data; whoever circulates it is "
-            "responsible for that."
+            "responsible for that. --ranking scores named people and "
+            "--area-authors names who changed each area; both are off unless asked for."
         ),
     },
 )
@@ -222,15 +277,21 @@ _GUARANTEES: tuple[dict[str, str], ...] = (
         "id": "offline",
         "description": (
             "No network call is made at any point, and the generated report "
-            "loads no remote resource."
+            "loads no remote resource. A partial clone is refused rather than "
+            "read, because reading it would make Git fetch. Git obeys a "
+            "repository's own .git/config, which can name a program for Git to "
+            "run; such a program is outside these properties."
         ),
     },
     {
         "id": "read-only-analysis",
         "description": (
-            "Analysis never modifies the repository it reads. `reveille init` "
-            "is the one command that writes into a repository, and only the "
-            "files you ask it for: reveille.toml, and .mailmap with --mailmap."
+            "Analysis never changes the repository's Git data: its history, "
+            "refs, index, objects or configuration. An output path inside "
+            ".git is refused. The report is written where you say, by default "
+            "reveille-report.html in the repository root. `reveille init` "
+            "writes only the files you ask it for: reveille.toml, and "
+            ".mailmap with --mailmap."
         ),
     },
     {

@@ -125,7 +125,7 @@ class TestTheMedianIsMarked:
     def test_the_annotation_sits_on_the_median_s_own_bucket(self) -> None:
         figure = _figure([_commit(size) for size in (1, 1, 60, 900, 900)])
         annotation = figure["layout"]["annotations"][0]
-        assert annotation["x"] == "50-199", (
+        assert annotation["x"] == "50\u2013199", (
             "the marker must sit on the bucket the median falls in, not the tallest bar"
         )
 

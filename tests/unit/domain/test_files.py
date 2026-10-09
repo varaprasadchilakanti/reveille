@@ -9,6 +9,7 @@ import pytest
 
 from reveille.domain.files import (
     extension_breakdown,
+    generated_churn,
     hotspots,
     is_generated,
 )
@@ -65,7 +66,22 @@ class TestGeneratedFilesAreExcludedByDefault:
     def test_they_still_count_towards_the_type_breakdown(self) -> None:
         """Excluding them from a ranking is not the same as hiding the churn."""
         breakdown = dict(extension_breakdown([_file("poetry.lock", added=500)]))
-        assert breakdown[".lock"] == 500
+        assert breakdown["lock files"] == 500
+
+    def test_a_lock_file_is_not_counted_as_its_extension(self) -> None:
+        """`package-lock.json` is a tool's output, not hand-written JSON."""
+        files = [
+            _file("package-lock.json", added=900),
+            _file("pnpm-lock.yaml", added=50),
+            _file("tsconfig.json", added=7),
+        ]
+        breakdown = dict(extension_breakdown(files))
+        assert breakdown == {"lock files": 950, ".json": 7}
+
+    def test_what_the_ranking_leaves_out_is_counted(self) -> None:
+        files = [_file("poetry.lock", added=40), _file("a/go.sum", added=2), _file("x.py", added=5)]
+        assert generated_churn(files) == (2, 42)
+        assert generated_churn([_file("x.py", added=5)]) == (0, 0)
 
 
 @pytest.mark.unit

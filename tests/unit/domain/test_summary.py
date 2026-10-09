@@ -16,7 +16,7 @@ import datetime
 import pytest
 
 from reveille.domain.models import Commit, ContributorStats
-from reveille.domain.summary import Finding, summarise
+from reveille.domain.summary import Finding, longest_quiet_run, summarise
 
 _START = datetime.datetime(2026, 1, 1, 12, 0, tzinfo=datetime.UTC)
 
@@ -241,6 +241,13 @@ class TestBehaviouralFindingsAreWithheldInSmallTeams:
             "the repository-level measure should still be reported"
         )
 
+    def test_the_pointer_to_the_shares_holds_where_no_table_follows(self) -> None:
+        """`reveille summary` prints this finding with no table after it."""
+        findings = summarise(_commits(40), _stats([202, 78]))
+        detail = next(f for f in findings if "contributor" in f.headline).detail
+        assert "below" not in detail
+        assert "contributor table" in detail
+
     def test_volume_is_reported_at_any_size(self) -> None:
         """A commit count describes the repository, not a person."""
         findings = summarise(_commits(40), _stats([40]))
@@ -251,16 +258,16 @@ class TestBehaviouralFindingsAreWithheldInSmallTeams:
 class TestOneFactHasOneNumber:
     """The report stated a quiet run twice, with two different values.
 
-    The summary card counts inactive calendar days; the finding took the
-    gap between two active days, which is inactive + 1. A structural
-    off-by-one, so the two disagreed by exactly one on every repository
-    ever analysed — "Max Inactive Days 13" beside "longest quiet run of
-    14 days", in one document, about one fact.
+    First by one day, on every repository ever analysed ("Max Inactive Days
+    13" beside "longest quiet run of 14 days"), because one counted the gap
+    and the other the days inside it. Then by far more: the card walked the
+    whole analysis window, so a `--since` before the first commit and the
+    silence after the last were counted too -- "8,469" beside "3 days". The
+    old version of this test used a window that started and ended on a
+    commit, the one shape in which the two definitions agree.
     """
 
-    def test_the_finding_agrees_with_the_summary_card(self) -> None:
-        from reveille.adapters.renderer import _compute_longest_inactive_streak
-
+    def test_the_finding_quotes_the_shared_function(self) -> None:
         commits = [
             Commit(
                 sha=f"{index:040d}",
@@ -271,15 +278,46 @@ class TestOneFactHasOneNumber:
                 lines_deleted=0,
             )
             # Enough commits to clear the cadence threshold, with one
-            # deliberate 14-day gap: 13 days carrying no commits.
+            # deliberate gap: days 20 to 33 carry no commit, 14 days.
             for index, offset in enumerate([*range(20), 34, 35, 36, 40, 41, 42, 43])
         ]
-        dates = [c.timestamp.date() for c in commits]
-        card = _compute_longest_inactive_streak(commits, min(dates), max(dates))
-
         finding = next(f for f in summarise(commits, _stats([27])) if "quiet run" in f.headline)
         quoted = int(finding.headline.split("quiet run of ")[1].split()[0].replace(",", ""))
-        assert quoted == card, (
-            f"the finding says {quoted} days and the card says {card}; "
-            "one fact, two numbers, in one document"
+
+        assert quoted == longest_quiet_run(commits) == 14
+
+
+def _on(*days: int) -> list[Commit]:
+    return [
+        Commit(
+            sha=f"{day:040d}",
+            author_name="Dev",
+            author_email="d@example.com",
+            timestamp=_START + datetime.timedelta(days=day),
+            lines_added=1,
+            lines_deleted=0,
         )
+        for day in days
+    ]
+
+
+@pytest.mark.unit
+class TestLongestQuietRun:
+    """Commit-free days between two days that had a commit."""
+
+    def test_nothing_to_measure_is_zero(self) -> None:
+        assert longest_quiet_run([]) == 0
+        assert longest_quiet_run(_on(5)) == 0
+        assert longest_quiet_run(_on(5, 5)) == 0
+
+    def test_consecutive_days_are_zero(self) -> None:
+        assert longest_quiet_run(_on(0, 1, 2, 3, 4)) == 0
+
+    def test_the_days_inside_a_gap(self) -> None:
+        assert longest_quiet_run(_on(0, 7)) == 6
+
+    def test_the_longest_gap_wins(self) -> None:
+        assert longest_quiet_run(_on(0, 3, 4, 20, 21)) == 15
+
+    def test_order_does_not_matter(self) -> None:
+        assert longest_quiet_run(_on(21, 0, 4, 20, 3)) == 15

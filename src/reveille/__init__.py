@@ -18,7 +18,7 @@ import logging
 
 logging.getLogger(__name__).addHandler(logging.NullHandler())
 
-__version__ = "0.8.1"
+__version__ = "0.9.0"
 __author__ = "Vara Prasad Chilakanti"
 __email__ = "varaprasadchilakanti@gmail.com"
 __licence__ = "Apache-2.0"

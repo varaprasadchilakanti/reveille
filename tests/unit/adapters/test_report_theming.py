@@ -26,6 +26,8 @@ import datetime
 import inspect
 import json
 import re
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -303,3 +305,39 @@ def _commit(when: datetime.datetime) -> Commit:
         lines_added=10,
         lines_deleted=1,
     )
+
+
+def _read_theme(stored: str | None, system_dark: bool) -> str:
+    """Run the template's `readTheme` with a stand-in storage and media query."""
+    template = Path(__file__).resolve().parents[3] / "src/reveille/templates/report.html.j2"
+    source = template.read_text(encoding="utf-8")
+    function = re.search(r"    function readTheme\(\).*?\n    \}\n", source, re.DOTALL)
+    assert function, "readTheme is missing from the template"
+    script = (
+        "var THEME_KEY = 'reveille-theme';\n"
+        f"var localStorage = {{getItem: function () {{ return {json.dumps(stored)}; }}}};\n"
+        "var window = {matchMedia: function (q) { return {matches: "
+        + ("true" if system_dark else "false")
+        + "}; }};\n"
+        + function.group(0)
+        + "process.stdout.write(readTheme());\n"
+    )
+    node = shutil.which("node")
+    assert node
+    return subprocess.run([node, "-e", script], check=True, capture_output=True, text=True).stdout
+
+
+@pytest.mark.unit
+@pytest.mark.skipif(shutil.which("node") is None, reason="needs Node.js")
+class TestTheFirstThemeFollowsTheReader:
+    """The report always opened light, whatever the reader's system used."""
+
+    def test_a_dark_system_opens_dark(self) -> None:
+        assert _read_theme(None, system_dark=True) == "dark"
+
+    def test_a_choice_made_on_the_page_wins(self) -> None:
+        assert _read_theme("light", system_dark=True) == "light"
+        assert _read_theme("dark", system_dark=False) == "dark"
+
+    def test_an_unknown_stored_value_is_not_trusted(self) -> None:
+        assert _read_theme("purple", system_dark=False) == "light"

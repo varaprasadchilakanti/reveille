@@ -9,7 +9,10 @@
 {% macro chart_table(chart_id, caption) %}
 {%- set table = chart_tables.get(chart_id) %}
 {%- if table %}
-        <table class="visually-hidden">
+        {#- The class is on a wrapping block, not the table: `width: 1px`
+            cannot shrink a table below its content, and a clipped table at
+            full width made a phone's page scroll sideways. #}
+        <div class="visually-hidden"><table>
             <caption>{{ caption }}</caption>
             <thead>
                 <tr>{% for column in table.columns %}<th scope="col">{{ column }}</th>{% endfor %}</tr>
@@ -19,7 +22,7 @@
                 <tr><th scope="row">{{ row[0] }}</th>{% for cell in row[1:] %}<td>{{ cell }}</td>{% endfor %}</tr>
                 {% endfor %}
             </tbody>
-        </table>
+        </table></div>
 {%- endif %}
 {% endmacro %}
 {# SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti #}
@@ -206,6 +209,14 @@
             margin-bottom: 44px;
         }
 
+        .cards-note {
+            margin: -32px 0 44px;
+            max-width: 78ch;
+            color: var(--color-text-secondary);
+            font-size: 12.5px;
+            line-height: 1.6;
+        }
+
         .summary-card {
             padding: 16px 18px 18px;
             background: var(--color-surface);
@@ -321,6 +332,84 @@
            JavaScript being off. One neutral fill throughout -- a severity ramp
            would say some values are bad, and none of these measures is a
            target. */
+        /* The flower and the table that holds its figures, side by side
+           where there is room, so the shape and its numbers are read
+           together; stacked below that, the flower first. */
+        .profile-layout {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr);
+            gap: 8px 40px;
+            align-items: center;
+        }
+
+        @media (min-width: 901px) {
+            .profile-layout {
+                grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+            }
+            .profile-layout .profile-flower { margin: 0; }
+        }
+
+        .profile-flower {
+            margin: 0 auto 8px;
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .profile-flower svg {
+            display: block;
+            width: 100%;
+            height: auto;
+            overflow: visible;
+        }
+
+        .profile-flower figcaption {
+            text-wrap: balance;
+            text-align: center;
+            font-size: 11.5px;
+            color: var(--color-text-muted);
+        }
+
+        .flower-grid {
+            fill: none;
+            stroke: var(--color-border);
+            stroke-dasharray: 2 3;
+        }
+
+        .flower-track {
+            fill: var(--color-surface);
+            stroke: var(--color-border);
+        }
+
+        .flower-petal {
+            fill: var(--color-primary);
+            fill-opacity: 0.85;
+        }
+
+        /* A ring of the page colour under the mark, so it stays visible
+           where it crosses a petal: the bare mark measured 2.6:1 against
+           the petal fill, below the 3:1 WCAG 1.4.11 asks of a graphic. */
+        .flower-expected-halo {
+            fill: none;
+            stroke: var(--color-bg);
+            stroke-width: 5;
+        }
+
+        .flower-expected {
+            fill: none;
+            stroke: var(--color-text-primary);
+            stroke-width: 2;
+        }
+
+        .flower-label {
+            font-size: 14px;
+            fill: var(--color-text-secondary);
+        }
+
+        .flower-name {
+            font-weight: 600;
+            fill: var(--color-text-primary);
+        }
+
         .profile {
             width: 100%;
             border-collapse: collapse;
@@ -334,6 +423,7 @@
             vertical-align: middle;
         }
         .profile thead th {
+            white-space: nowrap;
             font-size: 11.5px;
             font-weight: 600;
             color: var(--color-text-muted);
@@ -387,6 +477,18 @@
             margin-left: -1px;
             background: var(--color-text-secondary);
         }
+        /* On a phone the bar is dropped: the flower above already draws
+           every length and mark, and the bar left the words three
+           columns' worth of width to wrap in. */
+        @media (max-width: 560px) {
+            .profile-meter .meter,
+            .wide-only { display: none; }
+            .profile-name { width: auto; }
+            .profile-meter,
+            .profile-expected { width: 1%; }
+            .flower-label { font-size: 15.5px; }
+        }
+
         .profile-value {
             display: inline-block;
             width: 44px;
@@ -395,6 +497,16 @@
             font-variant-numeric: tabular-nums;
             color: var(--color-text-primary);
             vertical-align: middle;
+        }
+
+        /* Body-text colour and size, not the muted footnote style: a caveat
+           in small grey type under a table is the part a skimming reader skips. */
+        .ranking-caveat {
+            margin: 0 0 14px;
+            color: var(--color-text-primary);
+            font-size: 14px;
+            line-height: 1.55;
+            max-width: 72ch;
         }
 
         .chart-foot {
@@ -408,6 +520,15 @@
 
         /* The report is read on screen and printed to PDF. Splitting a chart
            or a table across a page break loses the axis with it. */
+        /* Plotly shows its toolbar permanently on a device that cannot hover,
+           where it covered legends and labels. Zoom and pan still work by
+           touch, and the toolbar remains on hover everywhere else. */
+        @media (hover: none) {
+            .modebar-container {
+                display: none !important;
+            }
+        }
+
         @media print {
             /* Browsers do not print background colours by default, but they
                do print text colour. A reader who had ever pressed "Dark
@@ -435,16 +556,52 @@
                the reader cannot reach. */
             .theme-toggle,
             .heatmap-controls,
-            .modebar {
+            .modebar,
+            .table-count,
+            .heatmap-scroll-note {
                 display: none !important;
             }
 
-            .section,
+            /* A chart is kept whole; a section is not. Keeping every
+               section whole pushed each one to a new page, nine pages with
+               the last holding only the footer. A heading stays with what
+               follows it, and a table breaks between rows. */
             .chart-container,
             .stat-card,
-            .ranking-table {
+            .ranking-table tr {
                 break-inside: avoid;
                 page-break-inside: avoid;
+            }
+
+            .section-title,
+            .section-note {
+                break-after: avoid;
+                page-break-after: avoid;
+            }
+
+            /* Paper cannot scroll. The scroll container clipped the table's
+               last columns, and the heatmap's minimum width ran off the
+               page. */
+            /* !important throughout: these override screen rules that come
+               later in the stylesheet, and at equal specificity the later
+               rule wins. */
+            .table-wrapper,
+            .heatmap-scroll {
+                overflow: visible !important;
+                max-height: none !important;
+            }
+
+            #chart-heatmap {
+                min-width: 0 !important;
+            }
+
+            .ranking-table {
+                font-size: 10px !important;
+            }
+
+            .ranking-table th,
+            .ranking-table td {
+                padding: 6px 8px !important;
             }
         }
 
@@ -545,10 +702,43 @@
         /* ============================================================
            Ranking Table
            ============================================================ */
+        /* Its own scrolling panel: with 1,682 contributors the table pushed
+           every later section thousands of pixels down. The header stays in
+           view while the rows scroll; print lifts the limit. */
         .table-wrapper {
             border: 1px solid var(--color-border);
             border-radius: 6px;
-            overflow-x: auto;
+            max-height: min(70vh, 640px);
+            overflow: auto;
+        }
+
+        .table-wrapper:focus-visible {
+            outline: 2px solid var(--color-primary);
+            outline-offset: 2px;
+        }
+
+        .ranking-table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            background: var(--color-surface);
+        }
+
+        .section-note.co-authors {
+            margin-top: 14px;
+        }
+
+        .report-notice {
+            margin: 10px 0 0;
+            max-width: 72ch;
+            font-size: 12px;
+            color: var(--color-text-muted);
+        }
+
+        .table-count {
+            margin: -6px 0 8px;
+            font-size: 12px;
+            color: var(--color-text-muted);
         }
 
         .ranking-table {
@@ -580,7 +770,8 @@
             vertical-align: middle;
         }
 
-        .ranking-table tbody tr:last-child td {
+        .ranking-table tbody tr:last-child td,
+        .ranking-table tbody tr:last-child th {
             border-bottom: none;
         }
 
@@ -606,14 +797,24 @@
             vertical-align: middle;
         }
 
+        /* A name or address with no spaces -- 257 characters is possible
+           after the cap -- otherwise sets the column's minimum width and
+           pushes every figure off the screen. `anywhere` rather than
+           `break-word`: only `anywhere` lowers the minimum width that table
+           layout reads. The cap on width keeps one long name from taking
+           the table even when it could fit. */
         .contributor-name {
             display: block;
+            max-width: 36ch;
+            overflow-wrap: anywhere;
             font-weight: 600;
             color: var(--color-text-primary);
         }
 
         .contributor-email {
             display: block;
+            max-width: 36ch;
+            overflow-wrap: anywhere;
             margin-top: 2px;
             font-size: 11px;
             color: var(--color-text-muted);
@@ -664,8 +865,10 @@
             white-space: nowrap;
         }
 
+        /* 72 px, not 120: with every ranking column the table ran past a
+           1440 px page and cut the score's figure off at the panel edge. */
         .score-bar-track {
-            width: 120px;
+            width: 72px;
             height: 8px;
             flex-shrink: 0;
             background: var(--color-border);
@@ -732,7 +935,21 @@
 
         .heatmap-year-tabs {
             display: flex;
+            flex-wrap: wrap;
             gap: 6px;
+        }
+
+        /* The grid is given a minimum width from its number of weeks and
+           scrolls sideways below it. Squeezed to a phone's width it became a
+           strip about 25 pixels tall. */
+        .heatmap-scroll {
+            overflow-x: auto;
+        }
+
+        .heatmap-scroll-note {
+            margin: 0 0 8px;
+            font-size: 12px;
+            color: var(--color-text-muted);
         }
 
         .heatmap-year-btn {
@@ -794,7 +1011,12 @@
                 {% if data.metadata.remote_url %}
                 <span><strong>Remote:</strong> {{ data.metadata.remote_url }}</span>
                 {% endif %}
+                {% if data.metadata.analysed_branch == 'HEAD' and data.provenance.head_sha %}
+                {# A detached checkout has no branch; "HEAD" names none. #}
+                <span><strong>Branch:</strong> detached HEAD at {{ data.provenance.head_sha[:7] }}</span>
+                {% else %}
                 <span><strong>Branch:</strong> {{ data.metadata.analysed_branch }}</span>
+                {% endif %}
                 <span>
                     <strong>Period:</strong>
                     {{ data.metadata.analysis_since }} to {{ data.metadata.analysis_until }}
@@ -811,7 +1033,7 @@
                 <span class="filter-note">
                     <strong>Listing:</strong>
                     {{ data.metadata.unique_contributors }} of
-                    {{ derived.population_size }} contributors.
+                    {{ '{:,}'.format(derived.population_size) }} contributors.
                     {{ derived.contributors_below_threshold }}
                     {{ 'contributor is' if derived.contributors_below_threshold == 1 else 'contributors are' }}
                     below the min-commits threshold of
@@ -819,7 +1041,53 @@
                     are still counted in every figure here.
                 </span>
                 {% endif %}
+                {% if data.provenance.shallow_clone %}
+                <span class="filter-note">
+                    <strong>Shallow clone:</strong>
+                    only the history this clone holds is analysed, and the
+                    period starts where the clone's history does.
+                </span>
+                {% endif %}
+                {% if data.provenance.commits_dated_after_window %}
+                {#
+                   A commit dated after the window is counted in no figure. The
+                   branch therefore holds more commits than this report, and
+                   the reader is told so rather than left to find the gap.
+                #}
+                <span class="filter-note">
+                    <strong>Not counted:</strong>
+                    {{ data.provenance.commits_dated_after_window }}
+                    {{ 'commit' if data.provenance.commits_dated_after_window == 1 else 'commits' }}
+                    dated after {{ data.metadata.analysis_until }}
+                    {{ 'is' if data.provenance.commits_dated_after_window == 1 else 'are' }}
+                    not counted.
+                </span>
+                {% endif %}
+                {% if data.provenance.replace_refs_not_followed or data.provenance.graft_file_not_followed %}
+                {# ADR 0018: the figures describe the objects the hashes name.
+                   `git log` follows these and would show a different history. #}
+                <span class="filter-note">
+                    <strong>Not followed:</strong>
+                    {% if data.provenance.replace_refs_not_followed %}{{ data.provenance.replace_refs_not_followed }} {{ 'replace ref' if data.provenance.replace_refs_not_followed == 1 else 'replace refs' }}{% endif %}{% if data.provenance.replace_refs_not_followed and data.provenance.graft_file_not_followed %} and {% endif %}{% if data.provenance.graft_file_not_followed %}a graft file{% endif %},
+                    which <code>git log</code> follows; this report describes the
+                    history the commit hashes name.
+                </span>
+                {% endif %}
+                {% if data.provenance.commits_unreadable %}
+                {# A record the read could not parse is dropped as a defence
+                   against forgery (ADR 0019), and stated rather than lost. #}
+                <span class="filter-note">
+                    <strong>Not read:</strong>
+                    {{ data.provenance.commits_unreadable }}
+                    {{ 'commit' if data.provenance.commits_unreadable == 1 else 'commits' }}
+                    could not be read, because an author field held characters the
+                    read splits on, and {{ 'is' if data.provenance.commits_unreadable == 1 else 'are' }}
+                    not counted.
+                </span>
+                {% endif %}
             </div>
+            {# The limit of what the figures can carry, where every reader sees it. #}
+            <p class="report-notice">{{ notice }}</p>
         </div>
         <button id="theme-toggle" class="theme-toggle" type="button">
             Dark Mode
@@ -831,56 +1099,41 @@
          ============================================================ -->
     <div class="summary-grid">
         <div class="summary-card">
-            <span class="visually-hidden">Total Commits: {{ data.metadata.total_commits }}</span>
-            <div class="value" aria-hidden="true">{{ data.metadata.total_commits }}</div>
+            <span class="visually-hidden">Total Commits: {{ '{:,}'.format(data.metadata.total_commits) }}</span>
+            <div class="value" aria-hidden="true">{{ '{:,}'.format(data.metadata.total_commits) }}</div>
             <div class="label" aria-hidden="true">Total Commits</div>
         </div>
         <div class="summary-card">
-            <span class="visually-hidden">Contributors: {{ data.metadata.unique_contributors }}</span>
-            <div class="value" aria-hidden="true">{{ data.metadata.unique_contributors }}</div>
+            {#
+               Everybody the figures describe, not the rows the threshold left
+               in the table: with --min-commits 999 this card read 0 beside
+               "1 hold half the commits". The header states the listing.
+               People only, like the two cards after it and the Gini: an
+               automated account is stated under the cards instead (ADR 0017).
+            #}
+            <span class="visually-hidden">Contributors: {{ '{:,}'.format(derived.people) }}</span>
+            <div class="value" aria-hidden="true">{{ '{:,}'.format(derived.people) }}</div>
             <div class="label" aria-hidden="true">Contributors</div>
         </div>
         <div class="summary-card">
-            <span class="visually-hidden">Contributors holding half the commits: {{ derived.commit_concentration }}</span>
-            <div class="value" aria-hidden="true">{{ derived.commit_concentration }}</div>
-            <div class="label" aria-hidden="true">Hold Half the Commits</div>
+            <span class="visually-hidden">Contributors holding half the commits: {{ '{:,}'.format(derived.commit_concentration) }}</span>
+            <div class="value" aria-hidden="true">{{ '{:,}'.format(derived.commit_concentration) }}</div>
+            <div class="label" aria-hidden="true">{{ 'Holds' if derived.commit_concentration == 1 else 'Hold' }} Half the Commits</div>
         </div>
         <div class="summary-card">
-            <span class="visually-hidden">Longest run of days with no commits: {{ derived.longest_inactive_streak }}</span>
-            <div class="value" aria-hidden="true">{{ derived.longest_inactive_streak }}</div>
+            <span class="visually-hidden">Longest quiet run between commits: {{ '{:,}'.format(derived.longest_inactive_streak) }} days</span>
+            <div class="value" aria-hidden="true">{{ '{:,}'.format(derived.longest_inactive_streak) }}</div>
             <div class="label" aria-hidden="true">Longest Quiet Run (days)</div>
         </div>
         {#
-           The fifth card names a person only when the ranking was asked
-           for. It previously did so unconditionally: `--no-ranking`
-           removed the rank column, the designation and the score, and
-           still printed a named individual under the superlative "Top
-           Contributor" at the top of the page. ADR 0010 says the default
-           report describes the repository and names nobody; this card
-           was the one place it did not.
-
-           Off, the slot carries the Gini instead -- a repository-level
-           figure, and the one the distribution section is built on.
+           The fifth card describes the repository, never a person, in every
+           mode. It once named an individual under "Top Contributor", and
+           with --ranking it still put the top scorer's first name here, on
+           the same page whose findings say no individual is named. A
+           summary card is the first thing a reader looks at; a name there
+           reads as the headline. The ranking table below carries the order
+           for anyone who asked for it.
         #}
-        {% if data.provenance.ranking_enabled and data.ranked_contributors %}
-        <div class="summary-card">
-            {#
-               Labelled by what it is ordered by. `rank_contributors` sorts on
-               composite_score, so "by commit volume" was false whenever the
-               two disagree -- and it was false only in the visually-hidden
-               text, which is to say only for the readers who cannot see the
-               table to check it.
-            #}
-            <span class="visually-hidden">
-                Highest composite score:
-                {{ data.ranked_contributors[0].stats.name }}
-            </span>
-            <div class="value" aria-hidden="true">
-                {{ data.ranked_contributors[0].stats.name.split()[0] }}
-            </div>
-            <div class="label" aria-hidden="true">Highest Score</div>
-        </div>
-        {% else %}
         <div class="summary-card">
             <span class="visually-hidden">
                 Commit distribution, Gini coefficient:
@@ -889,8 +1142,23 @@
             <div class="value" aria-hidden="true">{{ '%.2f'|format(derived.gini_coefficient) }}</div>
             <div class="label" aria-hidden="true">Distribution (Gini)</div>
         </div>
-        {% endif %}
     </div>
+    {% if derived.automated_accounts %}
+    {#
+       Stated where the figures are, so the cards never silently disagree
+       with the contributor table that lists the account (ADR 0017).
+    #}
+    <p class="cards-note">
+        Contributors, Hold Half the Commits and the Gini count people.
+        {{ '{:,}'.format(derived.automated_accounts) }}
+        {{ 'automated account' if derived.automated_accounts == 1 else 'automated accounts' }}
+        ({{ '{:,}'.format(derived.automated_commits) }}
+        {{ 'commit' if derived.automated_commits == 1 else 'commits' }}) {{ 'is' if derived.automated_accounts == 1 else 'are' }}
+        counted in the commit and line totals, but not in those figures. An account is treated as automated when its name
+        or address carries <code>[bot]</code>; one without it is counted as a
+        person.
+    </p>
+    {% endif %}
 
     <!-- ============================================================
          What the history shows -- generated from the figures below
@@ -910,7 +1178,7 @@
         <p class="chart-foot">
             Generated from the figures in this report by fixed rules, offline
             and without a language model. The same history always produces the
-            same sentences. No individual is named or assessed.
+            same sentences. These sentences name no individual.
         </p>
     </div>
     {% endif %}
@@ -929,17 +1197,15 @@
 {{ chart_table("lorenz", "Cumulative share of commits against cumulative share of contributors") }}
         </div>
         <p class="chart-foot">
-            {% if derived.population_size > 1 %}
-            Gini runs 0 (even) to {{ '%.2f'|format(derived.gini_ceiling) }}, which is the most
-            concentrated {{ derived.population_size }} contributors can be — the maximum is (n-1)/n, not 1.
+            {% if derived.people > 1 %}
+            Gini runs 0 (even) to {{ derived.gini_ceiling }}, the most concentrated
+            {{ '{:,}'.format(derived.people) }} people can be.
+            It describes the repository, not its people; compare it with this
+            repository over time, not with another.
             {% else %}
-            With a single contributor there is no distribution to measure: the Gini is 0 by
-            definition, not because activity is evenly shared.
+            With {{ 'one person' if derived.people == 1 else 'no people' }}
+            there is no distribution to measure, so the Gini is 0 by definition.
             {% endif %}
-            It describes the
-            repository, not the people in it: a single maintainer with
-            occasional contributors scores high for ordinary reasons.
-            Comparable against this repository over time, not against another.
         </p>
     </div>
     <!-- ============================================================
@@ -954,7 +1220,8 @@
                     class="heatmap-contributor-select"
                     aria-label="Filter the activity heatmap by contributor"></select>
         </div>
-        <div class="chart-container">
+        <p id="heatmap-scroll-note" class="heatmap-scroll-note" hidden>Showing the latest weeks; scroll sideways for earlier ones.</p>
+        <div class="chart-container heatmap-scroll">
             <div id="chart-heatmap" role="img" aria-label="Activity heatmap: commit counts per calendar day. {{ derived.heatmap_summary }}"></div>
         </div>
     </div>
@@ -974,19 +1241,15 @@
          Repository profile
          ============================================================ -->
     {#
-       A table, not a chart. It was a Plotly radar until 0.9.0: area is read
-       far less accurately than length (Cleveland & McGill, JASA 1984), the
-       shape depended on an axis order carrying no meaning, and the report had
-       to instruct the reader to treat the figure as numbers rather than as a
-       silhouette -- an admission that the form was wrong, not a mitigation of
-       it. Numbers presented accurately is a table with bars in it. Two of the
-       five measures were dropped because each restated a figure printed
-       elsewhere in this report; see ADR 0012.
+       A flower beside a table (above it below 901 px). It was a Plotly radar until 0.9.0: area is read
+       far less accurately than length (Cleveland & McGill, JASA 1984) and the
+       shape depended on an axis order carrying no meaning (ADR 0012). The
+       shape came back as separate petals of length (ADR 0016); the table
+       stays as the authoritative text.
 
-       Consequences, all deliberate: it renders with JavaScript off, where the
-       radar drew nothing; it is visible to sighted readers, where the radar's
-       figures lived only in a visually-hidden table; and it needs no
-       role="img" and no aria-label, because it is text.
+       Both render with JavaScript off and print. The flower is an image with
+       an aria-label listing every value; the table needs no label, because
+       it is text.
 
        A Jinja comment rather than an HTML one: this is for whoever edits the
        template, and has no business shipping inside every report.
@@ -995,11 +1258,38 @@
     <div class="section">
         <h2 class="section-title">Repository Profile</h2>
         <p class="section-note">
-            Three shares of the analysis window, each between 0% and 100%.
+            Six shares of the analysis window, each from 0% to 100%.
         </p>
+        {#
+           The shape, as separate petals (ADR 0016): length is the share,
+           centre 0% to rim 100%, never joined into a polygon whose area would
+           depend on the axis order. Inline SVG coloured from the theme, so it
+           renders without JavaScript and prints. The table below holds every
+           figure as text; the label here repeats them for screen readers.
+        #}
+        <div class="profile-layout">
+        {% if flower %}
+        <figure class="profile-flower">
+            <svg viewBox="0 58 440 332" role="img"
+                 aria-label="Repository profile: {% for p in flower %}{{ p.name }} {{ p.percent }}{% if not loop.last %}, {% endif %}{% endfor %}. The figures follow in the table.">
+                <circle class="flower-grid" cx="220" cy="220" r="60"></circle>
+                <circle class="flower-grid" cx="220" cy="220" r="120"></circle>
+                {% for p in flower %}
+                <path class="flower-track" d="{{ p.track }}"></path>
+                {% if p.petal %}<path class="flower-petal" d="{{ p.petal }}"></path>{% endif %}
+                {% if p.expected %}<path class="flower-expected-halo" d="{{ p.expected }}"></path><path class="flower-expected" d="{{ p.expected }}"></path>{% endif %}
+                <text class="flower-label" x="{{ p.label_x }}" y="{{ p.label_y }}" text-anchor="{{ p.anchor }}">
+                    <tspan class="flower-name">{{ p.name }}</tspan>
+                    <tspan class="flower-value" x="{{ p.label_x }}" dy="1.15em">{{ p.percent }}</tspan>
+                </text>
+                {% endfor %}
+            </svg>
+            <figcaption>Petal length is the share; a cross-line marks the value expected by chance.</figcaption>
+        </figure>
+        {% endif %}
         <table class="profile">
             <caption class="visually-hidden">
-                The three repository profile measures, each with its value and,
+                The six repository profile measures, each with its value and,
                 where one can be computed, the value expected under evenly
                 spread activity.
             </caption>
@@ -1007,7 +1297,7 @@
                 <tr>
                     <th scope="col">Measure</th>
                     <th scope="col">Share</th>
-                    <th scope="col">Expected by chance</th>
+                    <th scope="col">Expected<span class="wide-only"> by chance</span></th>
                 </tr>
             </thead>
             <tbody>
@@ -1042,16 +1332,11 @@
                 {% endfor %}
             </tbody>
         </table>
+        </div>
         <p class="chart-foot">
-            Each measure is a naturally bounded share, never rescaled to fit.
-            <strong>Expected</strong> is what the measure would read under evenly
-            spread activity, computed from its own arithmetic — not a target, and
-            not a figure anyone chose. Continuity's expectation is the share of
-            weeks a commit would land in by chance; Recent work's is the share of
-            days the final quarter occupies. Revisiting has no such expectation,
-            so none is shown rather than one invented.
-            None of these is a goal: a finished library scores low on all three
-            for entirely ordinary reasons, and no measure here describes a person.
+            <strong>Expected</strong> is what evenly spread activity would give,
+            computed where the measure allows; it is not a target.
+            None of these is a goal, and none describes a person.
         </p>
     </div>
     {% endif %}
@@ -1073,11 +1358,8 @@
 {{ chart_table("commit_size", "Commits grouped by the number of lines each changed") }}
         </div>
         <p class="chart-foot">
-            Churn is added plus deleted, not net: a commit that removes five
-            hundred lines is a large change. Relative code churn in the sense
-            of Nagappan &amp; Ball (ICSE 2005). Because the bins widen, the
-            tallest bar is not the median — the median is marked. Describes the
-            working rhythm of the repository and separates no contributor out.
+            Churn is added plus deleted, not net (Nagappan &amp; Ball, ICSE 2005).
+            The bins widen, so the tallest bar is not the median; the median is marked.
         </p>
     </div>
 
@@ -1095,13 +1377,15 @@
 {{ chart_table("hotspots", "Files by total lines changed") }}
         </div>
         <p class="chart-foot">
-            Churn is added plus deleted, not net. This is the churn axis of
-            hotspot analysis (Tornhill, 2013; Nagappan &amp; Ball, ICSE 2005) —
-            Reveille reads history and never file content, so it cannot cross
-            churn with complexity. A file that changes often is one to look
-            at, not one that is wrong. Machine-generated files such as lock
-            files are excluded; they dominate any churn ranking and tell you
-            nothing you can act on.
+            Churn is added plus deleted, not net (Tornhill, 2013). A file that
+            changes often is one to look at, not one that is wrong.
+            {% if derived.generated_files %}
+            {{ '{:,}'.format(derived.generated_files) }}
+            {{ 'lock file' if derived.generated_files == 1 else 'lock files' }}
+            ({{ '{:,}'.format(derived.generated_lines) }} {{ 'line' if derived.generated_lines == 1 else 'lines' }} changed)
+            {{ 'is' if derived.generated_files == 1 else 'are' }} left out and
+            counted under Change by File Type.
+            {% endif %}
         </p>
     </div>
 
@@ -1117,7 +1401,7 @@
         <p class="chart-foot">
             Extensions beyond the largest eight are pooled rather than dropped,
             so the total is preserved. Files without an extension, including
-            dotfiles, are reported together.
+            dotfiles, are one entry; so are lock files, whatever their extension.
         </p>
     </div>
     {% endif %}
@@ -1133,6 +1417,39 @@
         </div>
     </div>
 
+    {#
+       Who changed each area (ADR 0013). Only with --area-authors: it names
+       people, organised by directory rather than by person. Alphabetical
+       names, one date per area, no count per person. Not part of the
+       findings, which keep their promise to name nobody.
+    #}
+    {% if derived.areas %}
+    <div class="section">
+        <h2 class="section-title">Who Changed Each Area</h2>
+        <p class="section-note">
+            The {{ derived.areas|length }} most-changed directories in this
+            window, up to {{ data.provenance.area_depth }} {{ 'level' if data.provenance.area_depth == 1 else 'levels' }} deep, and who
+            changed them. It says who changed each area, not who knows or owns
+            it: review and pairing do not appear in commit history.
+        </p>
+        <ul class="findings areas">
+            {% for area in derived.areas %}
+            <li>
+                <span class="finding-head"><code>{{ area.area }}</code>: {{ area.headline }}</span>
+                <span class="finding-evidence">{{ area.evidence }}</span>
+                {% if area.authors %}<span class="finding-detail">{{ area.authors }}</span>{% endif %}
+                {% if area.automated %}<span class="finding-detail">{{ area.automated }}</span>{% endif %}
+                {% for note in area.notes %}<span class="finding-detail">{{ note }}</span>{% endfor %}
+            </li>
+            {% endfor %}
+        </ul>
+        <p class="chart-foot">
+            Names are alphabetical, not by activity. [bot] identities are listed
+            as automated. One person with several addresses appears once per
+            address; a .mailmap joins them.
+        </p>
+    </div>
+    {% endif %}
     <!-- ============================================================
          Contributor table. Headed, columned and captioned as a ranking only
          when the ranking is enabled; see ADR 0010. The placeholder rows exist
@@ -1143,7 +1460,24 @@
     {% if data.ranked_contributors %}
     <div class="section">
         <h2 class="section-title">{% if ranked %}Contributor Rankings{% else %}Contributors{% endif %}</h2>
-        <div class="table-wrapper">
+        {% if ranked %}
+        {% set w = data.provenance.ranking_weights %}
+        <p class="ranking-caveat">
+            Contributors are ordered by a weighted score: commit count
+            {{ (w.commits * 100)|round|int }}%, lines changed
+            {{ (w.lines * 100)|round|int }}%, days with a commit
+            {{ (w.consistency * 100)|round|int }}% and recency
+            {{ (w.recency * 100)|round|int }}%. The score measures how much and how
+            regularly each person committed in this window. It does not measure
+            contribution, productivity or value, and it is not fit for judging
+            individuals. The weights are a stated choice, not a validated model.
+        </p>
+        {% endif %}
+        {% set table_rows = data.ranked_contributors|length %}
+        {% if table_rows > 12 %}
+        <p class="table-count">{{ '{:,}'.format(table_rows) }} contributors; the table scrolls within its panel.</p>
+        {% endif %}
+        <div class="table-wrapper" role="region" aria-label="Contributor table, scrollable" tabindex="0">
             <table class="ranking-table">
                 <caption class="visually-hidden">
                     {% if ranked %}Contributor rankings{% else %}Contributors{% endif %} for {{ data.metadata.name }} between
@@ -1167,6 +1501,9 @@
                         <th scope="col" style="text-align:right">Net Lines</th>
                         <th scope="col" style="text-align:right">Active Days</th>
                         <th scope="col" style="white-space:nowrap">Last Commit</th>
+                        {% if derived.co_authored_any %}
+                        <th scope="col" style="text-align:right">Co-authored</th>
+                        {% endif %}
                         {% if ranked %}
                         <th scope="col" style="min-width:180px">Score</th>
                         {% endif %}
@@ -1198,14 +1535,18 @@
                         <td style="text-align:right">
                             {{ "{:,}".format(contributor.stats.commit_count) }}
                         </td>
-                        <td style="text-align:right" class="num-positive">
-                            +{{ "{:,}".format(contributor.stats.lines_added) }}
+                        {# A zero carries no sign and no colour: "−0" in red read as
+                           a loss where there was none. #}
+                        <td style="text-align:right" class="{{ 'num-positive' if contributor.stats.lines_added else 'num-neutral' }}">
+                            {{ '+' if contributor.stats.lines_added }}{{ "{:,}".format(contributor.stats.lines_added) }}
                         </td>
-                        <td style="text-align:right" class="num-negative">
-                            &#8722;{{ "{:,}".format(contributor.stats.lines_deleted) }}
+                        <td style="text-align:right" class="{{ 'num-negative' if contributor.stats.lines_deleted else 'num-neutral' }}">
+                            {% if contributor.stats.lines_deleted %}&#8722;{% endif %}{{ "{:,}".format(contributor.stats.lines_deleted) }}
                         </td>
                         <td style="text-align:right">
-                            {% if contributor.stats.net_lines >= 0 %}
+                            {% if contributor.stats.net_lines == 0 %}
+                                <span class="num-neutral">0</span>
+                            {% elif contributor.stats.net_lines > 0 %}
                                 <span class="num-positive">
                                     +{{ "{:,}".format(contributor.stats.net_lines) }}
                                 </span>
@@ -1221,6 +1562,11 @@
                         <td style="color:var(--color-text-secondary)">
                             {{ contributor.stats.last_commit_date }}
                         </td>
+                        {% if derived.co_authored_any %}
+                        <td style="text-align:right" class="num-neutral">
+                            {{ '{:,}'.format(contributor.stats.co_authored_commits) }}
+                        </td>
+                        {% endif %}
                         {% if ranked %}
                         <td>
                             <div class="score-cell">
@@ -1240,6 +1586,19 @@
                 </tbody>
             </table>
         </div>
+        {#
+           Co-authorship beside authorship (ADR 0014): identities credited by a
+           Co-authored-by trailer who authored nothing in the window. Never in
+           the charts, which count authors.
+        #}
+        {% if derived.co_authors_named or derived.co_authors_unnamed %}
+        <p class="section-note co-authors">
+            <strong>Credited only as co-author:</strong>
+            {% if derived.co_authors_named %}{% for c in derived.co_authors_named[:10] %}{{ c.name }} ({{ '{:,}'.format(c.co_authored_commits) }}){% if not loop.last %}, {% endif %}{% endfor %}{% if derived.co_authors_named|length > 10 %} and {{ derived.co_authors_named|length - 10 }} others{% endif %}.{% endif %}
+            {% if derived.co_authors_unnamed %}{{ derived.co_authors_unnamed }} below --min-commits {{ 'is' if derived.co_authors_unnamed == 1 else 'are' }} not named.{% endif %}
+            Co-authored-by trailers are not verified.
+        </p>
+        {% endif %}
     </div>
     {% endif %}
 
@@ -1285,7 +1644,7 @@
     <footer class="report-footer">
         <span>Generated by Reveille</span>
         <span>
-            {{ data.metadata.analysis_since }} &#8212; {{ data.metadata.analysis_until }}
+            {{ data.metadata.analysis_since }} to {{ data.metadata.analysis_until }}
         </span>
     </footer>
 
@@ -1507,14 +1866,27 @@
     var heatmapData = null;
     var currentYear = null;
     var currentContributor = '__aggregated__';
+    // True while the page is being printed: charts take the light theme and
+    // the printed width (see fitChartsTo).
+    var printing = false;
 
     // ------------------------------------------------------------------
     // Theme persistence
     // ------------------------------------------------------------------
 
+    // A choice made on this page wins. Without one, the report follows the
+    // reader's system setting: it always opened light, so a reader whose
+    // system is dark got a white page they had to switch by hand.
     function readTheme() {
-        try { return localStorage.getItem(THEME_KEY) || 'light'; }
-        catch (e) { return 'light'; }
+        var stored = null;
+        try { stored = localStorage.getItem(THEME_KEY); } catch (e) { stored = null; }
+        if (stored === 'light' || stored === 'dark') return stored;
+        try {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                return 'dark';
+            }
+        } catch (e) { /* no media queries: the default stands */ }
+        return 'light';
     }
 
     function writeTheme(theme) {
@@ -1563,11 +1935,24 @@
         }
 
         var layout = mergeLayout(spec.layout || {}, THEME_LAYOUTS[theme]);
+        if (printing) layout.width = divEl.clientWidth;
+        layout = applyNarrowLayout(layout, spec, divEl.clientWidth);
         if (divEl._fullLayout) {
             Plotly.react(divEl, spec.data, layout, PLOTLY_CONFIG);
         } else {
             Plotly.newPlot(divEl, spec.data, layout, PLOTLY_CONFIG);
         }
+    }
+
+    // A phone's axis cannot widen to fit a long label, and Plotly cuts it at
+    // the panel edge without saying so. Below 560 px a chart that declares
+    // narrow-screen overrides gets them -- shortened labels marked with an
+    // ellipsis, fewer ticks, more height. The data, the hover and the text
+    // table keep the full labels.
+    function applyNarrowLayout(layout, spec, width) {
+        var narrow = spec.layout && spec.layout.meta && spec.layout.meta.narrow_layout;
+        if (!narrow || width >= 560) return layout;
+        return mergeLayout(layout, narrow);
     }
 
     function initAllCharts(theme) {
@@ -1579,15 +1964,23 @@
     // Heatmap: GitHub-style grid builder
     //
     // All date arithmetic uses UTC milliseconds to avoid DST anomalies.
-    // The grid spans from the Monday of Jan 1's week to the Sunday of
-    // Dec 31's week for the requested year. Cells outside the calendar
-    // year render as zero (transparent via the colorscale) with empty
-    // customdata so hover is suppressed.
+    // The grid covers the part of the requested year that lies inside the
+    // analysis window, from the Monday of its first week to the Sunday of
+    // its last. Days outside the window are null -- drawn as no cell, with
+    // no hover -- because they are not days with no commits: before the
+    // window the repository may not have existed, and after it is the
+    // future. They were once drawn as zero, the whole year round.
     // ------------------------------------------------------------------
 
-    function buildYearGrid(year, counts) {
-        var jan1Ms  = Date.UTC(year, 0, 1);
-        var dec31Ms = Date.UTC(year, 11, 31);
+    function buildYearGrid(year, counts, since, until) {
+        function dayMs(iso) {
+            var p = iso.split('-');
+            return Date.UTC(+p[0], +p[1] - 1, +p[2]);
+        }
+        var firstMs = Math.max(Date.UTC(year, 0, 1), since ? dayMs(since) : -Infinity);
+        var lastMs  = Math.min(Date.UTC(year, 11, 31), until ? dayMs(until) : Infinity);
+        var jan1Ms  = firstMs;
+        var dec31Ms = lastMs;
 
         // Convert JS Sunday=0 to Monday=0 day-of-week index.
         var jan1Dow  = (new Date(jan1Ms).getUTCDay() + 6) % 7;
@@ -1622,15 +2015,15 @@
             for (var d = 0; d < 7; d++) {
                 var cellMs = weekMonMs + d * 86400000;
                 var cd = new Date(cellMs);
-                if (cd.getUTCFullYear() === year) {
+                if (cellMs >= firstMs && cellMs <= lastMs) {
                     var mo = String(cd.getUTCMonth() + 1).padStart(2, '0');
                     var da = String(cd.getUTCDate()).padStart(2, '0');
                     var dateStr = year + '-' + mo + '-' + da;
                     z[d].push(counts[dateStr] || 0);
                     customdata[d].push(dateStr);
                 } else {
-                    // Outside the calendar year — render transparent.
-                    z[d].push(0);
+                    // Outside the window: no cell and no hover.
+                    z[d].push(null);
                     customdata[d].push('');
                 }
             }
@@ -1648,7 +2041,12 @@
         if (!divEl || !heatmapData) return;
 
         var counts = heatmapData.daily_counts[email] || {};
-        var grid   = buildYearGrid(year, counts);
+        var grid   = buildYearGrid(year, counts, heatmapData.since, heatmapData.until);
+
+        // About 14 pixels a week plus room for the day labels and colour
+        // bar. Below this the container scrolls instead of the cells
+        // shrinking to nothing.
+        divEl.style.minWidth = (grid.x.length * 14 + 120) + 'px';
 
         // Compute the peak commit count across the current grid.
         // When a contributor has no activity in the selected year, every z
@@ -1683,20 +2081,36 @@
                         "Roboto, 'Helvetica Neue', Arial, sans-serif",
                 size: 12
             },
-            margin:     { l: 60, r: 30, t: 20, b: 50 },
-            xaxis:      { type: 'category', tickangle: -45 },
+            margin:     { l: 60, r: 30, t: 40, b: 50 },
+            // 'domain' on both axes: square cells shrink the plot area to the
+            // weeks drawn. The default extends the x range instead, which
+            // drew empty columns past the end of the window.
+            xaxis:      { type: 'category', tickangle: -45, constrain: 'domain' },
             yaxis:      { autorange: 'reversed', scaleanchor: 'x',
                           constrain: 'domain' },
             showlegend: false,
             modebar:    { remove: ['logo'] },
             height:     260
         }, THEME_LAYOUTS[theme]);
+        if (printing) layout.width = divEl.clientWidth;
 
-        if (divEl._fullLayout) {
-            Plotly.react(divEl, [trace], layout, PLOTLY_CONFIG);
-        } else {
-            Plotly.newPlot(divEl, [trace], layout, PLOTLY_CONFIG);
-        }
+        var drawn = divEl._fullLayout
+            ? Plotly.react(divEl, [trace], layout, PLOTLY_CONFIG)
+            : Plotly.newPlot(divEl, [trace], layout, PLOTLY_CONFIG);
+        Promise.resolve(drawn).then(function () { showLatestWeeks(divEl); });
+    }
+
+    // Where the grid is wider than its panel (a phone, or a long window),
+    // the panel scrolls. It opened on the oldest weeks, so the recent ones --
+    // the ones a reader comes for -- were off screen, and an overlay
+    // scrollbar gave no sign that more was there. Open at the latest week and
+    // say that the panel scrolls; say nothing where it does not.
+    function showLatestWeeks(divEl) {
+        var panel = divEl.parentNode;
+        var note = document.getElementById('heatmap-scroll-note');
+        var overflows = panel.scrollWidth > panel.clientWidth + 1;
+        if (overflows) panel.scrollLeft = panel.scrollWidth;
+        if (note) note.hidden = !overflows;
     }
 
     // ------------------------------------------------------------------
@@ -1819,6 +2233,30 @@
 
     var initialTheme = readTheme();
     applyThemeToDocument(initialTheme);
+
+    // Printing reflows the page to the paper's width without firing a resize
+    // event, so every chart kept its screen width and was cut off at the
+    // right edge. Plotly.Plots.resize redraws on a timer, after the page has
+    // already been printed, and 'beforeprint' fires before the print styles
+    // apply. So the charts are redrawn when the print media query starts to
+    // match -- the containers then have their printed width -- through the
+    // same path as the first paint, with that width set. The page prints in
+    // the light palette whatever theme it is shown in, so the charts do too;
+    // they kept a dark theme and printed as dark panels on white paper. On
+    // return they are redrawn in the reader's theme, sized to the screen.
+    function fitChartsTo(isPrinting) {
+        printing = isPrinting;
+        var theme = printing ? 'light' : readTheme();
+        CHART_IDS.forEach(function (id) { initChart(id, theme); });
+        if (heatmapData) renderHeatmap(currentYear, currentContributor, theme);
+    }
+    var printQuery = window.matchMedia ? window.matchMedia('print') : null;
+    if (printQuery && printQuery.addEventListener) {
+        printQuery.addEventListener('change', function (query) {
+            fitChartsTo(query.matches);
+        });
+    }
+    window.addEventListener('afterprint', function () { fitChartsTo(false); });
 
     document.addEventListener('DOMContentLoaded', function () {
         initAllCharts(initialTheme);

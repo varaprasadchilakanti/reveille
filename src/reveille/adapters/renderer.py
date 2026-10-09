@@ -37,11 +37,15 @@ from __future__ import annotations
 
 import csv
 import datetime
+import io
+import itertools
 import json
+import math
 import re
 from collections import defaultdict
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import plotly.graph_objects as go
 import plotly.offline
@@ -54,17 +58,21 @@ from jinja2 import (
     select_autoescape,
 )
 
+from reveille.domain.areas import AreaStatement, PathAnswer, describe_areas, is_automated
+from reveille.domain.coauthors import commits_with_co_authors
 from reveille.domain.concentration import gini_coefficient, lorenz_curve
-from reveille.domain.files import extension_breakdown, hotspots
+from reveille.domain.files import extension_breakdown, generated_churn, hotspots
 from reveille.domain.models import (
+    SCHEMA_VERSION,
+    CoAuthor,
     Commit,
     ContributorStats,
     FileStats,
     RankedContributor,
     ReportData,
 )
-from reveille.domain.profile import repository_profile
-from reveille.domain.summary import summarise
+from reveille.domain.profile import ProfileAxis, repository_profile
+from reveille.domain.summary import Finding, longest_quiet_run, summarise
 from reveille.exceptions import OutputPathError, RenderError
 
 # Label of the aggregated residual slice, referenced where its colour is chosen.
@@ -144,8 +152,10 @@ _LINE_DASHES: tuple[str, ...] = ("solid", "dash", "dot", "dashdot")
 _PIE_MAX_SLICES: int = len(_CATEGORICAL_PALETTE)
 
 # Added and deleted lines are a semantic pair, not two arbitrary categories, so
-# they are named rather than taken from the categorical order. They are drawn
-# from the same validated set to keep one visual language across the report.
+# they are named rather than taken from the categorical order. They are not in
+# the categorical palette. Each is held to the same contrast floor as the
+# palette, and the pair stays 9.5 OKLab units apart under simulated
+# protanopia, above the floor of 6 -- asserted in test_palette.py.
 _LINES_ADDED_COLOUR: str = "#008300"
 _LINES_DELETED_COLOUR: str = "#e66767"
 
@@ -258,8 +268,33 @@ class Renderer:
                 f"Output directory '{resolved.parent}' does not exist. "
                 "Create the directory before generating a report."
             )
-
+        html = self.html_text(data)
         try:
+            resolved.write_text(html, encoding="utf-8")
+        except OSError as exc:
+            raise OutputPathError(f"Failed to write report to '{resolved}': {exc}") from exc
+
+        return resolved
+
+    def html_text(self, data: ReportData) -> str:
+        """Render the HTML report as text, for a file or for stdout.
+
+        Args:
+            data: The complete structured report dataset.
+
+        Returns:
+            The self-contained HTML document.
+
+        Raises:
+            RenderError: If the Jinja2 template raises an error during rendering.
+        """
+        try:
+            profile = repository_profile(
+                data.commits,
+                data.file_stats,
+                data.metadata.analysis_since,
+                data.metadata.analysis_until,
+            )
             charts = self._build_charts(data)
             derived = self._compute_derived_stats(data)
             plotly_js = _PLOTLY_JS_BUNDLE
@@ -269,17 +304,14 @@ class Renderer:
                 charts=charts,
                 # The profile is rendered from these by the template, in HTML
                 # and CSS. It was a Plotly radar until 0.9.0; see ADR 0012.
-                profile=repository_profile(
-                    data.commits,
-                    data.file_stats,
-                    data.metadata.analysis_since,
-                    data.metadata.analysis_until,
-                ),
+                profile=profile,
+                flower=_profile_flower(profile),
                 chart_tables={
                     name: _accessible_table(name, specification)
                     for name, specification in charts.items()
                 },
                 derived=derived,
+                notice=_NOTICE,
                 plotly_js=plotly_js,
                 generated_at=generated_at,
             )
@@ -287,22 +319,18 @@ class Renderer:
             raise
         except Exception as exc:
             raise RenderError(f"Template rendering failed: {exc}") from exc
-
-        try:
-            resolved.write_text(html, encoding="utf-8")
-        except OSError as exc:
-            raise OutputPathError(f"Failed to write report to '{resolved}': {exc}") from exc
-
-        return resolved
+        # The template's macros leave blank lines before the doctype; a
+        # document read from stdout should start with it.
+        return str(html).lstrip()
 
     def render_json(self, data: ReportData, output_path: Path) -> Path:
         """Serialise the report data to a structured JSON file.
 
-        The payload contains repository metadata, ranked contributor statistics
-        with all scoring fields, and derived health metrics. The raw commits
-        list is excluded. Dates are ISO 8601 strings. Suitable for consumption
-        by dashboards, data warehouses, and Jira integrations without parsing
-        HTML.
+        The payload contains repository metadata, contributor statistics, and
+        the derived summary measures; the scoring fields are present only when
+        ranking is enabled. The raw commits list is excluded. Dates are ISO
+        8601 strings. Suitable for consumption by dashboards, data warehouses,
+        and scripts without parsing HTML.
 
         Args:
             data: The complete structured report dataset.
@@ -322,7 +350,22 @@ class Renderer:
                 f"Output directory '{resolved.parent}' does not exist. "
                 "Create the directory before generating a report."
             )
+        text = self.json_text(data)
+        try:
+            resolved.write_text(text, encoding="utf-8")
+        except OSError as exc:
+            raise OutputPathError(f"Failed to write JSON report to '{resolved}': {exc}") from exc
+        return resolved
 
+    def json_text(self, data: ReportData) -> str:
+        """Serialise the report data as JSON text, for a file or for stdout.
+
+        Args:
+            data: The complete structured report dataset.
+
+        Returns:
+            The JSON document, indented.
+        """
         derived = self._compute_derived_stats(data)
 
         payload: dict[str, Any] = {
@@ -346,6 +389,18 @@ class Renderer:
                 "head_sha": data.provenance.head_sha,
                 "deterministic": data.provenance.deterministic,
                 "mailmap_applied": data.provenance.mailmap_applied,
+                # Commits dated after the end of a default window: counted in
+                # no figure, and stated here so the omission is not silent.
+                "commits_dated_after_window": data.provenance.commits_dated_after_window,
+                "commits_unreadable": data.provenance.commits_unreadable,
+                "shallow_clone": data.provenance.shallow_clone,
+                "replace_refs_not_followed": data.provenance.replace_refs_not_followed,
+                "graft_file_not_followed": data.provenance.graft_file_not_followed,
+                "limit": data.provenance.limit,
+                "areas": {
+                    "enabled": data.provenance.area_authors_enabled,
+                    "depth": data.provenance.area_depth,
+                },
                 "filters": {
                     "requested_branch": data.provenance.requested_branch,
                     "requested_since": (
@@ -394,9 +449,14 @@ class Renderer:
                     "active_days": r.stats.active_days,
                     "first_commit_date": r.stats.first_commit_date.isoformat(),
                     "last_commit_date": r.stats.last_commit_date.isoformat(),
+                    "co_authored_commits": r.stats.co_authored_commits,
                 }
-                for i, r in enumerate(data.ranked_contributors)
+                for i, r in enumerate(data.ranked_contributors[: data.provenance.limit])
             ],
+            # The full count beside the list, so a bounded list is never read
+            # as the whole (ADR 0015).
+            "contributors_total": len(data.ranked_contributors),
+            "contributors_truncated": _truncated(data.ranked_contributors, data.provenance.limit),
             "derived": {
                 "commit_concentration": derived["commit_concentration"],
                 "gini_coefficient": derived["gini_coefficient"],
@@ -407,16 +467,225 @@ class Renderer:
                 # `total_commits`. Both are stated rather than left to
                 # arithmetic.
                 "population_size": derived["population_size"],
+                # Added at schema 1.1 (ADR 0017): the Gini and the commit
+                # concentration describe these people, not every contributor.
+                "people": derived["people"],
+                "automated_accounts": derived["automated_accounts"],
+                "automated_commits": derived["automated_commits"],
                 "contributors_below_threshold": derived["contributors_below_threshold"],
+                "commits_with_co_authors": commits_with_co_authors(data.commits),
             },
+            # Identities credited only by Co-authored-by trailers (ADR 0014).
+            # Alphabetical, never by count; a trailer is not verified.
+            "co_authors_only": [
+                {
+                    "name": c.name,
+                    "email": c.email,
+                    "co_authored_commits": c.co_authored_commits,
+                    "automated": is_automated(c.name, c.email),
+                }
+                for c in _listed_co_authors(data)[: data.provenance.limit]
+            ],
+            "co_authors_only_total": len(_listed_co_authors(data)),
+            "co_authors_only_truncated": _truncated(
+                _listed_co_authors(data), data.provenance.limit
+            ),
+            # ADR 0011 applied to co-authors, as in the HTML: counted, not named.
+            "co_authors_only_below_threshold": len(data.co_authors_only)
+            - len(_listed_co_authors(data)),
+            "notice": _NOTICE,
+        }
+        if data.provenance.area_authors_enabled:
+            # The same facts as the HTML section and nothing more: no count
+            # per person, which would be a share of an area per person, and
+            # which a program summarising this document would state (ADR 0013).
+            payload["areas"] = [
+                {
+                    "area": a.area,
+                    "commits": a.commits,
+                    "authors": a.author_count,
+                    "automated_accounts": a.automated_count,
+                    "not_listed": a.not_listed,
+                    "last_changed": a.last_changed.isoformat(),
+                    "listed_authors": [
+                        {"name": n, "email": e} for n, e in a.named[: data.provenance.limit]
+                    ],
+                    "listed_authors_truncated": _truncated(a.named, data.provenance.limit),
+                    "listed_automated_accounts": [
+                        {"name": n, "email": e}
+                        for n, e in a.automated_named[: data.provenance.limit]
+                    ],
+                    "listed_automated_accounts_truncated": _truncated(
+                        a.automated_named, data.provenance.limit
+                    ),
+                }
+                for a in _area_statements(data)
+            ]
+
+        return json.dumps(payload, indent=2)
+
+    def summary_document(self, data: ReportData) -> dict[str, Any]:
+        """Describe the repository in about 2 KB, naming no contributor.
+
+        The default answer for an assistant (ADR 0015): the window, totals,
+        the measures and the findings, and the provenance an answer must
+        carry. Every value is about the repository; no name or address is
+        included, so it is safe to hand to any assistant.
+
+        Args:
+            data: The report dataset; line counts are not needed.
+
+        Returns:
+            A JSON-serialisable document.
+        """
+        derived = self._compute_derived_stats(data)
+        last = max(c.timestamp.date() for c in data.commits)
+        findings = cast(list[Finding], derived["findings"])
+        return {
+            "schema_version": data.provenance.schema_version,
+            "document": "summary",
+            "repository": {
+                "name": data.metadata.name,
+                "analysed_branch": data.metadata.analysed_branch,
+                "head_sha": data.provenance.head_sha,
+                "analysis_since": data.metadata.analysis_since.isoformat(),
+                "analysis_until": data.metadata.analysis_until.isoformat(),
+                "shallow_clone": data.provenance.shallow_clone,
+                "commits_dated_after_window": data.provenance.commits_dated_after_window,
+                "commits_unreadable": data.provenance.commits_unreadable,
+                "replace_refs_not_followed": data.provenance.replace_refs_not_followed,
+                "graft_file_not_followed": data.provenance.graft_file_not_followed,
+            },
+            "totals": {
+                "commits": data.metadata.total_commits,
+                "authors": derived["people"],
+                "automated_accounts": derived["automated_accounts"],
+                "commits_with_co_authors": commits_with_co_authors(data.commits),
+            },
+            "measures": {
+                "gini_coefficient": derived["gini_coefficient"],
+                "commit_concentration": derived["commit_concentration"],
+                "longest_quiet_run_days": derived["longest_inactive_streak"],
+                "days_since_last_commit": (data.metadata.analysis_until - last).days,
+            },
+            "findings": [
+                {"headline": f.headline, "detail": f.detail, "evidence": f.evidence}
+                for f in findings
+            ],
+            "notice": _NOTICE,
         }
 
-        try:
-            resolved.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-        except OSError as exc:
-            raise OutputPathError(f"Failed to write JSON report to '{resolved}': {exc}") from exc
+    def summary_text(self, data: ReportData, output_format: str) -> str:
+        """Render the summary as JSON or as plain lines.
 
-        return resolved
+        Args:
+            data: The report dataset.
+            output_format: "json" or "text".
+
+        Returns:
+            The summary.
+        """
+        document = self.summary_document(data)
+        if output_format == "json":
+            return json.dumps(document, indent=2)
+        repo = document["repository"]
+        totals = document["totals"]
+        measures = document["measures"]
+        lines = [
+            f"{repo['name']} ({repo['analysed_branch']}), "
+            f"{repo['analysis_since']} to {repo['analysis_until']}",
+            f"{totals['commits']:,} commits by {_counted(totals['authors'], 'author')}"
+            + (
+                f" and {_counted(totals['automated_accounts'], 'automated account')}"
+                if totals["automated_accounts"]
+                else ""
+            )
+            + "; "
+            f"Gini {measures['gini_coefficient']:.2f}, "
+            f"longest quiet run {_counted(measures['longest_quiet_run_days'], 'day')}.",
+            *(f"- {f['headline']}" for f in document["findings"]),
+            document["notice"],
+        ]
+        return "\n".join(lines) + "\n"
+
+    @staticmethod
+    def who_changed_text(
+        answer: PathAnswer,
+        window: tuple[datetime.date, datetime.date],
+        output_format: str,
+        limit: int,
+    ) -> str:
+        """Render who changed a path, as JSON or plain lines (ADR 0015).
+
+        Every list of people is bounded by `limit` and carries its full
+        total, so a path with hundreds of authors cannot flood a reader.
+
+        Args:
+            answer: The facts for the path.
+            window: The analysis window.
+            output_format: "json" or "text".
+            limit: The most names any list carries.
+
+        Returns:
+            The answer.
+        """
+
+        def bounded(people: tuple[tuple[str, str], ...]) -> dict[str, Any]:
+            return {
+                "total": len(people),
+                "truncated": len(people) > limit,
+                "list": [{"name": n, "email": e} for n, e in people[:limit]],
+            }
+
+        if output_format == "json":
+            return json.dumps(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "document": "who-changed",
+                    "path": answer.path,
+                    "analysis_since": window[0].isoformat(),
+                    "analysis_until": window[1].isoformat(),
+                    "commits": answer.commits,
+                    "last_changed": answer.last_changed.isoformat(),
+                    "recently_active": [{"name": n, "email": e} for n, e in answer.recently_active],
+                    "authors": bounded(answer.authors),
+                    "automated_accounts": bounded(answer.automated),
+                    "co_authored_commits": answer.co_authored_commits,
+                    "co_authors": bounded(answer.co_authors),
+                    "notice": _NOTICE,
+                },
+                indent=2,
+            )
+
+        def names(people: tuple[tuple[str, str], ...]) -> str:
+            # One person under two addresses reads as a typo when only the
+            # name is printed; a repeated name carries its address.
+            repeated = {n for n in (p[0] for p in people) if [p[0] for p in people].count(n) > 1}
+            shown = ", ".join(f"{n} <{e}>" if n in repeated else n for n, e in people[:limit])
+            rest = len(people) - min(len(people), limit)
+            return f"{shown} and {rest:,} more" if rest else shown
+
+        commits = f"{answer.commits:,} commit{'' if answer.commits == 1 else 's'}"
+        authors = f"{len(answer.authors):,} author{'' if len(answer.authors) == 1 else 's'}"
+        lines = [
+            f"{answer.path}: {commits} by {authors}, "
+            f"{window[0].isoformat()} to {window[1].isoformat()}; "
+            f"last changed {answer.last_changed.isoformat()}.",
+        ]
+        if answer.recently_active:
+            lines.append(f"Changed it most recently: {names(answer.recently_active)}.")
+        if answer.authors:
+            lines.append(f"Authors: {names(answer.authors)}.")
+        if answer.automated:
+            lines.append(f"Automated: {names(answer.automated)}.")
+        if answer.co_authors:
+            lines.append(f"Credited as co-author: {names(answer.co_authors)}.")
+        lines.append(
+            "Who changed it, not who knows or owns it: review and pairing do not "
+            "appear in commit history."
+        )
+        lines.append(_NOTICE)
+        return "\n".join(lines) + "\n"
 
     def render_csv(self, data: ReportData, output_path: Path) -> Path:
         """Serialise the ranked contributor table to a UTF-8 CSV file with BOM encoding.
@@ -442,7 +711,25 @@ class Renderer:
                 f"Output directory '{resolved.parent}' does not exist. "
                 "Create the directory before generating a report."
             )
+        text = self.csv_text(data)
+        try:
+            # The BOM is for spreadsheet programs opening the file; stdout
+            # output (csv_text) carries none.
+            with resolved.open("w", encoding="utf-8-sig", newline="") as fh:
+                fh.write(text)
+        except OSError as exc:
+            raise OutputPathError(f"Failed to write CSV report to '{resolved}': {exc}") from exc
+        return resolved
 
+    def csv_text(self, data: ReportData) -> str:
+        """Serialise the contributor table as CSV text, for a file or for stdout.
+
+        Args:
+            data: The complete structured report dataset.
+
+        Returns:
+            The CSV document, without a byte-order mark.
+        """
         # Ranking columns are omitted entirely when ranking is off, mirroring
         # render_json. Emitting `tier,0` and `composite_score,0.0` puts a number
         # a reader can sort on into the format most likely to be opened in a
@@ -460,37 +747,36 @@ class Renderer:
             "net_lines",
             "active_days",
             "last_commit_date",
+            # Credited by Co-authored-by trailers; not authorship (ADR 0014).
+            "co_authored_commits",
         ]
         if ranked:
             fieldnames[3:3] = ["designation", "tier"]
             fieldnames += ["composite_score", "percentile"]
 
-        try:
-            with resolved.open("w", encoding="utf-8-sig", newline="") as fh:
-                writer = csv.DictWriter(fh, fieldnames=fieldnames)
-                writer.writeheader()
-                for i, r in enumerate(data.ranked_contributors):
-                    row = {
-                        "rank": i + 1,
-                        "name": _neutralise_csv_cell(r.stats.name),
-                        "email": _neutralise_csv_cell(r.stats.email),
-                        "commits": r.stats.commit_count,
-                        "lines_added": r.stats.lines_added,
-                        "lines_deleted": r.stats.lines_deleted,
-                        "net_lines": r.stats.net_lines,
-                        "active_days": r.stats.active_days,
-                        "last_commit_date": r.stats.last_commit_date.isoformat(),
-                    }
-                    if ranked:
-                        row["designation"] = _neutralise_csv_cell(r.tier_designation)
-                        row["tier"] = r.tier
-                        row["composite_score"] = r.composite_score
-                        row["percentile"] = r.percentile
-                    writer.writerow(row)
-        except OSError as exc:
-            raise OutputPathError(f"Failed to write CSV report to '{resolved}': {exc}") from exc
-
-        return resolved
+        buffer = io.StringIO(newline="")
+        writer = csv.DictWriter(buffer, fieldnames=fieldnames)
+        writer.writeheader()
+        for i, r in enumerate(data.ranked_contributors[: data.provenance.limit]):
+            row = {
+                "rank": i + 1,
+                "name": _neutralise_csv_cell(r.stats.name),
+                "email": _neutralise_csv_cell(r.stats.email),
+                "commits": r.stats.commit_count,
+                "lines_added": r.stats.lines_added,
+                "lines_deleted": r.stats.lines_deleted,
+                "net_lines": r.stats.net_lines,
+                "active_days": r.stats.active_days,
+                "last_commit_date": r.stats.last_commit_date.isoformat(),
+                "co_authored_commits": r.stats.co_authored_commits,
+            }
+            if ranked:
+                row["designation"] = _neutralise_csv_cell(r.tier_designation)
+                row["tier"] = r.tier
+                row["composite_score"] = r.composite_score
+                row["percentile"] = r.percentile
+            writer.writerow(row)
+        return buffer.getvalue()
 
     # ------------------------------------------------------------------
     # Derived statistics
@@ -506,8 +792,13 @@ class Renderer:
             A dict of derived metric names to values for template use.
         """
         # `min_commits` filters the listing, not the analysis, so every figure
-        # here is computed over the whole repository. See ADR 0011.
-        population = [stats.commit_count for stats in _population(data)]
+        # here is computed over the whole repository. See ADR 0011. The
+        # distribution figures count people: an automated account is not one
+        # of the people the question "one person or a team?" is about, and
+        # the profile's Shared petal already left them out. See ADR 0017.
+        everyone = _population(data)
+        population = [stats.commit_count for stats in _people(data)]
+        automated = [s for s in everyone if is_automated(s.name, s.email)]
         return {
             "commit_concentration": _compute_commit_concentration(population),
             # Rounded to two places: the third decimal of a Gini over a handful
@@ -519,20 +810,20 @@ class Renderer:
             # split. Showing 0.23 against a stated 0-to-1 scale invites the
             # reader to conclude "23% of the way to maximum concentration"
             # when it is 46% of the achievable range.
-            "gini_ceiling": round((len(population) - 1) / len(population), 2)
-            if len(population) > 1
-            else 0.0,
-            # The population the figures above describe, which is not the
-            # number of rows in the table when `min_commits` is in use. The
-            # template states it beside the Gini so the reader is never left
-            # to infer it from a row count.
-            "population_size": len(population),
+            "gini_ceiling": _ceiling_text(len(population)),
+            # Every contributor of any kind, which is not the number of rows
+            # in the table when `min_commits` is in use.
+            "population_size": len(everyone),
+            # The people the distribution figures above describe, and what
+            # was left out of them, stated where the figures are (ADR 0017).
+            "people": len(population),
+            "automated_accounts": len(automated),
+            "automated_commits": sum(s.commit_count for s in automated),
             "contributors_below_threshold": len(data.suppressed_contributors),
-            "longest_inactive_streak": _compute_longest_inactive_streak(
-                data.commits,
-                data.metadata.analysis_since,
-                data.metadata.analysis_until,
-            ),
+            # What the hotspot ranking leaves out, stated beside it.
+            "generated_files": generated_churn(data.file_stats)[0],
+            "generated_lines": generated_churn(data.file_stats)[1],
+            "longest_inactive_streak": longest_quiet_run(data.commits),
             # A text alternative for the heatmap. Its payload is a daily
             # grid rather than a Plotly figure, so `_accessible_table` has
             # nothing to read, and a day-by-day table would run to
@@ -543,7 +834,24 @@ class Renderer:
             # Written findings, generated from these same numbers by rules.
             # See domain/summary.py: no model, no network, and the same
             # history always produces the same sentences.
-            "findings": summarise(data.commits, _population(data)),
+            # Measured against the end of the window, so a repository that
+            # has gone quiet says so. Without it the dormancy finding was
+            # measured against the last commit and could never appear.
+            "findings": summarise(data.commits, _people(data), today=data.metadata.analysis_until),
+            # Who changed each area; empty unless --area-authors (ADR 0013).
+            "areas": _area_statements(data),
+            # Co-authorship beside authorship (ADR 0014).
+            "co_authored_any": any(r.stats.co_authored_commits for r in data.ranked_contributors),
+            "co_authors_named": [
+                c
+                for c in data.co_authors_only
+                if c.co_authored_commits >= data.provenance.min_commits
+            ],
+            "co_authors_unnamed": sum(
+                1
+                for c in data.co_authors_only
+                if c.co_authored_commits < data.provenance.min_commits
+            ),
         }
 
     # ------------------------------------------------------------------
@@ -571,10 +879,11 @@ class Renderer:
         Returns:
             A dict mapping chart identifier to JSON string.
         """
+        window = (data.metadata.analysis_since, data.metadata.analysis_until)
         return {
-            "timeline": _build_timeline_chart(data.commits),
+            "timeline": _build_timeline_chart(data.commits, window),
             "contributor_timeline": _build_contributor_timeline_chart(
-                data.commits, data.ranked_contributors
+                data.commits, data.ranked_contributors, window
             ),
             "heatmap": _build_heatmap_data(
                 data.commits,
@@ -583,8 +892,11 @@ class Renderer:
                 data.metadata.analysis_until,
             ),
             "contributor_lines": _build_contributor_lines_chart(data.ranked_contributors),
-            "pie_commits": _build_commit_share_pie(data.ranked_contributors),
-            "lorenz": _build_lorenz_chart([stats.commit_count for stats in _population(data)]),
+            "pie_commits": _build_commit_share_pie(
+                data.ranked_contributors,
+                sum(s.commit_count for s in data.suppressed_contributors),
+            ),
+            "lorenz": _build_lorenz_chart([stats.commit_count for stats in _people(data)]),
             "commit_size": _build_commit_size_chart(data.commits),
             "hotspots": _build_hotspot_chart(data.file_stats),
             "extensions": _build_extension_chart(data.file_stats),
@@ -594,6 +906,133 @@ class Renderer:
 # ------------------------------------------------------------------
 # Chart construction functions
 # ------------------------------------------------------------------
+
+
+def _ceiling_text(population: int) -> str:
+    """Format the largest Gini a population of this size can reach.
+
+    The maximum is (n-1)/n. Rounded to two places it reads "1.00" from 200
+    contributors upward, beside a sentence saying the maximum is not 1, so
+    the figure is truncated, not rounded, to three places when two would
+    reach 1.
+
+    Args:
+        population: The number of contributors the Gini describes.
+
+    Returns:
+        The ceiling as text, or "0.00" for fewer than two contributors.
+    """
+    if population < 2:
+        return "0.00"
+    ceiling = (population - 1) / population
+    if round(ceiling, 2) < 1:
+        return f"{ceiling:.2f}"
+    return f"{math.floor(ceiling * 1000) / 1000:.3f}"
+
+
+#: Stated in every output that carries figures: under the HTML header, in
+#: the full JSON, and with every summary. One copy, so they cannot drift. Short, because it is read by assistants as
+#: often as by people, and plain, because it is the limit of what the
+#: numbers can carry.
+_NOTICE = (
+    "Computed from Git history by fixed rules, offline. History can be incomplete or "
+    "wrong (rewritten, shallow, misdated, split identities); check before "
+    "relying on it for a decision."
+)
+
+
+def _listed_co_authors(data: ReportData) -> list[CoAuthor]:
+    """Co-authors-only at or above the listing threshold (ADR 0011, 0014)."""
+    return [c for c in data.co_authors_only if c.co_authored_commits >= data.provenance.min_commits]
+
+
+#: Geometry of the profile flower (ADR 0016), in SVG user units.
+_FLOWER_CENTRE = 220.0
+_FLOWER_RADIUS = 120.0
+_FLOWER_LABEL_RADIUS = 140.0
+#: Degrees of each petal's wedge; the rest of its sixth of the circle is gap,
+#: which keeps the petals separate rather than a polygon.
+_PETAL_SPAN = 44.0
+
+
+def _profile_flower(profile: list[ProfileAxis]) -> list[dict[str, Any]]:
+    """Lay out the profile as separate petals: geometry only, no colour.
+
+    Each petal is a wedge whose length is its share, from the centre (0%)
+    to the rim (100%), with a pale full-length wedge behind it so the
+    length can be read against the whole, and an arc across it at the
+    expected value where there is one. The template colours everything
+    from the theme, so nothing here depends on light or dark.
+
+    Args:
+        profile: The axes, in their fixed order.
+
+    Returns:
+        One dictionary per petal with SVG path data and label placement.
+    """
+    if not profile:
+        return []
+    step = 360.0 / len(profile)
+
+    def point(radius: float, degrees: float) -> str:
+        angle = math.radians(degrees)
+        x = _FLOWER_CENTRE + radius * math.cos(angle)
+        y = _FLOWER_CENTRE + radius * math.sin(angle)
+        return f"{x:.1f} {y:.1f}"
+
+    def wedge(radius: float, start: float, end: float) -> str:
+        return (
+            f"M {_FLOWER_CENTRE:.1f} {_FLOWER_CENTRE:.1f} L {point(radius, start)} "
+            f"A {radius:.1f} {radius:.1f} 0 0 1 {point(radius, end)} Z"
+        )
+
+    petals = []
+    for index, axis in enumerate(profile):
+        middle = -90.0 + index * step
+        start, end = middle - _PETAL_SPAN / 2, middle + _PETAL_SPAN / 2
+        length = _FLOWER_RADIUS * max(0.0, min(axis.value, 1.0))
+        expected = None
+        if axis.expected is not None:
+            radius = _FLOWER_RADIUS * max(0.0, min(axis.expected, 1.0))
+            expected = (
+                f"M {point(radius, start)} A {radius:.1f} {radius:.1f} 0 0 1 {point(radius, end)}"
+            )
+        cosine = math.cos(math.radians(middle))
+        label_x, label_y = point(_FLOWER_LABEL_RADIUS, middle).split()
+        petals.append(
+            {
+                "name": axis.name,
+                "percent": f"{axis.value * 100:.0f}%",
+                "track": wedge(_FLOWER_RADIUS, start, end),
+                "petal": wedge(length, start, end) if length >= 0.5 else "",
+                "expected": expected,
+                "label_x": label_x,
+                "label_y": label_y,
+                "anchor": "middle" if abs(cosine) < 0.3 else ("start" if cosine > 0 else "end"),
+            }
+        )
+    return petals
+
+
+def _truncated(items: Sequence[object], limit: int | None) -> bool:
+    """Return whether bounding `items` to `limit` leaves any out."""
+    return limit is not None and len(items) > limit
+
+
+def _area_statements(data: ReportData) -> list[AreaStatement]:
+    """Describe who changed each area, when the report asked for it.
+
+    Args:
+        data: The complete report dataset.
+
+    Returns:
+        One statement per area shown, or none when the section is off.
+    """
+    if not data.areas:
+        return []
+    names = {s.email.lower(): s.name for s in _population(data)}
+    listed = {r.stats.email.lower() for r in data.ranked_contributors}
+    return describe_areas(data.areas, names, listed, data.metadata.analysis_until)
 
 
 def _population(data: ReportData) -> list[ContributorStats]:
@@ -621,6 +1060,27 @@ def _population(data: ReportData) -> list[ContributorStats]:
     return [ranked.stats for ranked in data.ranked_contributors] + list(
         data.suppressed_contributors
     )
+
+
+def _counted(n: int, singular: str) -> str:
+    """Return "1 thing" or "N things"."""
+    return f"{n:,} {singular}" if n == 1 else f"{n:,} {singular}s"
+
+
+def _people(data: ReportData) -> list[ContributorStats]:
+    """The population the distribution figures describe: people only.
+
+    `_population` less the identities `is_automated` marks. One definition,
+    for the same reason `_population` is one: the cards, the Gini, the Lorenz
+    curve and the written findings must describe the same people (ADR 0017).
+
+    Args:
+        data: The complete report dataset.
+
+    Returns:
+        Every contributor, listed or not, that is not an automated account.
+    """
+    return [s for s in _population(data) if not is_automated(s.name, s.email)]
 
 
 def _contributor_labels(ranked: list[RankedContributor]) -> dict[str, str]:
@@ -713,7 +1173,7 @@ def _summarise_activity(commits: list[Commit]) -> str:
         per_day[commit.timestamp.date()] += 1
     busiest, peak = max(per_day.items(), key=lambda item: (item[1], item[0]))
     return (
-        f"{len(commits):,} commits across {len(per_day):,} active days, "
+        f"{_counted(len(commits), 'commit')} across {_counted(len(per_day), 'active day')}, "
         f"between {min(per_day).isoformat()} and {max(per_day).isoformat()}. "
         f"The busiest day was {busiest.isoformat()} with {peak:,}."
     )
@@ -797,11 +1257,46 @@ def _accessible_table(chart: str, specification: str) -> dict[str, Any]:
     }
 
 
-def _build_timeline_chart(commits: list[Commit]) -> str:
+def _commit_span(commits: list[Commit]) -> tuple[datetime.date, datetime.date]:
+    """The first and last commit dates, for a chart given no analysis window."""
+    dates = [c.timestamp.date() for c in commits]
+    return min(dates), max(dates)
+
+
+def _week_starts(first: datetime.date, last: datetime.date) -> list[str]:
+    """Every Monday from the week containing `first` to the week containing `last`.
+
+    A weekly chart built only from weeks that had commits skips the quiet
+    ones, and a line drawn straight across a gap reads as steady activity --
+    the opposite of what happened. Every week in the window gets a point, and
+    a week with no commits is drawn as zero.
+
+    Args:
+        first: The first day to cover.
+        last: The last day to cover.
+
+    Returns:
+        ISO dates of each week's Monday, in order.
+    """
+    monday = first - datetime.timedelta(days=first.weekday())
+    weeks: list[str] = []
+    while monday <= last:
+        weeks.append(monday.isoformat())
+        monday += datetime.timedelta(weeks=1)
+    return weeks
+
+
+def _build_timeline_chart(
+    commits: list[Commit],
+    window: tuple[datetime.date, datetime.date] | None = None,
+) -> str:
     """Build a weekly commit frequency line chart.
 
     Args:
         commits: All commits in the analysis window.
+        window: The analysis window's first and last day. Every week in it is
+            drawn, including weeks with no commits. Without it, the span of
+            the commits themselves is used.
 
     Returns:
         A Plotly figure JSON string, or 'null' if commits is empty.
@@ -815,23 +1310,27 @@ def _build_timeline_chart(commits: list[Commit]) -> str:
         week_start = d - datetime.timedelta(days=d.weekday())
         weekly[week_start.isoformat()] += 1
 
-    sorted_weeks = sorted(weekly.keys())
-    counts = [weekly[w] for w in sorted_weeks]
+    sorted_weeks = _week_starts(*(window or _commit_span(commits)))
+    counts = [weekly.get(w, 0) for w in sorted_weeks]
 
     fig = go.Figure()
     fig.add_trace(
         go.Scatter(
             x=sorted_weeks,
             y=counts,
-            mode="lines",
+            # One point draws no line; a marker shows it.
+            mode="lines+markers" if len(sorted_weeks) == 1 else "lines",
+            marker={"size": 8},
             fill="tozeroy",
             line={"color": _CATEGORICAL_PALETTE[0], "width": 2},
             fillcolor=_translucent(_CATEGORICAL_PALETTE[0], 0.10),
-            hovertemplate="Week of %{x}<br>Commits: %{y}<extra></extra>",
+            hovertemplate="Week of %{x|%Y-%m-%d}<br>Commits: %{y:,}<extra></extra>",
         )
     )
     layout = _base_layout()
-    layout["xaxis"] = {"type": "category", "tickangle": -45, "automargin": True}
+    # A date axis spaces its own ticks by month or year. As a category axis
+    # every week was a label: hundreds of rotated dates over a long window.
+    layout["xaxis"] = _week_axis(sorted_weeks)
     fig.update_layout(
         **layout,
         xaxis_title="Week",
@@ -844,6 +1343,7 @@ def _build_timeline_chart(commits: list[Commit]) -> str:
 def _build_contributor_timeline_chart(
     commits: list[Commit],
     ranked: list[RankedContributor],
+    window: tuple[datetime.date, datetime.date] | None = None,
 ) -> str:
     """Build a per-contributor weekly commit frequency line chart.
 
@@ -862,6 +1362,8 @@ def _build_contributor_timeline_chart(
     Args:
         commits: All commits in the analysis window.
         ranked: Ranked contributor list in composite score order.
+        window: The analysis window's first and last day, as for
+            `_build_timeline_chart`.
 
     Returns:
         A Plotly figure JSON string, or 'null' if fewer than two
@@ -884,9 +1386,9 @@ def _build_contributor_timeline_chart(
         week_start = (d - datetime.timedelta(days=d.weekday())).isoformat()
         weekly_per_email[email][week_start] = weekly_per_email[email].get(week_start, 0) + 1
 
-    all_weeks = sorted({week for bins in weekly_per_email.values() for week in bins})
-    if not all_weeks:
+    if not any(weekly_per_email.values()):
         return "null"
+    all_weeks = _week_starts(*(window or _commit_span(commits)))
 
     fig = go.Figure()
     for i, r in enumerate(shown):
@@ -897,7 +1399,8 @@ def _build_contributor_timeline_chart(
             go.Scatter(
                 x=all_weeks,
                 y=counts,
-                mode="lines",
+                mode="lines+markers" if len(all_weeks) == 1 else "lines",
+                marker={"size": 8},
                 name=labels[r.stats.email.lower()],
                 line={
                     "color": _CATEGORICAL_PALETTE[i],
@@ -909,12 +1412,14 @@ def _build_contributor_timeline_chart(
                     # own dash as well as its own hue.
                     "dash": _LINE_DASHES[i % len(_LINE_DASHES)],
                 },
-                hovertemplate="Week of %{x}<br>Commits: %{y}<extra></extra>",
+                hovertemplate="Week of %{x|%Y-%m-%d}<br>Commits: %{y:,}<extra></extra>",
             )
         )
 
     layout = _base_layout()
-    layout["xaxis"] = {"type": "category", "tickangle": -45, "automargin": True}
+    # A date axis spaces its own ticks by month or year. As a category axis
+    # every week was a label: hundreds of rotated dates over a long window.
+    layout["xaxis"] = _week_axis(all_weeks)
     layout["showlegend"] = True
     layout["legend"] = {"orientation": "h", "y": 1.12, "x": 0}
     fig.update_layout(
@@ -924,6 +1429,28 @@ def _build_contributor_timeline_chart(
         height=320,
     )
     return _to_json(fig)
+
+
+def _week_axis(weeks: list[str]) -> dict[str, Any]:
+    """Return the x axis for a weekly timeline.
+
+    A date axis spaces its own ticks by month or year. Given one week it has
+    no span to scale to, and Plotly drew millisecond ticks; one week either
+    side gives it days.
+
+    Args:
+        weeks: The ISO dates of the weeks drawn, in order.
+
+    Returns:
+        A Plotly axis definition.
+    """
+    axis: dict[str, Any] = {"type": "date", "automargin": True}
+    if len(weeks) == 1:
+        week = datetime.date.fromisoformat(weeks[0])
+        span = datetime.timedelta(days=7)
+        axis["range"] = [(week - span).isoformat(), (week + span).isoformat()]
+        axis["tickformat"] = "%b %-d, %Y"
+    return axis
 
 
 def _build_heatmap_data(
@@ -982,6 +1509,11 @@ def _build_heatmap_data(
 
     payload: dict[str, object] = {
         "years": years,
+        # The grid draws these bounds rather than the whole calendar year, so
+        # days before the window or after it are not drawn as days with no
+        # commits.
+        "since": analysis_since.isoformat(),
+        "until": analysis_until.isoformat(),
         "contributors": contributors,
         "daily_counts": daily_counts,
     }
@@ -1036,20 +1568,25 @@ def _build_contributor_lines_chart(ranked: list[RankedContributor]) -> str:
     return _to_json(fig)
 
 
-def _build_commit_share_pie(ranked: list[RankedContributor]) -> str:
+def _build_commit_share_pie(ranked: list[RankedContributor], unlisted_commits: int = 0) -> str:
     """Build a donut chart showing each contributor's share of total commits.
 
     Contributors beyond _PIE_MAX_SLICES are aggregated into a single
-    'Other Contributors' slice to maintain legibility.
+    'Other Contributors' slice to maintain legibility. So are the commits of
+    contributors `min_commits` kept out of the table: the slices are shares of
+    every commit, as ADR 0011 requires of every figure. Without them a listed
+    contributor holding 75% of the listed commits was drawn as holding 75% of
+    the repository.
 
     Args:
         ranked: Ranked contributor list sorted by composite score descending.
+        unlisted_commits: Commits by contributors below the listing threshold.
 
     Returns:
-        A Plotly figure JSON string, or 'null' if fewer than two contributors
-        are present. A single-contributor pie carries no comparative information.
+        A Plotly figure JSON string, or 'null' if fewer than two slices would
+        be drawn. A single slice carries no comparative information.
     """
-    if len(ranked) < 2:
+    if len(ranked) + (1 if unlisted_commits else 0) < 2 or not ranked:
         return "null"
 
     display = _contributor_labels(ranked)
@@ -1057,6 +1594,12 @@ def _build_commit_share_pie(ranked: list[RankedContributor]) -> str:
     labels, values = _aggregate_pie_data(
         [(display[r.stats.email.lower()], r.stats.commit_count) for r in sorted_r]
     )
+    if unlisted_commits:
+        if labels[-1] == _OTHER_LABEL:
+            values[-1] += unlisted_commits
+        else:
+            labels.append(_OTHER_LABEL)
+            values.append(unlisted_commits)
 
     fig = go.Figure(
         go.Pie(
@@ -1065,6 +1608,10 @@ def _build_commit_share_pie(ranked: list[RankedContributor]) -> str:
             hole=0.42,
             textposition="outside",
             textinfo="label+percent",
+            # Outside labels are placed after the margins are fixed, so on a
+            # phone a long name ran off the panel ("endabot[bot]"). With
+            # automargin the donut shrinks to make room for its labels.
+            automargin=True,
             marker={"colors": _pie_colors(len(labels), has_other=labels[-1] == _OTHER_LABEL)},
             hovertemplate="%{label}<br>Commits: %{value:,}<br>%{percent}<extra></extra>",
             sort=False,
@@ -1072,7 +1619,7 @@ def _build_commit_share_pie(ranked: list[RankedContributor]) -> str:
     )
     layout = _base_layout()
     layout["showlegend"] = False
-    layout["margin"] = {"l": 20, "r": 20, "t": 20, "b": 20}
+    layout["margin"] = {"l": 20, "r": 20, "t": 40, "b": 20}
     fig.update_layout(**layout, height=320)
     return _to_json(fig)
 
@@ -1102,8 +1649,11 @@ def _build_commit_size_chart(commits: list[Commit]) -> str:
     if not commits:
         return "null"
 
-    edges = [1, 10, 50, 200, 1000, 5000]
-    labels = ["1-9", "10-49", "50-199", "200-999", "1k-4,999", "5,000+"]
+    # The first bin starts at zero: a commit can change no counted line (an
+    # empty commit, or binary files only), and it was counted under "1-9".
+    edges = [0, 10, 50, 200, 1000, 5000]
+    dash = "\u2013"  # en dash, written as an escape so it cannot be mistaken
+    labels = [*(f"{low:,}{dash}{high - 1:,}" for low, high in itertools.pairwise(edges)), "5,000+"]
     buckets = [0] * len(labels)
     for commit in commits:
         size = commit.lines_added + commit.lines_deleted
@@ -1119,7 +1669,7 @@ def _build_commit_size_chart(commits: list[Commit]) -> str:
             x=labels,
             y=buckets,
             marker_color=_CATEGORICAL_PALETTE[0],
-            text=[str(count) if count else "" for count in buckets],
+            text=[f"{count:,}" if count else "" for count in buckets],
             textposition="outside",
             hovertemplate="%{x} lines changed<br>Commits: %{y}<extra></extra>",
         )
@@ -1195,14 +1745,64 @@ def _build_hotspot_chart(files: list[FileStats]) -> str:
             ),
             text=[f"{value:,}" for value in churn],
             textposition="outside",
+            # The label sits past the end of the longest bar. Clipped to the
+            # plot area it printed as "3,59" at a printed page's width.
+            cliponaxis=False,
         )
     )
+    layout = _base_layout()
+    layout["margin"] = {**layout["margin"], "r": 60}
+    # On a phone the axis cannot widen to fit a long path, and Plotly cut
+    # the label at the panel's left edge: "src/reveille/adapters/renderer.py"
+    # read as "c/reveille/adapters/renderer.py", a path that does not exist.
+    # The template shows these shortened forms below 560 px instead, with an
+    # ellipsis saying something was left out; hover and the text table keep
+    # the full path, which stays the data.
+    layout["meta"] = {
+        "narrow_layout": {
+            "yaxis": {
+                "tickmode": "array",
+                "tickvals": paths,
+                "ticktext": [_shorten_path(p) for p in paths],
+            },
+            # Rotated ticks and a title wider than the plot were the rest of
+            # what a phone cut; three ticks and the short title fit.
+            "xaxis": {"nticks": 3, "title": {"text": "Lines changed"}},
+        }
+    }
     fig.update_layout(
-        **_base_layout(),
+        **layout,
         xaxis_title="Lines changed (added + deleted)",
         height=max(280, min(len(ranked) * 30 + 90, _MAX_CHART_HEIGHT)),
     )
     return _to_json(fig)
+
+
+def _shorten_path(path: str, limit: int = 26) -> str:
+    """Return a path short enough for a phone's axis, marked where cut.
+
+    Whole trailing components are kept, so the file name always survives;
+    a name longer than the limit keeps its end. Anything removed is shown
+    as a leading ellipsis.
+
+    Args:
+        path: A repository-relative path, already sanitised for display.
+        limit: The longest label to return.
+
+    Returns:
+        The path unchanged if it fits, otherwise "…/" and its tail.
+    """
+    if len(path) <= limit:
+        return path
+    kept: list[str] = []
+    for part in reversed(path.split("/")):
+        candidate = "/".join([part, *kept])
+        if len(candidate) + 2 > limit:
+            break
+        kept.insert(0, part)
+    if not kept:
+        return "…" + path[-(limit - 1) :]
+    return "…/" + "/".join(kept)
 
 
 def _build_extension_chart(files: list[FileStats]) -> str:
@@ -1236,6 +1836,9 @@ def _build_extension_chart(files: list[FileStats]) -> str:
     )
     layout = _base_layout()
     layout["xaxis"] = {"type": "category", "automargin": True}
+    # On a phone the nine labels rotate upright and the fixed height cut
+    # their ends ("(non", "othe"); a taller plot leaves them room.
+    layout["meta"] = {"narrow_layout": {"height": 360}}
     fig.update_layout(
         **layout,
         xaxis_title="File type",
@@ -1360,41 +1963,6 @@ def _compute_commit_concentration(counts: list[int]) -> int:
         if cumulative >= threshold:
             return position
     return len(counts)  # pragma: no cover - unreachable, see above
-
-
-def _compute_longest_inactive_streak(
-    commits: list[Commit],
-    window_start: datetime.date,
-    window_end: datetime.date,
-) -> int:
-    """Compute the longest consecutive inactive period in days.
-
-    An inactive day is a calendar day within the analysis window on
-    which no commits were recorded.
-
-    Args:
-        commits: All commits in the analysis window.
-        window_start: Start of the analysis window.
-        window_end: End of the analysis window.
-
-    Returns:
-        The longest inactive streak in days. Zero if every day had a commit.
-    """
-    if not commits:
-        return (window_end - window_start).days
-
-    active_dates = {c.timestamp.date() for c in commits}
-    longest = 0
-    streak = 0
-    current = window_start
-    while current <= window_end:
-        if current not in active_dates:
-            streak += 1
-            longest = max(longest, streak)
-        else:
-            streak = 0
-        current += datetime.timedelta(days=1)
-    return longest
 
 
 # ------------------------------------------------------------------
@@ -1557,14 +2125,19 @@ def _base_layout() -> dict[str, Any]:
             ),
             "size": 12,
         },
-        "margin": {"l": 60, "r": 30, "t": 20, "b": 50},
+        # The top margin holds Plotly's toolbar (about 26 px), which otherwise
+        # sat over the first bar, the median label and the legends.
+        "margin": {"l": 60, "r": 30, "t": 40, "b": 50},
         # Plotly measures the rendered tick labels and axis title and grows
         # the margin to fit them. Without it the fixed bottom margin of 50px
         # is a guess: it was too small for -45 degree date labels, so the
         # "Week" title was drawn on top of them, and too small on the left
         # for a contributor axis, which truncated names to "dabot[bot]".
-        "xaxis": {"automargin": True},
-        "yaxis": {"automargin": True},
+        # Numbers in full, with separators, as every label and sentence in
+        # the report writes them. Plotly's default printed "1000" beside a
+        # bar labelled "1,594", and switched to "25k" above ten thousand.
+        "xaxis": {"automargin": True, "separatethousands": True, "exponentformat": "none"},
+        "yaxis": {"automargin": True, "separatethousands": True, "exponentformat": "none"},
         "showlegend": False,
         "modebar": {"remove": ["logo"]},
     }

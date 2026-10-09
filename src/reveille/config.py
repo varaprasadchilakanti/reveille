@@ -39,7 +39,7 @@ class RankingWeights(BaseModel):
     The reasoning behind their relative ordering:
 
     - `commits` (0.30) is weighted highest because commit count is the
-      most robust of the four. It is insensitive to file type, to
+      least easily distorted of the four. It is insensitive to file type, to
       generated code, and to how a change happens to be split across
       lines.
     - `lines` (0.25) captures volume, but is the easiest to distort:
@@ -109,8 +109,16 @@ class ReportConfig(BaseModel):
     # `[ranking] enabled = true`. See docs/adr/0010-ranking-is-opt-in.md.
     ranking_enabled: bool = Field(default=False)
     ranking_weights: RankingWeights = Field(default_factory=RankingWeights)
+    # Off by default, and not implied by the ranking: the "who changed each
+    # area" section names people, so it is a separate, deliberate choice.
+    # Opt in with --area-authors or `[areas] enabled = true`. ADR 0013.
+    area_authors_enabled: bool = Field(default=False)
+    area_depth: int = Field(default=3, ge=1, le=10)
     output_format: OutputFormat = Field(default="html")
     deterministic: bool = Field(default=False)
+    # Bounds every list of people in JSON and CSV (ADR 0015). None keeps
+    # every row, as before.
+    limit: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def since_must_precede_until(self) -> ReportConfig:
@@ -150,8 +158,11 @@ class ReportConfigKwargs(TypedDict, total=False):
     min_commits: int
     ranking_enabled: bool
     ranking_weights: RankingWeights
+    area_authors_enabled: bool
+    area_depth: int
     output_format: OutputFormat
     deterministic: bool
+    limit: int
 
 
 def load_config_from_toml(path: Path) -> ReportConfigKwargs:
@@ -179,11 +190,26 @@ def load_config_from_toml(path: Path) -> ReportConfigKwargs:
         raise ConfigurationError(f"Configuration file not found: '{path}'.") from exc
     except tomllib.TOMLDecodeError as exc:
         raise ConfigurationError(f"Configuration file is not valid TOML: {exc}") from exc
+    # Both used to escape as tracebacks with exit 1, which this project's
+    # contract reserves for "ran correctly, negative answer". TOML must be
+    # UTF-8, and a directory named reveille.toml is not a file.
+    except UnicodeDecodeError as exc:
+        raise ConfigurationError(
+            f"Configuration file '{path}' is not UTF-8 text, which TOML requires."
+        ) from exc
+    except OSError as exc:
+        raise ConfigurationError(f"Configuration file '{path}' cannot be read: {exc}") from exc
 
+    for section in ("report", "filters", "ranking", "areas"):
+        if not isinstance(raw.get(section, {}), dict):
+            raise ConfigurationError(
+                f"[{section}] in '{path}' must be a table of settings, not {raw[section]!r}."
+            )
     parts: dict[str, Any] = {}
     parts.update(_parse_report_section(raw.get("report", {})))
     parts.update(_parse_filters_section(raw.get("filters", {})))
     parts.update(_parse_ranking_section(raw.get("ranking", {})))
+    parts.update(_parse_areas_section(raw.get("areas", {})))
     return cast(ReportConfigKwargs, parts)
 
 
@@ -226,8 +252,50 @@ def _parse_report_section(report: dict[str, Any]) -> dict[str, Any]:
     if "format" in report:
         kwargs["output_format"] = cast(OutputFormat, str(report["format"]))
     if "deterministic" in report:
-        kwargs["deterministic"] = bool(report["deterministic"])
+        # Strict, like [ranking] enabled: bool("false") is True.
+        kwargs["deterministic"] = _strict_bool("report", "deterministic", report["deterministic"])
+    if "limit" in report:
+        kwargs["limit"] = _strict_int("report", "limit", report["limit"])
     return kwargs
+
+
+def _strict_bool(section: str, key: str, value: object) -> bool:
+    """Return a TOML boolean, refusing anything else.
+
+    Args:
+        section: The table the key is in, for the message.
+        key: The key, for the message.
+        value: The parsed value.
+
+    Returns:
+        The value.
+
+    Raises:
+        ConfigurationError: If the value is not a boolean; a quoted "false"
+            is a non-empty string, which would count as true.
+    """
+    if not isinstance(value, bool):
+        raise ConfigurationError(f"[{section}] {key} must be true or false, not {value!r}.")
+    return value
+
+
+def _strict_int(section: str, key: str, value: object) -> int:
+    """Return a TOML integer, refusing booleans, strings and floats.
+
+    Args:
+        section: The table the key is in, for the message.
+        key: The key, for the message.
+        value: The parsed value.
+
+    Returns:
+        The value.
+
+    Raises:
+        ConfigurationError: If the value is not a whole number.
+    """
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ConfigurationError(f"[{section}] {key} must be a whole number, not {value!r}.")
+    return value
 
 
 def _parse_filters_section(filters: dict[str, Any]) -> dict[str, Any]:
@@ -264,6 +332,39 @@ def _parse_filters_section(filters: dict[str, Any]) -> dict[str, Any]:
                 f"[filters] exclude_authors must be a list of strings, not {authors!r}."
             )
         kwargs["exclude_authors"] = list(authors)
+    return kwargs
+
+
+def _parse_areas_section(areas: dict[str, Any]) -> dict[str, Any]:
+    """Parse the [areas] section of a Reveille TOML configuration file.
+
+    Args:
+        areas: The raw [areas] table from the parsed TOML document.
+
+    Returns:
+        A partial kwargs dict for ReportConfig construction.
+
+    Raises:
+        ConfigurationError: If `enabled` is not a boolean or `depth` is not
+            an integer.
+    """
+    kwargs: dict[str, Any] = {}
+    if "enabled" in areas:
+        # Strict for the same reason as [ranking]: "false" is a non-empty
+        # string, and an accidental enable names people.
+        value = areas["enabled"]
+        if not isinstance(value, bool):
+            raise ConfigurationError(
+                f"[areas] enabled must be true or false, not {value!r}. "
+                'Quoted values such as "false" are strings, and every '
+                "non-empty string would count as true."
+            )
+        kwargs["area_authors_enabled"] = value
+    if "depth" in areas:
+        depth = areas["depth"]
+        if isinstance(depth, bool) or not isinstance(depth, int):
+            raise ConfigurationError(f"[areas] depth must be a whole number, not {depth!r}.")
+        kwargs["area_depth"] = depth
     return kwargs
 
 

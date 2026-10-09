@@ -36,6 +36,8 @@ from reveille import __version__
 from reveille.adapters.git_reader import GitReader
 from reveille.adapters.renderer import Renderer
 from reveille.config import ReportConfig
+from reveille.domain.areas import who_changed
+from reveille.domain.coauthors import co_authors_only
 from reveille.domain.models import (
     SCHEMA_VERSION,
     AnalysisProvenance,
@@ -45,6 +47,7 @@ from reveille.domain.models import (
     ReportData,
 )
 from reveille.domain.ranking import rank_contributors
+from reveille.exceptions import EmptyRepositoryError
 
 _logger = logging.getLogger(__name__)
 
@@ -52,18 +55,20 @@ _logger = logging.getLogger(__name__)
 def generate_report(
     config: ReportConfig,
     on_progress: Callable[[ProgressEvent], None] | None = None,
+    on_notice: Callable[[str], None] | None = None,
 ) -> list[Path]:
-    """Generate a self-contained HTML report of repository activity.
+    """Generate the report and write it to the configured output path.
 
     Args:
-        config: Validated report configuration produced by the CLI layer.
+        config: Validated report configuration.
         on_progress: Optional callable invoked with a ProgressEvent at each
-            pipeline stage boundary. Carries the incoming stage label, elapsed
-            time of the stage that just completed, and an optional item count.
-            Has no effect on the output when omitted.
+            pipeline stage boundary. Has no effect on the output when omitted.
+        on_notice: Optional callable given one plain sentence for each thing
+            the reader of the report should know about how it was produced,
+            such as commits left out of the window.
 
     Returns:
-        The absolute path of the written HTML file.
+        The absolute paths of the written files.
 
     Raises:
         RepositoryError: If the target path is not a readable Git repository.
@@ -71,22 +76,177 @@ def generate_report(
         OutputPathError: If the output file cannot be written.
         RenderError: If the HTML template fails to render.
     """
+    report_data = build_report_data(config, on_progress, on_notice)
+    _note_cut_csv(config, report_data, on_notice)
+    renderer = Renderer()
+    paths: list[Path] = []
+    if config.output_format == "html":
+        paths.append(renderer.render(report_data, config.output_path))
+    if config.output_format == "json":
+        paths.append(renderer.render_json(report_data, config.output_path.with_suffix(".json")))
+    if config.output_format == "csv":
+        paths.append(renderer.render_csv(report_data, config.output_path.with_suffix(".csv")))
+    _logger.debug("wrote %d output file(s): %s", len(paths), [str(p) for p in paths])
+    return paths
+
+
+def report_text(
+    config: ReportConfig,
+    on_progress: Callable[[ProgressEvent], None] | None = None,
+    on_notice: Callable[[str], None] | None = None,
+) -> str:
+    """Generate the report and return it as text, for `--output -` (ADR 0015).
+
+    Args:
+        config: Validated report configuration; its output path is unused.
+        on_progress: As for generate_report.
+        on_notice: As for generate_report.
+
+    Returns:
+        The report in the configured format.
+    """
+    report_data = build_report_data(config, on_progress, on_notice)
+    _note_cut_csv(config, report_data, on_notice)
+    renderer = Renderer()
+    if config.output_format == "json":
+        return renderer.json_text(report_data)
+    if config.output_format == "csv":
+        return renderer.csv_text(report_data)
+    return renderer.html_text(report_data)
+
+
+def summary_text(
+    config: ReportConfig,
+    output_format: str,
+    on_notice: Callable[[str], None] | None = None,
+) -> str:
+    """Summarise the repository, naming nobody, as JSON or text (ADR 0015).
+
+    Reads no line counts, so it costs a fraction of a full report.
+
+    Args:
+        config: Validated configuration; output settings are unused.
+        output_format: "json" or "text".
+        on_notice: As for generate_report.
+
+    Returns:
+        The summary.
+    """
+    data = build_report_data(config, on_notice=on_notice, line_counts=False)
+    return Renderer().summary_text(data, output_format)
+
+
+def who_changed_text(
+    config: ReportConfig,
+    path: str,
+    output_format: str,
+    limit: int,
+    on_notice: Callable[[str], None] | None = None,
+) -> str:
+    """State who changed one path in the window (ADR 0015).
+
+    Reads only the commits that changed the path, without line counts, so it
+    answers in well under a second on a large history.
+
+    Args:
+        config: Validated configuration; output settings are unused.
+        path: A repository-relative path, file or directory.
+        output_format: "json" or "text".
+        limit: The most names any list carries.
+        on_notice: As for generate_report.
+
+    Returns:
+        The answer.
+
+    Raises:
+        EmptyRepositoryError: If no commit in the window changed the path.
+    """
+    reader = GitReader(config.repo_path)
+    cutoff = _today() if config.until is None and not config.deterministic else None
+    try:
+        commits = reader.read_commits(
+            branch=config.branch,
+            since=config.since,
+            until=config.until,
+            exclude_authors=config.exclude_authors,
+            dated_until=cutoff,
+            line_counts=False,
+            path=path,
+        )
+    except EmptyRepositoryError as exc:
+        raise EmptyRepositoryError(f"No commit in the analysis window changed '{path}'.") from exc
+    if reader.commits_dated_after and cutoff is not None:
+        _notify(
+            on_notice,
+            f"{_count(reader.commits_dated_after)} dated after {cutoff.isoformat()} and not counted.",
+        )
+    if reader.is_shallow():
+        _notify(on_notice, "This is a shallow clone, so only the history it holds is analysed.")
+    first = min(c.timestamp.date() for c in commits)
+    window_end = cutoff if cutoff is not None else _resolve_window_end(config, commits)
+    window = (max(config.since, first) if config.since else first, window_end)
+    return Renderer.who_changed_text(who_changed(path, commits), window, output_format, limit)
+
+
+def build_report_data(
+    config: ReportConfig,
+    on_progress: Callable[[ProgressEvent], None] | None = None,
+    on_notice: Callable[[str], None] | None = None,
+    *,
+    line_counts: bool = True,
+) -> ReportData:
+    """Read the repository and assemble everything a report states.
+
+    Args:
+        config: Validated report configuration.
+        on_progress: As for generate_report.
+        on_notice: As for generate_report.
+        line_counts: Read per-file line counts; False for callers that
+            state nothing about lines or files.
+
+    Returns:
+        The complete report dataset, ready for any renderer.
+    """
     _logger.debug("pipeline start: repo=%s", config.repo_path)
     reader = GitReader(config.repo_path)
     stage_start = time.monotonic()
 
     _emit(on_progress, "Reading commit history", 0.0)
+    # A default window ends today. A commit dated later -- a wrong clock, or
+    # a rebase that kept a future date -- would otherwise be counted in the
+    # totals of a window that says it ended before it. Nor may one such
+    # commit stretch the window: a single 2039 timestamp would drag every
+    # timeline thirteen years to the right. It is left out of every figure
+    # and the omission is stated. An explicit `--until` is taken as asked,
+    # and deterministic mode closes on the last commit (ADR 0008).
+    cutoff = _today() if config.until is None and not config.deterministic else None
     commits = reader.read_commits(
         branch=config.branch,
         since=config.since,
         until=config.until,
         exclude_authors=config.exclude_authors,
+        dated_until=cutoff,
+        # Collected only when asked for: the section names people by area
+        # (ADR 0013), and nothing about it is kept otherwise.
+        area_depth=config.area_depth if config.area_authors_enabled else None,
+        line_counts=line_counts,
     )
+    after_window = reader.commits_dated_after if cutoff is not None else 0
+    if after_window and cutoff is not None:
+        _notify(
+            on_notice,
+            f"{_count(after_window)} dated after {cutoff.isoformat()} and not counted. "
+            f"Pass --until with a later date to include {'it' if after_window == 1 else 'them'}.",
+        )
 
-    window_start = (
-        config.since if config.since is not None else min(c.timestamp.date() for c in commits)
-    )
-    window_end = _resolve_window_end(config, commits)
+    window_end = cutoff if cutoff is not None else _resolve_window_end(config, commits)
+
+    # The window starts where the history does, however early `--since` was.
+    # Days before the first commit are not quiet days, and counting them put
+    # "Longest quiet run 8,469 days" on a repository three years old.
+    # `provenance.filters.requested_since` keeps what was asked for.
+    first_commit = min(c.timestamp.date() for c in commits)
+    window_start = max(config.since, first_commit) if config.since is not None else first_commit
 
     elapsed = time.monotonic() - stage_start
     stage_start = time.monotonic()
@@ -155,7 +315,40 @@ def generate_report(
         head_commit_time = max(c.timestamp for c in commits)
         metadata = replace(metadata, generated_at=head_commit_time)
 
-    provenance = _build_provenance(config, head_sha, reader.mailmap_applied)
+    shallow = reader.is_shallow()
+    if shallow:
+        _notify(
+            on_notice,
+            "This is a shallow clone, so only the history it holds is analysed and "
+            "the window starts where that history does. Run `git fetch --unshallow` "
+            "for the full history.",
+        )
+    replace_refs, graft_file = reader.history_not_followed()
+    if replace_refs or graft_file:
+        present = " and ".join(
+            part
+            for part in (
+                _plural_refs(replace_refs) if replace_refs else "",
+                "a .git/info/grafts file" if graft_file else "",
+            )
+            if part
+        )
+        _notify(
+            on_notice,
+            f"This repository has {present}, which `git log` follows and Reveille does not, "
+            "so the history reported is the one the commit hashes name.",
+        )
+    provenance = replace(
+        _build_provenance(config, head_sha, reader.mailmap_applied),
+        commits_dated_after_window=after_window,
+        commits_unreadable=reader.commits_unreadable,
+        shallow_clone=shallow,
+        replace_refs_not_followed=replace_refs,
+        graft_file_not_followed=graft_file,
+        area_authors_enabled=config.area_authors_enabled,
+        area_depth=config.area_depth if config.area_authors_enabled else None,
+        limit=config.limit,
+    )
 
     report_data = ReportData(
         metadata=metadata,
@@ -164,6 +357,8 @@ def generate_report(
         commits=commits,
         file_stats=list(reader.file_stats),
         suppressed_contributors=suppressed_contributors,
+        areas=list(reader.area_activity) if config.area_authors_enabled else [],
+        co_authors_only=co_authors_only(commits),
     )
 
     _logger.debug(
@@ -171,16 +366,7 @@ def generate_report(
         len(commits),
         len(contributor_stats),
     )
-    renderer = Renderer()
-    paths: list[Path] = []
-    if config.output_format == "html":
-        paths.append(renderer.render(report_data, config.output_path))
-    if config.output_format == "json":
-        paths.append(renderer.render_json(report_data, config.output_path.with_suffix(".json")))
-    if config.output_format == "csv":
-        paths.append(renderer.render_csv(report_data, config.output_path.with_suffix(".csv")))
-    _logger.debug("wrote %d output file(s): %s", len(paths), [str(p) for p in paths])
-    return paths
+    return report_data
 
 
 def _emit(
@@ -213,6 +399,44 @@ def _emit(
     )
 
 
+def _note_cut_csv(
+    config: ReportConfig, data: ReportData, on_notice: Callable[[str], None] | None
+) -> None:
+    """Say when --limit cut the CSV, which has nowhere to carry a total.
+
+    The JSON states the full count beside every bounded list; a CSV is rows
+    only, so the omission is stated on stderr instead of left silent.
+
+    Args:
+        config: The configuration, for the format and the limit.
+        data: The report dataset.
+        on_notice: Where the sentence goes.
+    """
+    listed = len(data.ranked_contributors)
+    if config.output_format == "csv" and config.limit is not None and listed > config.limit:
+        _notify(
+            on_notice,
+            f"The CSV lists {config.limit:,} of {listed:,} contributors (--limit); "
+            "the JSON states the totals.",
+        )
+
+
+def _notify(on_notice: Callable[[str], None] | None, message: str) -> None:
+    """Pass a notice to the caller, if anybody is listening.
+
+    Args:
+        on_notice: The optional callback supplied by the caller.
+        message: One plain sentence.
+    """
+    if on_notice is not None:
+        on_notice(message)
+
+
+def _count(commits: int) -> str:
+    """Return "1 commit is" or "N commits are", for a notice."""
+    return "1 commit is" if commits == 1 else f"{commits:,} commits are"
+
+
 def _resolve_window_end(config: ReportConfig, commits: list[Commit]) -> datetime.date:
     """Decide the closing date of the analysis window.
 
@@ -234,7 +458,25 @@ def _resolve_window_end(config: ReportConfig, commits: list[Commit]) -> datetime
         return config.until
     if config.deterministic:
         return max(c.timestamp.date() for c in commits)
-    return datetime.date.today()
+    return _today()
+
+
+def _plural_refs(n: int) -> str:
+    """Return "1 replace ref" or "N replace refs"."""
+    return f"{n:,} replace ref" if n == 1 else f"{n:,} replace refs"
+
+
+def _today() -> datetime.date:
+    """Return today's date in UTC, the zone every commit timestamp is read in.
+
+    The local date was used, and west of UTC it is a day behind for part of
+    every day: a commit made minutes earlier was "dated after today" and left
+    out of the report.
+
+    Returns:
+        The current UTC calendar date.
+    """
+    return datetime.datetime.now(datetime.UTC).date()
 
 
 def _build_provenance(

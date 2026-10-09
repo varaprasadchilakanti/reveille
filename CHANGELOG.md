@@ -13,141 +13,255 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ## [Unreleased]
 
+Nothing yet.
+
+---
+
+## [0.9.0] — 2026-10-09 — Privacy, Integrity, and an Interface for Assistants
+
+A release about trust. The ways found for a repository to make Git reach the network, run a
+program it names, or report history other than the one it records are closed; the report states
+its own limits, counts people as people, and names fewer of them by default; and the
+documentation now says, field by field, what a report contains about the people in it.
+Everything below is measured against 0.8.1.
+
 ### Added
 
-- **The release path is tested.** `publish.yml` had no tests, and its failure
-  mode is a broken release — not hypothetical: v0.8.0 shipped without its SBOM
-  because a glob that looked right matched nothing, and PR #179 then added an
-  attestation step, a bundle copy and an asset array to the same untested
-  workflow. Three of its embedded scripts are now extracted and executed: the
-  one that decides which release is being described, including the refusal of a
-  tag carrying a newline that would forge a second `GITHUB_OUTPUT` entry; the
-  one that copies the Sigstore bundle, including the refusal to leave a
-  zero-byte file that looks like a signature; and the one that attaches assets,
-  including the disjointness of the two globs that cost v0.8.0 its SBOM. `gh` is
-  stubbed, so nothing reaches the network.
+- **`reveille summary`** — the repository in a few lines, naming no contributor: the window,
+  commits, people and automated accounts, the Gini, commit concentration, the longest quiet run,
+  days since the last commit, the findings and the notice, as text or JSON. It reads no line
+  counts: on llama.cpp (9,015 commits), 1.7 seconds and 2 KB against 10 seconds and 663 KB for
+  the full JSON. See [ADR 0015](docs/adr/0015-an-interface-for-agents.md).
+- **`reveille who-changed <path>`** — who changed a file or directory, and who changed it most
+  recently: authors alphabetically, the five most recent apart, automated accounts and
+  co-authors listed separately, no count or date per person, bounded by `--limit` (default 20).
+  Renames are not followed. On llama.cpp's CUDA directory, 0.6 seconds.
+- **`--output -`** writes any format to stdout, with progress and errors on stderr.
+- **Co-authors.** `Co-authored-by` trailers are read in their own pass, capped at 32 per commit,
+  and reported beside authorship: a co-authored count per contributor, identities credited only
+  as co-authors listed under the table, and one finding. Every chart still counts authors only.
+  See [ADR 0014](docs/adr/0014-co-authors-are-a-separate-fact.md).
+- **Who changed each area, on request.** `--area-authors` (or `[areas] enabled = true`) lists the
+  eight most-changed directories, `--area-depth` levels deep (default 3), with their authors in
+  alphabetical order and no count or date per person. Off by default. See
+  [ADR 0013](docs/adr/0013-who-changes-what-is-opt-in-and-area-first.md).
+- **The report states its own limits**, in one sentence under the header and as `notice` in the
+  JSON and the summary: computed from Git history by fixed rules, offline; history can be
+  incomplete or wrong; check before relying on it for a decision.
+- **A long contributor table scrolls in its own panel**, with its header kept in view, a count of
+  its rows and keyboard scrolling; it prints in full.
+- **Lists of people can be bounded.** `--limit` (or `[report] limit`) bounds every list of people
+  in JSON and CSV; the JSON states the full total and a `truncated` flag, and a cut CSV is
+  announced on stderr.
+- **The documentation says what a report contains about people.** A new User Guide section lists,
+  per format, every field about a person, and another says what to check before sharing a
+  report — including that `--min-commits` hides rows but is not a privacy control.
+- **A tagged release carries its SBOM's Sigstore attestation as a second asset**,
+  `<sbom filename>.sigstore.json`, so `gh attestation verify --bundle` can check a downloaded SBOM
+  without asking the host that served it. `SECURITY.md` has the command.
 
 ### Changed
 
-- **The repository profile is three measures in a table, not five on a radar.**
-  The radar's own caption told the reader "read it as five numbers, not as a
-  shape", which is an admission that the form was wrong rather than a
-  mitigation of it — area is read far less accurately than length, and the
-  enclosed area depended on an axis order carrying no meaning. `Spread` and
-  `Small steps` are gone: the first was exactly `1 - Gini/((n-1)/n)`, the Gini
-  section's figure again, and the second was exactly the first three bars of the
-  change-size histogram, summed. See
-  [ADR 0012](docs/adr/0012-the-repository-profile-is-a-table.md).
-- **Each measure now shows what it would read under evenly spread activity.** A
-  bounded share with no reference point cannot be read as high or low:
-  Continuity on this repository is 0.913, which looks strong and is in fact
-  *below* the 0.99 that random placement would give. The column is headed
-  "Expected by chance" and is computed from each measure's own arithmetic —
-  never chosen, and never a target. `Revisiting` has no derivable expectation,
-  so it shows none rather than an invented one.
-- **The profile renders without JavaScript, and is visible.** It was a Plotly
-  chart carrying `role="img"`, so its `aria-label` was the whole of what a
-  screen-reader user got — and that label named an axis that had been removed —
-  while the figures themselves sat in a `visually-hidden` table sighted readers
-  never saw, and the section drew nothing at all with scripting off. All three
-  audiences now read the same markup.
-- **The profile no longer reads contributor data.** `Spread` was the only axis
-  that did, so `repository_profile` takes commits, files and a window. It cannot
-  name, rank or count people even by accident.
-- **`scatterpolar` is no longer emitted.** The profile was its only user, so the
-  report now draws `bar`, `pie` and `scatter` only, and the offline guarantee's
-  trace-type allowlist is one entry smaller.
+- **The repository profile names nobody.** Its `Spread` axis was a transform of the per-person
+  distribution; it is gone, and the profile is computed from commits, files and a window, never
+  from contributor rows.
+- **With `--ranking`, no summary card carries a name.** The fifth card showed the top scorer's
+  first name on a page whose findings say nobody is named; it now shows the Gini in every mode,
+  and the ranked table opens with the weights used and what the score does not measure.
+- **The PyPI classifiers no longer call Reveille a build tool or a Python library**; it is a
+  command-line tool, classified under Version Control :: Git and Utilities.
+- **The output is no longer called a "performance report"**, in eleven places from the PyPI
+  description to `--help`. It reports the volume and regularity of commits, and
+  `reveille capabilities` already refused to support performance review. A test keeps the
+  phrase out.
+- **The repository profile is six shares drawn as separate petals beside a table**, replacing
+  0.8.1's five-axis radar. A radar's area depends on an arbitrary axis order and is read far less
+  accurately than length. The six are Continuity, Recent work, Shared, Collaboration, Revisiting
+  and Automation; each is shown against what evenly spread activity would give, computed where
+  the measure allows, never chosen. `Spread` restated the Gini and `Small steps` restated the
+  change-size chart, so both are gone. The profile is inline SVG and HTML: it renders without
+  JavaScript, prints, and is read by screen readers from the same markup. Beside its table from
+  901 px wide, above it below that. The report no longer emits `scatterpolar`. See
+  [ADR 0012](docs/adr/0012-the-repository-profile-is-a-table.md) and
+  [ADR 0016](docs/adr/0016-the-profile-shape-returns-as-a-flower.md).
+- **The distribution figures count people.** Contributors, Hold Half the Commits, the Gini and its
+  Lorenz curve left out nothing, so on this repository one maintainer and `dependabot[bot]` read
+  as "2 contributors" with a Gini of 0.28. Identities with `[bot]` in the name or address are now
+  counted in the commit and line totals and the table, and stated under the cards, but not in
+  those figures. An automated account without the suffix is still counted as a person. See
+  [ADR 0017](docs/adr/0017-distribution-figures-count-people.md).
+- **A filter chooses who is listed, not what the figures describe.** With `--min-commits 100`,
+  0.8.1 reported a Gini of 0.00 for a repository split 74/26, because the contributor who made the
+  split uneven had been removed first. Every figure now describes the whole repository, the
+  header states how many contributors are listed and why, and the donut puts unlisted
+  contributors' commits in "Other Contributors". See
+  [ADR 0011](docs/adr/0011-filters-choose-the-listing-not-the-analysis.md).
+- **Lock files are one entry in Change by File Type**, whatever their extension, so
+  `package-lock.json` is no longer counted as hand-written `.json`. Where Change Concentrates
+  still leaves them out, and its caption now says how many files and lines that is.
+- **`schema_version` is `1.1`**, additive per ADR 0008. `derived` gains `population_size`,
+  `people`, `automated_accounts`, `automated_commits`, `contributors_below_threshold` and
+  `commits_with_co_authors`; `provenance` gains `commits_dated_after_window`,
+  `commits_unreadable`, `replace_refs_not_followed`, `graft_file_not_followed`,
+  `shallow_clone`, `limit` and `areas`; the document gains `notice`,
+  `co_authors_only` with its total and flags,
+  `contributors_total` and `contributors_truncated`, `areas` with `--area-authors`, and
+  `co_authored_commits` on each contributor.
+- **The report opens in the reader's system theme**, dark or light, until a theme is chosen on
+  the page; it always opened light.
+- **A `reveille.toml` picked up from the working directory says so**, on stderr, naming every
+  setting it applied.
+- **The README and User Guide are written for the people who download it**: who it is for,
+  install and uninstall, the report's sections in order, what it contains about people, and
+  troubleshooting. Development material lives in `CONTRIBUTING.md`.
+  Its screenshots are of a sample repository with invented contributors, built by a seeded
+  script in `docs/images/`, so they show this release's report and name nobody real.
 
-- **ADR 0011 now applies to the charts, not only to the printed figures.** The
-  first pass fixed the derived figures and missed the chart builders, so a
-  report using `--min-commits` contradicted itself: over a two-contributor
-  repository it printed a Gini of 0.25 over two contributors, a Lorenz
-  specification of `null`, and a profile axis of 0.0 described as "one
-  contributor, so there is nothing to spread". All three now agree. The cause
-  was that each caller assembled the population for itself; there is now one
-  definition that everything describing the repository uses, so they cannot
-  diverge again. Per-contributor charts deliberately keep the listed set: a
-  chart that names people must show only the people who are listed.
-- **The profile's text alternative no longer reports six of five measures.** A
-  radar closes its polygon by repeating the first vertex, and the table is read
-  back out of the trace arrays, so the first measure appeared twice under a
-  caption reading "The five repository profile measures". The repeat is
-  geometry, not data.
-- **The profile's `aria-label` no longer names an axis that was removed.** It
-  described "currency of the last commit", which `_recent_share` replaced. A
-  sighted reader saw the real names in the table below it; for a screen-reader
-  user the label is the whole of what `role="img"` provides. Both the label and
-  the table are now pinned to `AXIS_ORDER`, so changing the axis set without
-  updating the prose fails.
+### Fixed
 
-- **The output is no longer called a "performance report".** Removed from eleven
-  places: the PyPI description, the README tagline and CLI reference, the
-  `--help` text of both the application and `generate`, the package and service
-  docstrings, the scaffolded `reveille.toml`, and the sample configuration in the
-  README and the User Guide. The tool reports the volume and regularity of
-  commits, and `reveille capabilities` already refused to support performance
-  review, compensation, promotion, redundancy or hiring — so the promotional
-  material was advertising what the machine-readable refusals disclaim. The
-  phrase is also the vocabulary of Annex III point 4(b) of Regulation (EU)
-  2024/1689, and Art. 3(12) makes a provider's own promotional material evidence
-  of intended purpose. 0.8.0 removed it from the report's subtitle for the same
-  reason; a test now keeps it out of every surface a reader is given.
-- **The statement of what Reveille reads was incomplete.** `docs/COMPLIANCE.md`
-  and `reveille capabilities` both listed object name, author name, author email
-  and timestamp. `git log --numstat` also yields the path and changed-line counts
-  of each file in a commit, which the report's file sections are built from and
-  which name repository paths in the output. Both now say so, and both still say
-  what remains true: no source code, no commit messages, no diff content — how
-  many lines changed in a file, never which.
-- **A summary card was labelled by something it was not ordered by.** With
-  `--ranking`, the card read "Top Contributor by commit volume" over a list
-  sorted by composite score. It was wrong only in the visually hidden text —
-  that is, only for readers who cannot see the table to check it — and is now
-  "Highest composite score", labelled "Highest Score".
-- **Three docstrings described a `Plotly.relayout()` call that does not exist.**
-  Theme changes re-plot each chart through the same path as the first paint; the
-  template explains why relayout is deliberately not used, and the two renderer
-  docstrings and `docs/ARCHITECTURE.md` now agree with it. The stale bundle
-  figures beside them are corrected too: ~4.8 MB, measured, not ~3.5 or ~4.1.
-- **`PRIVACY.md` pointed to a contact address that does not exist.** It directed
-  readers to "the address in SECURITY.md"; SECURITY.md publishes no address, only
-  GitHub's private reporting form. It now names the two routes that exist.
+- **The statement of what Reveille reads was incomplete.** `docs/COMPLIANCE.md` and
+  `reveille capabilities` listed object name, author name, author email and timestamp, but
+  `git log --numstat` also yields each changed file's path and line counts, which the report
+  prints. Both now say so. Still true: no source code, no commit messages beyond `Co-authored-by`
+  trailers, no diff content.
+- **A bare repository reads the `.mailmap` committed at `HEAD`**, as Git does; it read none, so
+  one person with two addresses was two rows in a bare clone and one in its original. A committed
+  `.mailmap` over 1 MiB is ignored rather than read into memory.
+- **The analysis window.** A `--since` before the first commit was counted as quiet time (8,469
+  days on a three-year-old repository); the window now starts at the first commit. Commits dated
+  after today were counted in a window that ended today; without `--until` they are now counted in
+  no figure, and the header, stderr and `provenance.commits_dated_after_window` say how many.
+  "Today" is the UTC date.
+- **A shallow clone was reported as the whole history.** The header and stderr now say the clone
+  is shallow and give `git fetch --unshallow`; `provenance.shallow_clone` records it.
+- **The quiet-run card and finding gave different numbers** (155 and 3 days in one report). Both
+  now count the days between commits. `derived.longest_inactive_streak` changes meaning, not
+  type.
+- **The dormancy finding could never appear**; it was measured against the last commit rather
+  than the end of the window.
+- **The weekly timelines skipped weeks with no commits**, so a quiet spell read as steady
+  activity. Every week is drawn, with zero where nothing was committed, on a date axis that
+  places its own ticks.
+- **The heatmap drew the whole calendar year**, days before the repository and in the future
+  included. It now covers the window, its year buttons wrap, and on a phone it keeps its size,
+  scrolls sideways, opens on the latest week and says it scrolls.
+- **On a phone** the page scrolled sideways, the chart toolbar covered data, the donut's labels
+  ran off its panel, and Where Change Concentrates cut long paths at the panel's edge, so
+  `src/reveille/adapters/renderer.py` read as `c/reveille/adapters/renderer.py`. Long paths are
+  now shortened behind an ellipsis below 560 px, with the full path kept in the hover and the
+  text table.
+- **Printing to PDF cut the report.** Charts are redrawn at the page's width, the table prints
+  whole, sections break where they fall, and charts print light from dark mode.
+- **A zero showed as a red "−0"** in the contributor table, reading as a loss where there was
+  none; zeros now carry no sign or colour. With `--ranking`, the score's figure was cut off at
+  the table's edge on a 1440 px screen; the bar beside it is narrower and the figure shows.
+- **Numbers were spelled three ways** ("30000", "30,000", "25k"); every card, label and axis now
+  writes them in full with separators.
+- **One long name pushed every figure off the contributor table**; names and addresses wrap.
+- **The Contributors card counted table rows** and read 0 beside "1 holds half the commits" with
+  `--min-commits 999`.
+- **A single-contributor report contradicted itself** ("the most concentrated 1 contributors
+  can be"); it now says one person has no distribution to measure.
+- **A path with a non-ASCII character showed in Git's escaped form**; such paths, renames
+  included, are decoded.
+- **Configuration errors.** Invalid options printed the validation library's message and the
+  whole configuration; each now prints one line naming the option. An unreadable `reveille.toml`
+  exited 1 ("negative answer") with a traceback, a section written as a plain value crashed, and
+  `deterministic = "false"` switched determinism on. All three now exit 2 with one line.
+- **Small errors in the report's own words**: "1 Hold Half the Commits", literal Markdown
+  backticks in two findings, a Gini note claiming a maximum of 1.00 from 200 contributors up,
+  "Branch: HEAD" for a detached checkout, "1 commits" in the progress line, and a warning printed
+  on the end of it. With `--ranking`, a card's hidden label named an order the list did not have.
+- **`reveille capabilities` stated three properties without their conditions**: byte-identical
+  output without `--deterministic`, the default report in the current directory (it is the
+  repository root), and "no network call" without the `.git/config` limit the README states.
+- **With two people, a finding pointed to "the table below"**, which `reveille summary` prints
+  without; it now names the contributor table.
+- **Documentation that was false.** The README said `docs/COMPLIANCE.md` records why the GDPR
+  does not engage; that file says it does, and that the maintainer is neither controller nor
+  processor. `llms.txt` said the same until this release. The README sent users to `PRIVACY.md`,
+  a notice for contributors; `PRIVACY.md` named a contact address that does not exist and stated
+  its Cyber Resilience Act and Product Liability Directive conclusions without their condition
+  (no monetisation); `SECURITY.md` made a false claim about Scorecard's Fuzzing check. "Both DORA
+  and SPACE state that their metrics must not be applied to individuals" appeared at eight
+  places, though the DORA guide says no such thing; SPACE is now quoted from its abstract;
+  "never modifies the repository",
+  "production-grade" and "repository health" were removed, and a test keeps them out. The guides
+  placed the default report in the current directory (it is the repository root), said
+  `--format` takes four values (three), described the ranking setting backwards, put a size
+  range of 3.5–5 MB (it is 4.9 MB, measured), and claimed a test runs every command in the
+  Playbook (none did).
 
-- **`--min-commits` no longer changes the figures it is not supposed to change.**
-  A filter chooses who is *listed*; every figure describes the whole repository.
-  Measured on this repository, split 238/84 between two contributors,
-  `--min-commits 100` reported `gini_coefficient: 0.00` — perfect equality — for
-  a repository that is 74/26, because the contributor who made the split uneven
-  had been removed from the population before the coefficient was taken. It now
-  reports the same 0.24 with the filter on or off. The Gini ceiling, commit
-  concentration and the written findings all move to the full population for the
-  same reason. See [ADR 0011](docs/adr/0011-filters-choose-the-listing-not-the-analysis.md).
-- **The report states what it is not showing you.** `total_commits` counted every
-  commit while the table listed a subset, and nothing said why the two disagreed:
-  the HTML contained no occurrence of `min_commits`, `minimum`, `threshold` or
-  `filter`. The header now states how many of how many contributors are listed,
-  the threshold that held the rest back, and that their commits are still counted
-  in every figure. `--exclude-author` keeps its existing behaviour, which answers
-  a different question, and the difference is now documented rather than accidental.
-- **`schema_version` is `1.1`.** Additive, per ADR 0008: `derived` gains
-  `population_size` and `contributors_below_threshold`, so a consumer can
-  reconcile the contributor rows against `total_commits` without arithmetic.
-- **A single-contributor report no longer contradicts itself.** The distribution
-  caption rendered as "Gini runs 0 (even) to 0.00, which is the most concentrated
-  1 contributors can be" — a vacuous range and a grammatical error in shipped
-  output. It now says that one contributor has no distribution to measure.
+### Security
 
-- **A tagged release now carries its SBOM's Sigstore attestation as a second
-  asset**, named `<sbom filename>.sigstore.json`. The attestation itself is not
-  new — it has been written to GitHub's attestation store since the SBOM job
-  existed — but that store is reachable only through the API, so an SBOM
-  downloaded from a Release could be checked only by asking the host that
-  served it. The bundle beside the file makes `gh attestation verify
-  --bundle` sufficient. `SECURITY.md` carries the command; note that
-  `--predicate-type https://cyclonedx.org/bom` is required, because the flag
-  defaults to SLSA provenance.
+- **A partial clone is refused, so Git is never made to fetch.** On a clone made with
+  `git clone --filter=blob:none`, 0.8.1 exited 0 after Git had run `git fetch origin` and written
+  the missing objects into `.git/objects`: a network call and a change to Git data, the two things
+  the README says the software is designed never to do. Every command that reads history now
+  refuses such a clone with exit 2 and says why. `GIT_NO_LAZY_FETCH` is set too, but it exists
+  only from Git 2.44, so the refusal is what holds on every Git.
+- **The report describes the objects its hashes name.** A `git replace` ref could substitute a
+  commit by another author, and the report named that author while `provenance.head_sha`
+  recorded the original commit. Replace refs, and grafts whether made with `git replace` or
+  written to the deprecated `.git/info/grafts`, are no longer followed, and their presence is
+  stated in the header, on stderr and in `provenance`, so a comparison with `git log` can be
+  reconciled. See
+  [ADR 0018](docs/adr/0018-replace-refs-are-not-honoured.md).
+- **A repository's own `.git/config` can no longer make a read run its signing program.** With
+  `log.showSignature` on and `gpg.program` naming a script, every command ran the script on a
+  commit carrying a signature header. Every read now pins `log.showSignature=false`; a test runs
+  all four commands against such a repository and fails without the pin.
+- **A commit the read cannot parse is counted and stated.** An author field carrying the
+  separator the read splits on makes a commit's record unreadable; the record is dropped, which is
+  the defence against a forged one, but 0.8.1 dropped it without a word. The report's header,
+  stderr and `provenance.commits_unreadable` now say how many. See
+  [ADR 0019](docs/adr/0019-how-history-is-read.md), which replaces ADR 0004's statement that no
+  author could break the parse.
+- **A token in the remote URL no longer reaches the report.** A remote added as
+  `https://user:token@host/...` was printed in the HTML header and in `metadata.remote_url`. For
+  `http` and `https` the user part is now removed, since a token is often given as the user name
+  alone; for other schemes only a password is removed, so `ssh://git@host/...` keeps its login.
+  Query string and fragment are removed too.
+- **A `reveille.toml` can no longer overwrite `.git/HEAD`.** Any output path inside the
+  repository's Git directory is refused with exit 2, whoever chose it, including in a bare
+  repository and with `--separate-git-dir`. An output path in a `reveille.toml` that resolves
+  outside the repository is refused too, because the file is found automatically.
+- **`.mailmap` is treated as untrusted input.** Names and addresses it substitutes get the same
+  scrubbing and length limits as author fields; a symlinked `.mailmap` is ignored, as Git ignores
+  it; undecodable bytes no longer crash the run.
+- **A name can no longer display as text it does not contain.** Direction overrides and isolates,
+  the zero-width space and the byte-order mark are removed from names, so `‮evil‬ Name`
+  no longer displays as "live Name" and two identical-looking names are no longer two people. The
+  joiners and direction marks that Persian, Indic, Arabic and Hebrew names use are kept, and
+  addresses are not changed.
+- **Values from `reveille.toml` can no longer drive the terminal.** Every message and warning shows
+  control characters as escapes, for example `\x1b`.
+- **Four escapes in the report gained tests** — the `</` escape in the heatmap data, HTML escaping
+  of the email cell, the spreadsheet-formula guard on the CSV email column, and the symbolic-link
+  refusal for JSON and CSV. Each could be removed with every test passing; each now has a test
+  seen to fail without it.
+- The development lock's `virtualenv`, a dependency of `pre-commit` that was never in the wheel,
+  carried four published advisories (PYSEC-2026-4011 to -4014); it is now 21.14.5.
+- **`--exclude-author` removes the person, not one spelling of their name.** An identity is its
+  address, and the match was made per commit: with one address committing as "Alice" and
+  "Alice Smith", excluding "Alice Smith" left "Alice" in the report, exit 0, no warning. Every
+  commit made under an address the value matched anywhere in the branch's history is now
+  removed, whatever name it carries; a value that reaches more than one address removes them all
+  and says so on stderr, with the addresses.
+  See [ADR 0020](docs/adr/0020-exclude-author-removes-a-person-by-address.md).
 
----
+### Known issues
+
+These are known and not fixed in this release.
+
+- Each contributor in the JSON and CSV carries a `rank` field even when ranking is off.
+  `provenance.ranking.enabled` is `false` in that case; read `rank` as table order only. Changing
+  it changes the schema, so it waits for the next one.
+- Git honours a repository's own `.git/config`, including settings that name a program to run.
+  `git clone` does not copy that file; a copied directory or an archive does. See `SECURITY.md`.
+- Automated accounts are recognised only by `[bot]` in the name or address. Published
+  measurements of the similar "bot" suffix rule found it never mistook a person for a bot but
+  missed about half of the bots; Reveille's narrower rule has not been measured.
 
 ## [0.8.1] — 2026-09-03 — Charts a Screen Reader Can Read
 
@@ -1860,7 +1974,8 @@ interpolation into `run:` steps).
 
 ---
 
-[Unreleased]: https://github.com/varaprasadchilakanti/reveille/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/varaprasadchilakanti/reveille/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.9.0
 [0.8.1]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.8.1
 [0.8.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.8.0
 [0.7.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.7.0

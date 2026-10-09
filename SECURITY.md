@@ -6,8 +6,8 @@ Only the current stable release receives security fixes.
 
 | Version | Supported |
 |---------|-----------|
-| 0.8.x   | ✓         |
-| < 0.8.0 | ✗         |
+| 0.9.x   | Yes       |
+| < 0.9.0 | No        |
 
 ## Reporting a Vulnerability
 
@@ -19,7 +19,7 @@ Use GitHub's private vulnerability reporting:
 Include a description of the vulnerability and its potential impact,
 steps to reproduce it, and the version of Reveille and Python in use.
 
-You can expect an acknowledgement within 48 hours. Confirmed
+The maintainer aims to acknowledge a report within 48 hours. Confirmed
 vulnerabilities will receive a resolution timeline within 7 days.
 
 ## Release Integrity
@@ -157,9 +157,17 @@ What compensates for it, none of which is a substitute:
   agreement between the capability document and the program it describes.
 
 **Fuzzing.** Scorecard's Fuzzing check credits OSS-Fuzz membership,
-ClusterFuzzLite, or a recognised native harness — for Python, `atheris` and
-nothing else. Adding an `atheris` stub would satisfy the string match without
-fuzzing anything, and this project does not do that.
+ClusterFuzzLite, or a user-defined harness in one of the languages it
+recognises — Go, Haskell, JavaScript and TypeScript, Erlang, C# and F#. Python
+is not among them, so for this project the check can be satisfied only by
+joining OSS-Fuzz or deploying ClusterFuzzLite. Neither has been done.
+
+This paragraph previously said the check credited `atheris` for Python and that
+an `atheris` stub would satisfy a string match. Both were wrong, checked against
+`ossf/scorecard/docs/checks.md`, which mentions neither Python nor `atheris`.
+It is recorded rather than quietly corrected because the passage it sat in is
+about refusing to game a metric, in a document that asks you to verify its
+claims.
 
 The honest position is that fuzzing *would* be worthwhile here and has not been
 done. Reveille parses untrusted input — author names, addresses and `.mailmap`
@@ -186,15 +194,59 @@ timestamp. Regression tests for all five live in
 `tests/integration/test_security.py`, and each was observed failing against the
 reintroduced vulnerability before being trusted.
 
+v0.9.0 closed eleven more, each with a test observed failing before the fix:
+
+- A token in the remote URL (`https://user:token@host/...`) was printed in the
+  HTML report and the JSON. Credentials, query string and fragment are now
+  removed.
+- A `reveille.toml` could set the output path to `.git/HEAD`, which overwrote it
+  and left a clone Git could not read. Any output path inside `.git` is now
+  refused, and a discovered `reveille.toml` prints the settings it applied.
+- Names and addresses from `.mailmap` skipped the scrubbing and length limits
+  applied to author fields, a symlinked `.mailmap` was followed, and a
+  non-UTF-8 one crashed the run.
+- Four escapes in the report had no test, so any one could have been removed
+  unnoticed. Each now has one.
+- A direction override in a name made it display as text it does not contain
+  (`\u202eevil\u202c Name` read "live Name"). Direction overrides and
+  isolates, zero-width spaces and byte-order marks are removed from names.
+- Values from a `reveille.toml` reached stderr with their terminal control
+  sequences intact, so a file could erase the warning about itself. Every
+  message and warning Reveille prints now shows them as escapes.
+- A partial clone (`git clone --filter`) made Git fetch the missing objects
+  from the remote and write them into `.git/objects` during analysis. Such a
+  clone is now refused with exit 2.
+- A replace ref or a `.git/info/grafts` file could substitute history, so the
+  report named an author the recorded commit did not have. Neither is
+  followed; their presence is stated.
+- `log.showSignature` in a repository's own `.git/config` made every command
+  run the `gpg.program` that file names, on a commit carrying a signature
+  header. Every read pins it off.
+- A commit whose author field carried the record separator was dropped from
+  every figure without a word. It is now counted and stated.
+- `--exclude-author` by one name left the same person in the report under
+  another name. Every commit under an address the value reached, anywhere in
+  the branch's history, is now removed.
+
 Verified unaffected, by testing rather than assumption: HTML and JavaScript
-injection into the report, the offline guarantee, the `.mailmap` parser under
-malformed input, and the CI workflows.
+injection into the report, the offline guarantee, and the CI workflows.
+
+**One limit, stated plainly.** Git honours the configuration in a repository's
+own `.git/config`, and some settings name a program for Git to run. Reveille
+pins off the one its reads were found to trigger — `log.showSignature`, which
+runs `gpg.program` on a signed commit; a test proves the program does not run —
+and asks for no filters, text conversion or external diff. Git has many
+settings, though, and Reveille cannot rule out every one, so analysing a
+repository whose `.git` directory came from someone else may run what that
+file names. `git clone` does not copy `.git/config`; a copied directory, an
+archive or a shared drive does. Treat such a repository as you would any
+untrusted code.
 
 ## Scope
 
 Reveille is a local analysis tool. It reads only the Git repository
-it is explicitly pointed at, produces a single HTML output file, and
-does not transmit data over a network. It does not accept inbound
+it is explicitly pointed at, writes one output file (HTML, JSON or
+CSV), and does not transmit data over a network. It does not accept inbound
 connections and does not execute content from commit messages or file
 contents. The primary attack surface is maliciously crafted Git
 repository content that could affect the HTML output, or

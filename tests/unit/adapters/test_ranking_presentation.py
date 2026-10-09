@@ -188,7 +188,7 @@ class TestCsvWithRankingOn:
         header = out.read_text(encoding="utf-8-sig").splitlines()[0]
         assert header == (
             "rank,name,email,designation,tier,commits,lines_added,lines_deleted,"
-            "net_lines,active_days,last_commit_date,composite_score,percentile"
+            "net_lines,active_days,last_commit_date,co_authored_commits,composite_score,percentile"
         )
 
     def test_ranking_values_are_present(self, tmp_path: Path) -> None:
@@ -261,17 +261,51 @@ class TestTheDefaultReportNamesNobodyInItsSummary:
         html = _html(tmp_path, ranking=False)
         assert "Distribution (Gini)" in html
 
-    def test_the_card_returns_when_the_ranking_is_asked_for(self, tmp_path: Path) -> None:
-        """The positive control: without it the test above proves nothing."""
-        assert "Highest Score" in _html(tmp_path, ranking=True)
+    @pytest.mark.parametrize("ranking", [False, True])
+    def test_no_contributor_name_reaches_the_summary_row(
+        self, tmp_path: Path, ranking: bool
+    ) -> None:
+        """Asserted over the markup, not over a single label string.
 
-    def test_no_contributor_name_reaches_the_summary_row(self, tmp_path: Path) -> None:
-        """Asserted over the markup, not over a single label string."""
-        html = _html(tmp_path, ranking=False)
+        With --ranking the card used to carry the top scorer's first name, on
+        the same page whose findings say no individual is named.
+        """
+        html = _html(tmp_path, ranking=ranking)
         start = html.index('class="summary-grid"')
         summary = html[start : html.index("</div>\n\n", start)]
+        assert "Distribution (Gini)" in summary, "positive control: the row was found"
         for name in ("Alice", "Bob", "Carol"):
             assert name not in summary, f"{name} appears in the summary cards"
+
+
+@pytest.mark.unit
+class TestTheRankingSaysWhatItIsNot:
+    """The ranked page carried no statement of what the score measures."""
+
+    def test_the_ranked_page_states_the_weights_and_the_limit(self, tmp_path: Path) -> None:
+        html = _html(tmp_path, ranking=True)
+        start = html.index('<p class="ranking-caveat">')
+        caveat = " ".join(html[start : html.index("</p>", start)].split())
+
+        assert "commit count 30%" in caveat
+        assert "not fit for judging individuals" in caveat
+
+    def test_the_findings_footnote_claims_only_the_findings(self) -> None:
+        """It said "No individual is named" above a table of names and emails.
+
+        Read from the template: the findings only render when the history
+        produces some, which this fixture's empty commit list does not.
+        """
+        template = (
+            Path(__file__).parents[3] / "src" / "reveille" / "templates" / "report.html.j2"
+        ).read_text(encoding="utf-8")
+
+        assert "No individual is named" not in template
+        assert "These sentences name no individual." in template
+
+    def test_the_default_page_has_no_ranking_caveat(self, tmp_path: Path) -> None:
+        """Positive control for the class: the caveat follows the ranking."""
+        assert 'class="ranking-caveat"' not in _html(tmp_path, ranking=False)
 
 
 @pytest.mark.unit

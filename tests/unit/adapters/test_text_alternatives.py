@@ -84,7 +84,7 @@ class TestEveryChartHasATabularEquivalent:
             if chart not in drawn:
                 continue
             stop = containers[index + 1].start() if index + 1 < len(containers) else len(rendered)
-            if '<table class="visually-hidden">' not in rendered[match.start() : stop]:
+            if '<div class="visually-hidden"><table>' not in rendered[match.start() : stop]:
                 missing.append(chart)
         assert missing == [], f"charts with no tabular equivalent: {missing}"
 
@@ -96,7 +96,7 @@ class TestEveryChartHasATabularEquivalent:
 
     def test_the_tables_are_hidden_from_sight_but_not_from_readers(self, rendered: str) -> None:
         """`display: none` would hide it from assistive technology too."""
-        assert '<table class="visually-hidden">' in rendered
+        assert '<div class="visually-hidden"><table>' in rendered
         hidden = re.search(r"\.visually-hidden\s*\{[^}]*\}", rendered).group(0)
         assert "display: none" not in hidden
         assert "clip" in hidden or "clip-path" in hidden
@@ -113,13 +113,17 @@ class TestEveryChartHasATabularEquivalent:
             for chart in re.findall(r'id="spec-([a-z_]+)"[^>]*>\s*(\S)', rendered)
             if chart[1] not in ("n",)  # 'null'
         ]
-        tables = re.findall(r'<table class="visually-hidden">(.*?)</table>', rendered, re.DOTALL)
+        tables = re.findall(
+            r'<div class="visually-hidden"><table>(.*?)</table>', rendered, re.DOTALL
+        )
         assert len(tables) >= len([c for c in drawn if c[0] != "heatmap"]) - 1, (
             f"{len(tables)} tables for {len(drawn)} charts with data"
         )
 
     def test_each_table_has_a_caption_and_column_scopes(self, rendered: str) -> None:
-        tables = re.findall(r'<table class="visually-hidden">(.*?)</table>', rendered, re.DOTALL)
+        tables = re.findall(
+            r'<div class="visually-hidden"><table>(.*?)</table>', rendered, re.DOTALL
+        )
         assert tables, "no tabular equivalents were rendered at all"
         for table in tables:
             assert "<caption>" in table

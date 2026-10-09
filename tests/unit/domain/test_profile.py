@@ -94,7 +94,14 @@ class TestTheAxisOrderIsFixed:
         The contract is written out here independently, so changing the
         axis set is a deliberate act in two places.
         """
-        contract = ("Continuity", "Recent work", "Revisiting")
+        contract = (
+            "Continuity",
+            "Recent work",
+            "Shared",
+            "Collaboration",
+            "Revisiting",
+            "Automation",
+        )
         assert list(AXIS_ORDER) == list(contract), (
             "AXIS_ORDER changed; update this literal deliberately"
         )
@@ -124,11 +131,11 @@ class TestTheDroppedAxesStayDropped:
         assert "Small steps" not in _profile([_commit(1)], [])
 
     def test_the_profile_cannot_see_contributors_at_all(self) -> None:
-        """Spread was the only axis that read people; its removal is structural.
+        """The profile takes commits, files and a window, never contributor rows.
 
-        `repository_profile` takes commits, files and a window. There is no
-        contributor argument to pass, so the profile cannot name, rank or
-        count people even by accident.
+        `Shared`, `Collaboration` and `Automation` read authors from the
+        commits to count them (ADR 0016); there is still no ranked or scored
+        contributor data to pass, and `TestItNamesNobody` holds the output.
         """
         import inspect
 
@@ -153,6 +160,15 @@ class TestTheExtremesLandWhereTheDefinitionSays:
 
     def test_work_only_at_the_start_gives_no_recent_work(self) -> None:
         assert _profile([_commit(0), _commit(1)], [])["Recent work"] == 0.0
+
+    def test_the_first_day_of_the_final_quarter_is_recent_and_the_day_before_is_not(self) -> None:
+        """The cut-off is inclusive, which is why the expectation is not 0.25.
+
+        89 days, so the final quarter is the last 22 days plus the cut-off
+        day itself: day 67 of the window is in it, day 66 is not.
+        """
+        cutoff = _SPAN_DAYS - _SPAN_DAYS // 4
+        assert _profile([_commit(cutoff), _commit(cutoff - 1)], [])["Recent work"] == 0.5
 
     def test_the_axis_is_not_degenerate_under_deterministic_windows(self) -> None:
         """The defect that retired the axis this one replaced.
@@ -242,3 +258,82 @@ class TestItNamesNobody:
         rendered = " ".join(f"{a.name} {a.description}" for a in axes)
         assert "alice" not in rendered
         assert "@" not in rendered
+
+
+def _c(index: int, email: str, co: tuple[tuple[str, str], ...] = ()) -> Commit:
+    return Commit(
+        sha=f"{index:040d}",
+        author_name=email.split("@")[0],
+        author_email=email,
+        timestamp=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+        + datetime.timedelta(days=index),
+        lines_added=1,
+        lines_deleted=0,
+        co_authors=co,
+    )
+
+
+@pytest.mark.unit
+class TestTheNewMeasures:
+    """ADR 0016: Shared, Collaboration and Automation, each a plain share."""
+
+    def _axes(self, commits: list[Commit]) -> dict[str, object]:
+        start = commits[0].timestamp.date()
+        end = commits[-1].timestamp.date()
+        return {a.name: a for a in repository_profile(commits, [], start, end)}
+
+    def test_shared_is_the_commits_outside_the_busiest_author(self) -> None:
+        commits = [_c(0, "a@e"), _c(1, "a@e"), _c(2, "a@e"), _c(3, "b@e")]
+        shared = self._axes(commits)["Shared"]
+
+        assert shared.value == pytest.approx(0.25)
+        assert shared.expected == pytest.approx(0.5), "1 - 1/n for two authors"
+
+    def test_shared_expects_one_minus_one_over_n(self) -> None:
+        """Three people, where 1 - 1/n and 1/n differ; two could not tell them apart."""
+        commits = [_c(0, "a@e"), _c(1, "a@e"), _c(2, "b@e"), _c(3, "c@e")]
+        shared = self._axes(commits)["Shared"]
+
+        assert shared.value == pytest.approx(0.5)
+        assert shared.expected == pytest.approx(2 / 3)
+
+    def test_a_bot_is_not_the_one_person(self) -> None:
+        """Shared answers "is this one person?"; a busy bot is Automation's."""
+        bot = "renovate[bot]@users.noreply.github.com"
+        commits = [_c(i, bot) for i in range(8)] + [_c(8, "a@e"), _c(9, "b@e")]
+        axes = self._axes(commits)
+
+        assert axes["Shared"].value == pytest.approx(0.5)
+        assert axes["Shared"].expected == pytest.approx(0.5)
+        assert axes["Automation"].value == pytest.approx(0.8)
+
+    def test_one_address_in_two_cases_is_one_person(self) -> None:
+        """Addresses are compared without case, as every other count does.
+
+        Folded, Ana has two of three commits; unfolded, three people would
+        have one each and Shared would read as evenly spread.
+        """
+        commits = [_c(0, "Ana@E.test"), _c(1, "ana@e.test"), _c(2, "ben@e.test")]
+        shared = self._axes(commits)["Shared"]
+
+        assert shared.value == pytest.approx(1 / 3)
+        assert shared.expected == pytest.approx(0.5)
+
+    def test_shared_without_people_has_no_expectation(self) -> None:
+        bot = "dependabot[bot]@users.noreply.github.com"
+        shared = self._axes([_c(0, bot), _c(1, bot)])["Shared"]
+
+        assert shared.value == 0.0
+        assert shared.expected is None
+
+    def test_collaboration_counts_commits_with_a_co_author(self) -> None:
+        commits = [_c(0, "a@e", (("H", "h@e"),)), _c(1, "a@e"), _c(2, "a@e"), _c(3, "a@e")]
+        collaboration = self._axes(commits)["Collaboration"]
+
+        assert collaboration.value == pytest.approx(0.25)
+        assert collaboration.expected is None
+
+    def test_automation_counts_bot_commits(self) -> None:
+        commits = [_c(0, "a@e"), _c(1, "dependabot[bot]@users.noreply.github.com")]
+
+        assert self._axes(commits)["Automation"].value == pytest.approx(0.5)
