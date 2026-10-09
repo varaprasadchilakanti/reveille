@@ -41,3 +41,4 @@ Deprecated.
 | [0015](0015-an-interface-for-agents.md) | An interface for agents: summary, who-changed, stdout and bounded lists | Proposed |
 | [0016](0016-the-profile-shape-returns-as-a-flower.md) | The profile's shape returns, as six separate petals beside the table | Proposed |
 | [0017](0017-distribution-figures-count-people.md) | The distribution figures count people; automated accounts are stated beside them | Proposed |
+| [0018](0018-replace-refs-are-not-honoured.md) | Reveille reads the objects its hashes name; replace refs are not honoured | Proposed |

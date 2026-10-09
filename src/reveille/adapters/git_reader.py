@@ -506,7 +506,11 @@ class GitReader:
         # a change to Git data, both of which Reveille promises never to make.
         # GIT_NO_LAZY_FETCH stops the fetch, but only from Git 2.44, so the
         # promise is kept by refusing a partial clone outright, on any Git.
-        self._repo.git.update_environment(GIT_NO_LAZY_FETCH="1")
+        #
+        # Replace refs are not honoured either (ADR 0018): with them, a report
+        # whose provenance names commit X described a substitute for X, by
+        # whatever author the substitute claimed.
+        self._repo.git.update_environment(GIT_NO_LAZY_FETCH="1", GIT_NO_REPLACE_OBJECTS="1")
         if _is_partial_clone(self._repo):
             raise RepositoryError(
                 f"'{repo_path}' is a partial clone (made with --filter): some of its "
