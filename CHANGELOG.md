@@ -39,6 +39,10 @@ a report contains about the people in it. Everything below is measured against 0
   stated in the header, on stderr and in `provenance`, so a comparison with `git log` can be
   reconciled. See
   [ADR 0018](docs/adr/0018-replace-refs-are-not-honoured.md).
+- **A repository's own `.git/config` can no longer make a read run its signing program.** With
+  `log.showSignature` on and `gpg.program` naming a script, every command ran the script on a
+  commit carrying a signature header. Every read now pins `log.showSignature=false`; a test runs
+  all four commands against such a repository and fails without the pin.
 - **A commit the read cannot parse is counted and stated.** An author field carrying the
   separator the read splits on makes a commit's record unreadable; the record is dropped, which is
   the defence against a forged one, but 0.8.1 dropped it without a word. The report's header,

@@ -924,7 +924,10 @@ class GitReader:
         Returns:
             GitPython's command runner for this repository.
         """
-        return self._repo.git(c="log.follow=false")
+        # `log.showSignature=true` in a repository's own configuration would
+        # make every log verify signatures, running whatever program that
+        # configuration names for it; no read here needs a signature.
+        return self._repo.git(c=["log.follow=false", "log.showSignature=false"])
 
     def _trailer_log(self, selection: list[str]) -> str:
         """Run the co-author read: NUL-separated hashes and trailer values.
@@ -985,7 +988,7 @@ class GitReader:
         if not exclude_set:
             return reached
         try:
-            raw = str(self._git().log("-z", "--format=%an%x1f%ae", rev, "--"))
+            raw = str(self._git().log("-z", "--format=%an%x1f%ae", "--end-of-options", rev, "--"))
         except GitCommandError:
             return reached
         for record in raw.split("\0"):

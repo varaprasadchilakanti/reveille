@@ -218,10 +218,13 @@ Verified unaffected, by testing rather than assumption: HTML and JavaScript
 injection into the report, the offline guarantee, and the CI workflows.
 
 **One limit, stated plainly.** Git honours the configuration in a repository's
-own `.git/config`, and some settings name a program for Git to run — for
-example `gpg.program` when `log.showSignature` is on. Reveille calls Git, so
-analysing a repository whose `.git` directory came from someone else runs what
-that file names. `git clone` does not copy `.git/config`; a copied directory, an
+own `.git/config`, and some settings name a program for Git to run. Reveille
+pins off the one its reads were found to trigger — `log.showSignature`, which
+runs `gpg.program` on a signed commit; a test proves the program does not run —
+and asks for no filters, text conversion or external diff. Git has many
+settings, though, and Reveille cannot rule out every one, so analysing a
+repository whose `.git` directory came from someone else may run what that
+file names. `git clone` does not copy `.git/config`; a copied directory, an
 archive or a shared drive does. Treat such a repository as you would any
 untrusted code.
 
