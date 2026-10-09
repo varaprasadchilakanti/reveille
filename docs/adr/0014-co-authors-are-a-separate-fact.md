@@ -1,6 +1,6 @@
 # 0014 — Co-authors are read from trailers and reported as a separate fact
 
-**Status:** Proposed
+**Status:** Accepted (2026-10-09)
 
 ## Context
 
@@ -75,7 +75,7 @@ history credits them, and every authorship figure still adds up to the number of
 **A trailer is a claim made by whoever wrote the message.** It is not verified, as an author field
 is not; the section says "credited as co-author", not "co-wrote".
 
-**One more process per run.** Measured on llama.cpp (9,015 commits, 1,562 of them with
+**One more process per run.** Measured when this was written (October 2026) on llama.cpp (9,015 commits, 1,562 of them with
 co-authors): 0.08 seconds, against about 9 seconds for the whole report. ADR 0004's concern was
 one process per commit, which this does not reintroduce.
 

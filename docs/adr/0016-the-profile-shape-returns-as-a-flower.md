@@ -1,7 +1,9 @@
-# 0016 — The repository profile's shape returns, as six separate petals beside the table
+# 0016 — The repository profile's shape returns, as six separate petals beside the table (above it on a narrow screen)
 
-**Status:** Proposed. Supersedes the "no shape" part of ADR 0012; its table, its reference
-values and its reasons stand.
+**Status:** Accepted (2026-10-09). Partly supersedes ADR 0012: its "no shape", its three
+measures (now six) and its "the profile reads no contributor data" (Shared, Collaboration and
+Automation read authors and trailers, to count commits only). Its table, its reference values and
+its reasons stand.
 
 ## Context
 

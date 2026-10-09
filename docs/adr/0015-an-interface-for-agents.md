@@ -1,14 +1,15 @@
 # 0015 — An interface for agents: summary, who-changed, stdout and bounded lists
 
-**Status:** Proposed
+**Status:** Accepted (2026-10-09)
 
 ## Context
 
-Most calls to Reveille will come from AI assistants acting for a person, and the author asked the
-assistant building it whether it would use the tool itself. Measured on llama.cpp (9,015 commits,
+Calls to Reveille from AI assistants acting for a person are expected, and the author asked the
+assistant building it whether it would use the tool itself. Measured when this was written
+(October 2026) on llama.cpp (9,015 commits,
 1,682 identities), it would not, for two of its two common questions:
 
-- **"Is this project healthy, and how concentrated?"** `generate --format json` took 10 seconds and
+- **"Is this project active, and how concentrated?"** `generate --format json` took 10 seconds and
   wrote 663 KB — about 166,000 tokens, mostly 1,682 contributor rows. The figures that answer the
   question (`derived`) are about 200 bytes. An assistant reading the file fills its context; one
   that does not must know to look only at `derived`.
@@ -27,9 +28,10 @@ Four additions, each small, each built on what exists.
 
 - **`reveille summary`** — the repository in about 2 KB: window, totals, concentration,
   Gini, quiet run, the findings, and the provenance an answer must carry (analysed commit, shallow
-  clone, commits dated after the window, co-authored commits). **It names no contributor** (the
-  repository and branch names are printed as they are), so it is safe
-  to hand to any assistant by default. It reads no line counts, which are the expensive part of a
+  clone, commits dated after the window, co-authored commits). **It names no contributor.** It does print
+  the repository and branch names as they are, which can name someone, and with one or two
+  people its figures describe identifiable individuals, so it is the smallest default, not an
+  anonymous one. It reads no line counts, which are the expensive part of a
   run, so it is fast.
 - **`reveille who-changed <path>`** — for one file or directory: commits, authors, when it was last
   changed, the authors alphabetically, and the five who changed it most recently, alphabetically,
@@ -40,7 +42,8 @@ Four additions, each small, each built on what exists.
   belongs to its old path, as `git log -- <path>` without `--follow` reports it.
 - **`--output -`** writes the report, in any format, to stdout, and nothing else goes there:
   progress, notes and errors are on stderr.
-- **`--limit N`** bounds every list of people in JSON and CSV. In JSON the full count and a
+- **`--limit N`** bounds every list of people in JSON and CSV (`generate`) and in `who-changed`;
+  `summary` lists no people and takes no limit. In JSON the full count and a
   `truncated` flag sit beside each bounded list; a CSV has nowhere to put them, so a cut CSV
   is announced on stderr. Off unless given, so the existing contract holds;
   `summary` and `who-changed` are bounded by default.

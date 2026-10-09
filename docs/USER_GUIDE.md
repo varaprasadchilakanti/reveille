@@ -174,8 +174,10 @@ reveille generate --branch release/2.0
 Excludes a person by name or email address. The match is case-insensitive.
 An identity is its address, so every commit made under an address that the
 value matched is removed, whatever name it carries, as is every address a
-`.mailmap` ties to it. A value that matches nothing is reported on stderr. The
-flag is repeatable.
+`.mailmap` ties to it. A name that reaches more than one address removes all
+of them, and stderr names the addresses so you can give one instead. A value
+that matches nothing is reported on stderr. The flag is repeatable. See
+[ADR 0020](adr/0020-exclude-author-removes-a-person-by-address.md).
 
 ```bash
 reveille generate \
@@ -682,7 +684,8 @@ for. For the order to read them in and what each supports, see
 The repository's name, its remote URL with any credential removed, the
 analysed branch, the period and when the report was generated. When they
 apply, lines state how many contributors are listed, how many commits are
-dated after the window, and that the repository is a shallow clone. One
+dated after the window, how many could not be read, and that the repository
+is a shallow clone. One
 sentence under the header states the report's limits: the figures are
 computed from Git history by fixed rules, offline, and history can be
 incomplete or wrong, so check before relying on them for a decision.
@@ -1138,6 +1141,21 @@ branch defaults to the one checked out.
 **The report says the repository is a shallow clone.** Only the fetched
 history was read, so every figure covers that part alone. `git fetch
 --unshallow` fetches the rest.
+
+**Someone who only merged branches is missing.** Merge commits are excluded,
+so a person whose only commits are merges does not appear, and a change made
+only in a merge, such as a conflict resolution, is not counted.
+
+**The header says some commits were not read.** A commit whose author field
+holds the characters Reveille separates records with cannot be read safely,
+so it is left out and counted instead of being guessed at. Ordinary histories
+have none; one that does was most likely written on purpose. See
+[ADR 0019](adr/0019-how-history-is-read.md).
+
+**In a bare repository, one person appears twice.** Reveille reads `.mailmap`
+from the working tree, and a bare repository has none, while Git itself reads
+the `.mailmap` committed at `HEAD`. Run Reveille on a clone with a working
+tree. This is a known issue in 0.9.0.
 
 **It says the repository is a partial clone and exits 2.** A clone made with
 `--filter` leaves some objects on the server, and reading them would make Git

@@ -17,7 +17,7 @@ Nothing yet.
 
 ---
 
-## [0.9.0] — 2026-10-06 — Say Only What Is True
+## [0.9.0] — 2026-10-09 — Say Only What Is True
 
 A release about trust. Two ways a repository could make Git reach the network or report history
 other than the one it records are closed; the report states its own limits, counts people as
@@ -37,6 +37,12 @@ a report contains about the people in it. Everything below is measured against 0
   recorded the original commit. Replace refs, and grafts whether made with `git replace` or
   written to the deprecated `.git/info/grafts`, are no longer followed. See
   [ADR 0018](docs/adr/0018-replace-refs-are-not-honoured.md).
+- **A commit the read cannot parse is counted and stated.** An author field carrying the
+  separator the read splits on makes a commit's record unreadable; the record is dropped, which is
+  the defence against a forged one, but 0.8.1 dropped it without a word. The report's header,
+  stderr and `provenance.commits_unreadable` now say how many. See
+  [ADR 0019](docs/adr/0019-how-history-is-read.md), which replaces ADR 0004's statement that no
+  author could break the parse.
 - **A token in the remote URL no longer reaches the report.** A remote added as
   `https://user:token@host/...` was printed in the HTML header and in `metadata.remote_url`. For
   `http` and `https` the user part is now removed, since a token is often given as the user name
@@ -71,7 +77,9 @@ a report contains about the people in it. Everything below is measured against 0
 - **`--exclude-author` removes the person, not one spelling of their name.** An identity is its
   address, and the match was made per commit: with one address committing as "Alice" and
   "Alice Smith", excluding "Alice Smith" left "Alice" in the report, exit 0, no warning. Every
-  commit made under an address the value matched is now removed, whatever name it carries.
+  commit made under an address the value matched is now removed, whatever name it carries; a name
+  that reaches more than one address removes them all and says so on stderr, with the addresses.
+  See [ADR 0020](docs/adr/0020-exclude-author-removes-a-person-by-address.md).
 - **The documentation says what a report contains about people.** A new User Guide section lists,
   per format, every field about a person, and another says what to check before sharing a
   report — including that `--min-commits` hides rows but is not a privacy control.
@@ -149,8 +157,9 @@ a report contains about the people in it. Everything below is measured against 0
   still leaves them out, and its caption now says how many files and lines that is.
 - **`schema_version` is `1.1`**, additive per ADR 0008. `derived` gains `population_size`,
   `people`, `automated_accounts`, `automated_commits`, `contributors_below_threshold` and
-  `commits_with_co_authors`; `provenance` gains `commits_dated_after_window`, `shallow_clone`,
-  `limit` and `areas`; the document gains `notice`, `co_authors_only` with its total and flags,
+  `commits_with_co_authors`; `provenance` gains `commits_dated_after_window`,
+  `commits_unreadable`, `shallow_clone`, `limit` and `areas`; the document gains `notice`,
+  `co_authors_only` with its total and flags,
   `contributors_total` and `contributors_truncated`, `areas` with `--area-authors`, and
   `co_authored_commits` on each contributor.
 - **A `reveille.toml` picked up from the working directory says so**, on stderr, naming every
@@ -215,7 +224,8 @@ a report contains about the people in it. Everything below is measured against 0
   its Cyber Resilience Act and Product Liability Directive conclusions without their condition
   (no monetisation); `SECURITY.md` made a false claim about Scorecard's Fuzzing check. "Both DORA
   and SPACE state that their metrics must not be applied to individuals" appeared at eight
-  places, though the DORA guide says no such thing; SPACE is now quoted from its abstract; "never modifies the repository",
+  places, though the DORA guide says no such thing; SPACE is now quoted from its abstract;
+  "never modifies the repository",
   "production-grade" and "repository health" were removed, and a test keeps them out. The guides
   placed the default report in the current directory (it is the repository root), said
   `--format` takes four values (three), described the ranking setting backwards, put a size
@@ -231,6 +241,8 @@ These are known and not fixed in this release.
   it changes the schema, so it waits for the next one.
 - Git honours a repository's own `.git/config`, including settings that name a program to run.
   `git clone` does not copy that file; a copied directory or an archive does. See `SECURITY.md`.
+- In a bare repository `.mailmap` is not read, while Git applies the one committed at `HEAD`, so
+  one person with two addresses can appear twice. Run Reveille on a clone with a working tree.
 - Automated accounts are recognised only by `[bot]` in the name or address. Published
   measurements of the similar "bot" suffix rule found it never mistook a person for a bot but
   missed about half of the bots; Reveille's narrower rule has not been measured.

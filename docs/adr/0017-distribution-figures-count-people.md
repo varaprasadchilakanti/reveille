@@ -1,6 +1,7 @@
 # 0017 — The distribution figures count people; automated accounts are stated beside them
 
-**Status:** Proposed
+**Status:** Accepted (2026-10-09). Partly supersedes ADR 0011's definition of `population_size`, and
+changes the population of ADR 0010's Lorenz curve
 
 ## Context
 
@@ -36,7 +37,10 @@ GitHub's apps commit under) is narrower still, and has not been measured.
 - **The distribution figures count people.** Contributors, Hold Half the Commits, the Gini, its
   ceiling and the Lorenz curve, and the distribution finding are computed over contributors that
   the rule does not mark as automated, after `--exclude-author` and regardless of
-  `--min-commits` (ADR 0011 is unchanged: a filter still chooses the listing, not the population).
+  `--min-commits`. ADR 0011's rule stands — a filter chooses the listing, not the population — but
+  its definition of `population_size` as "the contributors the figures describe" does not: the
+  field keeps its name and now counts every contributor, while the figures describe `people`.
+  The Lorenz curve that ADR 0010 put in the ranking's place now plots people too.
 - **Automated accounts are stated where the figures are.** When any are present, a line under the
   summary cards says how many automated accounts were left out of those figures and how many
   commits they made, and that the rule can miss an account without the suffix.

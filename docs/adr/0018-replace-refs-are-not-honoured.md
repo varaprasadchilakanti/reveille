@@ -1,6 +1,6 @@
 # 0018 — Reveille reads the objects its hashes name; replace refs are not honoured
 
-**Status:** Proposed
+**Status:** Accepted (2026-10-09)
 
 ## Context
 
@@ -31,8 +31,9 @@ names one set of objects and describes another defeats it.
 
 ## Consequences
 
-- `provenance.head_sha` and the figures describe the same objects, and `git log` run with
-  `--no-replace-objects` reproduces the commit set.
+- `provenance.head_sha` and the figures describe the same objects. `git log` run with
+  `--no-replace-objects` and `GIT_GRAFT_FILE=/dev/null` reproduces the commit set; without the
+  second, a `.git/info/grafts` file still applies.
 - A user who relies on a graft sees fewer commits than `git log` shows them. The remedy, if they
   want the older history counted, is to make it real history (`git filter-repo` or a merge),
   which is a change to their repository and therefore theirs to make.
