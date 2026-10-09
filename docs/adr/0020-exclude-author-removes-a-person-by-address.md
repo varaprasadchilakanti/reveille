@@ -1,6 +1,6 @@
 # 0020 — `--exclude-author` removes a person by every address the value reaches
 
-**Status:** Proposed. Extends ADR 0002.
+**Status:** Accepted (2026-10-09). Extends ADR 0002.
 
 ## Context
 

@@ -1,6 +1,6 @@
 # 0021 — What provenance records about filters and time
 
-**Status:** Proposed. Partly supersedes ADR 0008.
+**Status:** Accepted (2026-10-09). Partly supersedes ADR 0008.
 
 ## Context
 

@@ -1,6 +1,6 @@
-# 0019 — How history is read: three reads, an allowlist, and nothing lost without a word
+# 0019 — How history is read: an allowlisted log, and nothing lost without a word
 
-**Status:** Proposed. Supersedes ADR 0004.
+**Status:** Accepted (2026-10-09). Supersedes ADR 0004.
 
 ## Context
 
@@ -33,9 +33,11 @@ holds and is kept. What it said about safety and about how many reads there are 
 - **A commit that cannot be read is counted and stated, never lost silently.** The number of
   `rev-list` commits with no well-formed record is warned on stderr, shown as a "Not read" line in
   the report's header, and recorded as `provenance.commits_unreadable`.
-- **Settings that change what is read are fixed for every read**: `log.follow=false`;
-  `GIT_NO_REPLACE_OBJECTS=1` and an empty graft file (ADR 0018); `GIT_NO_LAZY_FETCH=1`; date
-  boundaries in UTC; `--since-as-filter` where Git supports it.
+- **Settings that change what is read, or what a read runs, are fixed for every read**:
+  `log.follow=false`; `log.showSignature=false`, which a repository's own configuration could set
+  to make every log run its `gpg.program`; `GIT_NO_REPLACE_OBJECTS=1` and an empty graft file
+  (ADR 0018); `GIT_NO_LAZY_FETCH=1`; `--end-of-options` before the revision; date boundaries in
+  UTC; `--since-as-filter` where Git supports it.
 - **A partial clone is refused before any read**, judged from its configuration (a promisor remote
   or `extensions.partialClone`), with exit 2.
 

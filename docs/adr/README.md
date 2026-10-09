@@ -42,9 +42,9 @@ Deprecated.
 | [0016](0016-the-profile-shape-returns-as-a-flower.md) | The profile's shape returns, as six separate petals beside the table (above it on a narrow screen) | Accepted |
 | [0017](0017-distribution-figures-count-people.md) | The distribution figures count people; automated accounts are stated beside them | Accepted |
 | [0018](0018-replace-refs-are-not-honoured.md) | Reveille reads the objects its hashes name; replace refs are not honoured | Accepted |
-| [0019](0019-how-history-is-read.md) | How history is read: three reads, an allowlist, and nothing lost without a word | Proposed |
-| [0020](0020-exclude-author-removes-a-person-by-address.md) | `--exclude-author` removes a person by every address the value reaches | Proposed |
-| [0021](0021-what-provenance-records-about-filters-and-time.md) | What provenance records about filters and time | Proposed |
+| [0019](0019-how-history-is-read.md) | How history is read: an allowlisted log, and nothing lost without a word | Accepted |
+| [0020](0020-exclude-author-removes-a-person-by-address.md) | `--exclude-author` removes a person by every address the value reaches | Accepted |
+| [0021](0021-what-provenance-records-about-filters-and-time.md) | What provenance records about filters and time | Accepted |
 
 ## Notes from the review of 2026-10-09
 
