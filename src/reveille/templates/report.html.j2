@@ -1355,8 +1355,14 @@
         </div>
         <p class="chart-foot">
             Churn is added plus deleted, not net (Tornhill, 2013). A file that
-            changes often is one to look at, not one that is wrong. Lock files
-            are left out.
+            changes often is one to look at, not one that is wrong.
+            {% if derived.generated_files %}
+            {{ '{:,}'.format(derived.generated_files) }}
+            {{ 'lock file' if derived.generated_files == 1 else 'lock files' }}
+            ({{ '{:,}'.format(derived.generated_lines) }} lines changed)
+            {{ 'is' if derived.generated_files == 1 else 'are' }} left out and
+            counted under Change by File Type.
+            {% endif %}
         </p>
     </div>
 
@@ -1372,7 +1378,7 @@
         <p class="chart-foot">
             Extensions beyond the largest eight are pooled rather than dropped,
             so the total is preserved. Files without an extension, including
-            dotfiles, are reported together.
+            dotfiles, are one entry; so are lock files, whatever their extension.
         </p>
     </div>
     {% endif %}

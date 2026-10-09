@@ -61,7 +61,7 @@ from jinja2 import (
 from reveille.domain.areas import AreaStatement, PathAnswer, describe_areas, is_automated
 from reveille.domain.coauthors import commits_with_co_authors
 from reveille.domain.concentration import gini_coefficient, lorenz_curve
-from reveille.domain.files import extension_breakdown, hotspots
+from reveille.domain.files import extension_breakdown, generated_churn, hotspots
 from reveille.domain.models import (
     SCHEMA_VERSION,
     CoAuthor,
@@ -814,6 +814,9 @@ class Renderer:
             "automated_accounts": len(automated),
             "automated_commits": sum(s.commit_count for s in automated),
             "contributors_below_threshold": len(data.suppressed_contributors),
+            # What the hotspot ranking leaves out, stated beside it.
+            "generated_files": generated_churn(data.file_stats)[0],
+            "generated_lines": generated_churn(data.file_stats)[1],
             "longest_inactive_streak": longest_quiet_run(data.commits),
             # A text alternative for the heatmap. Its payload is a daily
             # grid rather than a Plotly figure, so `_accessible_table` has
