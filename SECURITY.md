@@ -194,7 +194,7 @@ timestamp. Regression tests for all five live in
 `tests/integration/test_security.py`, and each was observed failing against the
 reintroduced vulnerability before being trusted.
 
-v0.9.0 closed six more, each with a test observed failing before the fix:
+v0.9.0 closed eleven more, each with a test observed failing before the fix:
 
 - A token in the remote URL (`https://user:token@host/...`) was printed in the
   HTML report and the JSON. Credentials, query string and fragment are now
@@ -213,6 +213,20 @@ v0.9.0 closed six more, each with a test observed failing before the fix:
 - Values from a `reveille.toml` reached stderr with their terminal control
   sequences intact, so a file could erase the warning about itself. Every
   message and warning Reveille prints now shows them as escapes.
+- A partial clone (`git clone --filter`) made Git fetch the missing objects
+  from the remote and write them into `.git/objects` during analysis. Such a
+  clone is now refused with exit 2.
+- A replace ref or a `.git/info/grafts` file could substitute history, so the
+  report named an author the recorded commit did not have. Neither is
+  followed; their presence is stated.
+- `log.showSignature` in a repository's own `.git/config` made every command
+  run the `gpg.program` that file names, on a commit carrying a signature
+  header. Every read pins it off.
+- A commit whose author field carried the record separator was dropped from
+  every figure without a word. It is now counted and stated.
+- `--exclude-author` by one name left the same person in the report under
+  another name. Every commit under an address the value reached, anywhere in
+  the branch's history, is now removed.
 
 Verified unaffected, by testing rather than assumption: HTML and JavaScript
 injection into the report, the offline guarantee, and the CI workflows.

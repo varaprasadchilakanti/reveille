@@ -19,10 +19,11 @@ Nothing yet.
 
 ## [0.9.0] — 2026-10-09 — Say Only What Is True
 
-A release about trust. Two ways a repository could make Git reach the network or report history
-other than the one it records are closed; the report states its own limits, counts people as
-people, and names fewer of them by default; and the documentation now says, field by field, what
-a report contains about the people in it. Everything below is measured against 0.8.1.
+A release about trust. The ways found for a repository to make Git reach the network, run a
+program it names, or report history other than the one it records are closed; the report states
+its own limits, counts people as people, and names fewer of them by default; and the
+documentation now says, field by field, what a report contains about the people in it.
+Everything below is measured against 0.8.1.
 
 ### Security
 
