@@ -464,6 +464,11 @@ class Renderer:
                 # `total_commits`. Both are stated rather than left to
                 # arithmetic.
                 "population_size": derived["population_size"],
+                # Added at schema 1.1 (ADR 0017): the Gini and the commit
+                # concentration describe these people, not every contributor.
+                "people": derived["people"],
+                "automated_accounts": derived["automated_accounts"],
+                "automated_commits": derived["automated_commits"],
                 "contributors_below_threshold": derived["contributors_below_threshold"],
                 "commits_with_co_authors": commits_with_co_authors(data.commits),
             },
@@ -547,7 +552,8 @@ class Renderer:
             },
             "totals": {
                 "commits": data.metadata.total_commits,
-                "authors": derived["population_size"],
+                "authors": derived["people"],
+                "automated_accounts": derived["automated_accounts"],
                 "commits_with_co_authors": commits_with_co_authors(data.commits),
             },
             "measures": {
@@ -582,7 +588,13 @@ class Renderer:
         lines = [
             f"{repo['name']} ({repo['analysed_branch']}), "
             f"{repo['analysis_since']} to {repo['analysis_until']}",
-            f"{totals['commits']:,} commits by {totals['authors']:,} authors; "
+            f"{totals['commits']:,} commits by {_counted(totals['authors'], 'author')}"
+            + (
+                f" and {_counted(totals['automated_accounts'], 'automated account')}"
+                if totals["automated_accounts"]
+                else ""
+            )
+            + "; "
             f"Gini {measures['gini_coefficient']}, "
             f"longest quiet run {measures['longest_quiet_run_days']:,} days.",
             *(f"- {f['headline']}" for f in document["findings"]),
@@ -774,8 +786,13 @@ class Renderer:
             A dict of derived metric names to values for template use.
         """
         # `min_commits` filters the listing, not the analysis, so every figure
-        # here is computed over the whole repository. See ADR 0011.
-        population = [stats.commit_count for stats in _population(data)]
+        # here is computed over the whole repository. See ADR 0011. The
+        # distribution figures count people: an automated account is not one
+        # of the people the question "one person or a team?" is about, and
+        # the profile's Shared petal already left them out. See ADR 0017.
+        everyone = _population(data)
+        population = [stats.commit_count for stats in _people(data)]
+        automated = [s for s in everyone if is_automated(s.name, s.email)]
         return {
             "commit_concentration": _compute_commit_concentration(population),
             # Rounded to two places: the third decimal of a Gini over a handful
@@ -788,11 +805,14 @@ class Renderer:
             # reader to conclude "23% of the way to maximum concentration"
             # when it is 46% of the achievable range.
             "gini_ceiling": _ceiling_text(len(population)),
-            # The population the figures above describe, which is not the
-            # number of rows in the table when `min_commits` is in use. The
-            # template states it beside the Gini so the reader is never left
-            # to infer it from a row count.
-            "population_size": len(population),
+            # Every contributor of any kind, which is not the number of rows
+            # in the table when `min_commits` is in use.
+            "population_size": len(everyone),
+            # The people the distribution figures above describe, and what
+            # was left out of them, stated where the figures are (ADR 0017).
+            "people": len(population),
+            "automated_accounts": len(automated),
+            "automated_commits": sum(s.commit_count for s in automated),
             "contributors_below_threshold": len(data.suppressed_contributors),
             "longest_inactive_streak": longest_quiet_run(data.commits),
             # A text alternative for the heatmap. Its payload is a daily
@@ -808,9 +828,7 @@ class Renderer:
             # Measured against the end of the window, so a repository that
             # has gone quiet says so. Without it the dormancy finding was
             # measured against the last commit and could never appear.
-            "findings": summarise(
-                data.commits, _population(data), today=data.metadata.analysis_until
-            ),
+            "findings": summarise(data.commits, _people(data), today=data.metadata.analysis_until),
             # Who changed each area; empty unless --area-authors (ADR 0013).
             "areas": _area_statements(data),
             # Co-authorship beside authorship (ADR 0014).
@@ -869,7 +887,7 @@ class Renderer:
                 data.ranked_contributors,
                 sum(s.commit_count for s in data.suppressed_contributors),
             ),
-            "lorenz": _build_lorenz_chart([stats.commit_count for stats in _population(data)]),
+            "lorenz": _build_lorenz_chart([stats.commit_count for stats in _people(data)]),
             "commit_size": _build_commit_size_chart(data.commits),
             "hotspots": _build_hotspot_chart(data.file_stats),
             "extensions": _build_extension_chart(data.file_stats),
@@ -1033,6 +1051,27 @@ def _population(data: ReportData) -> list[ContributorStats]:
     return [ranked.stats for ranked in data.ranked_contributors] + list(
         data.suppressed_contributors
     )
+
+
+def _counted(n: int, singular: str) -> str:
+    """Return "1 thing" or "N things"."""
+    return f"{n:,} {singular}" if n == 1 else f"{n:,} {singular}s"
+
+
+def _people(data: ReportData) -> list[ContributorStats]:
+    """The population the distribution figures describe: people only.
+
+    `_population` less the identities `is_automated` marks. One definition,
+    for the same reason `_population` is one: the cards, the Gini, the Lorenz
+    curve and the written findings must describe the same people (ADR 0017).
+
+    Args:
+        data: The complete report dataset.
+
+    Returns:
+        Every contributor, listed or not, that is not an automated account.
+    """
+    return [s for s in _population(data) if not is_automated(s.name, s.email)]
 
 
 def _contributor_labels(ranked: list[RankedContributor]) -> dict[str, str]:

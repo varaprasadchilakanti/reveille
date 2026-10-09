@@ -98,7 +98,14 @@ class TestSummary:
         assert code == ExitCode.SUCCESS, err
         document = json.loads(out)
         assert document["document"] == "summary"
-        assert document["totals"] == {"commits": 4, "authors": 3, "commits_with_co_authors": 0}
+        # Two people and dependabot: the bot is stated, not counted as an
+        # author (ADR 0017).
+        assert document["totals"] == {
+            "commits": 4,
+            "authors": 2,
+            "automated_accounts": 1,
+            "commits_with_co_authors": 0,
+        }
         assert set(document["measures"]) == {
             "gini_coefficient",
             "commit_concentration",

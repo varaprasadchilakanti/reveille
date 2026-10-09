@@ -70,7 +70,7 @@ _CAPABILITIES: tuple[dict[str, str], ...] = (
     {
         "id": "activity-concentration",
         "description": (
-            "Report how evenly commits are distributed across contributors in "
+            "Report how evenly commits are distributed across the people in "
             "the window: how many account for a majority, and the full "
             "distribution as a Lorenz curve with its Gini coefficient. This "
             "characterises the repository and names nobody, which is why it is "
@@ -215,6 +215,15 @@ _CAVEATS: tuple[dict[str, str], ...] = (
         "description": (
             "Merge commits are excluded unconditionally, so commit counts are "
             "lower than `git log` reports for the same range."
+        ),
+    },
+    {
+        "id": "automated-accounts-are-not-people",
+        "description": (
+            "Contributor counts, commit concentration and the Gini count people. "
+            "An account whose name or address carries [bot] is counted in the "
+            "commit and line totals and stated separately, not in those figures; "
+            "an automated account without that suffix is counted as a person."
         ),
     },
     {

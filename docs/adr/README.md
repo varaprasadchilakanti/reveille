@@ -40,3 +40,4 @@ Deprecated.
 | [0014](0014-co-authors-are-a-separate-fact.md) | Co-authors are read from trailers and reported as a separate fact | Proposed |
 | [0015](0015-an-interface-for-agents.md) | An interface for agents: summary, who-changed, stdout and bounded lists | Proposed |
 | [0016](0016-the-profile-shape-returns-as-a-flower.md) | The profile's shape returns, as six separate petals above the table | Proposed |
+| [0017](0017-distribution-figures-count-people.md) | The distribution figures count people; automated accounts are stated beside them | Proposed |

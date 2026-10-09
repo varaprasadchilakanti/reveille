@@ -119,7 +119,12 @@ class TestMergeCommitsAreExcluded:
     def test_the_summary_counts_three_commits_and_two_authors(self, repo: Path) -> None:
         payload = _run("summary", "--repo", str(repo))
 
-        assert payload["totals"] == {"commits": 3, "authors": 2, "commits_with_co_authors": 0}
+        assert payload["totals"] == {
+            "commits": 3,
+            "authors": 2,
+            "automated_accounts": 0,
+            "commits_with_co_authors": 0,
+        }
 
     def test_a_file_only_a_merge_touched_has_no_history(self, repo: Path) -> None:
         result = CliRunner().invoke(

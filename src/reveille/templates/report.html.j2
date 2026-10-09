@@ -209,6 +209,14 @@
             margin-bottom: 44px;
         }
 
+        .cards-note {
+            margin: -32px 0 44px;
+            max-width: 78ch;
+            color: var(--color-text-secondary);
+            font-size: 12.5px;
+            line-height: 1.6;
+        }
+
         .summary-card {
             padding: 16px 18px 18px;
             background: var(--color-surface);
@@ -1076,9 +1084,11 @@
                Everybody the figures describe, not the rows the threshold left
                in the table: with --min-commits 999 this card read 0 beside
                "1 hold half the commits". The header states the listing.
+               People only, like the two cards after it and the Gini: an
+               automated account is stated under the cards instead (ADR 0017).
             #}
-            <span class="visually-hidden">Contributors: {{ '{:,}'.format(derived.population_size) }}</span>
-            <div class="value" aria-hidden="true">{{ '{:,}'.format(derived.population_size) }}</div>
+            <span class="visually-hidden">Contributors: {{ '{:,}'.format(derived.people) }}</span>
+            <div class="value" aria-hidden="true">{{ '{:,}'.format(derived.people) }}</div>
             <div class="label" aria-hidden="true">Contributors</div>
         </div>
         <div class="summary-card">
@@ -1109,6 +1119,23 @@
             <div class="label" aria-hidden="true">Distribution (Gini)</div>
         </div>
     </div>
+    {% if derived.automated_accounts %}
+    {#
+       Stated where the figures are, so the cards never silently disagree
+       with the contributor table that lists the account (ADR 0017).
+    #}
+    <p class="cards-note">
+        Contributors, Hold Half the Commits and the Gini count people.
+        {{ '{:,}'.format(derived.automated_accounts) }}
+        {{ 'automated account' if derived.automated_accounts == 1 else 'automated accounts' }}
+        ({{ '{:,}'.format(derived.automated_commits) }}
+        {{ 'commit' if derived.automated_commits == 1 else 'commits' }}) {{ 'is' if derived.automated_accounts == 1 else 'are' }}
+        counted in the commit and line totals and listed in the table, but
+        not in those figures. An account is treated as automated when its name
+        or address carries <code>[bot]</code>; one without it is counted as a
+        person.
+    </p>
+    {% endif %}
 
     <!-- ============================================================
          What the history shows -- generated from the figures below
@@ -1147,14 +1174,15 @@
 {{ chart_table("lorenz", "Cumulative share of commits against cumulative share of contributors") }}
         </div>
         <p class="chart-foot">
-            {% if derived.population_size > 1 %}
+            {% if derived.people > 1 %}
             Gini runs 0 (even) to {{ derived.gini_ceiling }}, the most concentrated
-            {{ '{:,}'.format(derived.population_size) }} contributors can be.
-            {% else %}
-            With a single contributor there is no distribution to measure.
-            {% endif %}
+            {{ '{:,}'.format(derived.people) }} people can be.
             It describes the repository, not its people; compare it with this
             repository over time, not with another.
+            {% else %}
+            With {{ 'one person' if derived.people == 1 else 'no people' }}
+            there is no distribution to measure, so the Gini is 0 by definition.
+            {% endif %}
         </p>
     </div>
     <!-- ============================================================

@@ -258,9 +258,9 @@ class TestTheReportSaysWhichPopulationItDescribes:
         generate_report(ReportConfig(repo_path=repo, output_path=out, deterministic=True))
         text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", out.read_text(encoding="utf-8")))
 
-        assert "1 contributors can be" not in text
+        assert "1 people can be" not in text
         assert "Gini runs 0 (even) to 0.00" not in text
-        assert "With a single contributor there is no distribution to measure" in text
+        assert "With one person there is no distribution to measure" in text
 
     def test_one_listed_contributor_is_not_mistaken_for_one_contributor(
         self,
@@ -291,8 +291,8 @@ class TestTheReportSaysWhichPopulationItDescribes:
         )
         text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", out.read_text(encoding="utf-8")))
 
-        assert "most concentrated 2 contributors can be" in text
-        assert "With a single contributor" not in text
+        assert "most concentrated 2 people can be" in text
+        assert "With one person" not in text
 
 
 @pytest.mark.parametrize("threshold", [1, 2, 5, 100])
