@@ -16,12 +16,18 @@ import datetime
 import json
 import math
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
 
 from reveille.adapters.git_reader import _iter_numstat, _rename_destination
-from reveille.adapters.renderer import _build_extension_chart, _build_hotspot_chart
+from reveille.adapters.renderer import (
+    _build_extension_chart,
+    _build_hotspot_chart,
+    _shorten_path,
+)
 from reveille.domain.models import (
     SCHEMA_VERSION,
     AnalysisProvenance,
@@ -479,3 +485,63 @@ class TestTheProfileFitsTheScreen:
                 assert x + 90 <= left + width, petal["name"]
             elif petal["anchor"] == "end":
                 assert x - 90 >= left, petal["name"]
+
+
+@pytest.mark.unit
+class TestAPhoneSeesAShortenedPathNotACutOne:
+    """At 360 px Plotly cut "src/reveille/adapters/renderer.py" at the panel
+    edge, so the axis read "c/reveille/adapters/renderer.py", a path that does
+    not exist. A shortened label says, with an ellipsis, that it is shortened."""
+
+    def test_a_path_that_fits_is_unchanged(self) -> None:
+        assert _shorten_path("README.md") == "README.md"
+
+    def test_whole_trailing_components_are_kept_behind_an_ellipsis(self) -> None:
+        assert _shorten_path("src/reveille/adapters/renderer.py") == "…/adapters/renderer.py"
+
+    def test_a_long_file_name_keeps_its_end(self) -> None:
+        label = _shorten_path("a/" + "x" * 40 + ".py")
+        assert label.startswith("…") and label.endswith("x.py") and len(label) == 26
+
+    def test_the_chart_keeps_full_paths_as_data_and_short_ones_for_phones(self) -> None:
+        files = [_file("src/reveille/adapters/renderer.py", added=9), _file("README.md", added=3)]
+        figure = json.loads(_build_hotspot_chart(files))
+        narrow = figure["layout"]["meta"]["narrow_layout"]["yaxis"]
+
+        assert narrow["tickvals"] == figure["data"][0]["y"], "the data stays the full path"
+        assert "src/reveille/adapters/renderer.py" in figure["data"][0]["y"]
+        assert narrow["ticktext"] == ["README.md", "…/adapters/renderer.py"]
+
+    def test_the_type_chart_grows_on_a_phone(self) -> None:
+        figure = json.loads(_build_extension_chart([_file("a.py", added=1)]))
+        assert figure["layout"]["meta"]["narrow_layout"]["height"] > figure["layout"]["height"]
+
+
+def _narrow(width: int) -> dict:
+    source = _TEMPLATE.read_text(encoding="utf-8")
+    functions = [
+        re.search(rf"    function {name}\(.*?\n    \}}\n", source, re.DOTALL)
+        for name in ("mergeLayout", "applyNarrowLayout")
+    ]
+    assert all(functions), "mergeLayout or applyNarrowLayout is missing from the template"
+    spec = {"layout": {"meta": {"narrow_layout": {"height": 360, "xaxis": {"nticks": 3}}}}}
+    script = (
+        "".join(f.group(0) for f in functions if f)
+        + "process.stdout.write(JSON.stringify(applyNarrowLayout("
+        + f"{{height: 280, xaxis: {{title: 'kept'}}}}, {json.dumps(spec)}, {width})));\n"
+    )
+    node = shutil.which("node")
+    assert node
+    return json.loads(
+        subprocess.run([node, "-e", script], check=True, capture_output=True, text=True).stdout
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.skipif(shutil.which("node") is None, reason="needs Node.js to run the template code")
+class TestNarrowOverridesApplyOnlyBelow560:
+    def test_a_phone_gets_them_merged(self) -> None:
+        assert _narrow(360) == {"height": 360, "xaxis": {"title": "kept", "nticks": 3}}
+
+    def test_a_desktop_does_not(self) -> None:
+        assert _narrow(1024) == {"height": 280, "xaxis": {"title": "kept"}}

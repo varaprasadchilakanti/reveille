@@ -1746,12 +1746,57 @@ def _build_hotspot_chart(files: list[FileStats]) -> str:
     )
     layout = _base_layout()
     layout["margin"] = {**layout["margin"], "r": 60}
+    # On a phone the axis cannot widen to fit a long path, and Plotly cut
+    # the label at the panel's left edge: "src/reveille/adapters/renderer.py"
+    # read as "c/reveille/adapters/renderer.py", a path that does not exist.
+    # The template shows these shortened forms below 560 px instead, with an
+    # ellipsis saying something was left out; hover and the text table keep
+    # the full path, which stays the data.
+    layout["meta"] = {
+        "narrow_layout": {
+            "yaxis": {
+                "tickmode": "array",
+                "tickvals": paths,
+                "ticktext": [_shorten_path(p) for p in paths],
+            },
+            # Rotated ticks and a title wider than the plot were the rest of
+            # what a phone cut; three ticks and the short title fit.
+            "xaxis": {"nticks": 3, "title": {"text": "Lines changed"}},
+        }
+    }
     fig.update_layout(
         **layout,
         xaxis_title="Lines changed (added + deleted)",
         height=max(280, min(len(ranked) * 30 + 90, _MAX_CHART_HEIGHT)),
     )
     return _to_json(fig)
+
+
+def _shorten_path(path: str, limit: int = 26) -> str:
+    """Return a path short enough for a phone's axis, marked where cut.
+
+    Whole trailing components are kept, so the file name always survives;
+    a name longer than the limit keeps its end. Anything removed is shown
+    as a leading ellipsis.
+
+    Args:
+        path: A repository-relative path, already sanitised for display.
+        limit: The longest label to return.
+
+    Returns:
+        The path unchanged if it fits, otherwise "…/" and its tail.
+    """
+    if len(path) <= limit:
+        return path
+    kept: list[str] = []
+    for part in reversed(path.split("/")):
+        candidate = "/".join([part, *kept])
+        if len(candidate) + 2 > limit:
+            break
+        kept.insert(0, part)
+    if not kept:
+        return "…" + path[-(limit - 1) :]
+    return "…/" + "/".join(kept)
 
 
 def _build_extension_chart(files: list[FileStats]) -> str:
@@ -1785,6 +1830,9 @@ def _build_extension_chart(files: list[FileStats]) -> str:
     )
     layout = _base_layout()
     layout["xaxis"] = {"type": "category", "automargin": True}
+    # On a phone the nine labels rotate upright and the fixed height cut
+    # their ends ("(non", "othe"); a taller plot leaves them room.
+    layout["meta"] = {"narrow_layout": {"height": 360}}
     fig.update_layout(
         **layout,
         xaxis_title="File type",

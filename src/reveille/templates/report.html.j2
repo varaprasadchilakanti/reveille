@@ -1899,11 +1899,23 @@
 
         var layout = mergeLayout(spec.layout || {}, THEME_LAYOUTS[theme]);
         if (printing) layout.width = divEl.clientWidth;
+        layout = applyNarrowLayout(layout, spec, divEl.clientWidth);
         if (divEl._fullLayout) {
             Plotly.react(divEl, spec.data, layout, PLOTLY_CONFIG);
         } else {
             Plotly.newPlot(divEl, spec.data, layout, PLOTLY_CONFIG);
         }
+    }
+
+    // A phone's axis cannot widen to fit a long label, and Plotly cuts it at
+    // the panel edge without saying so. Below 560 px a chart that declares
+    // narrow-screen overrides gets them -- shortened labels marked with an
+    // ellipsis, fewer ticks, more height. The data, the hover and the text
+    // table keep the full labels.
+    function applyNarrowLayout(layout, spec, width) {
+        var narrow = spec.layout && spec.layout.meta && spec.layout.meta.narrow_layout;
+        if (!narrow || width >= 560) return layout;
+        return mergeLayout(layout, narrow);
     }
 
     function initAllCharts(theme) {
