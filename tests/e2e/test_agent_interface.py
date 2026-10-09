@@ -167,6 +167,28 @@ def many(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return path
 
 
+@pytest.fixture(scope="module")
+def crowd(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Twenty-one authors on one file: one more than `who-changed` lists by default."""
+    path = tmp_path_factory.mktemp("crowd_repo")
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=path, check=True)
+    for day in range(1, 22):
+        (path / "shared.txt").write_text(f"{day}\n", encoding="utf-8")
+        stamp = f"2026-03-{day:02d}T10:00:00+00:00"
+        env = {
+            **os.environ,
+            "GIT_AUTHOR_NAME": f"Person {day:02d}",
+            "GIT_AUTHOR_EMAIL": f"p{day}@e.test",
+            "GIT_COMMITTER_NAME": f"Person {day:02d}",
+            "GIT_COMMITTER_EMAIL": f"p{day}@e.test",
+            "GIT_AUTHOR_DATE": stamp,
+            "GIT_COMMITTER_DATE": stamp,
+        }
+        subprocess.run(["git", "add", "-A"], cwd=path, check=True, env=env)
+        subprocess.run(["git", "commit", "-qm", f"c{day}"], cwd=path, check=True, env=env)
+    return path
+
+
 @pytest.mark.e2e
 class TestWhoChanged:
     def _json(self, repo: Path, *args: str) -> dict:
@@ -209,6 +231,13 @@ class TestWhoChanged:
 
         assert len(answer["authors"]["list"]) == 3
         assert answer["authors"] | {"list": []} == {"total": 8, "truncated": True, "list": []}
+
+    def test_lists_default_to_twenty_names(self, crowd: Path) -> None:
+        """The documented default, so an assistant's context stays bounded unasked."""
+        answer = self._json(crowd, "shared.txt")
+
+        assert len(answer["authors"]["list"]) == 20
+        assert answer["authors"] | {"list": []} == {"total": 21, "truncated": True, "list": []}
 
     def test_text_tells_one_name_with_two_addresses_apart(self, many: Path) -> None:
         _, out, _ = _run("who-changed", "lib/core.c", "--repo", str(many))

@@ -161,6 +161,15 @@ class TestTheExtremesLandWhereTheDefinitionSays:
     def test_work_only_at_the_start_gives_no_recent_work(self) -> None:
         assert _profile([_commit(0), _commit(1)], [])["Recent work"] == 0.0
 
+    def test_the_first_day_of_the_final_quarter_is_recent_and_the_day_before_is_not(self) -> None:
+        """The cut-off is inclusive, which is why the expectation is not 0.25.
+
+        89 days, so the final quarter is the last 22 days plus the cut-off
+        day itself: day 67 of the window is in it, day 66 is not.
+        """
+        cutoff = _SPAN_DAYS - _SPAN_DAYS // 4
+        assert _profile([_commit(cutoff), _commit(cutoff - 1)], [])["Recent work"] == 0.5
+
     def test_the_axis_is_not_degenerate_under_deterministic_windows(self) -> None:
         """The defect that retired the axis this one replaced.
 
@@ -297,6 +306,18 @@ class TestTheNewMeasures:
         assert axes["Shared"].value == pytest.approx(0.5)
         assert axes["Shared"].expected == pytest.approx(0.5)
         assert axes["Automation"].value == pytest.approx(0.8)
+
+    def test_one_address_in_two_cases_is_one_person(self) -> None:
+        """Addresses are compared without case, as every other count does.
+
+        Folded, Ana has two of three commits; unfolded, three people would
+        have one each and Shared would read as evenly spread.
+        """
+        commits = [_c(0, "Ana@E.test"), _c(1, "ana@e.test"), _c(2, "ben@e.test")]
+        shared = self._axes(commits)["Shared"]
+
+        assert shared.value == pytest.approx(1 / 3)
+        assert shared.expected == pytest.approx(0.5)
 
     def test_shared_without_people_has_no_expectation(self) -> None:
         bot = "dependabot[bot]@users.noreply.github.com"
