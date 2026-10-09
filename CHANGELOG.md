@@ -68,6 +68,8 @@ Everything below is measured against 0.8.1.
 - **With `--ranking`, no summary card carries a name.** The fifth card showed the top scorer's
   first name on a page whose findings say nobody is named; it now shows the Gini in every mode,
   and the ranked table opens with the weights used and what the score does not measure.
+- **The PyPI classifiers no longer call Reveille a build tool or a Python library**; it is a
+  command-line tool, classified under Version Control :: Git and Utilities.
 - **The output is no longer called a "performance report"**, in eleven places from the PyPI
   description to `--help`. It reports the volume and regularity of commits, and
   `reveille capabilities` already refused to support performance review. A test keeps the
