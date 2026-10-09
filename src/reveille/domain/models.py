@@ -182,6 +182,11 @@ class AnalysisProvenance:
     # describes the clone, not the project, and the window starts where the
     # clone's history does.
     shallow_clone: bool = False
+    # Replace refs and a graft file present in the repository and not
+    # followed (ADR 0018). The figures are unaffected; recorded because
+    # `git log` follows them and would show a different history.
+    replace_refs_not_followed: int = 0
+    graft_file_not_followed: bool = False
     # Whether the "who changed each area" section was asked for, and at what
     # depth (ADR 0013). Recorded either way, so a report states that it does
     # not name people by area as plainly as one that does.

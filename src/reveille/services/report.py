@@ -323,11 +323,28 @@ def build_report_data(
             "the window starts where that history does. Run `git fetch --unshallow` "
             "for the full history.",
         )
+    replace_refs, graft_file = reader.history_not_followed()
+    if replace_refs or graft_file:
+        present = " and ".join(
+            part
+            for part in (
+                _plural_refs(replace_refs) if replace_refs else "",
+                "a .git/info/grafts file" if graft_file else "",
+            )
+            if part
+        )
+        _notify(
+            on_notice,
+            f"This repository has {present}, which `git log` follows and Reveille does not, "
+            "so the history reported is the one the commit hashes name.",
+        )
     provenance = replace(
         _build_provenance(config, head_sha, reader.mailmap_applied),
         commits_dated_after_window=after_window,
         commits_unreadable=reader.commits_unreadable,
         shallow_clone=shallow,
+        replace_refs_not_followed=replace_refs,
+        graft_file_not_followed=graft_file,
         area_authors_enabled=config.area_authors_enabled,
         area_depth=config.area_depth if config.area_authors_enabled else None,
         limit=config.limit,
@@ -442,6 +459,11 @@ def _resolve_window_end(config: ReportConfig, commits: list[Commit]) -> datetime
     if config.deterministic:
         return max(c.timestamp.date() for c in commits)
     return _today()
+
+
+def _plural_refs(n: int) -> str:
+    """Return "1 replace ref" or "N replace refs"."""
+    return f"{n:,} replace ref" if n == 1 else f"{n:,} replace refs"
 
 
 def _today() -> datetime.date:

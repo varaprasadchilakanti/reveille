@@ -1161,7 +1161,7 @@ refuses. Run it on a clone made without `--filter`.
 **`git log` shows history that the report leaves out, after a `git replace`.**
 Reveille reads the objects the commit hashes name and does not follow replace
 refs, grafts included, so the report and its recorded hash always describe the
-same history. See [ADR 0018](adr/0018-replace-refs-are-not-honoured.md).
+same history. When any are present, the header and stderr say so. See [ADR 0018](adr/0018-replace-refs-are-not-honoured.md).
 
 **One person appears twice.** Their commits carry two addresses. A `.mailmap`
 at the repository root joins them (see

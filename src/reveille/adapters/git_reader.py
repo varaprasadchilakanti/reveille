@@ -959,6 +959,26 @@ class GitReader:
         except Exception:
             return None
 
+    def history_not_followed(self) -> tuple[int, bool]:
+        """Report the history substitutions present and not followed (ADR 0018).
+
+        Reveille reads the objects its hashes name, so a replace ref or a
+        graft file changes nothing it reports; but `git log` follows them, so
+        a reader comparing the two needs to know they are there.
+
+        Returns:
+            How many refs are under `refs/replace/`, and whether a
+            `.git/info/grafts` file exists. `(0, False)` when Git cannot say.
+        """
+        try:
+            listed = str(self._git().for_each_ref("--format=%(refname)", "refs/replace/"))
+            grafts = Path(str(self._git().rev_parse("--git-path", "info/grafts")).strip())
+        except GitCommandError:
+            return 0, False
+        if not grafts.is_absolute():
+            grafts = self._repo_path / grafts
+        return len([line for line in listed.splitlines() if line.strip()]), grafts.is_file()
+
     def is_shallow(self) -> bool:
         """Report whether the repository is a shallow clone.
 

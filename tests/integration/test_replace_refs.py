@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -100,3 +101,42 @@ def test_a_graft_file_is_not_followed(tmp_path: Path) -> None:
     assert result.exit_code == ExitCode.SUCCESS, result.stderr
 
     assert json.loads(result.stdout)["totals"]["commits"] == 3
+
+
+@pytest.mark.integration
+def test_what_was_not_followed_is_stated(repo: tuple[Path, str]) -> None:
+    """`git log` follows the replace ref, so a reader comparing needs to know."""
+    path, _ = repo
+    result = CliRunner().invoke(
+        app, ["generate", "--repo", str(path), "--format", "json", "--deterministic", "-o", "-"]
+    )
+    assert result.exit_code == ExitCode.SUCCESS, result.stderr
+    provenance = json.loads(result.stdout)["provenance"]
+
+    assert provenance["replace_refs_not_followed"] == 1
+    assert provenance["graft_file_not_followed"] is False
+    assert "This repository has 1 replace ref, which `git log` follows" in result.stderr
+
+    html = CliRunner().invoke(app, ["generate", "--repo", str(path), "-o", "-"]).stdout
+    text = " ".join(re.sub(r"<[^>]+>", " ", html).split())
+    assert "Not followed: 1 replace ref, which git log follows" in text
+
+
+@pytest.mark.integration
+def test_an_ordinary_repository_states_nothing(tmp_path: Path) -> None:
+    path = tmp_path / "plain"
+    path.mkdir()
+    _git(path, "init", "-q", "-b", "main")
+    (path / "a.txt").write_text("1\n", encoding="utf-8")
+    _git(path, "add", "-A")
+    _git(path, "commit", "-qm", "c")
+
+    result = CliRunner().invoke(app, ["summary", "--repo", str(path), "--format", "json"])
+    assert result.exit_code == ExitCode.SUCCESS, result.stderr
+    repository = json.loads(result.stdout)["repository"]
+
+    assert (repository["replace_refs_not_followed"], repository["graft_file_not_followed"]) == (
+        0,
+        False,
+    )
+    assert "follows and Reveille does not" not in result.stderr

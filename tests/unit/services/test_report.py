@@ -123,6 +123,7 @@ class TestGenerateReport:
             patch("reveille.services.report.Renderer") as mock_renderer,
         ):
             reader_instance = mock_reader.return_value
+            reader_instance.history_not_followed.return_value = (0, False)
             reader_instance.read_commits.return_value = [sample_commit]
             reader_instance.aggregate_contributor_stats.return_value = [sample_stats]
             reader_instance.read_metadata.return_value = sample_metadata
@@ -147,6 +148,7 @@ class TestGenerateReport:
             patch("reveille.services.report.Renderer") as mock_renderer,
         ):
             reader_instance = mock_reader.return_value
+            reader_instance.history_not_followed.return_value = (0, False)
             reader_instance.read_commits.return_value = [sample_commit]
             reader_instance.aggregate_contributor_stats.return_value = [sample_stats]
             reader_instance.read_metadata.return_value = sample_metadata
@@ -177,6 +179,7 @@ class TestGenerateReport:
             patch("reveille.services.report.Renderer") as mock_renderer,
         ):
             reader_instance = mock_reader.return_value
+            reader_instance.history_not_followed.return_value = (0, False)
             reader_instance.read_commits.return_value = [sample_commit]
             reader_instance.aggregate_contributor_stats.return_value = [sample_stats]
             reader_instance.read_metadata.return_value = sample_metadata
@@ -209,6 +212,7 @@ class TestGenerateReport:
             patch("reveille.services.report.Renderer") as mock_renderer,
         ):
             reader_instance = mock_reader.return_value
+            reader_instance.history_not_followed.return_value = (0, False)
             reader_instance.read_commits.return_value = [sample_commit]
             reader_instance.aggregate_contributor_stats.return_value = [sample_stats]
             reader_instance.read_metadata.return_value = sample_metadata
@@ -242,6 +246,7 @@ class TestGenerateReport:
             patch("reveille.services.report.Renderer") as mock_renderer,
         ):
             reader_instance = mock_reader.return_value
+            reader_instance.history_not_followed.return_value = (0, False)
             reader_instance.read_commits.return_value = [sample_commit]
             reader_instance.aggregate_contributor_stats.return_value = [sample_stats]
             reader_instance.read_metadata.return_value = sample_metadata
@@ -272,6 +277,7 @@ class TestGenerateReport:
             patch("reveille.services.report.Renderer") as mock_renderer,
         ):
             reader_instance = mock_reader.return_value
+            reader_instance.history_not_followed.return_value = (0, False)
             reader_instance.read_commits.return_value = [sample_commit]
             reader_instance.aggregate_contributor_stats.return_value = [sample_stats]
             reader_instance.read_metadata.return_value = sample_metadata
@@ -311,6 +317,7 @@ class TestGenerateReport:
             patch("reveille.services.report.Renderer") as mock_renderer,
         ):
             reader_instance = mock_reader.return_value
+            reader_instance.history_not_followed.return_value = (0, False)
             reader_instance.read_commits.return_value = [sample_commit]
             reader_instance.aggregate_contributor_stats.return_value = [sample_stats]
             reader_instance.read_metadata.return_value = sample_metadata
@@ -346,6 +353,7 @@ class TestGenerateReport:
             patch("reveille.services.report.Renderer") as mock_renderer,
         ):
             reader_instance = mock_reader.return_value
+            reader_instance.history_not_followed.return_value = (0, False)
             reader_instance.read_commits.return_value = [sample_commit]
             reader_instance.aggregate_contributor_stats.return_value = [sample_stats]
             reader_instance.read_metadata.return_value = sample_metadata

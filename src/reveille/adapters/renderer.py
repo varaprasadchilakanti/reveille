@@ -394,6 +394,8 @@ class Renderer:
                 "commits_dated_after_window": data.provenance.commits_dated_after_window,
                 "commits_unreadable": data.provenance.commits_unreadable,
                 "shallow_clone": data.provenance.shallow_clone,
+                "replace_refs_not_followed": data.provenance.replace_refs_not_followed,
+                "graft_file_not_followed": data.provenance.graft_file_not_followed,
                 "limit": data.provenance.limit,
                 "areas": {
                     "enabled": data.provenance.area_authors_enabled,
@@ -551,6 +553,8 @@ class Renderer:
                 "shallow_clone": data.provenance.shallow_clone,
                 "commits_dated_after_window": data.provenance.commits_dated_after_window,
                 "commits_unreadable": data.provenance.commits_unreadable,
+                "replace_refs_not_followed": data.provenance.replace_refs_not_followed,
+                "graft_file_not_followed": data.provenance.graft_file_not_followed,
             },
             "totals": {
                 "commits": data.metadata.total_commits,

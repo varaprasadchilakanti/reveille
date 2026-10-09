@@ -24,7 +24,8 @@ program:
 - **Under `--deterministic`, `generated_at` is the latest analysed commit's time.** Without the
   flag it is the clock.
 - **The JSON is where provenance lives.** The HTML states the analysed branch, the window, a
-  shallow clone, commits dated after the window or not read, and the analysed commit for a
+  shallow clone, commits dated after the window or not read, replace refs or a graft file not
+  followed, and the analysed commit for a
   detached HEAD; the CSV is the contributor table alone. Adding a full provenance block to the
   HTML is not decided here.
 

@@ -346,8 +346,18 @@ class TestFilesystemWrites:
     #
     # `cat_file` reads one object -- the `.mailmap` committed at HEAD, which a
     # bare repository's identity resolution needs -- and writes nothing.
+    # `for_each_ref` lists the replace refs that are present and not followed
+    # (ADR 0018), and writes nothing.
     _READ_ONLY_GIT = frozenset(
-        {"log", "rev_list", "rev_parse", "version", "update_environment", "cat_file"}
+        {
+            "log",
+            "rev_list",
+            "rev_parse",
+            "version",
+            "update_environment",
+            "cat_file",
+            "for_each_ref",
+        }
     )
 
     # Members of a GitPython `Repo` the package may touch at all. Measured

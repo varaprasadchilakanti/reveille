@@ -1061,6 +1061,16 @@
                     not counted.
                 </span>
                 {% endif %}
+                {% if data.provenance.replace_refs_not_followed or data.provenance.graft_file_not_followed %}
+                {# ADR 0018: the figures describe the objects the hashes name.
+                   `git log` follows these and would show a different history. #}
+                <span class="filter-note">
+                    <strong>Not followed:</strong>
+                    {% if data.provenance.replace_refs_not_followed %}{{ data.provenance.replace_refs_not_followed }} {{ 'replace ref' if data.provenance.replace_refs_not_followed == 1 else 'replace refs' }}{% endif %}{% if data.provenance.replace_refs_not_followed and data.provenance.graft_file_not_followed %} and {% endif %}{% if data.provenance.graft_file_not_followed %}a graft file{% endif %},
+                    which <code>git log</code> follows; this report describes the
+                    history the commit hashes name.
+                </span>
+                {% endif %}
                 {% if data.provenance.commits_unreadable %}
                 {# A record the read could not parse is dropped as a defence
                    against forgery (ADR 0019), and stated rather than lost. #}

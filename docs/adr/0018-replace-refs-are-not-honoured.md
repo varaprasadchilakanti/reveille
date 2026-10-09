@@ -37,5 +37,6 @@ names one set of objects and describes another defeats it.
 - A user who relies on a graft sees fewer commits than `git log` shows them. The remedy, if they
   want the older history counted, is to make it real history (`git filter-repo` or a merge),
   which is a change to their repository and therefore theirs to make.
-- Recording which replace refs were present, in `provenance`, is left for a later release; it
-  would be an addition to the schema.
+- What was present and not followed is stated: `provenance.replace_refs_not_followed` (a count)
+  and `provenance.graft_file_not_followed`, a "Not followed" line in the report's header, and a
+  note on stderr, so a reader comparing the report with `git log` can tell why they differ.

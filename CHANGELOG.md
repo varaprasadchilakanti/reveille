@@ -35,7 +35,9 @@ a report contains about the people in it. Everything below is measured against 0
 - **The report describes the objects its hashes name.** A `git replace` ref could substitute a
   commit by another author, and the report named that author while `provenance.head_sha`
   recorded the original commit. Replace refs, and grafts whether made with `git replace` or
-  written to the deprecated `.git/info/grafts`, are no longer followed. See
+  written to the deprecated `.git/info/grafts`, are no longer followed, and their presence is
+  stated in the header, on stderr and in `provenance`, so a comparison with `git log` can be
+  reconciled. See
   [ADR 0018](docs/adr/0018-replace-refs-are-not-honoured.md).
 - **A commit the read cannot parse is counted and stated.** An author field carrying the
   separator the read splits on makes a commit's record unreadable; the record is dropped, which is
@@ -161,7 +163,8 @@ a report contains about the people in it. Everything below is measured against 0
 - **`schema_version` is `1.1`**, additive per ADR 0008. `derived` gains `population_size`,
   `people`, `automated_accounts`, `automated_commits`, `contributors_below_threshold` and
   `commits_with_co_authors`; `provenance` gains `commits_dated_after_window`,
-  `commits_unreadable`, `shallow_clone`, `limit` and `areas`; the document gains `notice`,
+  `commits_unreadable`, `replace_refs_not_followed`, `graft_file_not_followed`,
+  `shallow_clone`, `limit` and `areas`; the document gains `notice`,
   `co_authors_only` with its total and flags,
   `contributors_total` and `contributors_truncated`, `areas` with `--area-authors`, and
   `co_authored_commits` on each contributor.
