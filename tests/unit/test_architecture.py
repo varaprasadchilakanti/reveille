@@ -339,7 +339,11 @@ class TestFilesystemWrites:
     # dynamically, so any attribute name is a valid command and a blocklist
     # would only ever cover the ones somebody thought of. Anything not listed
     # here fails the guard until a human adds it with a reason.
-    _READ_ONLY_GIT = frozenset({"log", "rev_list", "rev_parse", "version"})
+    #
+    # `update_environment` is not a Git command: it sets environment variables
+    # for every later one, and runs nothing. It is here to set
+    # GIT_NO_LAZY_FETCH, which stops Git fetching from a partial clone's remote.
+    _READ_ONLY_GIT = frozenset({"log", "rev_list", "rev_parse", "version", "update_environment"})
 
     # Members of a GitPython `Repo` the package may touch at all. Measured
     # from the source, not guessed: `git_reader.py` uses exactly these.

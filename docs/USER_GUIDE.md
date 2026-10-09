@@ -1120,6 +1120,11 @@ branch defaults to the one checked out.
 history was read, so every figure covers that part alone. `git fetch
 --unshallow` fetches the rest.
 
+**It says the repository is a partial clone and exits 2.** A clone made with
+`--filter` leaves some objects on the server, and reading them would make Git
+fetch them. Reveille makes no network call and changes no Git data, so it
+refuses. Run it on a clone made without `--filter`.
+
 **One person appears twice.** Their commits carry two addresses. A `.mailmap`
 at the repository root joins them (see
 [How Reveille Works](#how-reveille-works) and `gitmailmap(5)`).

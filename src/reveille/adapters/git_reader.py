@@ -499,6 +499,21 @@ class GitReader:
         except NoSuchPathError as exc:
             raise RepositoryError(f"'{repo_path}' does not exist.") from exc
         self._repo_path = repo_path.resolve()
+        # A partial clone (`git clone --filter=...`) leaves objects on the
+        # server, and Git fetches one the moment a read needs it: measured on a
+        # blobless clone, `generate` exited 0 having run `git fetch origin` and
+        # written twelve objects into `.git/objects`. That is a network call and
+        # a change to Git data, both of which Reveille promises never to make.
+        # GIT_NO_LAZY_FETCH stops the fetch, but only from Git 2.44, so the
+        # promise is kept by refusing a partial clone outright, on any Git.
+        self._repo.git.update_environment(GIT_NO_LAZY_FETCH="1")
+        if _is_partial_clone(self._repo):
+            raise RepositoryError(
+                f"'{repo_path}' is a partial clone (made with --filter): some of its "
+                "objects are still on the server, and reading them would make Git "
+                "fetch them. Reveille makes no network call and changes no Git data, "
+                "so it does not read a partial clone. Run it on a full clone."
+            )
 
     def read_commits(
         self,
@@ -1120,6 +1135,30 @@ def _co_author_identities(
             "a commit names more than %d co-authors; %d ignored", _MAX_CO_AUTHORS, dropped
         )
     return tuple((name, email) for email, name in found.items())
+
+
+def _is_partial_clone(repo: Repo) -> bool:
+    """Return whether a repository is a partial clone, from its own configuration.
+
+    `git clone --filter` marks the remote it came from as a promisor, and
+    older Git records `extensions.partialClone`; either means objects may be
+    missing and fetched on demand. Read from the repository's configuration
+    file by GitPython's parser, so no Git program runs to answer it.
+
+    Args:
+        repo: The repository.
+
+    Returns:
+        True when any remote is a promisor or the extension is set.
+    """
+    try:
+        config = repo.config_reader("repository")
+        for section in config.sections():
+            if section.startswith("remote ") and config.get_value(section, "promisor", False):
+                return True
+        return bool(config.get_value("extensions", "partialclone", ""))
+    except Exception:  # an unreadable config is reported by the first read instead
+        return False
 
 
 def _truncate(value: str, limit: int) -> str:
