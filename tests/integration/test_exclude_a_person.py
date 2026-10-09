@@ -83,3 +83,40 @@ def test_a_value_that_matches_nobody_still_warns(repo: Path) -> None:
     assert code == ExitCode.SUCCESS
 
     assert "matched no commits for: nobody" in err
+
+
+@pytest.mark.integration
+def test_one_person_under_two_names_draws_no_warning(repo: Path) -> None:
+    """Ana and Ana Silva share one address: one person, nothing to narrow."""
+    _, _, err = _run("summary", "--repo", str(repo), "--exclude-author", "Ana Silva")
+
+    assert "matched 2 addresses" not in err
+
+
+@pytest.mark.integration
+def test_a_name_two_people_share_removes_both_and_says_so(tmp_path: Path) -> None:
+    """ADR 0020: the safe direction for a privacy flag, stated, never silent."""
+    path = tmp_path / "two"
+    path.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=path, check=True)
+    for day, email in enumerate(["alice@x.test", "alice@other.test", "bob@e.test"], start=1):
+        (path / "f.txt").write_text(f"{day}\n", encoding="utf-8")
+        name = "Bob" if email.startswith("bob") else "Alice"
+        env = {
+            **os.environ,
+            "GIT_AUTHOR_NAME": name,
+            "GIT_AUTHOR_EMAIL": email,
+            "GIT_COMMITTER_NAME": name,
+            "GIT_COMMITTER_EMAIL": email,
+        }
+        subprocess.run(["git", "add", "-A"], cwd=path, check=True, env=env)
+        subprocess.run(["git", "commit", "-qm", f"c{day}"], cwd=path, check=True, env=env)
+
+    code, out, err = _run(
+        "summary", "--repo", str(path), "--exclude-author", "Alice", "--format", "json"
+    )
+    assert code == ExitCode.SUCCESS, err
+
+    assert json.loads(out)["totals"]["commits"] == 1
+    assert "matched 2 addresses" in err
+    assert "alice@other.test, alice@x.test" in err

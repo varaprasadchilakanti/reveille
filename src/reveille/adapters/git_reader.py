@@ -670,7 +670,9 @@ class GitReader:
         # is excluded, since it parses the log twice.
         records = raw_log.split(_RECORD_SEP)
         requested = set(exclude_set)
-        exclude_set |= _addresses_reached(records, mailmap, exclude_set, authentic_shas)
+        reached = _addresses_reached(records, mailmap, exclude_set, authentic_shas)
+        exclude_set |= {address for addresses in reached.values() for address in addresses}
+        _state_wide_exclusions(reached)
 
         commits: list[Commit] = []
         matched: set[str] = set()
@@ -1156,13 +1158,34 @@ def _co_author_identities(
     return tuple((name, email) for email, name in found.items())
 
 
+def _state_wide_exclusions(reached: dict[str, set[str]]) -> None:
+    """Warn when a name reached more than one address (ADR 0020).
+
+    A name two people share reaches both their addresses, and both are
+    removed: the safe direction for a privacy flag, but not a silent one.
+    The warning names the addresses, so the value can be narrowed.
+
+    Args:
+        reached: Each exclusion value and the addresses it matched.
+    """
+    for value, addresses in sorted(reached.items()):
+        if "@" not in value and len(addresses) > 1:
+            _logger.warning(
+                "--exclude-author %r matched %d addresses, and every commit under each "
+                "was excluded: %s. Give an address to exclude only one.",
+                value,
+                len(addresses),
+                ", ".join(sorted(addresses)),
+            )
+
+
 def _addresses_reached(
     records: list[str],
     mailmap: _Mailmap,
     exclude_set: set[str],
     authentic_shas: set[str],
-) -> set[str]:
-    """Return the resolved address of every commit an exclusion matches.
+) -> dict[str, set[str]]:
+    """Return, for each exclusion value, the resolved addresses of the commits it matches.
 
     Args:
         records: The main read's records.
@@ -1171,9 +1194,10 @@ def _addresses_reached(
         authentic_shas: Object names git reported for this revision.
 
     Returns:
-        The addresses to exclude as well; empty when nothing is excluded.
+        Each matching value and the addresses it reached; empty when nothing
+        is excluded.
     """
-    reached: set[str] = set()
+    reached: dict[str, set[str]] = {}
     if exclude_set:
         for record in records:
             _parse_log_record(record, mailmap, exclude_set, authentic_shas, set(), reached)
@@ -1284,7 +1308,7 @@ def _parse_log_record(
     exclude_set: set[str],
     authentic_shas: set[str],
     matched: set[str],
-    reached: set[str] | None = None,
+    reached: dict[str, set[str]] | None = None,
 ) -> Commit | None:
     """Turn one `git log` record into a Commit, or reject it.
 
@@ -1302,9 +1326,9 @@ def _parse_log_record(
             record whose SHA is absent was not produced by a commit.
         matched: Mutated in place with every exclusion value that matched, so
             the caller can report the ones that never did.
-        reached: When given, mutated in place with the resolved address of
-            every excluded commit, so the caller can drop that person's
-            commits made under other names.
+        reached: When given, mutated in place: each matching exclusion value
+            gains the resolved address of the commit, so the caller can drop
+            that person's commits made under other names.
 
     Returns:
         The parsed Commit, or None if the record is empty, malformed,
@@ -1358,7 +1382,8 @@ def _parse_log_record(
     if hits:
         matched |= hits
         if reached is not None:
-            reached.add(author_email.lower())
+            for value in hits:
+                reached.setdefault(value, set()).add(author_email.lower())
         return None
 
     try:
