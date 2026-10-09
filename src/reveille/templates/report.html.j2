@@ -1130,8 +1130,7 @@
         {{ 'automated account' if derived.automated_accounts == 1 else 'automated accounts' }}
         ({{ '{:,}'.format(derived.automated_commits) }}
         {{ 'commit' if derived.automated_commits == 1 else 'commits' }}) {{ 'is' if derived.automated_accounts == 1 else 'are' }}
-        counted in the commit and line totals and listed in the table, but
-        not in those figures. An account is treated as automated when its name
+        counted in the commit and line totals, but not in those figures. An account is treated as automated when its name
         or address carries <code>[bot]</code>; one without it is counted as a
         person.
     </p>
@@ -1359,7 +1358,7 @@
             {% if derived.generated_files %}
             {{ '{:,}'.format(derived.generated_files) }}
             {{ 'lock file' if derived.generated_files == 1 else 'lock files' }}
-            ({{ '{:,}'.format(derived.generated_lines) }} lines changed)
+            ({{ '{:,}'.format(derived.generated_lines) }} {{ 'line' if derived.generated_lines == 1 else 'lines' }} changed)
             {{ 'is' if derived.generated_files == 1 else 'are' }} left out and
             counted under Change by File Type.
             {% endif %}

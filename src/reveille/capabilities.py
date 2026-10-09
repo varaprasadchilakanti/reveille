@@ -119,8 +119,9 @@ _CAPABILITIES: tuple[dict[str, str], ...] = (
     {
         "id": "reproducible-output",
         "description": (
-            "Produce byte-identical output for an unchanged repository, so a "
-            "report can be regenerated and compared."
+            "With --deterministic, produce byte-identical output for an "
+            "unchanged repository and the same Reveille version, so a report "
+            "can be regenerated and compared."
         ),
     },
 )
@@ -138,10 +139,10 @@ _NOT_CAPABILITIES: tuple[dict[str, str], ...] = (
         ),
         "instead": (
             "For engineering effectiveness, use team-level delivery metrics. "
-            "The SPACE framework (Forsgren et al., 2021) says activity counts "
-            "should never be used on their own to reward or penalise developers, "
-            "and recommends reporting only anonymised, aggregate results. DORA's "
-            "metrics are defined for applications and services, not people."
+            "The SPACE framework (Forsgren et al., 2021) holds that developer "
+            "productivity is about more than an individual's activity levels. "
+            "DORA's metrics are defined for applications and services, not "
+            "people."
         ),
     },
     {
@@ -170,11 +171,12 @@ _NOT_CAPABILITIES: tuple[dict[str, str], ...] = (
     {
         "id": "code-analysis",
         "description": (
-            "Read, parse, lint, or evaluate source code, commit messages, "
-            "diff content, or file contents. What is read is commit metadata "
-            "-- object name, author name, author email, timestamp -- and, per "
-            "file in each commit, the path and the number of lines added and "
-            "deleted, as reported by `git log --numstat`. How many lines "
+            "Read, parse, lint, or evaluate source code, diff content, file "
+            "contents, or any part of a commit message other than its "
+            "Co-authored-by trailers. What is read is commit metadata -- object "
+            "name, author name, author email, timestamp -- those trailers, and, "
+            "per file in each commit, the path and the number of lines added "
+            "and deleted, as reported by `git log --numstat`. How many lines "
             "changed in a file, never which lines."
         ),
         "instead": "Use a static analysis tool or a code search tool.",
@@ -275,7 +277,10 @@ _GUARANTEES: tuple[dict[str, str], ...] = (
         "id": "offline",
         "description": (
             "No network call is made at any point, and the generated report "
-            "loads no remote resource."
+            "loads no remote resource. A partial clone is refused rather than "
+            "read, because reading it would make Git fetch. Git obeys a "
+            "repository's own .git/config, which can name a program for Git to "
+            "run; such a program is outside these properties."
         ),
     },
     {
@@ -284,7 +289,7 @@ _GUARANTEES: tuple[dict[str, str], ...] = (
             "Analysis never changes the repository's Git data: its history, "
             "refs, index, objects or configuration. An output path inside "
             ".git is refused. The report is written where you say, by default "
-            "reveille-report.html in the current directory. `reveille init` "
+            "reveille-report.html in the repository root. `reveille init` "
             "writes only the files you ask it for: reveille.toml, and "
             ".mailmap with --mailmap."
         ),

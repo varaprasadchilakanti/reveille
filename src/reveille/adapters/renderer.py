@@ -595,8 +595,8 @@ class Renderer:
                 else ""
             )
             + "; "
-            f"Gini {measures['gini_coefficient']}, "
-            f"longest quiet run {measures['longest_quiet_run_days']:,} days.",
+            f"Gini {measures['gini_coefficient']:.2f}, "
+            f"longest quiet run {_counted(measures['longest_quiet_run_days'], 'day')}.",
             *(f"- {f['headline']}" for f in document["findings"]),
             document["notice"],
         ]
@@ -1167,7 +1167,7 @@ def _summarise_activity(commits: list[Commit]) -> str:
         per_day[commit.timestamp.date()] += 1
     busiest, peak = max(per_day.items(), key=lambda item: (item[1], item[0]))
     return (
-        f"{len(commits):,} commits across {len(per_day):,} active days, "
+        f"{_counted(len(commits), 'commit')} across {_counted(len(per_day), 'active day')}, "
         f"between {min(per_day).isoformat()} and {max(per_day).isoformat()}. "
         f"The busiest day was {busiest.isoformat()} with {peak:,}."
     )

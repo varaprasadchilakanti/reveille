@@ -274,3 +274,29 @@ class TestDerivedFactsAreActuallyDerived:
         import reveille
 
         assert build_capabilities(app, ExitCode)["version"] == reveille.__version__
+
+
+@pytest.mark.unit
+class TestTheStatedPropertiesAreQualifiedWhereTheyMustBe:
+    """A property an assistant repeats is read as a promise. The 2026-10-09
+    verification found three stated without the condition that makes them true."""
+
+    def _by_id(self, document: dict, key: str) -> dict[str, str]:
+        return {item["id"]: item["description"] for item in document[key]}
+
+    def test_offline_states_its_one_limit(self, document: dict) -> None:
+        offline = self._by_id(document, "guarantees")["offline"]
+        assert ".git/config" in offline
+        assert "partial clone is refused" in offline
+
+    def test_the_default_report_lands_in_the_repository_root(self, document: dict) -> None:
+        read_only = self._by_id(document, "guarantees")["read-only-analysis"]
+        assert "in the repository root" in read_only
+        assert "current directory" not in read_only
+
+    def test_byte_identical_output_needs_the_flag(self, document: dict) -> None:
+        assert "--deterministic" in self._by_id(document, "can")["reproducible-output"]
+
+    def test_the_trailers_read_are_admitted(self, document: dict) -> None:
+        cannot = {item["id"]: item["description"] for item in document["cannot"]}
+        assert "Co-authored-by trailers" in cannot["code-analysis"]
