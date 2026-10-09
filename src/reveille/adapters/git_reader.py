@@ -509,8 +509,12 @@ class GitReader:
         #
         # Replace refs are not honoured either (ADR 0018): with them, a report
         # whose provenance names commit X described a substitute for X, by
-        # whatever author the substitute claimed.
-        self._repo.git.update_environment(GIT_NO_LAZY_FETCH="1", GIT_NO_REPLACE_OBJECTS="1")
+        # whatever author the substitute claimed. The older `.git/info/grafts`
+        # file rewrites parents the same way and GIT_NO_REPLACE_OBJECTS does not
+        # cover it, so Git is pointed at an empty graft file instead.
+        self._repo.git.update_environment(
+            GIT_NO_LAZY_FETCH="1", GIT_NO_REPLACE_OBJECTS="1", GIT_GRAFT_FILE=os.devnull
+        )
         if _is_partial_clone(self._repo):
             raise RepositoryError(
                 f"'{repo_path}' is a partial clone (made with --filter): some of its "

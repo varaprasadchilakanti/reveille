@@ -20,9 +20,12 @@ names one set of objects and describes another defeats it.
 
 ## Decision
 
-- **Every Git command Reveille runs sets `GIT_NO_REPLACE_OBJECTS=1`.** The history read is the
-  one the recorded hashes name, whatever `refs/replace/` holds.
-- **Grafts made with `git replace --graft` are therefore not followed either.** A repository
+- **Every Git command Reveille runs sets `GIT_NO_REPLACE_OBJECTS=1`, and points
+  `GIT_GRAFT_FILE` at an empty file.** The history read is the one the recorded hashes name,
+  whatever `refs/replace/` or the deprecated `.git/info/grafts` holds; the first setting does not
+  cover the second, which a verification pass found still obeyed.
+- **Grafts, whether made with `git replace --graft` or written to `.git/info/grafts`, are
+  therefore not followed either.** A repository
   that joins an older history on with a graft is read without it, so its figures start where its
   own history starts. The User Guide says so.
 

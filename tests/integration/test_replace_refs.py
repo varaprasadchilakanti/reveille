@@ -77,3 +77,26 @@ def test_who_changed_reads_the_same_objects(repo: tuple[Path, str]) -> None:
     assert result.exit_code == ExitCode.SUCCESS, result.stderr
 
     assert [a["name"] for a in json.loads(result.stdout)["authors"]["list"]] == ["Ana"]
+
+
+@pytest.mark.integration
+def test_a_graft_file_is_not_followed(tmp_path: Path) -> None:
+    """`.git/info/grafts` rewrites parents too, and GIT_NO_REPLACE_OBJECTS does
+    not cover it: with it obeyed, three commits read as two."""
+    path = tmp_path / "grafted"
+    path.mkdir()
+    _git(path, "init", "-q", "-b", "main")
+    for day in (1, 2, 3):
+        (path / "a.txt").write_text(f"{day}\n", encoding="utf-8")
+        _git(path, "add", "-A")
+        _git(path, "commit", "-qm", f"c{day}")
+    (path / ".git" / "info").mkdir(exist_ok=True)
+    (path / ".git" / "info" / "grafts").write_text(
+        _git(path, "rev-parse", "HEAD~1") + "\n", encoding="utf-8"
+    )
+    assert _git(path, "rev-list", "--count", "HEAD") == "2", "guard the guard"
+
+    result = CliRunner().invoke(app, ["summary", "--repo", str(path), "--format", "json"])
+    assert result.exit_code == ExitCode.SUCCESS, result.stderr
+
+    assert json.loads(result.stdout)["totals"]["commits"] == 3
