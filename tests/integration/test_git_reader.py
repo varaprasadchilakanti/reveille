@@ -672,7 +672,11 @@ class TestGithubNoreplyIdentity:
         assert alice.commit_count == 2
 
     def test_exclusion_by_raw_prefixed_address_still_works(self, noreply_repo: Path) -> None:
-        """An --exclude-author copied from `git log` matches the raw form."""
+        """An --exclude-author copied from `git log` matches the raw form, and
+        removes the account under both of its forms: they are one identity.
+
+        This asserted two commits left until 0.9.0, which was the account's
+        other commit surviving its exclusion."""
         reader = GitReader(noreply_repo)
         commits = reader.read_commits(
             branch=None,
@@ -680,7 +684,7 @@ class TestGithubNoreplyIdentity:
             until=None,
             exclude_authors=["140685918+alice@users.noreply.github.com"],
         )
-        assert len(commits) == 2
+        assert [c.author_email for c in commits] == ["bob@example.com"]
 
     def test_exclusion_by_normalised_address_matches_both_forms(self, noreply_repo: Path) -> None:
         """An --exclude-author copied from report output removes the account."""

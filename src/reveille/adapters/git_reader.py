@@ -657,6 +657,17 @@ class GitReader:
                 f"Verify the branch name is correct. Detail: {exc}"
             ) from exc
 
+        # An identity is its address (ADR 0002), so excluding a person by one
+        # name must also drop their commits under every other name that
+        # address carries. Matched per commit, "Alice Smith" removed four
+        # commits and left "Alice", same address, three, exit 0, no warning.
+        # A first pass finds the addresses an exclusion reaches; the read
+        # below then drops every commit made under them. Only when something
+        # is excluded, since it parses the log twice.
+        records = raw_log.split(_RECORD_SEP)
+        requested = set(exclude_set)
+        exclude_set |= _addresses_reached(records, mailmap, exclude_set, authentic_shas)
+
         commits: list[Commit] = []
         matched: set[str] = set()
         # Accumulated while streaming rather than stored per commit: the
@@ -667,7 +678,7 @@ class GitReader:
         file_totals: dict[str, list[int]] = {}
         area_totals: dict[str, _AreaTotal] = {}
         dated_after = 0
-        for record in raw_log.split(_RECORD_SEP):
+        for record in records:
             commit = _parse_log_record(record, mailmap, exclude_set, authentic_shas, matched)
             if commit is None:
                 continue
@@ -706,7 +717,7 @@ class GitReader:
         # Assigned unconditionally. Setting it only when non-empty left a reader
         # reused for a second call still reporting the first call's failed
         # filter -- a public attribute on a public class, going stale silently.
-        unmatched = sorted(exclude_set - matched)
+        unmatched = sorted(requested - matched)
         self.unmatched_exclusions = tuple(unmatched)
         if unmatched:
             _logger.warning("--exclude-author matched no commits for: %s", ", ".join(unmatched))
@@ -1141,6 +1152,30 @@ def _co_author_identities(
     return tuple((name, email) for email, name in found.items())
 
 
+def _addresses_reached(
+    records: list[str],
+    mailmap: _Mailmap,
+    exclude_set: set[str],
+    authentic_shas: set[str],
+) -> set[str]:
+    """Return the resolved address of every commit an exclusion matches.
+
+    Args:
+        records: The main read's records.
+        mailmap: Parsed `.mailmap` lookup tables.
+        exclude_set: Lowercased names and addresses to drop.
+        authentic_shas: Object names git reported for this revision.
+
+    Returns:
+        The addresses to exclude as well; empty when nothing is excluded.
+    """
+    reached: set[str] = set()
+    if exclude_set:
+        for record in records:
+            _parse_log_record(record, mailmap, exclude_set, authentic_shas, set(), reached)
+    return reached
+
+
 def _is_partial_clone(repo: Repo) -> bool:
     """Return whether a repository is a partial clone, from its own configuration.
 
@@ -1245,6 +1280,7 @@ def _parse_log_record(
     exclude_set: set[str],
     authentic_shas: set[str],
     matched: set[str],
+    reached: set[str] | None = None,
 ) -> Commit | None:
     """Turn one `git log` record into a Commit, or reject it.
 
@@ -1262,6 +1298,9 @@ def _parse_log_record(
             record whose SHA is absent was not produced by a commit.
         matched: Mutated in place with every exclusion value that matched, so
             the caller can report the ones that never did.
+        reached: When given, mutated in place with the resolved address of
+            every excluded commit, so the caller can drop that person's
+            commits made under other names.
 
     Returns:
         The parsed Commit, or None if the record is empty, malformed,
@@ -1314,6 +1353,8 @@ def _parse_log_record(
     }
     if hits:
         matched |= hits
+        if reached is not None:
+            reached.add(author_email.lower())
         return None
 
     try:
