@@ -72,3 +72,5 @@ def test_an_oversized_committed_mailmap_is_ignored_not_read(tmp_path: Path) -> N
     bare = _bare(origin, tmp_path / "bare.git")
 
     assert _authors(bare) == 2
+    result = CliRunner().invoke(app, ["summary", "--repo", str(bare)])
+    assert "over the 1,048,576-byte limit, and was not read" in result.stderr

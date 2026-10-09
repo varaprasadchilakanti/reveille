@@ -120,3 +120,48 @@ def test_a_name_two_people_share_removes_both_and_says_so(tmp_path: Path) -> Non
     assert json.loads(out)["totals"]["commits"] == 1
     assert "matched 2 addresses" in err
     assert "alice@other.test, alice@x.test" in err
+
+
+@pytest.mark.integration
+def test_a_name_used_only_before_the_window_still_removes_the_person(tmp_path: Path) -> None:
+    """Ana committed as "Ana" in January and as "Ana Silva" in March, from one
+    address. Read from February, the name "Ana" appears in no analysed commit,
+    yet it is the same person, and excluding it must remove her."""
+    path = tmp_path / "early"
+    path.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=path, check=True)
+    for stamp, name in (("2026-01-05", "Ana"), ("2026-03-05", "Ana Silva"), ("2026-03-06", "Ben")):
+        (path / "f.txt").write_text(stamp, encoding="utf-8")
+        email = "ben@e.test" if name == "Ben" else "ana@e.test"
+        env = {
+            **os.environ,
+            "GIT_AUTHOR_NAME": name,
+            "GIT_AUTHOR_EMAIL": email,
+            "GIT_COMMITTER_NAME": name,
+            "GIT_COMMITTER_EMAIL": email,
+            "GIT_AUTHOR_DATE": f"{stamp}T10:00:00+00:00",
+            "GIT_COMMITTER_DATE": f"{stamp}T10:00:00+00:00",
+        }
+        subprocess.run(["git", "add", "-A"], cwd=path, check=True, env=env)
+        subprocess.run(["git", "commit", "-qm", stamp], cwd=path, check=True, env=env)
+
+    code, out, err = _run(
+        "generate",
+        "--repo",
+        str(path),
+        "--since",
+        "2026-02-01",
+        "--format",
+        "json",
+        "--exclude-author",
+        "Ana",
+        "-o",
+        "-",
+    )
+    assert code == ExitCode.SUCCESS, err
+    assert [c["email"] for c in json.loads(out)["contributors"]] == ["ben@e.test"]
+    assert "matched no commits" not in err
+
+    code, out, err = _run("who-changed", "f.txt", "--repo", str(path), "--exclude-author", "Ana")
+    assert code == ExitCode.SUCCESS, err
+    assert "Ana" not in out

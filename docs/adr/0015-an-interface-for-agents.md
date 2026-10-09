@@ -28,7 +28,8 @@ Four additions, each small, each built on what exists.
 
 - **`reveille summary`** — the repository in about 2 KB: window, totals, concentration,
   Gini, quiet run, the findings, and the provenance an answer must carry (analysed commit, shallow
-  clone, commits dated after the window, co-authored commits). **It names no contributor.** It does print
+  clone, commits dated after the window, co-authored commits). **It names no contributor.** It does
+  print
   the repository and branch names as they are, which can name someone, and with one or two
   people its figures describe identifiable individuals, so it is the smallest default, not an
   anonymous one. It reads no line counts, which are the expensive part of a

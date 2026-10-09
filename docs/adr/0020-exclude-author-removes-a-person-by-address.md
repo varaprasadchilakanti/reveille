@@ -27,7 +27,7 @@ Three ways were weighed:
 - An exclusion value is matched, case-insensitively, against each commit's name and address as
   recorded and as resolved through `.mailmap`. **Every commit made under an address that a value
   matched is removed**, whatever name it carries, and so is every address a `.mailmap` ties to it.
-- **When a name reaches more than one address**, a warning on stderr names the addresses and says
+- **When a value reaches more than one address**, a warning on stderr names the addresses and says
   that an address excludes only one.
 - A value that matches nothing is still warned about.
 
@@ -38,4 +38,7 @@ Three ways were weighed:
   with the addresses to narrow it.
 - Two people who share an address were already one identity (ADR 0002); excluding either removes
   both, as before.
-- In `who-changed`, the addresses reached are those in the path's commits only.
+- The addresses a value reaches are found across every commit reachable from the analysed
+  revision, not only the window or the path being read: a name used before `--since`, or only
+  in other files, still removes that address. This costs one more `git log` reading names and
+  addresses, only when something is excluded.

@@ -82,8 +82,9 @@ a report contains about the people in it. Everything below is measured against 0
 - **`--exclude-author` removes the person, not one spelling of their name.** An identity is its
   address, and the match was made per commit: with one address committing as "Alice" and
   "Alice Smith", excluding "Alice Smith" left "Alice" in the report, exit 0, no warning. Every
-  commit made under an address the value matched is now removed, whatever name it carries; a name
-  that reaches more than one address removes them all and says so on stderr, with the addresses.
+  commit made under an address the value matched anywhere in the branch's history is now
+  removed, whatever name it carries; a value that reaches more than one address removes them all
+  and says so on stderr, with the addresses.
   See [ADR 0020](docs/adr/0020-exclude-author-removes-a-person-by-address.md).
 - **The documentation says what a report contains about people.** A new User Guide section lists,
   per format, every field about a person, and another says what to check before sharing a

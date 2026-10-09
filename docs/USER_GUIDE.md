@@ -174,7 +174,8 @@ reveille generate --branch release/2.0
 
 Excludes a person by name or email address. The match is case-insensitive.
 An identity is its address, so every commit made under an address that the
-value matched is removed, whatever name it carries, as is every address a
+value matched anywhere in the branch's history (not only in the window) is
+removed, whatever name it carries, as is every address a
 `.mailmap` ties to it. A name that reaches more than one address removes all
 of them, and stderr names the addresses so you can give one instead. A value
 that matches nothing is reported on stderr. The flag is repeatable. See
@@ -1161,7 +1162,8 @@ refuses. Run it on a clone made without `--filter`.
 **`git log` shows history that the report leaves out, after a `git replace`.**
 Reveille reads the objects the commit hashes name and does not follow replace
 refs, grafts included, so the report and its recorded hash always describe the
-same history. When any are present, the header and stderr say so. See [ADR 0018](adr/0018-replace-refs-are-not-honoured.md).
+same history. When any are present, the header and stderr say so. See [ADR
+0018](adr/0018-replace-refs-are-not-honoured.md).
 
 **One person appears twice.** Their commits carry two addresses. A `.mailmap`
 at the repository root joins them (see

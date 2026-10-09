@@ -674,7 +674,7 @@ class GitReader:
         # is excluded, since it parses the log twice.
         records = raw_log.split(_RECORD_SEP)
         requested = set(exclude_set)
-        reached = _addresses_reached(records, mailmap, exclude_set, authentic_shas)
+        reached = self._addresses_in_history(rev, mailmap, exclude_set)
         exclude_set |= {address for addresses in reached.values() for address in addresses}
         _state_wide_exclusions(reached)
 
@@ -728,7 +728,7 @@ class GitReader:
         # Assigned unconditionally. Setting it only when non-empty left a reader
         # reused for a second call still reporting the first call's failed
         # filter -- a public attribute on a public class, going stale silently.
-        unmatched = sorted(requested - matched)
+        unmatched = sorted(requested - matched - set(reached))
         self.unmatched_exclusions = tuple(unmatched)
         if unmatched:
             _logger.warning("--exclude-author matched no commits for: %s", ", ".join(unmatched))
@@ -959,6 +959,44 @@ class GitReader:
         except Exception:
             return None
 
+    def _addresses_in_history(
+        self, rev: str, mailmap: _Mailmap, exclude_set: set[str]
+    ) -> dict[str, set[str]]:
+        """Return, for each exclusion value, the addresses it reaches in all history.
+
+        An identity is its address (ADR 0020), and a person's other names may
+        appear only outside the window or the path being read: a name used
+        before `--since` left the same address in the report under another
+        name. So the addresses are found over every commit reachable from the
+        analysed revision, merges included, reading names and addresses only.
+        A forged author field can at worst add an address to exclude, which
+        removes more, never less.
+
+        Args:
+            rev: The analysed revision.
+            mailmap: Parsed `.mailmap` lookup tables.
+            exclude_set: Lowercased names and addresses to drop.
+
+        Returns:
+            Each matching value and the addresses it reached; empty when
+            nothing is excluded.
+        """
+        reached: dict[str, set[str]] = {}
+        if not exclude_set:
+            return reached
+        try:
+            raw = str(self._git().log("-z", "--format=%an%x1f%ae", rev, "--"))
+        except GitCommandError:
+            return reached
+        for record in raw.split("\0"):
+            fields = record.split(_FIELD_SEP)
+            if len(fields) != 2:
+                continue
+            _, address, hits = _identity(fields[0], fields[1], mailmap, exclude_set)
+            for value in hits:
+                reached.setdefault(value, set()).add(address.lower())
+        return reached
+
     def history_not_followed(self) -> tuple[int, bool]:
         """Report the history substitutions present and not followed (ADR 0018).
 
@@ -972,11 +1010,14 @@ class GitReader:
         """
         try:
             listed = str(self._git().for_each_ref("--format=%(refname)", "refs/replace/"))
-            grafts = Path(str(self._git().rev_parse("--git-path", "info/grafts")).strip())
+            # Not `--git-path info/grafts`: that honours GIT_GRAFT_FILE, which
+            # every read sets to the null device, so it always named that.
+            common = Path(str(self._git().rev_parse("--git-common-dir")).strip())
         except GitCommandError:
             return 0, False
-        if not grafts.is_absolute():
-            grafts = self._repo_path / grafts
+        if not common.is_absolute():
+            common = self._repo_path / common
+        grafts = common / "info" / "grafts"
         return len([line for line in listed.splitlines() if line.strip()]), grafts.is_file()
 
     def is_shallow(self) -> bool:
@@ -1091,6 +1132,12 @@ class GitReader:
         try:
             size = int(str(self._git().cat_file("-s", "HEAD:.mailmap")).strip())
             if size > _MAX_MAILMAP_BYTES:
+                _logger.warning(
+                    "The .mailmap committed at HEAD is %s bytes, over the %s-byte limit, "
+                    "and was not read.",
+                    f"{size:,}",
+                    f"{_MAX_MAILMAP_BYTES:,}",
+                )
                 return None
             raw = self._git().cat_file("blob", "HEAD:.mailmap", stdout_as_string=False)
         except (GitCommandError, ValueError):
@@ -1275,7 +1322,7 @@ def _state_wide_exclusions(reached: dict[str, set[str]]) -> None:
         reached: Each exclusion value and the addresses it matched.
     """
     for value, addresses in sorted(reached.items()):
-        if "@" not in value and len(addresses) > 1:
+        if len(addresses) > 1:
             _logger.warning(
                 "--exclude-author %r matched %d addresses, and every commit under each "
                 "was excluded: %s. Give an address to exclude only one.",
@@ -1283,31 +1330,6 @@ def _state_wide_exclusions(reached: dict[str, set[str]]) -> None:
                 len(addresses),
                 ", ".join(sorted(addresses)),
             )
-
-
-def _addresses_reached(
-    records: list[str],
-    mailmap: _Mailmap,
-    exclude_set: set[str],
-    authentic_shas: set[str],
-) -> dict[str, set[str]]:
-    """Return, for each exclusion value, the resolved addresses of the commits it matches.
-
-    Args:
-        records: The main read's records.
-        mailmap: Parsed `.mailmap` lookup tables.
-        exclude_set: Lowercased names and addresses to drop.
-        authentic_shas: Object names git reported for this revision.
-
-    Returns:
-        Each matching value and the addresses it reached; empty when nothing
-        is excluded.
-    """
-    reached: dict[str, set[str]] = {}
-    if exclude_set:
-        for record in records:
-            _parse_log_record(record, mailmap, exclude_set, authentic_shas, set(), reached)
-    return reached
 
 
 #: The largest committed `.mailmap` a bare repository's read will take. A
@@ -1413,54 +1435,20 @@ def _strip_invisible(name: str) -> str:
     return _INVISIBLE_IN_NAMES_RE.sub("", name)
 
 
-def _parse_log_record(
-    record: str,
-    mailmap: _Mailmap,
-    exclude_set: set[str],
-    authentic_shas: set[str],
-    matched: set[str],
-    reached: dict[str, set[str]] | None = None,
-) -> Commit | None:
-    """Turn one `git log` record into a Commit, or reject it.
-
-    Every rejection path here is a defence rather than a convenience. A commit
-    object written directly with `git hash-object --literally` can carry
-    control characters in its author fields and a timestamp that is not a
-    number, and Git will replay both faithfully. A record that survives all of
-    the checks below is one this reader is willing to attribute to a person.
+def _identity(
+    raw_name: str, raw_email: str, mailmap: _Mailmap, exclude_set: set[str]
+) -> tuple[str, str, set[str]]:
+    """Resolve and scrub one commit's author, and match it against the exclusions.
 
     Args:
-        record: One record from the split log output, without its separator.
+        raw_name: The author name as recorded.
+        raw_email: The author address as recorded.
         mailmap: Parsed `.mailmap` lookup tables.
         exclude_set: Lowercased names and addresses to drop.
-        authentic_shas: Object names git itself reported for this revision. A
-            record whose SHA is absent was not produced by a commit.
-        matched: Mutated in place with every exclusion value that matched, so
-            the caller can report the ones that never did.
-        reached: When given, mutated in place: each matching exclusion value
-            gains the resolved address of the commit, so the caller can drop
-            that person's commits made under other names.
 
     Returns:
-        The parsed Commit, or None if the record is empty, malformed,
-        excluded by filter, or carries an unusable timestamp.
+        The resolved name and address, and the exclusion values they match.
     """
-    if not record.strip():
-        return None
-
-    header, _, numstat_block = record.partition("\n")
-    fields = header.split(_FIELD_SEP)
-    if len(fields) != 4:
-        return None
-
-    sha, raw_name, raw_email, committed_at = fields
-
-    # A crafted author name can produce a record that *looks* well formed --
-    # right field count, forty hex characters -- so shape alone is not enough.
-    # Membership in the set git computed is.
-    if not _SHA_RE.fullmatch(sha) or sha not in authentic_shas:
-        return None
-
     # An author field carrying our own separators can split one commit into
     # several fabricated contributors -- and the ranking then promotes an
     # invented name into a tier. Scrub before trusting.
@@ -1490,11 +1478,56 @@ def _parse_log_record(
         raw_name.lower(),
         raw_email.lower(),
     }
+    return author_name, author_email, hits
+
+
+def _parse_log_record(
+    record: str,
+    mailmap: _Mailmap,
+    exclude_set: set[str],
+    authentic_shas: set[str],
+    matched: set[str],
+) -> Commit | None:
+    """Turn one `git log` record into a Commit, or reject it.
+
+    Every rejection path here is a defence rather than a convenience. A commit
+    object written directly with `git hash-object --literally` can carry
+    control characters in its author fields and a timestamp that is not a
+    number, and Git will replay both faithfully. A record that survives all of
+    the checks below is one this reader is willing to attribute to a person.
+
+    Args:
+        record: One record from the split log output, without its separator.
+        mailmap: Parsed `.mailmap` lookup tables.
+        exclude_set: Lowercased names and addresses to drop.
+        authentic_shas: Object names git itself reported for this revision. A
+            record whose SHA is absent was not produced by a commit.
+        matched: Mutated in place with every exclusion value that matched, so
+            the caller can report the ones that never did.
+
+    Returns:
+        The parsed Commit, or None if the record is empty, malformed,
+        excluded by filter, or carries an unusable timestamp.
+    """
+    if not record.strip():
+        return None
+
+    header, _, numstat_block = record.partition("\n")
+    fields = header.split(_FIELD_SEP)
+    if len(fields) != 4:
+        return None
+
+    sha, raw_name, raw_email, committed_at = fields
+
+    # A crafted author name can produce a record that *looks* well formed --
+    # right field count, forty hex characters -- so shape alone is not enough.
+    # Membership in the set git computed is.
+    if not _SHA_RE.fullmatch(sha) or sha not in authentic_shas:
+        return None
+
+    author_name, author_email, hits = _identity(raw_name, raw_email, mailmap, exclude_set)
     if hits:
         matched |= hits
-        if reached is not None:
-            for value in hits:
-                reached.setdefault(value, set()).add(author_email.lower())
         return None
 
     try:

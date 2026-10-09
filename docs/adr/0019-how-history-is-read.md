@@ -26,7 +26,8 @@ holds and is kept. What it said about safety and about how many reads there are 
 ## Decision
 
 - **One `git log` read for the records, one `git rev-list` for the commit set, one `git log -z`
-  for trailers.** Never one process per commit.
+  for trailers**, and, only when an author is excluded, one more `git log` reading names and
+  addresses across all history (ADR 0020). Never one process per commit.
 - **`rev-list` is the allowlist.** A record counts only if it has the expected shape and an object
   name `rev-list` reported. The trailer read must line up with `rev-list` one for one (ADR 0014).
 - **A commit that cannot be read is counted and stated, never lost silently.** The number of
