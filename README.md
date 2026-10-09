@@ -10,8 +10,12 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/varaprasadchilakanti/reveille/main/docs/images/report-dark.png">
-  <img src="https://raw.githubusercontent.com/varaprasadchilakanti/reveille/main/docs/images/report-light.png" width="860" alt="The top of a Reveille report for this repository: five summary figures, three findings in plain sentences, and a Lorenz curve showing how commits are spread across contributors.">
+  <img src="https://raw.githubusercontent.com/varaprasadchilakanti/reveille/main/docs/images/report-light.png" width="860" alt="The top of a Reveille report for a sample repository with invented contributors: the report's statement of its own limits, five summary figures with a note that one automated account is counted in the totals but not as a person, four findings in plain sentences, and a Lorenz curve of how commits are spread across six people.">
 </picture>
+
+*A report for a sample repository with invented contributors, built by
+[`docs/images/make_sample_repository.py`](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/images/make_sample_repository.py)
+and rendered with `reveille generate --deterministic`.*
 
 Reveille reads a repository's Git history on your machine and writes one self-contained HTML
 report: a contribution calendar, weekly activity, how evenly commits are spread across
@@ -190,6 +194,11 @@ The report reads top to bottom, findings first and evidence after:
    big changes are, which paths absorb them, and what kind of files they touch.
 7. **Per-Contributor Commit Frequency**, **Contributors** and **Contribution Breakdown** — the
    figures per person.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/varaprasadchilakanti/reveille/main/docs/images/profile-dark.png">
+  <img src="https://raw.githubusercontent.com/varaprasadchilakanti/reveille/main/docs/images/profile-light.png" width="860" alt="The Repository Profile of the same sample report: six petals for continuity, recent work, shared, collaboration, revisiting and automation, each petal's length its share, beside a table giving each share and what evenly spread activity would give.">
+</picture>
 
 Two sections appear only when asked for: **Who Changed Each Area** (`--area-authors`) and the
 **Contributor Rankings** form of the table (`--ranking`).

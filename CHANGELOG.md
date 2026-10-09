@@ -114,6 +114,8 @@ Everything below is measured against 0.8.1.
 - **The README and User Guide are written for the people who download it**: who it is for,
   install and uninstall, the report's sections in order, what it contains about people, and
   troubleshooting. Development material lives in `CONTRIBUTING.md`.
+  Its screenshots are of a sample repository with invented contributors, built by a seeded
+  script in `docs/images/`, so they show this release's report and name nobody real.
 
 ### Fixed
 
