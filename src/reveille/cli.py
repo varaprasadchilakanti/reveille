@@ -22,7 +22,6 @@ import enum
 import itertools
 import json
 import logging
-import re
 import sys
 import threading
 import time
@@ -79,7 +78,21 @@ class ExitCode(enum.IntEnum):
 # direction overrides and isolates. A value from a `reveille.toml` reaches
 # these messages, and that file may come from a repository somebody else
 # controls; an escape sequence in it could erase the very warning about it.
-_TERMINAL_UNSAFE_RE = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]")
+#
+# A translation table rather than a regular expression: each block is named,
+# so what is escaped can be read off the code, where a character range over
+# control codes reads as a mistake (CodeQL py/overly-large-range).
+_TERMINAL_UNSAFE: dict[int, str] = {
+    code: f"\\x{code:02x}" if code < 0x100 else f"\\u{code:04x}"
+    for block in (
+        range(0x00, 0x09),  # C0 controls before tab
+        range(0x0B, 0x20),  # C0 controls after newline, carriage return and escape among them
+        range(0x7F, 0xA0),  # DEL and the C1 controls
+        range(0x202A, 0x202F),  # LRE, RLE, PDF, LRO, RLO: direction embeddings and overrides
+        range(0x2066, 0x206A),  # LRI, RLI, FSI, PDI: direction isolates
+    )
+    for code in block
+}
 
 
 def _printable(text: str) -> str:
@@ -91,12 +104,7 @@ def _printable(text: str) -> str:
     Returns:
         The message with each unsafe character written as a hexadecimal escape.
     """
-
-    def escape(match: re.Match[str]) -> str:
-        code = ord(match.group(0))
-        return f"\\x{code:02x}" if code < 0x100 else f"\\u{code:04x}"
-
-    return _TERMINAL_UNSAFE_RE.sub(escape, text)
+    return text.translate(_TERMINAL_UNSAFE)
 
 
 def _err(message: str) -> None:
