@@ -474,6 +474,10 @@ class GitReader:
         #: Commits the last `read_commits` left out because their timestamp
         #: fell after `dated_until`.
         self.commits_dated_after: int = 0
+        #: Commits `rev-list` reported whose log record could not be read:
+        #: an author field carrying the separators the read splits on. They
+        #: are counted in no figure and stated (ADR 0019).
+        self.commits_unreadable: int = 0
         #: Who changed each directory, from the last `read_commits` given an
         #: `area_depth`; empty otherwise.
         self.area_activity: tuple[AreaActivity, ...] = ()
@@ -702,6 +706,7 @@ class GitReader:
             for path, (n, a, d) in file_totals.items()
         )
         self.commits_dated_after = dated_after
+        self.commits_unreadable = _unreadable(records, authentic_shas)
         self.area_activity = tuple(
             AreaActivity(
                 area=area,
@@ -1156,6 +1161,55 @@ def _co_author_identities(
             "a commit names more than %d co-authors; %d ignored", _MAX_CO_AUTHORS, dropped
         )
     return tuple((name, email) for email, name in found.items())
+
+
+def _count_commits(n: int) -> str:
+    """Return "1 commit" or "N commits"."""
+    return f"{n:,} commit" if n == 1 else f"{n:,} commits"
+
+
+def _unreadable(records: list[str], authentic_shas: set[str]) -> int:
+    """Count the commits whose record could not be read, and say so (ADR 0019).
+
+    Args:
+        records: The main read's records.
+        authentic_shas: Object names git reported for this revision.
+
+    Returns:
+        How many authentic commits had no well-formed record.
+    """
+    unreadable = len(authentic_shas - _well_formed_shas(records, authentic_shas))
+    if unreadable:
+        _logger.warning(
+            "%s could not be read and %s not counted: an author field held "
+            "characters the read splits on.",
+            _count_commits(unreadable),
+            "is" if unreadable == 1 else "are",
+        )
+    return unreadable
+
+
+def _well_formed_shas(records: list[str], authentic_shas: set[str]) -> set[str]:
+    """Return the object names whose log record has the expected shape.
+
+    A commit whose author field carries the record or field separator splits
+    into fragments that fail the shape check and are dropped, which is the
+    defence against a forged record (ADR 0019). This is how such a commit is
+    counted rather than lost without a word.
+
+    Args:
+        records: The main read's records.
+        authentic_shas: Object names git reported for this revision.
+
+    Returns:
+        The names of commits whose record has four fields and an authentic name.
+    """
+    shas: set[str] = set()
+    for record in records:
+        fields = record.partition("\n")[0].split(_FIELD_SEP)
+        if len(fields) == 4 and fields[0] in authentic_shas:
+            shas.add(fields[0])
+    return shas
 
 
 def _state_wide_exclusions(reached: dict[str, set[str]]) -> None:

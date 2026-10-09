@@ -392,6 +392,7 @@ class Renderer:
                 # Commits dated after the end of a default window: counted in
                 # no figure, and stated here so the omission is not silent.
                 "commits_dated_after_window": data.provenance.commits_dated_after_window,
+                "commits_unreadable": data.provenance.commits_unreadable,
                 "shallow_clone": data.provenance.shallow_clone,
                 "limit": data.provenance.limit,
                 "areas": {
@@ -549,6 +550,7 @@ class Renderer:
                 "analysis_until": data.metadata.analysis_until.isoformat(),
                 "shallow_clone": data.provenance.shallow_clone,
                 "commits_dated_after_window": data.provenance.commits_dated_after_window,
+                "commits_unreadable": data.provenance.commits_unreadable,
             },
             "totals": {
                 "commits": data.metadata.total_commits,

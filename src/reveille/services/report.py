@@ -326,6 +326,7 @@ def build_report_data(
     provenance = replace(
         _build_provenance(config, head_sha, reader.mailmap_applied),
         commits_dated_after_window=after_window,
+        commits_unreadable=reader.commits_unreadable,
         shallow_clone=shallow,
         area_authors_enabled=config.area_authors_enabled,
         area_depth=config.area_depth if config.area_authors_enabled else None,

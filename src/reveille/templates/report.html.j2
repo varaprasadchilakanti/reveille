@@ -1061,6 +1061,18 @@
                     not counted.
                 </span>
                 {% endif %}
+                {% if data.provenance.commits_unreadable %}
+                {# A record the read could not parse is dropped as a defence
+                   against forgery (ADR 0019), and stated rather than lost. #}
+                <span class="filter-note">
+                    <strong>Not read:</strong>
+                    {{ data.provenance.commits_unreadable }}
+                    {{ 'commit' if data.provenance.commits_unreadable == 1 else 'commits' }}
+                    could not be read, because an author field held characters the
+                    read splits on, and {{ 'is' if data.provenance.commits_unreadable == 1 else 'are' }}
+                    not counted.
+                </span>
+                {% endif %}
             </div>
             {# The limit of what the figures can carry, where every reader sees it. #}
             <p class="report-notice">{{ notice }}</p>

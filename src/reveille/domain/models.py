@@ -175,6 +175,9 @@ class AnalysisProvenance:
     # where that is recorded, so the report never silently holds fewer
     # commits than the branch.
     commits_dated_after_window: int = 0
+    # Commits Git reported whose record could not be read (ADR 0019). Counted
+    # in no figure, and recorded so the omission is never silent.
+    commits_unreadable: int = 0
     # A shallow clone holds only its most recent commits. Every figure then
     # describes the clone, not the project, and the window starts where the
     # clone's history does.
