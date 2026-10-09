@@ -55,8 +55,8 @@ supersedes it, and the table says so. The review itself is kept outside the repo
 - **0001.** The `no_merges=True` wording is old; the decision holds and is tested. Not stated in
   the record: a change made only in a merge commit, such as a conflict resolution, is not counted,
   and a person whose only commits are merges does not appear.
-- **0002.** In a bare repository Reveille reads no `.mailmap`, while Git applies `HEAD:.mailmap`;
-  a known issue in 0.9.0.
+- **0002.** A bare repository has no working-tree `.mailmap`; from 0.9.0 Reveille reads the one
+  committed at `HEAD`, as Git does.
 - **0003.** The decision holds. The defect its context describes did not occur: `.index` on a
   sorted list already returned the first equal element.
 - **0005.** The report labels the figure "Hold Half the Commits".

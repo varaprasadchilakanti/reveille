@@ -52,6 +52,9 @@ a report contains about the people in it. Everything below is measured against 0
   repository's Git directory is refused with exit 2, whoever chose it, including in a bare
   repository and with `--separate-git-dir`. An output path in a `reveille.toml` that resolves
   outside the repository is refused too, because the file is found automatically.
+- **A bare repository reads the `.mailmap` committed at `HEAD`**, as Git does; it read none, so
+  one person with two addresses was two rows in a bare clone and one in its original. A committed
+  `.mailmap` over 1 MiB is ignored rather than read into memory.
 - **`.mailmap` is treated as untrusted input.** Names and addresses it substitutes get the same
   scrubbing and length limits as author fields; a symlinked `.mailmap` is ignored, as Git ignores
   it; undecodable bytes no longer crash the run.
@@ -241,8 +244,6 @@ These are known and not fixed in this release.
   it changes the schema, so it waits for the next one.
 - Git honours a repository's own `.git/config`, including settings that name a program to run.
   `git clone` does not copy that file; a copied directory or an archive does. See `SECURITY.md`.
-- In a bare repository `.mailmap` is not read, while Git applies the one committed at `HEAD`, so
-  one person with two addresses can appear twice. Run Reveille on a clone with a working tree.
 - Automated accounts are recognised only by `[bot]` in the name or address. Published
   measurements of the similar "bot" suffix rule found it never mistook a person for a bot but
   missed about half of the bots; Reveille's narrower rule has not been measured.

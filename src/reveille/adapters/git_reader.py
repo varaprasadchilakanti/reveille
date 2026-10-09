@@ -1035,6 +1035,48 @@ class GitReader:
             url = str(self._repo.remotes[0].url)
         return _without_credentials(url)
 
+    def _working_mailmap(self) -> str | None:
+        """Return the working tree's `.mailmap`, or None if there is none to read.
+
+        Returns:
+            The file's text, undecodable bytes replaced; None if the file is
+            absent, unreadable, or a symbolic link.
+        """
+        mailmap_path = self._repo_path / ".mailmap"
+        # Git itself refuses a symlinked .mailmap in the working tree. Following
+        # one let a repository point it at /dev/zero and exhaust memory.
+        if mailmap_path.is_symlink() or not mailmap_path.is_file():
+            return None
+        try:
+            # Undecodable bytes become U+FFFD rather than an exception: one
+            # badly encoded line used to crash the run with exit 1, which this
+            # project's contract reserves for "ran correctly, negative answer".
+            return mailmap_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return None
+
+    def _committed_mailmap(self) -> str | None:
+        """Return the `.mailmap` committed at HEAD, for a bare repository.
+
+        A bare repository has no working tree, and Git then reads the
+        `.mailmap` blob at HEAD (`mailmap.blob`'s default). Reading only the
+        working-tree file made one person with two addresses two rows in a
+        bare clone, where `git shortlog` showed one. A blob larger than
+        `_MAX_MAILMAP_BYTES` is ignored rather than read into memory.
+
+        Returns:
+            The blob's text, undecodable bytes replaced; None if there is no
+            such blob, HEAD is unborn, or the blob is too large.
+        """
+        try:
+            size = int(str(self._git().cat_file("-s", "HEAD:.mailmap")).strip())
+            if size > _MAX_MAILMAP_BYTES:
+                return None
+            raw = self._git().cat_file("blob", "HEAD:.mailmap", stdout_as_string=False)
+        except (GitCommandError, ValueError):
+            return None
+        return bytes(raw).decode("utf-8", errors="replace")
+
     def _read_mailmap(self) -> _Mailmap:
         """Read and parse the .mailmap file from the repository root.
 
@@ -1049,20 +1091,10 @@ class GitReader:
             The parsed lookup tables. Empty if the file is absent, unreadable,
             or a symbolic link.
         """
-        mailmap_path = self._repo_path / ".mailmap"
-        # Git itself refuses a symlinked .mailmap in the working tree. Following
-        # one let a repository point it at /dev/zero and exhaust memory.
-        if mailmap_path.is_symlink() or not mailmap_path.is_file():
+        text = self._committed_mailmap() if self._repo.bare else self._working_mailmap()
+        if text is None:
             return _Mailmap()
-
-        try:
-            # Undecodable bytes become U+FFFD rather than an exception: one
-            # badly encoded line used to crash the run with exit 1, which this
-            # project's contract reserves for "ran correctly, negative answer".
-            text = mailmap_path.read_text(encoding="utf-8", errors="replace")
-            lines = text.splitlines()
-        except OSError:
-            return _Mailmap()
+        lines = text.splitlines()
 
         mailmap = _Mailmap()
         for line in lines:
@@ -1256,6 +1288,11 @@ def _addresses_reached(
         for record in records:
             _parse_log_record(record, mailmap, exclude_set, authentic_shas, set(), reached)
     return reached
+
+
+#: The largest committed `.mailmap` a bare repository's read will take. A
+#: hand-written one is kilobytes; anything near this is not a mailmap.
+_MAX_MAILMAP_BYTES = 1_048_576
 
 
 def _is_partial_clone(repo: Repo) -> bool:

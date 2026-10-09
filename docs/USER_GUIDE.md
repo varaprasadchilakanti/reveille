@@ -55,7 +55,8 @@ display name. This means that a contributor who has committed under two
 different names — common after a name change or when work and personal
 accounts are mixed — is correctly treated as a single person, using the
 name from their most recent commit. If a `.mailmap` file is present at
-the repository root, email aliases are resolved to their canonical
+the repository root (in a bare repository, the `.mailmap` committed at
+`HEAD`, as Git reads it), email aliases are resolved to their canonical
 identity before aggregation. A contributor who has committed under
 multiple email addresses is counted once, under the canonical identity
 declared in `.mailmap`, rather than once per address.
@@ -1151,11 +1152,6 @@ holds the characters Reveille separates records with cannot be read safely,
 so it is left out and counted instead of being guessed at. Ordinary histories
 have none; one that does was most likely written on purpose. See
 [ADR 0019](adr/0019-how-history-is-read.md).
-
-**In a bare repository, one person appears twice.** Reveille reads `.mailmap`
-from the working tree, and a bare repository has none, while Git itself reads
-the `.mailmap` committed at `HEAD`. Run Reveille on a clone with a working
-tree. This is a known issue in 0.9.0.
 
 **It says the repository is a partial clone and exits 2.** A clone made with
 `--filter` leaves some objects on the server, and reading them would make Git

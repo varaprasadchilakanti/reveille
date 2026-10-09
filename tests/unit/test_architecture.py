@@ -343,7 +343,12 @@ class TestFilesystemWrites:
     # `update_environment` is not a Git command: it sets environment variables
     # for every later one, and runs nothing. It is here to set
     # GIT_NO_LAZY_FETCH, which stops Git fetching from a partial clone's remote.
-    _READ_ONLY_GIT = frozenset({"log", "rev_list", "rev_parse", "version", "update_environment"})
+    #
+    # `cat_file` reads one object -- the `.mailmap` committed at HEAD, which a
+    # bare repository's identity resolution needs -- and writes nothing.
+    _READ_ONLY_GIT = frozenset(
+        {"log", "rev_list", "rev_parse", "version", "update_environment", "cat_file"}
+    )
 
     # Members of a GitPython `Repo` the package may touch at all. Measured
     # from the source, not guessed: `git_reader.py` uses exactly these.
@@ -358,7 +363,12 @@ class TestFilesystemWrites:
     #
     # Aliasing any repository member trips this deliberately. It is rare,
     # and the decision to hold a mutable handle should be visible.
-    _READ_ONLY_REPO_MEMBERS = frozenset({"active_branch", "commit", "git", "head", "remotes"})
+    #
+    # `bare` is a property read from the repository's configuration: whether it
+    # has a working tree, which decides where its `.mailmap` is read from.
+    _READ_ONLY_REPO_MEMBERS = frozenset(
+        {"active_branch", "bare", "commit", "git", "head", "remotes"}
+    )
 
     def test_only_designated_modules_write_to_disk(self) -> None:
         """A write from the reader or the domain would break the read-only claim.
