@@ -549,7 +549,8 @@
             .theme-toggle,
             .heatmap-controls,
             .modebar,
-            .table-count {
+            .table-count,
+            .heatmap-scroll-note {
                 display: none !important;
             }
 
@@ -935,6 +936,12 @@
             overflow-x: auto;
         }
 
+        .heatmap-scroll-note {
+            margin: 0 0 8px;
+            font-size: 12px;
+            color: var(--color-text-muted);
+        }
+
         .heatmap-year-btn {
             padding: 4px 12px;
             background: var(--color-surface);
@@ -1162,6 +1169,7 @@
                     class="heatmap-contributor-select"
                     aria-label="Filter the activity heatmap by contributor"></select>
         </div>
+        <p id="heatmap-scroll-note" class="heatmap-scroll-note" hidden>Showing the latest weeks; scroll sideways for earlier ones.</p>
         <div class="chart-container heatmap-scroll">
             <div id="chart-heatmap" role="img" aria-label="Activity heatmap: commit counts per calendar day. {{ derived.heatmap_summary }}"></div>
         </div>
@@ -2003,11 +2011,23 @@
         }, THEME_LAYOUTS[theme]);
         if (printing) layout.width = divEl.clientWidth;
 
-        if (divEl._fullLayout) {
-            Plotly.react(divEl, [trace], layout, PLOTLY_CONFIG);
-        } else {
-            Plotly.newPlot(divEl, [trace], layout, PLOTLY_CONFIG);
-        }
+        var drawn = divEl._fullLayout
+            ? Plotly.react(divEl, [trace], layout, PLOTLY_CONFIG)
+            : Plotly.newPlot(divEl, [trace], layout, PLOTLY_CONFIG);
+        Promise.resolve(drawn).then(function () { showLatestWeeks(divEl); });
+    }
+
+    // Where the grid is wider than its panel (a phone, or a long window),
+    // the panel scrolls. It opened on the oldest weeks, so the recent ones --
+    // the ones a reader comes for -- were off screen, and an overlay
+    // scrollbar gave no sign that more was there. Open at the latest week and
+    // say that the panel scrolls; say nothing where it does not.
+    function showLatestWeeks(divEl) {
+        var panel = divEl.parentNode;
+        var note = document.getElementById('heatmap-scroll-note');
+        var overflows = panel.scrollWidth > panel.clientWidth + 1;
+        if (overflows) panel.scrollLeft = panel.scrollWidth;
+        if (note) note.hidden = !overflows;
     }
 
     // ------------------------------------------------------------------

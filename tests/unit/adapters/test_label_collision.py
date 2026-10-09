@@ -201,3 +201,13 @@ class TestOneIdentityHasOneLabelEverywhere:
             f"{expected!r}: it built its map from the contributors it draws"
         )
         assert expected in menu, f"the heatmap menu shows {menu}, disagreeing with the legend"
+
+
+@pytest.mark.unit
+def test_the_donut_makes_room_for_its_outside_labels() -> None:
+    """On a phone a long name ran off the panel: outside labels are placed
+    after the margins are fixed unless the trace asks for room."""
+    trace = json.loads(_build_commit_share_pie(COLLIDING))["data"][0]
+
+    assert trace["textposition"] == "outside"
+    assert trace["automargin"] is True

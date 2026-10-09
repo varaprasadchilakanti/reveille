@@ -116,3 +116,55 @@ def test_the_grid_is_not_padded_with_empty_columns() -> None:
     assert re.search(
         r"xaxis:\s*\{ type: 'category', tickangle: -45, constrain: 'domain' \}", source
     )
+
+
+def _show_latest_weeks(scroll_width: int, client_width: int) -> dict:
+    """Run the template's `showLatestWeeks` against a stand-in panel and note."""
+    source = _TEMPLATE.read_text(encoding="utf-8")
+    function = re.search(r"    function showLatestWeeks\(.*?\n    \}\n", source, re.DOTALL)
+    assert function, "showLatestWeeks is missing from the template"
+    script = (
+        "var note = {hidden: true};\n"
+        "var document = {getElementById: function (id) {"
+        " return id === 'heatmap-scroll-note' ? note : null; }};\n"
+        + function.group(0)
+        + f"var panel = {{scrollWidth: {scroll_width}, clientWidth: {client_width}, scrollLeft: 0}};\n"
+        + "showLatestWeeks({parentNode: panel});\n"
+        + "process.stdout.write(JSON.stringify({scrollLeft: panel.scrollLeft, hidden: note.hidden}));\n"
+    )
+    node = shutil.which("node")
+    assert node
+    result = subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
+    return json.loads(result.stdout)
+
+
+@pytest.mark.unit
+@pytest.mark.skipif(shutil.which("node") is None, reason="needs Node.js to run the panel code")
+class TestAPanelThatScrollsOpensOnTheLatestWeek:
+    """On a phone the grid opened on its oldest weeks, the recent ones off
+    screen, and an overlay scrollbar gave no sign that there was more."""
+
+    def test_an_overflowing_panel_scrolls_to_its_end_and_says_so(self) -> None:
+        assert _show_latest_weeks(scroll_width=600, client_width=350) == {
+            "scrollLeft": 600,
+            "hidden": False,
+        }
+
+    def test_a_panel_that_fits_stays_put_and_says_nothing(self) -> None:
+        assert _show_latest_weeks(scroll_width=900, client_width=900) == {
+            "scrollLeft": 0,
+            "hidden": True,
+        }
+
+
+@pytest.mark.unit
+def test_the_scroll_note_is_hidden_until_the_grid_overflows(rendered: str) -> None:  # noqa: F811
+    """Without JavaScript there is no grid to scroll, so the note must not show."""
+    assert re.search(r'<p id="heatmap-scroll-note"[^>]*\bhidden\b', rendered)
+
+
+@pytest.mark.unit
+def test_paper_does_not_say_scroll(rendered: str) -> None:  # noqa: F811
+    from tests.unit.adapters.test_report_layout import _print_rule
+
+    assert "display: none" in _print_rule(rendered, ".heatmap-scroll-note")

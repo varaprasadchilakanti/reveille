@@ -1560,6 +1560,10 @@ def _build_commit_share_pie(ranked: list[RankedContributor], unlisted_commits: i
             hole=0.42,
             textposition="outside",
             textinfo="label+percent",
+            # Outside labels are placed after the margins are fixed, so on a
+            # phone a long name ran off the panel ("endabot[bot]"). With
+            # automargin the donut shrinks to make room for its labels.
+            automargin=True,
             marker={"colors": _pie_colors(len(labels), has_other=labels[-1] == _OTHER_LABEL)},
             hovertemplate="%{label}<br>Commits: %{value:,}<br>%{percent}<extra></extra>",
             sort=False,
