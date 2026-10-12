@@ -446,6 +446,15 @@ unexpected report without a debugger.
 reveille generate --verbose 2> reveille-debug.log
 ```
 
+Progress goes to stderr as well. On a terminal it animates; anywhere else, such
+as a CI log, a pipe or an assistant's tool call, each stage is one plain line.
+`--quiet` leaves the progress out and keeps notes, warnings and errors, so
+stderr carries only what says something about the report:
+
+```bash
+reveille generate --format json --output - --quiet
+```
+
 Reveille's modules log through the standard `logging` module under the `reveille`
 logger and install no handler of their own. Importing Reveille as a library is
 therefore silent unless the host application configures logging itself.

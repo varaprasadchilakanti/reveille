@@ -13,7 +13,17 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **`generate --quiet`** (`-q`) leaves the progress lines out of stderr. Notes, warnings and
+  errors are still written, so `--output - --quiet` gives a report on stdout and an empty
+  stderr when there is nothing to say.
+
+### Changed
+
+- **Progress off a terminal is one plain line per stage.** The animation redraws its line with
+  carriage returns, which only a terminal interprets; a CI log, a pipe or an assistant received
+  every frame as text. It now animates only when stderr is a terminal.
 
 ---
 

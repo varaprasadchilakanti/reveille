@@ -346,6 +346,11 @@ class _StageSpinner:
     begin() and resolves to a static completion line on complete().
     Writes to stderr so stdout remains clean for scripting.
 
+    The animation redraws its line with carriage returns, which only a
+    terminal interprets. Captured by a script, a CI log or an assistant, every
+    frame arrived as text: "Reading commit history .    Reading commit history
+    ...". Off a terminal only the completion lines are written.
+
     complete() is safe to call before begin() has ever been invoked.
     """
 
@@ -355,7 +360,14 @@ class _StageSpinner:
     #: log line can start a fresh one. Shared because only one spinner runs.
     line_open: ClassVar[bool] = False
 
-    def __init__(self) -> None:
+    def __init__(self, *, animate: bool | None = None) -> None:
+        """Create a spinner.
+
+        Args:
+            animate: Whether to draw animation frames. None asks whether
+                stderr is a terminal at the time of construction.
+        """
+        self._animate: bool = sys.stderr.isatty() if animate is None else animate
         self._active: bool = False
         self._stop_event: threading.Event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -376,6 +388,8 @@ class _StageSpinner:
         self._start_time = time.monotonic()
         self._stop_event.clear()
         self._active = True
+        if not self._animate:
+            return
         self._thread = threading.Thread(target=self._run, args=(label,), daemon=True)
         self._thread.start()
 
@@ -403,6 +417,9 @@ class _StageSpinner:
         self._stop_event.set()
         if self._thread is not None:
             self._thread.join()
+            self._thread = None
+        else:
+            self._write_done(self._label)
         self._active = False
 
     def _run(self, label: str) -> None:
@@ -412,13 +429,16 @@ class _StageSpinner:
             _StageSpinner.line_open = True
             if self._stop_event.wait(0.2):
                 break
+        self._write_done(label, prefix="\r")
+
+    def _write_done(self, label: str, prefix: str = "") -> None:
         elapsed = self._elapsed_seconds
         if self._items_processed is not None:
             count = self._items_processed
             suffix = f"({elapsed:.1f}s, {count:,} commit{'' if count == 1 else 's'})"
         else:
             suffix = f"({elapsed:.1f}s)"
-        sys.stderr.write(f"\r  {label} ...   done {suffix}\n")
+        sys.stderr.write(f"{prefix}  {label} ...   done {suffix}\n")
         sys.stderr.flush()
         _StageSpinner.line_open = False
 
@@ -701,7 +721,7 @@ def _merge_cli_flags(
     return cast(ReportConfigKwargs, merged)
 
 
-def _run_report(report_config: ReportConfig, *, to_stdout: bool) -> None:
+def _run_report(report_config: ReportConfig, *, to_stdout: bool, quiet: bool = False) -> None:
     """Run the pipeline with a progress indicator, then print the outcome.
 
     Args:
@@ -709,6 +729,8 @@ def _run_report(report_config: ReportConfig, *, to_stdout: bool) -> None:
         to_stdout: Whether the report itself goes to stdout (`--output -`).
             Progress, notes and errors are on stderr either way, so stdout
             carries the report and nothing else.
+        quiet: Whether to leave out the progress lines. Notes, warnings and
+            errors are still written: they say something about the report.
 
     Raises:
         typer.Exit: NEGATIVE for an empty window, CANNOT_RUN for any other
@@ -720,7 +742,7 @@ def _run_report(report_config: ReportConfig, *, to_stdout: bool) -> None:
     # Held until the spinner has finished, so a notice is not overwritten by
     # the next animation frame.
     notices: list[str] = []
-    progress = _make_progress_callback(spinner)
+    progress = None if quiet else _make_progress_callback(spinner)
     try:
         if to_stdout:
             text = report_text(report_config, on_progress=progress, on_notice=notices.append)
@@ -878,6 +900,14 @@ def generate(
             help="Emit diagnostic logging to stderr. Does not change normal output.",
         ),
     ] = False,
+    quiet: Annotated[
+        bool,
+        typer.Option(
+            "--quiet",
+            "-q",
+            help="Do not show progress. Notes, warnings and errors are still shown.",
+        ),
+    ] = False,
 ) -> None:
     """Generate an HTML activity report for the target repository."""
     from reveille.config import load_config_from_toml
@@ -968,7 +998,7 @@ def generate(
         report_config.output_format,
     )
 
-    _run_report(report_config, to_stdout=to_stdout)
+    _run_report(report_config, to_stdout=to_stdout, quiet=quiet)
 
 
 def _query_config(
