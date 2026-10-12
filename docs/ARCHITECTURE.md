@@ -193,8 +193,8 @@ which the CLI maps to `NEGATIVE`: readable, but nothing to report.
 Contributors are keyed on lowercased email ([ADR-0002](adr/0002-email-as-identity-key.md)). Two
 normalisations run first. **`.mailmap`**: all four `gitmailmap(5)` forms, matched
 most-specific-first (name and email, then email, then name), case-insensitively, with malformed
-lines skipped silently as Git does. **GitHub noreply addresses**: the legacy and post-2017 forms
-fold together by stripping the numeric prefix.
+lines skipped silently as Git does. **GitHub noreply addresses** fold on the account number; a legacy
+address joins an account only when one account used its username (ADR 0023).
 
 ### Rendering
 

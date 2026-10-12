@@ -159,9 +159,8 @@ class TestTheRepositoryMailmapFoldsItsOwnAliases:
             mailmap,
         )
         assert name == "dependabot[bot]"
-        assert email == "dependabot[bot]@users.noreply.github.com", (
-            "the numeric prefix is stripped by noreply normalisation, which "
-            "needs no .mailmap entry; nothing else about the bot may change"
+        assert email == "49699333+dependabot[bot]@users.noreply.github.com", (
+            "an account number is its identity (ADR 0023); nothing about the bot may change"
         )
 
     def test_an_unrelated_identity_is_untouched(self, mailmap: _Mailmap) -> None:

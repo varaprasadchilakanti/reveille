@@ -47,10 +47,13 @@ supported with Git's own precedence: name and email, then email alone, then name
 is case-insensitive and malformed lines are skipped silently, as Git does, so a `.mailmap` that
 works with `git shortlog` works here. `reveille init --mailmap` writes an annotated template.
 
-GitHub noreply addresses are folded automatically: the legacy `username@users.noreply.github.com`
-and the `12345678+username@...` form become one contributor. They are not folded into your
-configured address, so a commit made through the GitHub web interface can still read as a second
-person until a `.mailmap` says otherwise.
+GitHub noreply addresses are folded on the account number, which GitHub never changes or reuses:
+`12345678+old@...` and `12345678+new@...` are one contributor, shown under the newer username. A
+legacy `username@users.noreply.github.com` joins that account only when one account in the
+history used the username; when two did, it stays apart rather than merge two people
+([ADR 0023](adr/0023-noreply-addresses-fold-on-the-account-number.md)). They are not folded into
+your configured address, so a commit made through the GitHub web interface can still read as a
+second person until a `.mailmap` says otherwise.
 
 **Rendering.** Derived measures are computed, and with `--ranking` contributors are scored
 ([The Ranking Algorithm](#the-ranking-algorithm)). One HTML file is written with all JavaScript and

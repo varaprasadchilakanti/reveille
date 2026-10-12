@@ -63,9 +63,14 @@ _MAX_NAME_LENGTH = 256
 _MAX_EMAIL_LENGTH = 320
 _TRUNCATION_MARKER = "\u2026"
 
-# GitHub's prefixed noreply address; the username is captured, the ID dropped.
+# GitHub's noreply addresses: `ID+username@` (an account number never reused) and the
+# legacy `username@` (a name that can change hands). ADR 0023 folds on the number.
 _GITHUB_NOREPLY_RE = re.compile(
-    r"^\d+\+(?P<username>[^@]+)@users\.noreply\.github\.com$",
+    r"^(?P<account>\d+)\+(?P<username>[^@]+)@users\.noreply\.github\.com$",
+    re.IGNORECASE,
+)
+_GITHUB_LEGACY_NOREPLY_RE = re.compile(
+    r"^(?P<username>[^@+]+)@users\.noreply\.github\.com$",
     re.IGNORECASE,
 )
 
@@ -110,23 +115,27 @@ def _parse_mailmap_line(line: str) -> tuple[str, ...] | None:
     return None
 
 
-def _normalise_github_noreply(email: str) -> str:
-    """Strip the numeric account prefix from a GitHub noreply address.
+def _normalise_github_noreply(email: str, mailmap: _Mailmap) -> str:
+    """Fold a GitHub noreply address onto its account (ADR 0023).
 
-    GitHub issues a legacy and a prefixed form for one account; folding them
-    stops a contributor splitting in two.
+    A prefixed address folds on its account number, so a renamed account stays
+    one person; a legacy address joins an account only when its username
+    belongs to exactly one account in the history read, else it stays apart.
 
     Args:
         email: An author email address, in any form.
+        mailmap: Carries the account table built by `GitReader._noreply_accounts`.
 
     Returns:
-        The address with the numeric prefix removed if it is a prefixed
-        GitHub noreply address, otherwise the address unchanged.
+        The account's canonical address, or the address unchanged.
     """
-    match = _GITHUB_NOREPLY_RE.match(email)
-    if match is None:
-        return email
-    return f"{match.group('username')}@users.noreply.github.com"
+    prefixed = _GITHUB_NOREPLY_RE.match(email)
+    if prefixed is not None:
+        return mailmap.noreply_accounts.get(prefixed.group("account"), email)
+    legacy = _GITHUB_LEGACY_NOREPLY_RE.match(email)
+    if legacy is not None:
+        return mailmap.noreply_usernames.get(legacy.group("username").lower(), email)
+    return email
 
 
 @dataclass(frozen=True)
@@ -140,6 +149,10 @@ class _Mailmap:
 
     by_email: dict[str, tuple[str | None, str]] = field(default_factory=dict)
     by_name_and_email: dict[tuple[str, str], tuple[str | None, str]] = field(default_factory=dict)
+    #: Account number to its canonical noreply address (ADR 0023).
+    noreply_accounts: dict[str, str] = field(default_factory=dict)
+    #: Lowercased legacy username to that address, only when one account used it.
+    noreply_usernames: dict[str, str] = field(default_factory=dict)
 
     def lookup(self, name: str, email: str) -> tuple[str | None, str] | None:
         """Find the most specific entry matching a commit identity, case-insensitively.
@@ -171,11 +184,15 @@ def _resolve_identity(name: str, email: str, mailmap: _Mailmap) -> tuple[str, st
     Returns:
         A tuple of (canonical_name, canonical_email).
     """
-    normalised = _normalise_github_noreply(email)
+    normalised = _normalise_github_noreply(email, mailmap)
 
     mapped = mailmap.lookup(name, email)
     if mapped is None and normalised != email:
         mapped = mailmap.lookup(name, normalised)
+    prefixed = _GITHUB_NOREPLY_RE.match(email)
+    if mapped is None and prefixed is not None:
+        # An entry written against the legacy form still catches the prefixed one.
+        mapped = mailmap.lookup(name, f"{prefixed.group('username')}@users.noreply.github.com")
 
     if mapped is not None:
         canonical_name, canonical_email = mapped
@@ -562,6 +579,8 @@ class GitReader:
         # Read first: an exclusion names a person, expanded through the mailmap.
         mailmap = self._read_mailmap()
         self._mailmap_applied = bool(mailmap.by_email or mailmap.by_name_and_email)
+        accounts, usernames = self._noreply_accounts(rev)
+        mailmap = replace(mailmap, noreply_accounts=accounts, noreply_usernames=usernames)
 
         exclude_set = _expand_exclusions(exclude_authors, mailmap)
 
@@ -841,6 +860,38 @@ class GitReader:
             Git's output.
         """
         return str(self._git().log("-z", _TRAILER_FORMAT, *selection))
+
+    def _noreply_accounts(self, rev: str) -> tuple[dict[str, str], dict[str, str]]:
+        """Read which GitHub accounts committed, for folding noreply addresses (ADR 0023).
+
+        One pass over author addresses on the branch, newest first, so the first
+        username seen for an account number is its current one.
+
+        Args:
+            rev: The analysed branch, already checked not to begin with `-`.
+
+        Returns:
+            Account number to canonical address, and legacy username to that address
+            for usernames only one account used.
+        """
+        try:
+            out = str(self._git().log("--no-merges", "--format=%aE", "--end-of-options", rev, "--"))
+        except GitCommandError:
+            return {}, {}
+        current: dict[str, str] = {}
+        accounts_of: dict[str, set[str]] = defaultdict(set)
+        for line in out.splitlines():
+            match = _GITHUB_NOREPLY_RE.match(line.strip())
+            if match is None:
+                continue
+            account, username = match.group("account"), match.group("username")
+            current.setdefault(account, username)
+            accounts_of[username.lower()].add(account)
+        accounts = {a: f"{a}+{u}@users.noreply.github.com" for a, u in current.items()}
+        usernames = {
+            u: accounts[next(iter(ids))] for u, ids in accounts_of.items() if len(ids) == 1
+        }
+        return accounts, usernames
 
     def resolve_commit(self, revision: str) -> str:
         """Resolve a tag, branch or commit name to a full commit SHA, locally.

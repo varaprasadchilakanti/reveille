@@ -72,6 +72,11 @@ before 0.8.0 predate the convention and are left as they were released.
   every frame as text. It now animates only when stderr is a terminal.
 
 ### Fixed
+- **Two GitHub accounts that used the same username were counted as one person, and a renamed
+  account as two.** Noreply addresses were folded on the username, which GitHub lets change and
+  be reused. They now fold on the account number; a legacy address without a number joins an
+  account only when one account used its username (ADR 0023). Noreply identities in reports
+  now carry their number.
 - **`summary` said "1 commits"** for a single commit. It now says "1 commit".
 
 - **A `.mailmap` line with three or more spaces before the second address did nothing.** It

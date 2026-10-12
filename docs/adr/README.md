@@ -25,7 +25,7 @@ Deprecated.
 | # | Decision | Status |
 |---|---|---|
 | [0001](0001-exclude-merge-commits.md) | Merge commits are excluded unconditionally | Accepted |
-| [0002](0002-email-as-identity-key.md) | Email is the contributor identity key | Accepted; extended by 0020 |
+| [0002](0002-email-as-identity-key.md) | Email is the contributor identity key | Accepted; extended by 0020; partly superseded by 0023 |
 | [0003](0003-bisect-left-for-percentile-ties.md) | Percentiles use lower-bound ranking | Accepted |
 | [0004](0004-single-pass-numstat-read.md) | History is read in a single `git log --numstat` pass | Superseded by 0019 |
 | [0005](0005-commit-concentration-not-bus-factor.md) | The concentration metric is not called a bus factor | Accepted |
@@ -46,6 +46,7 @@ Deprecated.
 | [0020](0020-exclude-author-removes-a-person-by-address.md) | `--exclude-author` removes a person by every address the value reaches | Accepted |
 | [0021](0021-what-provenance-records-about-filters-and-time.md) | What provenance records about filters and time | Accepted |
 | [0022](0022-a-brief-from-a-point.md) | A brief from a point: `reveille brief --from` | Accepted |
+| [0023](0023-noreply-addresses-fold-on-the-account-number.md) | GitHub noreply addresses fold on the account number | Proposed |
 
 ## Notes from the review of 2026-10-09
 
