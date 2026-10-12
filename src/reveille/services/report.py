@@ -23,6 +23,7 @@ from reveille.adapters.git_reader import GitReader
 from reveille.adapters.renderer import Renderer
 from reveille.config import ReportConfig
 from reveille.domain.areas import who_changed
+from reveille.domain.brief import describe_range
 from reveille.domain.coauthors import co_authors_only
 from reveille.domain.models import (
     SCHEMA_VERSION,
@@ -168,6 +169,108 @@ def who_changed_text(
     window_end = cutoff if cutoff is not None else _resolve_window_end(config, commits)
     window = (max(config.since, first) if config.since else first, window_end)
     return Renderer.who_changed_text(who_changed(path, commits), window, output_format, limit)
+
+
+#: Areas whose earlier history is looked up for "active again": one `git log -1` each.
+_MAX_AREAS_LOOKED_UP = 50
+
+
+def brief_text(
+    config: ReportConfig,
+    from_revision: str | None,
+    output_format: str,
+    limit: int,
+    on_notice: Callable[[str], None] | None = None,
+) -> str:
+    """Say what changed since a point the caller names, in counts (ADR 0022).
+
+    The point is a revision (`from_revision`), read by ancestry, or a date
+    (`config.since`). Reads names and statuses, never line counts.
+
+    Args:
+        config: Validated configuration; output settings are unused.
+        from_revision: A tag, branch or commit; None when `config.since` is the point.
+        output_format: "json" or "text".
+        limit: The most entries any list carries.
+        on_notice: As for generate_report.
+
+    Returns:
+        The brief.
+
+    Raises:
+        EmptyRepositoryError: If nothing changed after the point.
+    """
+    reader = GitReader(config.repo_path)
+    from_commit = reader.resolve_commit(from_revision) if from_revision is not None else None
+    # Between two commits no clock enters; a date point ends the window today, as summary does.
+    cutoff = (
+        _today()
+        if from_commit is None and config.until is None and not config.deterministic
+        else None
+    )
+    point = from_revision if from_revision is not None else str(config.since)
+    try:
+        commits = reader.read_commits(
+            branch=config.branch,
+            since=None if from_commit is not None else config.since,
+            until=config.until,
+            exclude_authors=config.exclude_authors,
+            dated_until=cutoff,
+            area_depth=config.area_depth,
+            line_counts=False,
+            from_commit=from_commit,
+            name_status=True,
+        )
+    except EmptyRepositoryError as exc:
+        raise EmptyRepositoryError(f"No commits since {point}.") from exc
+    if reader.commits_dated_after and cutoff is not None:
+        _notify(
+            on_notice,
+            f"{_count(reader.commits_dated_after)} dated after {cutoff.isoformat()} and not counted.",
+        )
+    if reader.is_shallow():
+        _notify(on_notice, "This is a shallow clone, so only the history it holds is analysed.")
+    tip = reader.resolve_head_sha(config.branch) or ""
+    if from_commit is not None and not reader.is_ancestor(from_commit, tip):
+        _notify(
+            on_notice,
+            f"{from_revision} is not an ancestor of the analysed branch; counted are the "
+            "branch's commits not reachable from it.",
+        )
+    areas = sorted(reader.area_activity, key=lambda a: (-a.commits, a.area))
+    previous = {
+        a.area: reader.last_change_before(
+            a.area,
+            config.branch,
+            from_commit,
+            config.since if from_commit is None else None,
+        )
+        for a in areas[:_MAX_AREAS_LOOKED_UP]
+    }
+    facts = describe_range(commits, list(reader.file_stats), areas, reader.files_added, previous)
+    tags = reader.tags_in_range(
+        config.branch,
+        from_commit,
+        config.since if from_commit is None else None,
+        config.until,
+    )
+    window = (facts.first, facts.last)
+    metadata = reader.read_metadata(
+        total_commits=facts.commits,
+        unique_contributors=facts.people,
+        analysis_since=window[0],
+        analysis_until=window[1],
+        branch=config.branch,
+    )
+    return Renderer.brief_text(
+        facts,
+        repository=(metadata.name, metadata.analysed_branch),
+        point=(point, from_commit),
+        tip=tip,
+        tags=tags,
+        output_format=output_format,
+        limit=limit,
+    )
 
 
 def build_report_data(

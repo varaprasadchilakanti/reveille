@@ -1001,6 +1001,41 @@ def summary(
     _run_query(lambda notice: summary_text(config, output_format, on_notice=notice))
 
 
+@app.command()
+def brief(
+    repo: _RepoOption = Path("."),
+    from_revision: Annotated[
+        str | None,
+        typer.Option(
+            "--from",
+            help="A tag, branch or commit; count what came after it on the branch.",
+        ),
+    ] = None,
+    since: _SinceOption = None,
+    until: _UntilOption = None,
+    branch: _BranchOption = None,
+    exclude_author: _ExcludeOption = None,
+    deterministic: _DeterministicOption = False,
+    output_format: _QueryFormatOption = "text",
+    limit: Annotated[
+        int, typer.Option("--limit", min=1, help="The most entries any list shows.")
+    ] = 5,
+    verbose: _VerboseOption = False,
+) -> None:
+    """Say what changed since a tag, a commit or a date, in counts, naming nobody."""
+    from reveille.services.report import brief_text
+
+    _configure_logging(verbose)
+    _check_query_format(output_format)
+    if (from_revision is None) == (since is None):
+        _err("Error: give exactly one of --from <revision> or --since <date>.")
+        raise typer.Exit(code=ExitCode.CANNOT_RUN)
+    config = _query_config(repo, since, until, branch, exclude_author, deterministic)
+    _run_query(
+        lambda notice: brief_text(config, from_revision, output_format, limit, on_notice=notice)
+    )
+
+
 def _repository_path(path: str, repo: Path) -> str:
     """Turn the path given to who-changed into a repository-relative one.
 

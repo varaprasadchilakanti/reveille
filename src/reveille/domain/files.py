@@ -102,6 +102,18 @@ def extension_breakdown(
     return [*kept, ("other", pooled)] if pooled else kept
 
 
+def file_type(path: str) -> str:
+    """Return the label a path is counted under: its extension, or "lock files".
+
+    Args:
+        path: A repository-relative path.
+
+    Returns:
+        The extension (".py"), "(none)", or the lock-file label.
+    """
+    return GENERATED_LABEL if is_generated(path) else _extension_of(path)
+
+
 def generated_churn(files: list[FileStats]) -> tuple[int, int]:
     """Return how many generated files changed, and their lines changed.
 

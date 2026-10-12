@@ -246,6 +246,16 @@ history it is several times faster than `generate`.
 reveille summary --format json
 ```
 
+### `reveille brief`
+
+What changed since a tag, a commit or a date, in counts, naming nobody: commits, people, the most
+changed areas and file types, files added, areas active again and tags in the range. It prints
+the commit it reached, so the next brief can start there.
+
+```bash
+reveille brief --from v0.9.0
+```
+
 ### `reveille who-changed`
 
 Who changed a file or directory, and who changed it most recently. It says who changed the code,

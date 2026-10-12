@@ -72,6 +72,17 @@ _CAPABILITIES: tuple[dict[str, str], ...] = (
         ),
     },
     {
+        "id": "brief",
+        "description": (
+            "Say what changed since a tag, a commit or a date with `reveille brief "
+            "--from <revision>` or `--since <date>`: commits, people and automated "
+            "accounts as counts, the most changed areas and file types, files "
+            "added, areas active again after 90 quiet days and tags in the range, "
+            "naming nobody. A revision is read by ancestry, without line counts, "
+            "and the analysed commit is printed so the next brief can start there."
+        ),
+    },
+    {
         "id": "who-changed",
         "description": (
             "Say who changed one file or directory with `reveille who-changed "

@@ -26,7 +26,7 @@ from typing import Any
 from git import InvalidGitRepositoryError, NoSuchPathError, Repo
 from git.exc import GitCommandError
 
-from reveille.domain.areas import area_of
+from reveille.domain.areas import ROOT_AREA, area_of
 from reveille.domain.files import is_generated
 from reveille.domain.models import (
     AreaActivity,
@@ -223,6 +223,46 @@ def _iter_numstat(block: str) -> Iterator[tuple[str, int, int]]:
         yield _numstat_path(path), added, deleted
 
 
+def _iter_name_status(block: str) -> Iterator[tuple[str, str]]:
+    """Yield `(status, path)` for each file in one `--name-status` block.
+
+    A rename or copy yields its destination with status "R" or "C".
+
+    Args:
+        block: One commit's name-status lines; may be empty.
+
+    Yields:
+        One `(status letter, path)` pair per file.
+    """
+    for line in block.splitlines():
+        fields = line.split("\t")
+        if len(fields) < 2 or not fields[0]:
+            continue
+        yield fields[0][0], _unquote_path(fields[-1])
+
+
+def _record_files(record: str, name_status: bool) -> tuple[list[tuple[str, int, int]], list[str]]:
+    """Return one record's files as `(path, added, deleted)`, and the paths it added.
+
+    Args:
+        record: One `git log` record, header line then the file block.
+        name_status: Whether the block is `--name-status` rather than `--numstat`.
+
+    Returns:
+        The files (line counts zero under name-status) and the added paths.
+    """
+    _, _, block = record.partition("\n")
+    if not name_status:
+        return list(_iter_numstat(block)), []
+    files: list[tuple[str, int, int]] = []
+    added: list[str] = []
+    for status, path in _iter_name_status(block):
+        files.append((path, 0, 0))
+        if status == "A":
+            added.append(path)
+    return files, added
+
+
 def _numstat_path(field: str) -> str:
     """Return the path a numstat field names, decoded and after any rename.
 
@@ -309,50 +349,53 @@ class _AreaTotal:
     commits: int
     last_changed: datetime.date
     authors: dict[str, datetime.date] = field(default_factory=dict)
+    first_changed: datetime.date | None = None
 
 
 def _accumulate_area_totals(
-    record: str, commit: Commit, depth: int | None, totals: dict[str, _AreaTotal]
+    files: list[tuple[str, int, int]],
+    commit: Commit,
+    depth: int | None,
+    totals: dict[str, _AreaTotal],
 ) -> None:
     """Fold one commit into the per-area totals: once per area it touched.
 
     Memory is bounded by areas times authors; generated lock files are skipped.
 
     Args:
-        record: One `git log` record, header line then numstat block.
+        files: The commit's files, as `_record_files` returns them.
         commit: The parsed commit, for its author and date.
         depth: Most directory components per area, or None to keep nothing.
         totals: Mutated in place, keyed by area.
     """
     if depth is None:
         return
-    _, _, numstat_block = record.partition("\n")
-    areas = {
-        area_of(path, depth)
-        for path, _, _ in _iter_numstat(numstat_block)
-        if not is_generated(path)
-    }
+    areas = {area_of(path, depth) for path, _, _ in files if not is_generated(path)}
     day = commit.timestamp.date()
     author = commit.author_email.lower()
     for area in areas:
         total = totals.get(area)
         if total is None:
-            totals[area] = _AreaTotal(commits=1, last_changed=day, authors={author: day})
+            totals[area] = _AreaTotal(
+                commits=1, last_changed=day, authors={author: day}, first_changed=day
+            )
         else:
             total.commits += 1
             total.last_changed = max(total.last_changed, day)
+            total.first_changed = min(total.first_changed or day, day)
             total.authors[author] = max(total.authors.get(author, day), day)
 
 
-def _accumulate_file_totals(record: str, totals: dict[str, list[int]]) -> None:
-    """Fold one log record's numstat block into the running per-path totals.
+def _accumulate_file_totals(
+    files: list[tuple[str, int, int]], totals: dict[str, list[int]]
+) -> None:
+    """Fold one commit's files into the running per-path totals.
 
     Args:
-        record: One `git log` record, header line then numstat block.
+        files: The commit's files, as `_record_files` returns them.
         totals: Mutated in place: path to `[commits, lines_added, lines_deleted]`.
     """
-    _, _, numstat_block = record.partition("\n")
-    for path, added, deleted in _iter_numstat(numstat_block):
+    for path, added, deleted in files:
         entry = totals.get(path)
         if entry is None:
             totals[path] = [1, added, deleted]
@@ -416,6 +459,8 @@ class GitReader:
         self.commits_unreadable: int = 0
         #: Who changed each directory, when `read_commits` got an `area_depth`.
         self.area_activity: tuple[AreaActivity, ...] = ()
+        #: Files added in the last `read_commits` with `name_status`.
+        self.files_added: int = 0
         self.unmatched_exclusions: tuple[str, ...] = ()
         try:
             self._repo = Repo(str(repo_path), search_parent_directories=False)
@@ -459,6 +504,8 @@ class GitReader:
         area_depth: int | None = None,
         line_counts: bool = True,
         path: str | None = None,
+        from_commit: str | None = None,
+        name_status: bool = False,
     ) -> list[Commit]:
         """Read all non-merge commits in the analysis window, in one `git log`.
 
@@ -475,6 +522,9 @@ class GitReader:
             area_depth: Record per-directory activity at this depth (ADR 0013).
             line_counts: Read line counts; False is faster and reports zero lines.
             path: Only commits that changed this literal repository path.
+            from_commit: A full SHA from `resolve_commit`; read `<sha>..<branch>` only.
+            name_status: Read files without line counts (`--name-status`), and
+                count the files added in `files_added`; overrides `line_counts`.
 
         Returns:
             Commits sorted most recent first.
@@ -497,13 +547,16 @@ class GitReader:
                 "a branch. If a ref really has this name, rename it."
             )
 
+        # The range end is the branch; exclusions still reach its whole history (ADR 0020).
+        walk = f"{from_commit}..{rev}" if from_commit is not None else rev
         log_args, rev_list_args = _build_log_args(
-            rev,
+            walk,
             since,
             until,
             self._supports_since_as_filter(),
-            line_counts=line_counts,
+            line_counts=line_counts and not name_status,
             path=path,
+            name_status=name_status,
         )
 
         # Read first: an exclusion names a person, expanded through the mailmap.
@@ -559,6 +612,7 @@ class GitReader:
         # Accumulated while streaming: memory is bounded by distinct paths.
         file_totals: dict[str, list[int]] = {}
         area_totals: dict[str, _AreaTotal] = {}
+        added_paths: set[str] = set()
         dated_after = 0
         for record in records:
             commit = _parse_log_record(record, mailmap, exclude_set, authentic_shas, matched)
@@ -569,14 +623,17 @@ class GitReader:
                 continue
             commits.append(commit)
             # Only surviving commits: an excluded author's churn must not reappear.
-            _accumulate_file_totals(record, file_totals)
-            _accumulate_area_totals(record, commit, area_depth, area_totals)
+            files, added = _record_files(record, name_status)
+            _accumulate_file_totals(files, file_totals)
+            _accumulate_area_totals(files, commit, area_depth, area_totals)
+            added_paths.update(added)
 
         self._file_stats = tuple(
             FileStats(path=path, commits=n, lines_added=a, lines_deleted=d)
             for path, (n, a, d) in file_totals.items()
         )
         self.commits_dated_after = dated_after
+        self.files_added = len(added_paths)
         self.commits_unreadable = _unreadable(records, authentic_shas)
         self.area_activity = tuple(
             AreaActivity(
@@ -584,6 +641,7 @@ class GitReader:
                 commits=total.commits,
                 last_changed=total.last_changed,
                 authors=dict(total.authors),
+                first_changed=total.first_changed,
             )
             for area, total in area_totals.items()
         )
@@ -734,7 +792,7 @@ class GitReader:
         """
         if not commits:
             return commits
-        selection = [a for a in log_args if a not in ("--numstat", _LOG_FORMAT)]
+        selection = [a for a in log_args if a not in ("--numstat", "--name-status", _LOG_FORMAT)]
         try:
             raw = self._trailer_log(selection)
         except GitCommandError as exc:
@@ -783,6 +841,130 @@ class GitReader:
             Git's output.
         """
         return str(self._git().log("-z", _TRAILER_FORMAT, *selection))
+
+    def resolve_commit(self, revision: str) -> str:
+        """Resolve a tag, branch or commit name to a full commit SHA, locally.
+
+        Args:
+            revision: The name the caller gave.
+
+        Returns:
+            The 40-character SHA of the commit it names.
+
+        Raises:
+            RepositoryError: If it begins with `-` (git would read an option) or
+                names no commit here.
+        """
+        if not revision or revision.startswith("-"):
+            raise RepositoryError(
+                f"Refusing to use {revision!r} as a revision: a value beginning with '-' "
+                "is read by git as an option."
+            )
+        try:
+            sha = str(self._git().rev_parse("--verify", "--quiet", f"{revision}^{{commit}}"))
+        except GitCommandError as exc:
+            raise RepositoryError(
+                f"'{revision}' does not name a commit in this repository."
+            ) from exc
+        return sha.strip()
+
+    def is_ancestor(self, ancestor: str, descendant: str) -> bool:
+        """Return whether one commit is reachable from another.
+
+        Args:
+            ancestor: A full SHA.
+            descendant: A full SHA or a branch name already checked not to begin with `-`.
+
+        Returns:
+            True if `ancestor` is in `descendant`'s history.
+        """
+        try:
+            self._git().merge_base("--is-ancestor", ancestor, descendant)
+        except GitCommandError as exc:
+            if exc.status == 1:
+                return False
+            raise RepositoryError(f"Could not compare {ancestor} and {descendant}.") from exc
+        return True
+
+    def tags_in_range(
+        self,
+        branch: str | None,
+        from_commit: str | None,
+        since: datetime.date | None,
+        until: datetime.date | None,
+    ) -> list[str]:
+        """Return the tags whose commit lies in the range, newest commit first.
+
+        Merges count here: a tag on a merge commit is still in the range.
+
+        Args:
+            branch: The analysed branch; the active branch if None.
+            from_commit: A full SHA; the range starts after it.
+            since: Inclusive start date, when the range is a window instead.
+            until: Inclusive end date, if any.
+
+        Returns:
+            Tag names, as repository text.
+        """
+        rev = branch or self._resolve_active_branch()
+        walk = f"{from_commit}..{rev}" if from_commit is not None else rev
+        _, rev_list_args = _build_log_args(walk, since, until, self._supports_since_as_filter())
+        order = {
+            sha: index
+            for index, sha in enumerate(
+                str(self._git().rev_list(*[a for a in rev_list_args if a != "--no-merges"])).split()
+            )
+        }
+        refs = str(
+            self._git().for_each_ref(
+                "--format=%(objectname)%00%(*objectname)%00%(refname:strip=2)", "refs/tags"
+            )
+        )
+        found: list[tuple[int, str]] = []
+        for line in refs.splitlines():
+            target, peeled, name = [*line.split("\0"), "", "", ""][:3]
+            commit = peeled or target
+            if commit in order and name:
+                found.append((order[commit], name))
+        return [name for _, name in sorted(found)]
+
+    def last_change_before(
+        self,
+        area: str,
+        branch: str | None,
+        before_commit: str | None,
+        before_date: datetime.date | None,
+    ) -> datetime.date | None:
+        """Return when a directory last changed before a point, or None.
+
+        Exclusions do not apply: this is about the directory, not a person.
+
+        Args:
+            area: A directory path; the root area is not looked up.
+            branch: The analysed branch; the active branch if None.
+            before_commit: Look at this commit's history (inclusive).
+            before_date: Or look at the branch's history before this date.
+
+        Returns:
+            The date (UTC) of the latest non-merge commit that changed it, if any.
+        """
+        if area == ROOT_AREA:
+            return None
+        args = ["-1", "--no-merges", "--format=%ct"]
+        if before_commit is not None:
+            args += ["--end-of-options", before_commit]
+        else:
+            rev = branch or self._resolve_active_branch()
+            if before_date is not None:
+                args.append(f"--before={before_date.isoformat()}T00:00:00+00:00")
+            args += ["--end-of-options", rev]
+        try:
+            out = str(self._git().log(*args, "--", f":(literal){area}")).strip()
+        except GitCommandError:
+            return None
+        if not out.isdigit():
+            return None
+        return datetime.datetime.fromtimestamp(int(out), tz=datetime.UTC).date()
 
     def resolve_head_sha(self, branch: str | None = None) -> str | None:
         """Return the full SHA at the tip of the analysed ref, pinning the report.
@@ -1318,6 +1500,7 @@ def _build_log_args(
     *,
     line_counts: bool = True,
     path: str | None = None,
+    name_status: bool = False,
 ) -> tuple[list[str], list[str]]:
     """Build the argument lists for the numstat read and the SHA allowlist.
 
@@ -1331,11 +1514,13 @@ def _build_log_args(
         supports_since_as_filter: Whether git has `--since-as-filter`; else `--after`.
         line_counts: Whether to ask for per-file line counts (`--numstat`).
         path: Only commits changing this path, as a `:(literal)` pathspec.
+        name_status: Ask for `--name-status` instead: paths without line counts.
 
     Returns:
         A `(log_args, rev_list_args)` pair.
     """
-    log_args: list[str] = ["--no-merges", *(["--numstat"] if line_counts else []), _LOG_FORMAT]
+    files = ["--name-status"] if name_status else ["--numstat"] if line_counts else []
+    log_args: list[str] = ["--no-merges", *files, _LOG_FORMAT]
     rev_list_args: list[str] = ["--no-merges"]
 
     # Boundaries are pinned to UTC: git reads a bare date in local time, so the

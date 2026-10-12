@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 
 # Structured-output contract version, independent of the release (ADR 0008).
 # Major on any removal or rename; minor on a purely additive field.
-SCHEMA_VERSION = "1.1"
+SCHEMA_VERSION = "1.2"
 
 
 @dataclass(frozen=True)
@@ -180,12 +180,14 @@ class AreaActivity:
         last_changed: The date of the most recent of those commits.
         authors: Lower-cased address to last-change date; only chooses which
             names to show, never output (it would read as a departure date).
+        first_changed: The date of the earliest of those commits.
     """
 
     area: str
     commits: int
     last_changed: datetime.date
     authors: dict[str, datetime.date]
+    first_changed: datetime.date | None = None
 
 
 @dataclass(frozen=True)

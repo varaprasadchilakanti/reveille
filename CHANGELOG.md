@@ -46,6 +46,13 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Added
 
+- **`reveille brief`** says what changed since a tag, a commit or a date (`--from <revision>` or
+  `--since <date>`), in counts, naming nobody: commits, people and automated accounts, the most
+  changed areas and file types, files added, areas active again after 90 quiet days, and tags in
+  the range. A revision is read by ancestry; it reads paths without line counts (about 2 seconds
+  for 8,928 commits of llama.cpp), and prints the commit it reached so the next brief can start
+  there (ADR 0022). JSON output carries `"document": "brief"`.
+
 - **A GitHub Actions recipe** in the README: a weekly report kept as an artifact, the summary on
   the run's page, `fetch-depth: 0` so the whole history is read, actions pinned by commit, and
   what an artifact exposes. Checked with actionlint and zizmor; its commands were run on a full
@@ -58,11 +65,14 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Changed
 
+- **`schema_version` is 1.2.** The brief is a new JSON document; every 1.1 field is unchanged.
+
 - **Progress off a terminal is one plain line per stage.** The animation redraws its line with
   carriage returns, which only a terminal interprets; a CI log, a pipe or an assistant received
   every frame as text. It now animates only when stderr is a terminal.
 
 ### Fixed
+- **`summary` said "1 commits"** for a single commit. It now says "1 commit".
 
 - **A `.mailmap` line with three or more spaces before the second address did nothing.** It
   was misread as a four-field line whose commit name was a space, so the two addresses stayed

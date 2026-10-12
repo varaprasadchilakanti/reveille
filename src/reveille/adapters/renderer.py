@@ -40,6 +40,7 @@ from jinja2 import (
 )
 
 from reveille.domain.areas import AreaStatement, PathAnswer, describe_areas, is_automated
+from reveille.domain.brief import QUIET_DAYS, Brief
 from reveille.domain.coauthors import commits_with_co_authors
 from reveille.domain.concentration import gini_coefficient, lorenz_curve
 from reveille.domain.files import extension_breakdown, generated_churn, hotspots
@@ -478,7 +479,7 @@ class Renderer:
         lines = [
             f"{repo['name']} ({repo['analysed_branch']}), "
             f"{repo['analysis_since']} to {repo['analysis_until']}",
-            f"{totals['commits']:,} commits by {_counted(totals['authors'], 'author')}"
+            f"{_counted(totals['commits'], 'commit')} by {_counted(totals['authors'], 'author')}"
             + (
                 f" and {_counted(totals['automated_accounts'], 'automated account')}"
                 if totals["automated_accounts"]
@@ -567,6 +568,96 @@ class Renderer:
             "Who changed it, not who knows or owns it: review and pairing do not "
             "appear in commit history."
         )
+        lines.append(_NOTICE)
+        return "\n".join(lines) + "\n"
+
+    @staticmethod
+    def brief_text(
+        facts: Brief,
+        *,
+        repository: tuple[str, str],
+        point: tuple[str, str | None],
+        tip: str,
+        tags: list[str],
+        output_format: str,
+        limit: int,
+    ) -> str:
+        """Render a brief as JSON or plain lines (ADR 0022). Names nobody.
+
+        Args:
+            facts: The counts.
+            repository: Its name and the analysed branch.
+            point: What the caller named, and the commit it resolved to (None for a date).
+            tip: The analysed commit, which the next brief can start from.
+            tags: Tags whose commit lies in the range, newest first.
+            output_format: "json" or "text".
+            limit: The most entries any list carries.
+
+        Returns:
+            The brief.
+        """
+
+        def bounded(items: list[Any]) -> dict[str, Any]:
+            return {"total": len(items), "truncated": len(items) > limit, "list": items[:limit]}
+
+        named, commit = point
+        if output_format == "json":
+            return json.dumps(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "document": "brief",
+                    "repository": {"name": repository[0], "analysed_branch": repository[1]},
+                    "point": {"from": named, "commit": commit}
+                    if commit is not None
+                    else {"since": named},
+                    "analysed_commit": tip,
+                    "first_commit_date": facts.first.isoformat(),
+                    "last_commit_date": facts.last.isoformat(),
+                    "totals": {
+                        "commits": facts.commits,
+                        "people": facts.people,
+                        "automated_accounts": facts.automated,
+                        "commits_with_co_authors": facts.co_authored,
+                        "files_added": facts.files_added,
+                    },
+                    "areas": bounded([{"area": a, "commits": n} for a, n in facts.areas]),
+                    "file_types": bounded(
+                        [{"type": t, "file_changes": n} for t, n in facts.file_types]
+                    ),
+                    "active_again_after_quiet_days": QUIET_DAYS,
+                    "active_again": bounded(list(facts.active_again)),
+                    "tags": bounded(tags),
+                    "notice": _NOTICE,
+                },
+                indent=2,
+            )
+
+        def listed(items: list[str]) -> str:
+            rest = len(items) - limit
+            shown = ", ".join(items[:limit])
+            return f"{shown} and {rest:,} more" if rest > 0 else shown
+
+        since = f"{named} ({commit[:7]})" if commit is not None else named
+        who = "1 person" if facts.people == 1 else f"{facts.people:,} people"
+        if facts.automated:
+            who += f" and {_counted(facts.automated, 'automated account')}"
+        lines = [
+            f"{repository[0]} ({repository[1]}), since {since} to {tip[:7]}:",
+            f"{_counted(facts.commits, 'commit')} by {who}, "
+            f"{facts.first.isoformat()} to {facts.last.isoformat()}"
+            + (f"; {facts.co_authored:,} credit a co-author." if facts.co_authored else "."),
+            f"Most changed areas: {listed([f'{a} {n:,}' for a, n in facts.areas])}.",
+            f"File changes by type: {listed([f'{t} {n:,}' for t, n in facts.file_types])}.",
+            f"Files added: {facts.files_added:,}.",
+        ]
+        if facts.active_again:
+            lines.append(
+                f"Active again after {QUIET_DAYS} or more quiet days: "
+                f"{listed(list(facts.active_again))}."
+            )
+        if tags:
+            lines.append(f"Tags in the range: {listed(tags)}.")
+        lines.append(f"Next: reveille brief --from {tip[:12]}")
         lines.append(_NOTICE)
         return "\n".join(lines) + "\n"
 

@@ -201,6 +201,31 @@ no contributor name or address, but it does carry the repository and branch name
 someone, and with one or two people its figures describe identifiable individuals. Check it before
 sending it to a hosted model.
 
+### `reveille brief`
+
+```bash
+reveille brief --from v0.9.0
+reveille brief --since 2026-10-01 --format json
+```
+
+What changed since a point you name, in counts. Exactly one of `--from <revision>` (a tag, branch
+or commit, read by ancestry as `git log <revision>..<branch>` is) or `--since <date>`. Other
+options: `--repo`, `--branch`, `--until`, `--exclude-author`, `--deterministic`, `--limit`
+(default 5), `--verbose` and `--format text|json`.
+
+It states commits (merges excluded), people and automated accounts as counts, commits crediting a
+co-author, the most changed areas (directories three deep) and file types, files added, areas
+changed after 90 or more days without a commit, and tags whose commit lies in the range. It names
+nobody, gives no line counts and no measure of a period (no Gini or quiet run), and ends with the
+commit it reached: `reveille brief --from <that commit>` next time gives what changed since. A
+revision that is not an ancestor of the branch is allowed and stated. Between two commits the
+answer depends on nothing else, so it is reproducible without `--deterministic`.
+
+Area paths and tag names come from the repository and can name people (`users/jsmith/`). With one
+or two people, "1 person" identifies someone to a team that knows who it was. On llama.cpp, from
+its oldest tag (8,928 commits), it took about 2 seconds and printed 672 bytes (measured
+2026-10-12, Git 2.55, warm cache, one 20-core machine).
+
 ### `reveille who-changed`
 
 ```bash
@@ -306,7 +331,7 @@ whether it can parse the rest before trying.
 
 ```json
 {
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "metadata": { "name": "...", "analysed_branch": "main", "...": "..." },
   "provenance": {
     "reveille_version": "0.9.0",
