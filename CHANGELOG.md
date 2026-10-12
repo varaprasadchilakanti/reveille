@@ -30,6 +30,9 @@ before 0.8.0 predate the convention and are left as they were released.
 - **`capabilities` gave the size of `reveille summary` as "about 2 KB"**, which holds for
   `--format json` (1.5 to 2.3 KB measured on three repositories) but not for the default text
   (0.5 to 0.65 KB). It now gives both.
+- **`who-changed` gave one range from the path's first change to the end of the window**, with
+  the last change beside it, so the range read as the span of changes. The line now says
+  `from <first change> to <last change>, in a window ending <date>`. The JSON is unchanged.
 
 ---
 

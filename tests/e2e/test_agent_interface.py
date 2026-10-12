@@ -253,6 +253,17 @@ class TestWhoChanged:
         assert len(answer["authors"]["list"]) == 20
         assert answer["authors"] | {"list": []} == {"total": 21, "truncated": True, "list": []}
 
+    def test_text_gives_the_span_of_changes_then_the_window(self, many: Path) -> None:
+        """The line read "2026-03-01 to <window end>; last changed 2026-03-09",
+        so the range looked like the span of changes when it was not."""
+        _, out, _ = _run("who-changed", "lib/core.c", "--repo", str(many), "--until", "2026-06-30")
+
+        first = out.splitlines()[0]
+        assert first == (
+            "lib/core.c: 9 commits by 8 authors, from 2026-03-01 to 2026-03-09, "
+            "in a window ending 2026-06-30."
+        ), first
+
     def test_text_tells_one_name_with_two_addresses_apart(self, many: Path) -> None:
         _, out, _ = _run("who-changed", "lib/core.c", "--repo", str(many))
 

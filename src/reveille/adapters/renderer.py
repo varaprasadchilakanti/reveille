@@ -667,10 +667,13 @@ class Renderer:
 
         commits = f"{answer.commits:,} commit{'' if answer.commits == 1 else 's'}"
         authors = f"{len(answer.authors):,} author{'' if len(answer.authors) == 1 else 's'}"
+        # The window starts at the path's first change and ends where the
+        # analysis does, often months after the path's last change. Printed
+        # as one range beside "last changed", it read as the span of changes.
         lines = [
             f"{answer.path}: {commits} by {authors}, "
-            f"{window[0].isoformat()} to {window[1].isoformat()}; "
-            f"last changed {answer.last_changed.isoformat()}.",
+            f"from {window[0].isoformat()} to {answer.last_changed.isoformat()}, "
+            f"in a window ending {window[1].isoformat()}.",
         ]
         if answer.recently_active:
             lines.append(f"Changed it most recently: {names(answer.recently_active)}.")
