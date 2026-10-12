@@ -13,6 +13,14 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ## [Unreleased]
 
+### Security
+
+- **A `.mailmap` could stall a run for minutes.** Its four line patterns backtracked
+  quadratically: one 200 KB line took about 44 seconds, inside the 1 MiB bound on a committed
+  `.mailmap`, and the working-tree file had no bound at all (a 66 MB file took 30 seconds and
+  517 MB). Lines are now parsed in one pass, as Git does, and the working-tree file is bounded
+  at 1 MiB like the committed one, with a warning when it is not read.
+
 ### Added
 
 - **`generate --quiet`** (`-q`) leaves the progress lines out of stderr. Notes, warnings and
@@ -27,6 +35,10 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Fixed
 
+- **A `.mailmap` line with three or more spaces before the second address did nothing.** It
+  was misread as a four-field line whose commit name was a space, so the two addresses stayed
+  two people where Git counts one. A name holding an address, such as `<a@x> Old <b@x>`, is now
+  skipped as malformed, as Git's parser would not read it that way either.
 - **`capabilities` gave the size of `reveille summary` as "about 2 KB"**, which holds for
   `--format json` (1.5 to 2.3 KB measured on three repositories) but not for the default text
   (0.5 to 0.65 KB). It now gives both.
