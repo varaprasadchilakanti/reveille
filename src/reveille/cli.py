@@ -88,6 +88,7 @@ _TERMINAL_UNSAFE: dict[int, str] = {
         range(0x00, 0x09),  # C0 controls before tab
         range(0x0B, 0x20),  # C0 controls after newline, carriage return and escape among them
         range(0x7F, 0xA0),  # DEL and the C1 controls
+        (0x061C, 0x200E, 0x200F),  # ALM, LRM, RLM: implicit direction marks
         range(0x202A, 0x202F),  # LRE, RLE, PDF, LRO, RLO: direction embeddings and overrides
         range(0x2066, 0x206A),  # LRI, RLI, FSI, PDI: direction isolates
     )
@@ -1071,6 +1072,11 @@ def _run_query(produce: Callable[[Callable[[str], None]], str]) -> None:
         _err(f"Error: {exc}")
         raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
     _print_notices(notices)
+    # The answer carries text the repository chose (its directory name,
+    # names from a .mailmap) and is what a person or an assistant reads.
+    # Escaped like stderr; JSON is unchanged, since json.dumps already
+    # escapes every control and non-ASCII character.
+    text = _printable(text)
     typer.echo(text, nl=not text.endswith("\n"))
 
 

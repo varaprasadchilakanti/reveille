@@ -33,6 +33,12 @@ before 0.8.0 predate the convention and are left as they were released.
   name holding `<!--<script` blanked every chart: the chart data escaped only `</`, and the HTML
   parser read the rest as an unfinished comment. Extension labels are now sanitised like every
   other label, and every `<` in the embedded chart data is escaped. No script ran in either case.
+- **`summary` and `who-changed` printed control characters a repository chose.** Escaping in
+  0.9.0 covered stderr only, so a directory name could put a terminal hyperlink, a bell or a
+  carriage return on stdout, the output an assistant reads, and a `.mailmap` name could carry a
+  C1 control or a direction mark. Their text output is now escaped like stderr, and the three
+  implicit direction marks (U+061C, U+200E, U+200F) are escaped everywhere. JSON output was
+  already escaped and is unchanged.
 
 ### Added
 
