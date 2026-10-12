@@ -18,18 +18,18 @@ individual decisions and the reasoning behind them, see
 ## What Reveille is
 
 A command-line tool that reads a local Git repository and writes a
-single self-contained HTML file describing its contribution history.
+single self-contained HTML file describing its commit history.
 
 Three properties constrain nearly every design decision, and are worth
 stating before anything else:
 
-**It does not change Git data.** Reveille opens a repository, reads
-history, and writes one output file. It refuses any output path inside
-`.git`, never creates commits or branches, and never runs a mutating Git
-command. The report goes where you point it, by default
-`reveille-report.html` in the current directory, which is often the
-repository's working tree. Anything that would change repository state is out of scope by
-construction, not by omission.
+**It does not change Git data** (history, refs, index, objects or
+configuration). Reveille opens a repository, reads history, and writes one
+output file. It refuses any output path inside `.git` and never runs a mutating
+Git command. The report goes where you point it, by default
+`reveille-report.html` in the repository root, which for a working tree is
+inside the working tree. Anything that would change repository state is out of
+scope by construction, not by omission.
 
 **It is offline.** Nothing is transmitted anywhere. The generated report
 loads no CDN, no web font, and no remote image — the ~4.8 MB Plotly
@@ -117,6 +117,11 @@ src/reveille/
         ranking.py    the scoring and tiering algorithm (opt-in from 0.8.0)
         concentration.py  Lorenz curve and Gini coefficient; describes the
                       distribution and names nobody
+        summary.py    the written findings, by fixed rules over the numbers
+        files.py      churn per path, hotspots, change by file type
+        profile.py    the six-axis repository profile
+        areas.py      who changed each area (opt-in, ADR 0013)
+        coauthors.py  Co-authored-by credits, kept apart from authorship
     adapters/
         git_reader.py GitPython in; domain models out
         renderer.py   domain models in; HTML, JSON, or CSV out
@@ -133,42 +138,22 @@ src/reveille/
 All frozen dataclasses in `domain/models.py`. They carry data and
 derived properties, never I/O.
 
-**`Commit`** — `sha`, `author_name`, `author_email`, `timestamp`,
-`lines_added`, `lines_deleted`. Property: `lines_changed`.
-
-**`ContributorStats`** — `name`, `email`, `commit_count`,
-`lines_added`, `lines_deleted`, `active_days`, `first_commit_date`,
-`last_commit_date`. Properties: `net_lines`, `lines_changed`.
-
-**`RankedContributor`** — wraps `stats` with `composite_score`,
-`percentile`, `tier`, `tier_designation`.
-
-**`RepositoryMetadata`** — `name`, `remote_url`, `analysed_branch`,
-`total_commits`, `unique_contributors`, `analysis_since`,
-`analysis_until`, `generated_at`.
+The dataclasses, and their fields, are listed in `domain/models.py`; this
+section keeps only what the code does not say. `ReportData` is the sole input to
+`Renderer`.
 
 `analysed_branch` is the ref the analysis actually walked. It was called
 `default_branch` through v0.7.0 and held neither the default branch nor the
 analysed one — see [ADR 0008](adr/0008-output-provenance-and-schema-version.md).
-
-**`AnalysisProvenance`** — `reveille_version`, `schema_version`, `head_sha`,
-the filters *as requested* (`requested_branch`, `requested_since`,
-`requested_until`, `exclude_authors_count`, `min_commits`), `ranking_enabled`,
-`ranking_weights`, `mailmap_applied`, `deterministic`,
-`commits_dated_after_window` (commits a default window left out because they
-are dated after today; counted in no figure), `shallow_clone` (the repository
-holds only part of its history), `area_authors_enabled` and `area_depth`
-(whether the opt-in "who changed each area" section was asked for; ADR 0013).
 
 **`CoAuthor`** and `Commit.co_authors` — identities a `Co-authored-by` trailer
 credits, read in a separate NUL-separated pass that must line up with
 `rev-list` one for one, resolved like authors (ADR 0014). `domain/coauthors.py`
 lists those credited only as co-authors; authorship figures never use them.
 
-**`AreaActivity`** — `area`, `commits`, `last_changed`, and each author's address
-with the date they last changed the area. Collected by the reader only under
-`--area-authors`; `domain/areas.py` turns it into statements that name authors
-alphabetically and never print a per-person count or date.
+**`AreaActivity`** is collected by the reader only under `--area-authors`;
+`domain/areas.py` turns it into statements that name authors alphabetically and
+never print a per-person count or date.
 
 The requested/resolved distinction is the point: `analysis_since` records where
 the window began, `requested_since` records whether anybody asked for it. Note
@@ -176,12 +161,9 @@ the window began, `requested_since` records whether anybody asked for it. Note
 to keep somebody out of the report, so naming them in provenance would put them
 back.
 
-**`ProgressEvent`** — `stage`, `elapsed_seconds`, `items_processed`.
-The service emits these; the CLI decides whether to animate them, log
-them, or ignore them. The service has no opinion about terminals.
-
-**`ReportData`** — `metadata`, `provenance`, `ranked_contributors`, `commits`.
-The sole input to `Renderer`.
+**`ProgressEvent`** — the service emits these; the CLI decides whether to
+animate them, log them, or ignore them. The service has no opinion about
+terminals.
 
 ---
 
@@ -228,11 +210,12 @@ addition would break callers branching on the old numbering.
 ## The pipeline
 
 `services/report.py::generate_report(config, on_progress=None)` runs
-four stages, emitting a `ProgressEvent` before each:
+up to four stages, emitting a `ProgressEvent` before each; the ranking stage is
+skipped when ranking is off:
 
 1. **Reading commit history** — `GitReader.read_commits`
 2. **Aggregating contributor statistics** — `GitReader.aggregate_contributor_stats`
-3. **Ranking contributors** — `domain.ranking.rank_contributors`
+3. **Ranking contributors** — `domain.ranking.rank_contributors` (only when ranking is enabled)
 4. **Rendering report** — `Renderer.render` / `render_json` / `render_csv`
 
 With `ranking_enabled=False`, stage 3 still produces
@@ -249,15 +232,14 @@ the default report.
 
 ### Reading history
 
-`read_commits` runs a single `git log --numstat` and parses the output,
-rather than iterating commits and asking GitPython for per-commit
-stats. The reason is that `Commit.stats` shells out to `git diff` once
-per commit; the single-pass read measured **9.4× faster** on this
-repository (7.2 ms/commit → 0.77 ms/commit), which is the difference
-between roughly six minutes and forty seconds on a 50,000-commit
-repository. Output was verified byte-identical against the previous
-implementation before the change landed. See
-[ADR-0004](adr/0004-single-pass-numstat-read.md).
+`read_commits` reads the history in one `git log --numstat` pass rather than
+iterating commits and asking GitPython for per-commit stats, because
+`Commit.stats` shells out to `git diff` once per commit. Beside it run a
+`git rev-list --no-merges` that authenticates each record and a second
+`git log` that reads only `Co-authored-by` trailers. See
+[ADR-0019](adr/0019-how-history-is-read.md), which supersedes
+[ADR-0004](adr/0004-single-pass-numstat-read.md). Timings on real repositories
+are in the [User Guide](USER_GUIDE.md#how-reveille-works).
 
 Merge commits are excluded unconditionally — see
 [ADR-0001](adr/0001-exclude-merge-commits.md).
@@ -285,12 +267,10 @@ fold together.
 
 ### Rendering
 
-`_build_charts` returns a dict keyed `timeline`,
-`contributor_timeline`, `heatmap`, `contributor_commits`,
-`contributor_lines`, `pie_commits`, `pie_lines`, `lorenz`. Each value is a Plotly
-JSON string, or the string `"null"` when there is nothing to draw —
-the template checks for that sentinel rather than the renderer deciding
-what the page looks like.
+`_build_charts` returns a dict with one entry per chart. Each value is a Plotly
+JSON string, or the string `"null"` when there is nothing to draw -- the
+template checks for that sentinel rather than the renderer deciding what the
+page looks like.
 
 The heatmap is the exception: it ships a compact daily-count payload,
 not a Plotly figure, and client-side JavaScript builds the Mon–Sun grid
@@ -313,26 +293,21 @@ any nested container it is handed and does not touch the trace-level
 colorscale the heatmap's two ramps depend on. One path, one set of
 semantics.
 
-`_PLOTLY_JS_BUNDLE` is read once at module import. `get_plotlyjs()`
-reads ~4.8 MB from disk per call; caching it took the e2e suite from
-roughly forty minutes to two.
+`_PLOTLY_JS_BUNDLE` is read once at module import, because `get_plotlyjs()`
+reads ~4.8 MB from disk per call.
 
 ---
 
 ## Configuration
 
-`ReportConfig` (Pydantic) holds `repo_path`, `output_path`, `title`,
-`branch`, `since`, `until`, `exclude_authors`, `min_commits`,
-`ranking_enabled`, `ranking_weights`, `output_format`
-(`"html" | "json" | "csv"`). A validator enforces `since < until`.
-
-`RankingWeights` holds `commits=0.30`, `lines=0.25`, `consistency=0.25`,
-`recency=0.20`, each in `[0, 1]`, with a validator enforcing that they
-sum to 1.0 within `1e-6`.
+`ReportConfig` (Pydantic) is defined in `config.py`; a validator enforces
+`since < until`. `RankingWeights` holds `commits=0.30`, `lines=0.25`,
+`consistency=0.25`, `recency=0.20`, each in `[0, 1]`, with a validator enforcing
+that they sum to 1.0 within `1e-6`.
 
 `load_config_from_toml` reads via stdlib `tomllib` and flattens
-`[report]`, `[filters]`, and `[ranking]` into a `ReportConfigKwargs`
-`TypedDict`.
+its tables (`[report]`, `[filters]`, `[ranking]`, `[areas]`) into a
+`ReportConfigKwargs` `TypedDict`.
 
 **Precedence: an explicitly provided CLI flag always beats the config
 file.** `min_commits` carries a `None` sentinel for this reason —
@@ -388,7 +363,7 @@ would have hidden exactly that.
 
 | Tier | Location | Rule |
 |---|---|---|
-| Unit | `tests/unit/` | No I/O, no filesystem, no subprocess. Inputs constructed directly. |
+| Unit | `tests/unit/` | Inputs constructed directly. No Git repository on disk, except the architecture and gate tests that run a subprocess on purpose. |
 | Integration | `tests/integration/` | Real Git repositories built by fixtures via `subprocess`. |
 | E2E | `tests/e2e/` | Full CLI invocation through Typer's `CliRunner`. |
 
@@ -419,8 +394,9 @@ worth knowing about before you change what they cover:
 | GitHub Actions | CI across Python 3.11–3.14; publish on `v*` tag |
 | PyPI OIDC trusted publisher | No stored credentials; PEP 740 attestations |
 
-`make ci` runs the same gates CI does. Run it before opening a pull
-request.
+`make ci` runs the checks that need no network or GitHub; CI adds the Python
+matrix, actionlint, the vulnerability scan, the reproducible-build check,
+CodeQL and the CLA gate. Run `make ci` before opening a pull request.
 
 ---
 
@@ -440,7 +416,7 @@ three genuinely local decisions easier to find and argue with.
 | `schema_version` as the first key of the payload | **Schema versioning** | A consumer decides whether it can parse the document before it tries. Introduced because a breaking key rename once shipped with no way to detect it except a `KeyError` at runtime. |
 | The Lorenz curve and Gini coefficient in `domain/concentration.py` | **Lorenz (1905)**, **Gini (1912)** | Standard instruments for concentration in a population, chosen over a bespoke "how many contributors make up a majority" precisely because a century of interpretation — and of documented weakness — comes with them. |
 | `domain/summary.py` — the written findings at the top of the report | **Data-to-text generation** (Reiter and Dale, *Building Natural Language Generation Systems*, 2000) | Content selected by rules over computed statistics, realised through fixed templates. Deterministic, offline, and no model — which is the only kind of generated prose that can live in a tool making an offline guarantee. The findings are checkable because each carries the figure it rests on. |
-| `domain/files.py` — churn per path, and the hotspot ranking | **Relative code churn** (Nagappan and Ball, *Use of Relative Code Churn Measures to Predict System Defect Density*, ICSE 2005); **hotspot analysis** (Tornhill, *Your Code as a Crime Scene*, 2013) | Churn is added plus deleted, not net. The full hotspot method crosses churn with a complexity measure; Reveille reads history and never file content, so it reports the churn axis alone and says so under the chart. A file that changes often is one to look at, not one that is wrong. |
+| `domain/files.py` — churn per path, and the hotspot ranking | **Relative code churn** (Nagappan and Ball, *Use of Relative Code Churn Measures to Predict System Defect Density*, ICSE 2005); **hotspot analysis** (Tornhill, *Your Code as a Crime Scene*, 2013) | Churn is added plus deleted, not net. The full hotspot method crosses churn with a complexity measure; Reveille receives paths and line counts, not file contents, so it reports the churn axis alone and says so under the chart. A file that changes often is one to look at, not one that is wrong. |
 | `domain/profile.py` and `_profile_flower` — six shares drawn as separate petals beside a table (above it on a narrow screen) | **Graphical perception** (Cleveland and McGill, *Graphical Perception: Theory, Experimentation, and Application to the Development of Graphical Methods*, JASA 1984); **radial indicators** (Albo, Lanir, Bak and Rafaeli, *Off the Radar*, IEEE TVCG 2016; Fuchs et al., IEEE TVCG 2014) | Length is read far more accurately than area, and a radar's area depends on an arbitrary axis order (ADR 0012). The flower was preferred over the radar in Albo et al.'s comparison, and star glyphs compare better without a contour, so each share is a separate petal of length, never joined into a polygon; every petal carries its value as text and the table is the authoritative figure (ADR 0016). Expectations are computed from each measure's arithmetic, never chosen. |
 | `_CATEGORICAL_PALETTE`, and the decision that four is the maximum | **Color Universal Design** (Okabe and Ito, 2008); **dichromat simulation** (Viénot, Brettel and Mollon, 1999); **WCAG 2.1** contrast | A series colour must clear three constraints at once — contrast against both plot surfaces, separation in normal vision, and separation under simulated colour blindness. Over a 29-candidate pool the largest satisfying set is four, so beyond four the report aggregates rather than inventing a fifth hue. `tests/unit/adapters/test_palette.py` carries the arithmetic and recomputes it on every run. |
 | `.mailmap` handling, and email as the identity key | **`gitmailmap(5)`** | All four documented forms, with Git's own matching precedence, so a `.mailmap` that works with `git shortlog` works here. |

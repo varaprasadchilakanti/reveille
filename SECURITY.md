@@ -123,12 +123,8 @@ regenerated SBOM can be compared directly against a published one.
 
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/varaprasadchilakanti/reveille/badge)](https://scorecard.dev/viewer/?uri=github.com/varaprasadchilakanti/reveille)
 
-That score is live, and it sits here rather than on the README on purpose.
-It is a composite, and several of the checks under it score zero for
-reasons this section states plainly -- one of them because the work has
-genuinely not been done. A bare number at the top of a README carries none
-of that, and a reader is better served by the number next to its account
-than by the number alone.
+The Scorecard score above is live and is a composite. The checks that score zero
+are explained below; one of them scores zero because the work has not been done.
 
 Reveille has a **single maintainer**. That is a real limitation and it is stated
 here rather than left to be discovered, because two of the checks a security
@@ -162,12 +158,8 @@ recognises — Go, Haskell, JavaScript and TypeScript, Erlang, C# and F#. Python
 is not among them, so for this project the check can be satisfied only by
 joining OSS-Fuzz or deploying ClusterFuzzLite. Neither has been done.
 
-This paragraph previously said the check credited `atheris` for Python and that
-an `atheris` stub would satisfy a string match. Both were wrong, checked against
-`ossf/scorecard/docs/checks.md`, which mentions neither Python nor `atheris`.
-It is recorded rather than quietly corrected because the passage it sat in is
-about refusing to game a metric, in a document that asks you to verify its
-claims.
+An earlier version of this paragraph said the check credits `atheris` for
+Python; `ossf/scorecard/docs/checks.md` mentions neither, so that was wrong.
 
 The honest position is that fuzzing *would* be worthwhile here and has not been
 done. Reveille parses untrusted input — author names, addresses and `.mailmap`
@@ -228,8 +220,9 @@ v0.9.0 closed eleven more, each with a test observed failing before the fix:
   another name. Every commit under an address the value reached, anywhere in
   the branch's history, is now removed.
 
-Verified unaffected, by testing rather than assumption: HTML and JavaScript
-injection into the report, the offline guarantee, and the CI workflows.
+Verified unaffected, by testing: HTML and JavaScript injection into the report,
+the report's loading of remote resources, and the CI workflows. The tool's own
+offline guarantee was affected: see the partial-clone entry above.
 
 **One limit, stated plainly.** Git honours the configuration in a repository's
 own `.git/config`, and some settings name a program for Git to run. Reveille
@@ -248,7 +241,8 @@ Reveille is a local analysis tool. It reads only the Git repository
 it is explicitly pointed at, writes one output file (HTML, JSON or
 CSV), and does not transmit data over a network. It does not accept inbound
 connections and does not execute content from commit messages or file
-contents. The primary attack surface is maliciously crafted Git
+contents. Git, which Reveille runs, obeys the repository's own `.git/config`
+(see Threat Model above). The primary attack surface is maliciously crafted Git
 repository content that could affect the HTML output, or
 vulnerabilities in the runtime dependency chain (GitPython, Jinja2,
 Plotly, Typer).

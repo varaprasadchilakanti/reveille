@@ -1,16 +1,14 @@
 # Reveille — User Guide
 
-This guide covers the full operational surface of Reveille. It assumes
-you have already installed the tool and successfully run `reveille generate`
-at least once. For installation instructions and a quickstart, refer to
-the [README](../README.md).
+Every option, every report section, and what a report contains about people.
+Install and first run: [README](../README.md).
 
 ---
 
 ## Contents
 
 - [How Reveille Works](#how-reveille-works)
-- [CLI Flags in Depth](#cli-flags-in-depth)
+- [Commands and Outputs](#commands-and-outputs)
 - [Exit Codes](#exit-codes)
 - [The reveille capabilities Command](#the-reveille-capabilities-command)
 - [Structured Output](#structured-output)
@@ -40,12 +38,13 @@ counted either.
 
 This is one `git log --numstat` read over the requested range rather than
 one diff per commit, beside a `git rev-list` that authenticates each record
-and a second `git log` that reads only `Co-authored-by` trailers. That is why
-the read scales: on llama.cpp, 9,015
-commits, the full JSON took 10 seconds and `reveille summary`, which skips the
-line counts, 1.7 seconds. Reveille never changes the repository's Git data —
-no commits, no branches, no configuration changes, no mutating Git command at
-any point, and any output path inside `.git` is refused. It writes one file:
+and a second `git log` that reads only `Co-authored-by` trailers. The read
+scales with commits, not with changed files. Measured 2026-10-12, Reveille
+0.9.0, Git 2.55, warm cache, one 20-core machine: on llama.cpp (9,015 commits)
+`generate --format json` took 9.35 s and `reveille summary`, which skips the line
+counts, 1.02 s; on git.git (61,112 commits), 22.6 s and 2.58 s. Reveille never
+changes the repository's Git data (history, refs, index, objects or
+configuration), and any output path inside `.git` is refused. It writes one file:
 the report, at the path you give or `reveille-report.html` in the repository
 root.
 
@@ -100,7 +99,7 @@ can be opened in any modern browser without an internet connection.
 
 ---
 
-## CLI Flags in Depth
+## Commands and Outputs
 
 ### `--repo` / `-r`
 
@@ -235,18 +234,12 @@ Check `provenance.ranking.enabled` to know which shape you have.
 Everything else stays: the contributor table with commits, lines and active days,
 the activity heatmap, the timelines, and the distribution chart.
 
-**Why it is off.** The ranking assigns named individuals a composite score, a
-percentile and a tier designation, weighted 30% commits and 25% lines changed.
-Those figures measure the volume and regularity of commits and nothing else — not
-contribution, not productivity, not value — and the SPACE framework says such
-measures say little about a person: SPACE (Forsgren et al., 2021) holds that "developer
-productivity is about more than an individual's activity levels". The caveats were always
-documented, but documentation does not travel with the artefact: the HTML report
-is built to be forwarded, and the caveats stay in this repository. See
-[ADR 0010](adr/0010-ranking-is-opt-in.md).
-
-It is a legitimate thing to look at deliberately, for your own repository, having
-read what it does and does not mean. That is what the flag is for.
+**Why it is off.** It scores and tiers named individuals on the volume and
+regularity of commits and nothing else, not contribution, productivity or value
+(SPACE, Forsgren et al., 2021: "developer productivity is about more than an
+individual's activity levels"). A report is built to be forwarded; these caveats
+stay in this repository. See [ADR 0010](adr/0010-ranking-is-opt-in.md) and
+[The Ranking Algorithm](#the-ranking-algorithm).
 
 You can also set it in `reveille.toml`:
 
@@ -257,6 +250,14 @@ enabled = true
 
 It must be a real boolean. `enabled = "false"` is a *string*, and would be
 rejected rather than quietly read as true.
+
+### `--limit`
+
+Bounds every list of people in JSON and CSV to this many (default: every one).
+JSON states the full total and a `truncated` flag beside each list; a cut CSV is
+announced on stderr. `reveille who-changed` accepts it too. In
+`reveille.toml` it is `[report] limit`. It is a size control for assistants and
+scripts: it shortens the lists, it does not remove anyone from the figures.
 
 ### `--area-authors` and `--area-depth`
 
@@ -295,10 +296,10 @@ depth = 3
 
 ### A short answer: `reveille summary`
 
-The repository in a few lines, naming no contributor: the window, commits,
-people and automated accounts, the Gini, commit concentration, the longest
-quiet run, days since the last commit, the written findings and the notice
-that the figures need checking. It reads no line counts and no
+The repository in a few lines, naming no contributor: the window, commit and
+people counts, the Gini, the longest quiet run, the written findings and a
+notice that the figures need checking. `--format json` adds commit concentration
+and days since the last commit. It reads no line counts and no
 `reveille.toml`. Takes `--repo`, `--since`, `--until`, `--branch`,
 `--exclude-author`, `--deterministic` and `--format text|json`.
 
@@ -326,8 +327,7 @@ most recently (the people to ask first), automated accounts and co-authors
 apart, and when the path was last changed. It gives no count or date for any
 person: who changed a file is a fact the history records, while "who did the
 most" is not what it is for. It reads only the commits that changed the path
-and no line counts, so it answers in well under a second on a large history.
-The path is taken literally and must be inside the repository.
+and no line counts. The path is taken literally and must be inside the repository.
 
 ### Output to stdout
 
@@ -356,7 +356,10 @@ whoever wrote the commit and is not verified. See
 ### `--deterministic`
 
 Produces byte-reproducible output: two runs over an unchanged repository give
-identical bytes, in every format.
+identical bytes, in every format, on the same Reveille version, installed
+dependencies and Git settings. Git settings matter because some change the
+counts Git reports: a different `diff.algorithm` moves line counts by a few
+per cent.
 
 ```bash
 reveille generate --deterministic
@@ -395,7 +398,7 @@ Controls the output format for `reveille generate`. Accepts three values.
 
 `json` writes a structured JSON file at the same path stem as `--output` with a `.json` extension. The payload contains repository metadata, contributor statistics, and the derived summary measures; the scoring fields are present only with `--ranking`. The raw commits list is excluded. Suitable for consumption by dashboards and data warehouses without parsing HTML.
 
-`csv` writes the ranked contributor table as a UTF-8 CSV file with BOM encoding at the same path stem as `--output` with a `.csv` extension. BOM ensures correct column rendering in Microsoft Excel on Windows without requiring a manual import wizard configuration.
+`csv` writes the contributor table as a UTF-8 CSV file with BOM encoding at the same path stem as `--output` with a `.csv` extension. BOM ensures correct column rendering in Microsoft Excel on Windows without requiring a manual import wizard configuration.
 
 ```bash
 reveille generate --format json --output /tmp/reports/q4.html
@@ -435,7 +438,7 @@ small, and every new cause would break scripts branching on the old numbering.
 
 ### Diagnostics
 
-Pass `--verbose` to `generate` or `validate` to write DEBUG-level diagnostics to
+Pass `--verbose` to `generate`, `validate`, `summary` or `who-changed` to write DEBUG-level diagnostics to
 stderr. Normal output is unchanged, so adding the flag is safe in an existing
 pipeline. It reports the fully resolved configuration after CLI flags and the
 TOML file have been merged, the exact `git log` invocation used, how many commits
@@ -484,8 +487,12 @@ completeness.
 
 The `cannot` list is the half worth reading. It states that Reveille does not
 measure productivity or contribution value, is not fit for performance review or
-hiring decisions, does not compute a bus factor, reads no source code, and does
-not aggregate a person across repositories.
+hiring decisions, does not compute a bus factor, and does not aggregate a person
+across repositories. It also states what Reveille reads: commit metadata,
+`Co-authored-by` trailers, and per file the path and the lines added and deleted.
+Reveille receives those paths and counts; Git reads the files to compute the
+counts. It does not read source code, diff content or any other part of a commit
+message.
 
 ## Structured Output
 
@@ -503,6 +510,7 @@ consumer can decide whether it can parse the rest before trying.
     "mailmap_applied": true,
     "commits_dated_after_window": 0,
     "shallow_clone": false,
+    "...": "...",
     "filters": {
       "requested_branch": "main",
       "requested_since": null,
@@ -563,7 +571,7 @@ until you uncomment and edit the keys you need. CLI flags always take
 precedence over values in the file, so you can override any setting on a
 per-invocation basis without modifying it.
 
-### `--output` / `-o`
+### `init --output` / `-o`
 
 Writes the configuration file to the specified path rather than
 `reveille.toml` in the current directory. The parent directory must
@@ -636,6 +644,10 @@ limit = 50
 # Accepted values: html (default), json, csv.
 # format = "html"
 
+# Equivalent to --deterministic. Must be a real boolean; a quoted "false" is a
+# string and is rejected rather than read as true.
+deterministic = false
+
 
 [filters]
 # Minimum commits to list a contributor. Equivalent to --min-commits.
@@ -672,16 +684,6 @@ that parameter applies. When the same parameter is set in both the
 configuration file and as a CLI flag, the CLI flag takes precedence.
 
 ---
-
-### `[report] deterministic`
-
-```toml
-[report]
-deterministic = true
-```
-
-Equivalent to `--deterministic`. Must be a real boolean; a quoted `"false"` is a
-string and is rejected rather than read as true.
 
 ## Understanding the Report
 
@@ -887,8 +889,8 @@ hash of the analysed commit. The CSV is the contributor table alone, with no
 file paths; the JSON carries directory paths only with `--area-authors`.
 
 `--exclude-author` values are recorded only as a count, never by name.
-`reveille summary` names nobody. `reveille who-changed` names the authors of
-one path, with their addresses.
+`reveille summary` names nobody. `reveille who-changed` names the authors of one
+path; its JSON adds their addresses.
 
 Reveille sends none of this anywhere. The file goes where you write it, and
 anyone who receives it receives all of the above. Given to a hosted AI
@@ -971,15 +973,15 @@ Each contributor's composite score is then converted to a percentile
 rank within the population. The percentile determines the tier designation
 according to the following table.
 
-| Tier | Designation | Percentile Range |
+| Tier | Designation | Percentile |
 |---|---|---|
-| I | Private | 0th – 20th |
-| II | Corporal | 21st – 40th |
-| III | Sergeant | 41st – 60th |
-| IV | Lieutenant | 61st – 75th |
-| V | Captain | 76th – 88th |
-| VI | Major | 89th – 95th |
-| VII | Commander | 96th – 100th |
+| I | Private | 20th or below |
+| II | Corporal | above 20th, up to 40th |
+| III | Sergeant | above 40th, up to 60th |
+| IV | Lieutenant | above 60th, up to 75th |
+| V | Captain | above 75th, up to 88th |
+| VI | Major | above 88th, up to 95th |
+| VII | Commander | above 95th |
 
 Tied composite scores receive identical percentiles, and therefore
 identical tiers. Percentile is a lower-bound rank, so a tied group sits
@@ -1007,10 +1009,9 @@ Read a tier as a description of the shape of participation in one
 window. It is not a statement about a person, and the military
 designations are a visual device, not a rank.
 
-If that framing does not fit your use, turn ranking off entirely with
-`--no-ranking` or `ranking.enabled = false`. The contributor table,
-heatmap, timelines, and breakdown charts all remain; only the scores,
-percentiles, and tiers are dropped.
+Ranking is off unless you pass `--ranking` or set `ranking.enabled = true`;
+without it the scores, percentiles and tiers are absent and the table, heatmap,
+timelines and charts remain.
 
 ---
 
@@ -1036,7 +1037,7 @@ Repositories with active CI/CD pipelines, dependency update automation,
 or release bots often have dozens or hundreds of commits attributed to
 non-human authors. These inflate commit counts and active day metrics
 across the board and should be excluded for any report intended as a
-human contribution retrospective.
+human commit-history retrospective.
 
 ```bash
 reveille generate \
@@ -1073,14 +1074,14 @@ reveille generate \
   --title "Release 3.0 — Engineering Retrospective"
 ```
 
-### Surfacing Sustained Contributors
+### Shortening the Contributor List
 
 To keep a long table readable, list only contributors with at least ten
 commits. Everyone is still counted in every figure, and the header says how
 many are listed; commit count is not a measure of who did the most work.
 
 ```bash
-reveille generate --min-commits 10 --title "Q3 Core Contributors"
+reveille generate --min-commits 10 --title "Q3 - 10 or more commits"
 ```
 
 ### Adjusting Weights for a Maintenance Quarter
@@ -1110,7 +1111,7 @@ The JSON file is written to `/tmp/reports/q4.json`.
 
 ### Exporting the Contributor Table to a Spreadsheet
 
-`--format csv` produces the ranked contributor table as a UTF-8 CSV file with BOM encoding, for direct import into Microsoft Excel, Google Sheets, or any spreadsheet application.
+`--format csv` produces the contributor table as a UTF-8 CSV file with BOM encoding, for direct import into Microsoft Excel, Google Sheets, or any spreadsheet application.
 
 ```bash
 reveille generate --format csv --output /tmp/reports/q4.html
@@ -1126,16 +1127,9 @@ the embedded chart library, so its size barely depends on the repository:
 4.90 MB for a one-commit repository and 4.92 MB for this one at 0.9.0.
 Before sending it anywhere, read [Before You Share a Report](#before-you-share-a-report).
 
-To share it through a wiki such as Confluence, attach the file to the page;
-readers download it and open it locally. Pasting the file into an HTML macro
-has not been tested by this project, and many sites disable that macro.
-
-Whether a particular mail system accepts a 4.9 MB HTML attachment has not been
-measured. If one refuses it, compress the file or share it through a file
-store.
-
-For a wider audience, a shared drive or an internal web server and a link
-avoid attaching the file at all; it still names everyone listed in it.
+Attach the file to a wiki page or an email, or put it on a shared drive and send
+a link. Whether a mail system accepts a 4.9 MB attachment has not been measured;
+if one refuses it, compress the file or use a file store. Whichever you choose, it still names everyone listed in it.
 
 ## Troubleshooting and Questions
 
@@ -1184,12 +1178,13 @@ exists it stops (exit 2), and `--force` then replaces both files.
 **A bot is counted as a person.** Only identities with `[bot]` in the name or
 address are treated as automated. Exclude another with `--exclude-author`.
 
-**The charts are empty.** Eight of the charts need JavaScript. The header,
+**The charts are empty.** The eight chart sections need JavaScript. The header,
 cards, findings, Repository Profile and contributor table do not.
 
 **Two runs over the same repository differ.** The end of the window and the
 generation time come from the clock. `--deterministic` takes both from the
-last commit, so an unchanged repository gives identical bytes.
+last commit, so an unchanged repository gives identical bytes on the same
+Reveille version, installed dependencies and Git settings.
 
 **Is it safe to run on a repository someone sent me?** Git obeys a
 repository's own `.git/config`, which can name a program for Git to run, and

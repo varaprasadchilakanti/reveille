@@ -33,6 +33,17 @@ before 0.8.0 predate the convention and are left as they were released.
 - **`who-changed` gave one range from the path's first change to the end of the window**, with
   the last change beside it, so the range read as the span of changes. The line now says
   `from <first change> to <last change>, in a window ending <date>`. The JSON is unchanged.
+- **Documentation said several things the program does not do.** Each was run and corrected:
+  `docs/COMPLIANCE.md` said Reveille reads no commit messages (it reads `Co-authored-by`
+  trailers); the README and User Guide said the `summary` text carries commit concentration and
+  days since the last commit (only its JSON does); `who-changed` was said to give addresses (only
+  its JSON does); the architecture guide put the default report in the current directory (it is
+  the repository root); `SECURITY.md` called the offline guarantee unaffected beside the
+  partial-clone fetch it lists. Byte-identical output under `--deterministic` is now stated with
+  its conditions: the same Reveille version, installed dependencies and Git settings, since a
+  different `diff.algorithm` moves line counts. Stale lists and unsourced timings were removed or
+  re-measured, and the wording on what Reveille reads now separates what it receives (paths and
+  line counts) from what Git reads to compute them.
 
 ---
 

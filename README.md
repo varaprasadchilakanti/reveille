@@ -18,7 +18,7 @@
 and rendered with `reveille generate --deterministic`.*
 
 Reveille reads a repository's Git history on your machine and writes one self-contained HTML
-report: a contribution calendar, weekly activity, how evenly commits are spread across
+report: a commit calendar, weekly activity, how evenly commits are spread across
 contributors, and a per-contributor table. The same figures are available as JSON or CSV for
 scripts and AI assistants.
 
@@ -35,7 +35,7 @@ reveille generate
 - **No changes to Git data.** History, refs, index, objects and configuration are never changed,
   and an output path inside the repository's Git directory is refused.
 - **Same input, same output.** With `--deterministic`, an unchanged repository produces a
-  byte-identical report from the same Reveille version.
+  byte-identical report on the same Reveille version, installed dependencies and Git settings.
 
 One limit: Reveille runs Git, and Git obeys a repository's own `.git/config`, which can name a
 program to run. Such a program is outside these properties. `git clone` does not copy that file;
@@ -60,14 +60,14 @@ to do; they are not a warranty.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/varaprasadchilakanti/reveille/main/docs/images/how-it-fits-dark.svg">
-  <img src="https://raw.githubusercontent.com/varaprasadchilakanti/reveille/main/docs/images/how-it-fits-light.svg" width="860" alt="A local Git repository goes into Reveille, which reads commit metadata and per-file line counts only, makes no network calls and never changes Git data. Out come one self-contained HTML report for people, and JSON (with a schema version) or CSV for scripts and AI assistants.">
+  <img src="https://raw.githubusercontent.com/varaprasadchilakanti/reveille/main/docs/images/how-it-fits-light.svg" width="860" alt="A local Git repository goes into Reveille, which reads commit metadata, Co-authored-by trailers and per-file line counts only, makes no network calls and never changes Git data. Out come one self-contained HTML report for people, and JSON (with a schema version) or CSV for scripts and AI assistants.">
 </picture>
 
-**For AI assistants and scripts.** `reveille summary --format json` describes the repository in
-about 2 KB and names no contributor; it does carry the repository and branch names, and with one
-or two people its figures describe identifiable individuals. `reveille capabilities --format json` describes what the tool can and
-cannot do. `reveille generate --format json --output -` prints every figure, including contributor
-names and email addresses; given to a hosted model, they leave your machine.
+**For assistants and scripts.** `reveille summary --format json` is about 2 KB and names no
+contributor, though it carries the repository and branch names, and with one or two people its
+figures describe identifiable individuals. `reveille capabilities --format json` states what the
+tool can and cannot do. `reveille generate --format json --output -` prints every figure,
+including names and email addresses; given to a hosted model, they leave your machine.
 
 ---
 
@@ -94,9 +94,9 @@ names and email addresses; given to a hosted model, they leave your machine.
   concentrated it is, who changed a file — who wants the answer without sending the history to a
   service. It reads any local Git repository, so Bitbucket, GitLab, GitHub and self-hosted
   repositories work alike.
-- **Someone reviewing a codebase for an audit or due diligence**, who needs a figure they can
-  reproduce: `--deterministic` gives the same bytes for the same repository, and the JSON records
-  the analysed commit and the options used. The
+- **Someone reviewing a codebase's history, for example in due diligence**, who needs a figure
+  they can recompute: `--deterministic` gives the same bytes for the same repository, Reveille
+  version, installed dependencies and Git settings, and the JSON records the analysed commit and the options used. The
   [Playbook](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/PLAYBOOK.md#for-an-audit-or-due-diligence)
   says what the history is and is not evidence of.
 - **An AI assistant or a script**, through `summary`, `who-changed`, JSON on stdout, a declared
@@ -112,22 +112,11 @@ Its figures do not support judging people. The project's position on that is in
 Reveille needs Python 3.11 or later and Git (`git --version`).
 
 ```bash
-pipx install reveille        # recommended: an isolated command-line tool
-```
-
-Or, equally:
-
-```bash
-pip install reveille
-uv tool install reveille     # or run once without installing: uvx reveille generate
-poetry add reveille          # inside a Poetry-managed project
-```
-
-Check it:
-
-```bash
+pipx install reveille      # or: uv tool install reveille, or pip install reveille
 reveille --version
 ```
+
+Or run it once without installing: `uvx reveille summary`.
 
 To remove it, use the tool that installed it: `pipx uninstall reveille`, `pip uninstall reveille`
 or `uv tool uninstall reveille`. Reveille keeps no cache or settings of its own; it leaves only
@@ -240,7 +229,7 @@ Generates the HTML activity report for the target repository.
 
 ### `reveille init`
 
-Scaffolds a fully annotated `reveille.toml` configuration file in the current directory. Every available key is present, commented out, and documented inline. Run this once before your first `reveille generate` invocation to produce a starting point you can edit rather than constructing the file from scratch.
+Writes an annotated `reveille.toml` with every key commented out, in the current directory, which must be a repository root.
 
 | Flag | Short | Type | Default | Description |
 |---|---|---|---|---|
@@ -270,13 +259,12 @@ without changing the exit code or the normal output.
 
 ### `reveille summary`
 
-The repository in a few lines, naming no contributor: window, totals, Gini, commit
-concentration, longest quiet run, days since the last commit, the written
-findings, and a notice that the figures need checking before a decision. It
-reads no line counts, so on a large history it is several times faster than
-`generate`. Takes `--repo`, `--since`, `--until`, `--branch`,
-`--exclude-author`, `--deterministic` and `--format text|json`; it reads no
-`reveille.toml`.
+The repository in a few lines, naming no contributor: window, commit and people counts,
+Gini, longest quiet run, the written findings and a notice that the figures need checking.
+`--format json` adds commit concentration and days since the last commit. It reads no line
+counts, so on a large history it is several times faster than `generate`. Takes `--repo`,
+`--since`, `--until`, `--branch`, `--exclude-author`, `--deterministic`, `--verbose`
+and `--format text|json`; it reads no `reveille.toml`.
 
 ```bash
 reveille summary
@@ -290,8 +278,8 @@ recently: for finding the person to ask about a bug, or a reviewer for a
 change. Names are alphabetical, with no count or date per person; the five who
 changed it most recently are shown separately; automated accounts and
 co-authors are listed apart; every list is bounded by `--limit` (default 20).
-It says who changed the code, not who knows or owns it. Takes the options of
-`summary` plus `--limit`.
+It says who changed the code, not who knows or owns it. Takes a path, the options of
+`summary`, and `--limit`.
 
 ```bash
 reveille who-changed src/parser/lexer.c
@@ -303,10 +291,8 @@ not followed: history from before a rename belongs to the old path.
 
 ### `reveille capabilities`
 
-Describes what Reveille can and cannot do — including, deliberately, the things
-it refuses to claim. Written for a program as much as for a person: an agent or
-a script can ask the installed binary directly rather than inferring from this
-README.
+States what Reveille can and cannot do, including what it refuses to claim, for a person or a
+program to read from the installed binary.
 
 | Flag | Short | Type | Default | Description |
 |---|---|---|---|---|
@@ -317,20 +303,14 @@ reveille capabilities
 reveille capabilities --format json
 ```
 
-The JSON form carries `capabilities_version`, the tool version, the output
-schema version, the guarantees that hold on every run, a `can` list, a `cannot`
-list with what to use instead, the caveats that change how a number should be
-read, every command with its options, and the exit-code contract. The command
-surface and the exit codes are read from the running program rather than
-restated, so they cannot drift from it.
+The JSON adds the guarantees, the `can` and `cannot` lists, the caveats on reading a number,
+every command with its options, and the exit codes; the last two are read from the running
+program. See the
+[User Guide](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md#the-reveille-capabilities-command).
 
 ### `reveille help`
 
-Displays the top-level help text listing all available commands and global options. Equivalent to `reveille --help` and `reveille -h`. The short flag `-h` is available on every subcommand — for example, `reveille generate -h` displays the full flag reference for the generate command.
-
-```bash
-reveille help
-```
+Same as `reveille --help`. `-h` works on every subcommand.
 
 ---
 

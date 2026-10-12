@@ -40,7 +40,7 @@ CAPABILITIES_VERSION = "1.0"
 
 _SUMMARY = (
     "Reads the commit history of a local Git repository and produces one "
-    "self-contained offline report of contributor activity over time."
+    "self-contained offline report of commit activity over time."
 )
 
 # What the tool does, phrased as claims that could be checked.
@@ -81,8 +81,9 @@ _CAPABILITIES: tuple[dict[str, str], ...] = (
         "id": "repository-summary",
         "description": (
             "Summarise a repository with `reveille summary`, in under 1 KB of "
-            "text or about 2 KB of JSON: window, totals, concentration, quiet run "
-            "and the written findings, naming nobody."
+            "text or about 2 KB of JSON: window, commit and people counts, Gini, "
+            "quiet run and the written findings, naming nobody (with one or two "
+            "people its figures describe identifiable individuals)."
         ),
     },
     {
@@ -120,7 +121,8 @@ _CAPABILITIES: tuple[dict[str, str], ...] = (
         "id": "reproducible-output",
         "description": (
             "With --deterministic, produce byte-identical output for an "
-            "unchanged repository and the same Reveille version, so a report "
+            "unchanged repository on the same Reveille version, installed "
+            "dependencies and Git settings, so a report "
             "can be regenerated and compared."
         ),
     },
@@ -177,7 +179,8 @@ _NOT_CAPABILITIES: tuple[dict[str, str], ...] = (
             "name, author name, author email, timestamp -- those trailers, and, "
             "per file in each commit, the path and the number of lines added "
             "and deleted, as reported by `git log --numstat`. How many lines "
-            "changed in a file, never which lines."
+            "changed in a file, never which lines. Reveille receives paths and "
+            "counts; Git reads the files to compute the counts."
         ),
         "instead": "Use a static analysis tool or a code search tool.",
     },
@@ -192,7 +195,8 @@ _NOT_CAPABILITIES: tuple[dict[str, str], ...] = (
     {
         "id": "repository-modification",
         "description": (
-            "Alter the contents, history, index or refs of a repository. "
+            "Alter a repository's Git data: history, refs, index, objects or "
+            "configuration. "
             "`generate` writes only the report you name; `init` writes only "
             "the configuration files you ask it for."
         ),
