@@ -45,7 +45,7 @@ Deprecated.
 | [0019](0019-how-history-is-read.md) | How history is read: an allowlisted log, and nothing lost without a word | Accepted |
 | [0020](0020-exclude-author-removes-a-person-by-address.md) | `--exclude-author` removes a person by every address the value reaches | Accepted |
 | [0021](0021-what-provenance-records-about-filters-and-time.md) | What provenance records about filters and time | Accepted |
-| [0022](0022-a-brief-from-a-point.md) | A brief from a point: `reveille brief --from` | Proposed |
+| [0022](0022-a-brief-from-a-point.md) | A brief from a point: `reveille brief --from` | Accepted |
 
 ## Notes from the review of 2026-10-09
 

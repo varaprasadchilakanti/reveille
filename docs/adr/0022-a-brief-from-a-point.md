@@ -1,6 +1,6 @@
 # 0022 — A brief from a point: `reveille brief --from`
 
-**Status:** Proposed (2026-10-12).
+**Status:** Accepted (2026-10-12). Proposed the same day.
 
 ## Context
 
