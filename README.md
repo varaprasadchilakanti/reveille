@@ -76,6 +76,7 @@ including names and email addresses; given to a hosted model, they leave your ma
 - [Who It Is For](#who-it-is-for)
 - [Installation](#installation)
 - [Quickstart](#quickstart)
+- [In CI: GitHub Actions](#in-ci-github-actions)
 - [Reading the Report](#reading-the-report)
 - [CLI Reference](#cli-reference)
 - [Output Formats](#output-formats)
@@ -104,6 +105,9 @@ including names and email addresses; given to a hosted model, they leave your ma
 
 Its figures do not support judging people. The project's position on that is in
 [Contributor Ranking](#contributor-ranking).
+
+A *reveille* is the call that starts the day: the report is what a repository's history says
+when you come back to it.
 
 ---
 
@@ -161,6 +165,47 @@ reveille init
 
 This writes an annotated `reveille.toml` with every key commented out. From then on
 `reveille generate`, run from that directory, loads it and prints which settings it applied.
+
+---
+
+## In CI: GitHub Actions
+
+A weekly report, kept as a build artifact, with the summary on the run's page:
+
+```yaml
+name: Repository history report
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"
+permissions:
+  contents: read
+concurrency:
+  group: reveille-report
+  cancel-in-progress: true
+jobs:
+  report:
+    name: History report
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the whole history; the default, 1, is a single commit
+          persist-credentials: false
+      - run: pipx run reveille generate --output reveille-report.html
+      - run: |
+          { echo '```'; pipx run reveille summary; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: reveille-report
+          path: reveille-report.html
+          retention-days: 7
+```
+
+`fetch-depth: 0` matters: with the checkout's default of one commit, the report covers one
+commit, and says so. The report lists contributors' names and email addresses, and anyone who
+can read the repository's Actions runs can download the artifact; on a public repository that
+is everyone. GitLab CI needs `GIT_DEPTH: 0` for the same reason.
 
 ---
 

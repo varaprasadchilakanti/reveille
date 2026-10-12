@@ -1,6 +1,6 @@
 # Reveille
 
-> A Python CLI that reads a local Git repository and writes a single self-contained HTML report on its commit history. It never changes Git data, works entirely offline, and sends nothing anywhere — the report embeds its own chart library so it opens on a machine with no network. Install with `pip install reveille`; run `reveille generate`.
+> A Python CLI that reads a local Git repository and writes a single self-contained HTML report on its commit history. It never changes Git data, works entirely offline, and sends nothing anywhere — the report embeds its own chart library so it opens on a machine with no network. Install with `pipx install reveille` (or run once with `uvx reveille summary`); run `reveille generate`.
 
 Reveille is forge-agnostic by construction: it reads `.git` on disk, so GitHub, GitLab, Bitbucket and self-hosted repositories work alike; a bare repository needs `--output`. It began as a way to see a contribution heatmap for a Bitbucket repository.
 

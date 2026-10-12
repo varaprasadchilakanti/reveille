@@ -46,6 +46,12 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Added
 
+- **A GitHub Actions recipe** in the README: a weekly report kept as an artifact, the summary on
+  the run's page, `fetch-depth: 0` so the whole history is read, actions pinned by commit, and
+  what an artifact exposes. Checked with actionlint and zizmor; its commands were run on a full
+  and a one-commit clone (437 commits against 1).
+- **ADR 0022, proposed:** `reveille brief --from <revision>`, what changed since a point the caller
+  names, in counts, naming nobody.
 - **`generate --quiet`** (`-q`) leaves the progress lines out of stderr. Notes, warnings and
   errors are still written, so `--output - --quiet` gives a report on stdout and an empty
   stderr when there is nothing to say.
