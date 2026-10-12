@@ -56,6 +56,9 @@ before 0.8.0 predate the convention and are left as they were released.
   only where the repository itself defines them), and tests check that the index is
   byte-identical and no such program runs.
 - **`python -m reveille`** runs Reveille where another tool already owns the `reveille` command.
+- **`--format markdown`** for `state`, `brief` and `summary`, to paste into an issue, a pull
+  request or a CI job summary. Paths, branch and tag names go in code spans sized to their own
+  backticks, with newlines shown as `\n`, so a name cannot add a heading, a link or HTML.
 - **`reile`**, a shorter name for the same command, installed beside `reveille`. Two other
   projects install a `reveille` command; `reile` was free on PyPI, npm, crates.io, Homebrew and
   Debian on 2026-10-12.

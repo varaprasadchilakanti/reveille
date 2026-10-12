@@ -950,10 +950,11 @@ def _run_query(produce: Callable[[Callable[[str], None]], str]) -> None:
     typer.echo(text, nl=not text.endswith("\n"))
 
 
-def _check_query_format(output_format: str) -> None:
-    """Refuse a --format other than text or json."""
-    if output_format not in ("text", "json"):
-        _err(f"Error: --format must be text or json, not {output_format!r}.")
+def _check_query_format(output_format: str, allowed: tuple[str, ...] = ("text", "json")) -> None:
+    """Refuse a --format the command does not offer."""
+    if output_format not in allowed:
+        choices = ", ".join(allowed[:-1]) + f" or {allowed[-1]}"
+        _err(f"Error: --format must be {choices}, not {output_format!r}.")
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
 
@@ -976,6 +977,9 @@ _DeterministicOption = Annotated[
     typer.Option("--deterministic", help="Close the window on the last commit, not today."),
 ]
 _QueryFormatOption = Annotated[str, typer.Option("--format", help="Output format: text or json.")]
+_ShareFormatOption = Annotated[
+    str, typer.Option("--format", help="Output format: text, json or markdown.")
+]
 _VerboseOption = Annotated[
     bool, typer.Option("--verbose", help="Emit diagnostic logging to stderr.")
 ]
@@ -989,14 +993,14 @@ def summary(
     branch: _BranchOption = None,
     exclude_author: _ExcludeOption = None,
     deterministic: _DeterministicOption = False,
-    output_format: _QueryFormatOption = "text",
+    output_format: _ShareFormatOption = "text",
     verbose: _VerboseOption = False,
 ) -> None:
     """Summarise the repository in a few lines, naming no contributor."""
     from reveille.services.report import summary_text
 
     _configure_logging(verbose)
-    _check_query_format(output_format)
+    _check_query_format(output_format, ("text", "json", "markdown"))
     config = _query_config(repo, since, until, branch, exclude_author, deterministic)
     _run_query(lambda notice: summary_text(config, output_format, on_notice=notice))
 
@@ -1016,7 +1020,7 @@ def brief(
     branch: _BranchOption = None,
     exclude_author: _ExcludeOption = None,
     deterministic: _DeterministicOption = False,
-    output_format: _QueryFormatOption = "text",
+    output_format: _ShareFormatOption = "text",
     limit: Annotated[
         int, typer.Option("--limit", min=1, help="The most entries any list shows.")
     ] = 5,
@@ -1026,7 +1030,7 @@ def brief(
     from reveille.services.report import brief_text
 
     _configure_logging(verbose)
-    _check_query_format(output_format)
+    _check_query_format(output_format, ("text", "json", "markdown"))
     if (from_revision is None) == (since is None):
         _err("Error: give exactly one of --from <revision> or --since <date>.")
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
@@ -1039,7 +1043,7 @@ def brief(
 @app.command()
 def state(
     repo: _RepoOption = Path("."),
-    output_format: _QueryFormatOption = "text",
+    output_format: _ShareFormatOption = "text",
     limit: Annotated[
         int, typer.Option("--limit", min=1, help="The most paths any list shows.")
     ] = 10,
@@ -1049,7 +1053,7 @@ def state(
     from reveille.services.report import state_text
 
     _configure_logging(verbose)
-    _check_query_format(output_format)
+    _check_query_format(output_format, ("text", "json", "markdown"))
     _run_query(lambda _notice: state_text(repo.resolve(), output_format, limit))
 
 

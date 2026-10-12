@@ -142,7 +142,7 @@ class TestSummary:
         code, _, err = _run("summary", "--repo", str(repo), "--format", "yaml")
 
         assert code == ExitCode.CANNOT_RUN
-        assert "text or json" in err
+        assert "text, json or markdown" in err
 
 
 @pytest.fixture(scope="module")

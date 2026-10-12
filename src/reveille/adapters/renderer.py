@@ -474,6 +474,8 @@ class Renderer:
         document = self.summary_document(data)
         if output_format == "json":
             return json.dumps(document, indent=2)
+        if output_format == "markdown":
+            return _summary_markdown(document)
         repo = document["repository"]
         totals = document["totals"]
         measures = document["measures"]
@@ -633,6 +635,9 @@ class Renderer:
                 indent=2,
             )
 
+        if output_format == "markdown":
+            return _brief_markdown(facts, repository, point, tip, tags, limit)
+
         def listed(items: list[str]) -> str:
             rest = len(items) - limit
             shown = ", ".join(items[:limit])
@@ -685,6 +690,8 @@ class Renderer:
         """
         if output_format == "json":
             return json.dumps(_state_document(state, name, history_replaced, limit), indent=2)
+        if output_format == "markdown":
+            return _state_markdown(state, name, history_replaced, limit)
         return "\n".join(_state_lines(state, name, history_replaced, limit)) + "\n"
 
     def render_csv(self, data: ReportData, output_path: Path) -> Path:
@@ -2163,3 +2170,147 @@ def _working_tree_lines(state: RepositoryState, limit: int) -> list[str]:
         if items:
             lines.append(f"  {label}: {_listed(items, limit)}.")
     return lines
+
+
+def _md(value: str) -> str:
+    """Put repository text in a Markdown code span: shown literally, on one line.
+
+    The fence is longer than any run of backticks inside, and CR and LF are shown
+    as escapes, so a path, branch or tag name cannot add a heading, a link or HTML.
+    """
+    text = value.replace("\r", "\\r").replace("\n", "\\n")
+    if not text:
+        return "(empty)"
+    fence = "`" * (max((len(run) for run in re.findall(r"`+", text)), default=0) + 1)
+    pad = " " if text.startswith("`") or text.endswith("`") else ""
+    return f"{fence}{pad}{text}{pad}{fence}"
+
+
+def _md_listed(
+    items: list[str] | tuple[str, ...], limit: int, counts: dict[str, int] | None = None
+) -> str:
+    """Join at most `limit` code spans, with an optional count each, saying how many more."""
+    shown = ", ".join(
+        f"{_md(item)} {counts[item]:,}" if counts is not None else _md(item)
+        for item in items[:limit]
+    )
+    rest = len(items) - limit
+    return f"{shown} and {rest:,} more" if rest > 0 else shown
+
+
+def _summary_markdown(document: dict[str, Any]) -> str:
+    """Render the summary as Markdown for an issue, a pull request or a CI job summary."""
+    repo, totals, measures = document["repository"], document["totals"], document["measures"]
+    automated = (
+        f" and {_counted(totals['automated_accounts'], 'automated account')}"
+        if totals["automated_accounts"]
+        else ""
+    )
+    lines = [
+        f"### Summary: {_md(repo['name'])} ({_md(repo['analysed_branch'])}), "
+        f"{repo['analysis_since']} to {repo['analysis_until']}",
+        "",
+        f"- **Commits:** {_counted(totals['commits'], 'commit').split(' ', 1)[0]} by "
+        f"{_counted(totals['authors'], 'author')}{automated}",
+        f"- **Gini:** {measures['gini_coefficient']:.2f}; longest quiet run "
+        f"{_counted(measures['longest_quiet_run_days'], 'day')}",
+        *(f"- {finding['headline']}" for finding in document["findings"]),
+        "",
+        f"> {document['notice']}",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def _brief_markdown(
+    facts: Brief,
+    repository: tuple[str, str],
+    point: tuple[str, str | None],
+    tip: str,
+    tags: list[str],
+    limit: int,
+) -> str:
+    """Render a brief as Markdown (ADR 0022)."""
+    named, commit = point
+    since = f"{_md(named)} ({_md(commit[:7])})" if commit is not None else _md(named)
+    who = "1 person" if facts.people == 1 else f"{facts.people:,} people"
+    if facts.automated:
+        who += f" and {_counted(facts.automated, 'automated account')}"
+    co = f"; {facts.co_authored:,} credit a co-author" if facts.co_authored else ""
+    lines = [
+        f"### Brief: {_md(repository[0])} ({_md(repository[1])}), since {since} to {_md(tip[:7])}",
+        "",
+        f"- **Commits:** {facts.commits:,} by {who}, {facts.first.isoformat()} to "
+        f"{facts.last.isoformat()}{co}",
+        f"- **Most changed areas:** {_md_listed([a for a, _ in facts.areas], limit, dict(facts.areas))}",
+        "- **File changes by type:** "
+        f"{_md_listed([t for t, _ in facts.file_types], limit, dict(facts.file_types))}",
+        f"- **Files added:** {facts.files_added:,}",
+    ]
+    if facts.active_again:
+        lines.append(
+            f"- **Active again after {QUIET_DAYS} quiet days:** "
+            f"{_md_listed(facts.active_again, limit)}"
+        )
+    if tags:
+        lines.append(f"- **Tags in the range:** {_md_listed(tags, limit)}")
+    lines += ["", f"Next: {_md(f'reveille brief --from {tip[:12]}')}", "", f"> {_NOTICE}"]
+    return "\n".join(lines) + "\n"
+
+
+def _state_markdown(state: RepositoryState, name: str, history_replaced: bool, limit: int) -> str:
+    """Render a repository's present state as Markdown (ADR 0024)."""
+    where = _md(state.branch) if state.branch else "detached"
+    if state.head is None:
+        where += ", no commits yet"
+    else:
+        day = state.last_commit.isoformat() if state.last_commit else "?"
+        where += f" at {_md(state.head[:7])} ({day})"
+    lines = [f"### State: {_md(name)}", "", f"- **Branch:** {where}"]
+    if state.upstream:
+        lines.append(
+            f"- **Upstream:** {_md(state.upstream)}, {state.ahead or 0:,} ahead, "
+            f"{state.behind or 0:,} behind, as of the last fetch"
+        )
+    if state.operation:
+        lines.append(f"- **In progress:** {state.operation}")
+    if state.conflicted:
+        lines.append(f"- **Conflicted:** {_md_listed(state.conflicted, limit)}")
+    tree = _working_tree_lines(state, limit)[0].removeprefix("Working tree: ").rstrip(".")
+    lines.append(f"- **Working tree:** {tree}")
+    for label, items in (
+        ("Staged", state.staged),
+        ("Modified", state.modified),
+        ("Untracked", state.untracked),
+    ):
+        if items and not (state.bare or state.working_tree_unread):
+            lines.append(f"  - {label}: {_md_listed(items, limit)}")
+    lines.append(f"- **Stashes:** {state.stashes:,}")
+    if len(state.worktrees) > 1:
+        others = [f"{w.path} ({w.branch or 'detached'})" for w in state.worktrees[1:]]
+        lines.append(f"- **Other worktrees:** {_md_listed(others, limit)}")
+    lines.append(
+        f"- **Branches:** {state.branches:,} local, {state.branches_merged:,} merged into this "
+        f"commit, {state.branches_quiet:,} with no commit in {QUIET_BRANCH_DAYS} days before it"
+    )
+    if state.latest_tag:
+        lines.append(
+            f"- **Latest tag:** {_md(state.latest_tag)}, {state.commits_since_tag or 0:,} commits "
+            f"since; next: {_md(f'reveille brief --from {state.latest_tag}')}"
+        )
+    lines += [*_state_markdown_notes(state, history_replaced, limit), "", f"> {_NOTICE}"]
+    return "\n".join(lines) + "\n"
+
+
+def _state_markdown_notes(state: RepositoryState, history_replaced: bool, limit: int) -> list[str]:
+    """The state's closing notes as Markdown bullets: filters not run, shallow, replaced."""
+    notes = []
+    if state.filters_not_run:
+        notes.append(
+            f"- **Not run:** content filters this repository's own config names "
+            f"({_md_listed(state.filters_not_run, limit)}); files they cover may show as modified"
+        )
+    if state.shallow:
+        notes.append("- Shallow clone: only part of the history is present.")
+    if history_replaced:
+        notes.append("- Replace refs or a graft file are present and not followed.")
+    return notes

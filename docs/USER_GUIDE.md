@@ -66,6 +66,10 @@ chart data embedded; it opens offline in any modern browser.
 Every command can also be run as `reile` (a shorter name for the same program) or as
 `python -m reveille`.
 
+`state`, `brief` and `summary` also take `--format markdown`, to paste into an issue, a pull
+request or a CI job summary. Paths, branch and tag names are put in code spans, with newlines
+shown as `\n`, so a name cannot add a heading, a link or HTML.
+
 `reveille generate` takes the options below. `summary`, `who-changed`, `init`, `validate` and
 `capabilities` are described after the table; each of their options is listed with its command.
 
@@ -196,7 +200,7 @@ The repository in a few lines, naming no contributor: window, commit and people 
 longest quiet run, the written findings and a notice that the figures need checking.
 `--format json` adds commit concentration and days since the last commit. It reads no line counts
 and no `reveille.toml`. Options: `--repo`, `--since`, `--until`, `--branch`, `--exclude-author`,
-`--deterministic`, `--verbose` and `--format text|json` (default `text`).
+`--deterministic`, `--verbose` and `--format text|json|markdown` (default `text`).
 
 ```bash
 reveille summary --format json
@@ -220,7 +224,7 @@ rebase, `git am`, cherry-pick, revert or bisect stopped part-way; conflicted pat
 staged, modified, deleted, renamed and untracked, with lists bounded by `--limit` (default 10);
 stashes; worktrees; local branches as counts (total, merged into the current commit, no commit in
 90 days before it); and the latest tag with the commits since, so the next call can be
-`reveille brief --from <tag>`. Options: `--repo`, `--limit`, `--verbose`, `--format text|json`.
+`reveille brief --from <tag>`. Options: `--repo`, `--limit`, `--verbose`, `--format text|json|markdown`.
 
 It changes nothing and runs nothing it was not asked to. A plain `git status` rewrites
 `.git/index` when file stat data is stale, and runs the programs a repository's own config names
@@ -239,7 +243,7 @@ reveille brief --since 2026-10-01 --format json
 What changed since a point you name, in counts. Exactly one of `--from <revision>` (a tag, branch
 or commit, read by ancestry as `git log <revision>..<branch>` is) or `--since <date>`. Other
 options: `--repo`, `--branch`, `--until`, `--exclude-author`, `--deterministic`, `--limit`
-(default 5), `--verbose` and `--format text|json`.
+(default 5), `--verbose` and `--format text|json|markdown`.
 
 It states commits (merges excluded), people and automated accounts as counts, commits crediting a
 co-author, the most changed areas (directories three deep) and file types, files added, areas
