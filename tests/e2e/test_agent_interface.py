@@ -125,6 +125,13 @@ class TestSummary:
 
         assert len(out.encode()) < 4096
 
+    def test_the_text_is_under_a_kilobyte(self, repo: Path) -> None:
+        """`capabilities` says so. It once said "about 2 KB" for both forms,
+        while the text measured 0.5 to 0.65 KB on three repositories."""
+        _, out, _ = _run("summary", "--repo", str(repo))
+
+        assert 0 < len(out.encode()) < 1024
+
     def test_an_empty_window_is_a_negative_answer(self, repo: Path) -> None:
         code, out, _ = _run("summary", "--repo", str(repo), "--since", "2030-01-01")
 

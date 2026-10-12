@@ -80,9 +80,9 @@ _CAPABILITIES: tuple[dict[str, str], ...] = (
     {
         "id": "repository-summary",
         "description": (
-            "Summarise a repository in about 2 KB with `reveille summary`: "
-            "window, totals, concentration, quiet run and the written findings, "
-            "naming nobody."
+            "Summarise a repository with `reveille summary`, in under 1 KB of "
+            "text or about 2 KB of JSON: window, totals, concentration, quiet run "
+            "and the written findings, naming nobody."
         ),
     },
     {

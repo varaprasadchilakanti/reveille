@@ -25,6 +25,12 @@ before 0.8.0 predate the convention and are left as they were released.
   carriage returns, which only a terminal interprets; a CI log, a pipe or an assistant received
   every frame as text. It now animates only when stderr is a terminal.
 
+### Fixed
+
+- **`capabilities` gave the size of `reveille summary` as "about 2 KB"**, which holds for
+  `--format json` (1.5 to 2.3 KB measured on three repositories) but not for the default text
+  (0.5 to 0.65 KB). It now gives both.
+
 ---
 
 ## [0.9.0] — 2026-10-09 — Privacy, Integrity, and an Interface for Assistants

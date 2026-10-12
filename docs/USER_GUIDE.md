@@ -307,11 +307,11 @@ reveille summary
 reveille summary --format json
 ```
 
-It is the starting point for an assistant or a script: about 2 KB, and it
-carries no contributor name or address. It does carry the repository and
-branch names, which can name someone, and with one or two people its figures
-describe identifiable individuals. Check it before sending it to a hosted
-model.
+It is the starting point for an assistant or a script: under 1 KB as text and
+about 2 KB as JSON, and it carries no contributor name or address. It does
+carry the repository and branch names, which can name someone, and with one or
+two people its figures describe identifiable individuals. Check it before
+sending it to a hosted model.
 
 ### Who changed a file: `reveille who-changed`
 
