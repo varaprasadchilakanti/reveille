@@ -125,6 +125,13 @@ class TestSummary:
 
         assert len(out.encode()) < 4096
 
+    def test_the_text_is_under_a_kilobyte(self, repo: Path) -> None:
+        """`capabilities` says so. It once said "about 2 KB" for both forms,
+        while the text measured 0.5 to 0.65 KB on three repositories."""
+        _, out, _ = _run("summary", "--repo", str(repo))
+
+        assert 0 < len(out.encode()) < 1024
+
     def test_an_empty_window_is_a_negative_answer(self, repo: Path) -> None:
         code, out, _ = _run("summary", "--repo", str(repo), "--since", "2030-01-01")
 
@@ -245,6 +252,17 @@ class TestWhoChanged:
 
         assert len(answer["authors"]["list"]) == 20
         assert answer["authors"] | {"list": []} == {"total": 21, "truncated": True, "list": []}
+
+    def test_text_gives_the_span_of_changes_then_the_window(self, many: Path) -> None:
+        """The line read "2026-03-01 to <window end>; last changed 2026-03-09",
+        so the range looked like the span of changes when it was not."""
+        _, out, _ = _run("who-changed", "lib/core.c", "--repo", str(many), "--until", "2026-06-30")
+
+        first = out.splitlines()[0]
+        assert first == (
+            "lib/core.c: 9 commits by 8 authors, from 2026-03-01 to 2026-03-09, "
+            "in a window ending 2026-06-30."
+        ), first
 
     def test_text_tells_one_name_with_two_addresses_apart(self, many: Path) -> None:
         _, out, _ = _run("who-changed", "lib/core.c", "--repo", str(many))

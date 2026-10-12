@@ -13,7 +13,72 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ## [Unreleased]
 
-Nothing yet.
+### Security
+
+- **A `.mailmap` could stall a run for minutes.** Its four line patterns backtracked
+  quadratically: one 200 KB line took about 44 seconds, inside the 1 MiB bound on a committed
+  `.mailmap`, and the working-tree file had no bound at all (a 66 MB file took 30 seconds and
+  517 MB). Lines are now parsed in one pass, as Git does, and the working-tree file is bounded
+  at 1 MiB like the committed one, with a warning when it is not read.
+- **A report could still be written over Git's own files.** A report path hard-linked to
+  `.git/HEAD`, which a working tree delivered by someone else can carry, was written through by
+  a plain `generate`, and `--output` could name the HEAD of the repository a linked worktree
+  belongs to. Every format is now written to a new file and moved into place, so other links to
+  the old file keep their content, and a worktree's common Git directory is refused like its own.
+  A new report file is readable and writable by its owner only, since it names people; a report
+  written over an existing one keeps that file's permissions.
+- **Text from a repository could change what a report shows.** A file extension reached the
+  extension chart unsanitised, and Plotly draws a subset of HTML in labels, so a file named
+  `f.<a href="https:...">Click` put a clickable link into the report. And a path, extension or
+  name holding `<!--<script` blanked every chart: the chart data escaped only `</`, and the HTML
+  parser read the rest as an unfinished comment. Extension labels are now sanitised like every
+  other label, and every `<` in the embedded chart data is escaped. No script ran in either case.
+- **`summary` and `who-changed` printed control characters a repository chose.** Escaping in
+  0.9.0 covered stderr only, so a directory name could put a terminal hyperlink, a bell or a
+  carriage return on stdout, the output an assistant reads, and a `.mailmap` name could carry a
+  C1 control or a direction mark. Their text output is now escaped like stderr, and the three
+  implicit direction marks (U+061C, U+200E, U+200F) are escaped everywhere. JSON output was
+  already escaped and is unchanged.
+- **A token in a transport-prefixed remote was printed.** 0.9.0 removed tokens from remote URLs
+  such as `https://TOKEN@host/...`, but `https::https://TOKEN@host/...`, a form Git accepts, was
+  read as an unknown scheme and printed whole in the HTML and JSON. The scheme after the prefix
+  now decides.
+
+### Added
+
+- **`generate --quiet`** (`-q`) leaves the progress lines out of stderr. Notes, warnings and
+  errors are still written, so `--output - --quiet` gives a report on stdout and an empty
+  stderr when there is nothing to say.
+
+### Changed
+
+- **Progress off a terminal is one plain line per stage.** The animation redraws its line with
+  carriage returns, which only a terminal interprets; a CI log, a pipe or an assistant received
+  every frame as text. It now animates only when stderr is a terminal.
+
+### Fixed
+
+- **A `.mailmap` line with three or more spaces before the second address did nothing.** It
+  was misread as a four-field line whose commit name was a space, so the two addresses stayed
+  two people where Git counts one. A name holding an address, such as `<a@x> Old <b@x>`, is now
+  skipped as malformed, as Git's parser would not read it that way either.
+- **`capabilities` gave the size of `reveille summary` as "about 2 KB"**, which holds for
+  `--format json` (1.5 to 2.3 KB measured on three repositories) but not for the default text
+  (0.5 to 0.65 KB). It now gives both.
+- **`who-changed` gave one range from the path's first change to the end of the window**, with
+  the last change beside it, so the range read as the span of changes. The line now says
+  `from <first change> to <last change>, in a window ending <date>`. The JSON is unchanged.
+- **Documentation said several things the program does not do.** Each was run and corrected:
+  `docs/COMPLIANCE.md` said Reveille reads no commit messages (it reads `Co-authored-by`
+  trailers); the README and User Guide said the `summary` text carries commit concentration and
+  days since the last commit (only its JSON does); `who-changed` was said to give addresses (only
+  its JSON does); the architecture guide put the default report in the current directory (it is
+  the repository root); `SECURITY.md` called the offline guarantee unaffected beside the
+  partial-clone fetch it lists. Byte-identical output under `--deterministic` is now stated with
+  its conditions: the same Reveille version, installed dependencies and Git settings, since a
+  different `diff.algorithm` moves line counts. Stale lists and unsourced timings were removed or
+  re-measured, and the wording on what Reveille reads now separates what it receives (paths and
+  line counts) from what Git reads to compute them.
 
 ---
 

@@ -50,20 +50,20 @@ not rank people by default.
 
 ## Three questions it answers well
 
-**"Is this project still alive?"**
+**"Has anything been committed lately?"**
 `reveille generate --repo . --since 2025-01-01`. Read the timeline and
-the dormancy finding. A flat tail is unambiguous; a quiet run is not —
-released software commits rarely.
+the dormancy finding. A flat tail means no commits in the window; it does
+not say why. Released software commits rarely.
 
-**"Are we down to one maintainer?"**
+**"Is most of the activity from one or two people?"**
 Read the distribution finding and the Lorenz curve. A high Gini with a
-short contributor list is a staffing observation. It is not a bus
+short contributor list describes commits. It is not a bus
 factor: someone may know the code without having committed recently.
 
 **"What changed between two periods?"**
 Run twice with different `--since`/`--until` and compare. Use
-`--deterministic` so the only differences are real ones, and `--format
-json` so a diff is meaningful.
+`--deterministic` so only the history differs between runs, and `--format
+json` so a diff is readable.
 
 ## Three it answers badly
 
@@ -71,14 +71,17 @@ json` so a diff is meaningful.
   in a library and a monorepo. These figures are comparable against the
   same repository over time.
 - **Anything about an individual.** See the table above.
-- **Anything about code quality.** Reveille reads history, never
-  content. It cannot see a test, a review, or a defect.
+- **Anything about code quality.** Reveille receives commit history,
+  paths and line counts, not file contents (Git reads the files to
+  compute the counts). It cannot see a test, a review, or a defect.
 
 ## For an audit or due diligence
 
 1. **Make the run repeatable.** `--deterministic` takes the end of the window
    and the generation time from the last commit, so the same repository gives
-   the same bytes. Keep the JSON: `provenance` records the Reveille version,
+   the same bytes on the same Reveille version, installed dependencies and
+   Git settings.
+   Keep the JSON: `provenance` records the Reveille version,
    the analysed commit hash, whether a `.mailmap` was applied, whether the
    clone was shallow, and the filters as requested.
 2. **Reconcile before relying.** `total_commits` should match
@@ -108,23 +111,9 @@ Read [llms.txt](../llms.txt) first — it is the short index. Then:
 
 ## Where the measures come from
 
-None of these is invented here. Each is a documented instrument with a
-century, or at least a decade, of interpretation and criticism attached —
-which is the point of using it rather than a bespoke score.
-
-| In the report | Instrument | Source |
-|---|---|---|
-| Contribution Distribution | Lorenz curve, Gini coefficient | Lorenz (1905); Gini (1912) |
-| Where Change Concentrates | Relative code churn; hotspot analysis | Nagappan & Ball, ICSE 2005; Tornhill, 2013 |
-| Change Size per Commit | Relative code churn | Nagappan & Ball, ICSE 2005 |
-| Repository Profile | Graphical perception, on reading length rather than area; and why separate petals rather than a radar polygon (ADR 0016) | Cleveland & McGill, JASA 1984; Albo et al., IEEE TVCG 2016; Fuchs et al., IEEE TVCG 2014 |
-| What the History Shows | Data-to-text generation | Reiter & Dale, 2000 |
-| Chart colours | Color Universal Design; dichromat simulation; contrast | Okabe & Ito, 2008; Viénot, Brettel & Mollon, 1999; WCAG 2.1 |
-| The refusal to rank people | Position on individual metrics | SPACE (Forsgren et al., 2021) |
-
-`docs/ARCHITECTURE.md` carries the same table with the reasoning for each
-choice, and names what is local to this project — which is where scrutiny
-belongs.
+Each measure is a published instrument, not an invention of this project. The
+table of instruments and sources, with the reasoning for each choice and what is
+local to this project, is in [ARCHITECTURE.md](ARCHITECTURE.md#lineage).
 
 ## Conventions this project holds to
 

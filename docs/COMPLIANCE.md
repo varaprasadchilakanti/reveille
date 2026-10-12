@@ -8,7 +8,8 @@ rests on, so a reader who disagrees knows exactly where to push.
 The short version: **the GDPR engages and the maintainer is neither controller
 nor processor under it; Reveille is out of scope for every other regime
 examined**, and
-the single thing that would change that is taking money for it.
+the main thing that would change that is taking money for it. Adding telemetry, a
+model or cryptography would reopen other sections.
 
 ---
 
@@ -16,18 +17,21 @@ the single thing that would change that is taking money for it.
 
 Every conclusion here depends on these facts, so they are stated first:
 
-- It runs **entirely on the user's own machine**. No network call at runtime, no
-  telemetry, no server, no account. The maintainer never receives anything.
-- It reads Git commit metadata — object name, author name, author email,
-  timestamp — and, per file in each commit, the **path and the number of lines
-  added and deleted**, which is what `git log --numstat` reports and what the
-  file sections of the report are built from. It reads **no source code**, no
-  commit messages, and no diff content: the figures say how many lines changed
-  in a file, never which lines, and never what they contained.
-- It contains **no machine learning and no model**. Every number it produces is
-  deterministic arithmetic over commit counts.
-- It is supplied **free of charge and outside any commercial activity**. There is
-  no paid tier, no hosted version, no paid support, and no donation scheme.
+- It runs **entirely on the user's own machine**: no telemetry, no server, no
+  account. No network call at runtime, and the maintainer never receives
+  anything. Git, which Reveille runs, obeys the repository's own `.git/config`;
+  see the Threat Model in [SECURITY.md](../SECURITY.md).
+- It reads commit metadata (object name, author name and address, timestamp), the
+  `Co-authored-by` trailers (names and addresses of people credited), and, per
+  file in each commit, the **path and the number of lines added and deleted**, as
+  `git log --numstat` reports them. Reveille receives paths and counts; Git reads
+  the files to compute the counts. It reads no source code, no other part of any
+  commit message, and no diff content: the figures say how many lines changed in
+  a file, never which lines.
+- It contains **no machine learning and no model**. Every number is arithmetic
+  over commit counts, lines and dates; none comes from a model.
+- It is supplied **free of charge and outside any commercial activity**: no paid
+  tier, hosted version, paid support or donation scheme.
 
 ## GDPR — Regulation (EU) 2016/679
 
@@ -158,9 +162,10 @@ document" — so the CLI is expressly outside the harmonised standard. What *doe
 map is **clause 10, "Non-web documents"**, which covers downloadable documents:
 the generated HTML report.
 
-That is where the accessibility work belongs and where it has been done — the
-report targets WCAG 2.1 AA, with contrast, table semantics, ARIA labelling and
-`prefers-reduced-motion` support. Voluntary, and worth doing on its merits.
+That is where the accessibility work belongs. The report is built to WCAG 2.1 AA,
+with contrast, table semantics, ARIA labelling and `prefers-reduced-motion`
+support, and a test checks the palette's contrast. No conformance audit has been
+done. Voluntary, and worth doing on its merits.
 
 ## India — DPDP Act 2023
 

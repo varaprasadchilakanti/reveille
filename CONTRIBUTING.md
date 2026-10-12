@@ -20,30 +20,10 @@ discussion may be declined regardless of their quality.
 
 ## Development Environment
 
-> **Poetry 2.2 or newer is required from v0.8.0.** The lock file is written in
-> `lock-version 2.1`, which Poetry 1.x reads only with a warning, and
-> `make check-lock-sync` runs `poetry check --lock` — which Poetry 1.x spells
-> differently and cannot complete anyway, because its bundled classifier list
-> predates Python 3.14.
->
-> If Poetry came from a distribution package (`which poetry` shows
-> `/usr/bin/poetry`), **`poetry self update` will not work**: it tries to write
-> into a system-managed directory and fails with a permission error, and forcing
-> it with `sudo` would fight the package manager. Install it user-scope instead.
-> It shadows the system copy without removing it, provided `~/.local/bin`
-> precedes `/usr/bin` on your `PATH`:
->
-> ```console
-> $ pipx install "poetry==2.4.2"
-> $ poetry --version          # Poetry (version 2.4.2)
-> ```
->
-> The pin moved for three reasons, not one: `poetry check` now runs at all,
-> which closes the last half of a long-standing audit finding; the lock format
-> now matches what Dependabot writes, so its pull requests stop flipping the file
-> between two formats; and `SOURCE_DATE_EPOCH` is honoured, which the previous
-> version silently ignored.
-
+> Needs Poetry 2.2 or newer (the lock is `lock-version 2.1`). If Poetry came from a
+> distribution package, `poetry self update` will fail on a system directory;
+> install it with `pipx install "poetry==2.4.2"` instead, and keep `~/.local/bin`
+> ahead of `/usr/bin` on your `PATH`.
 
 Requires Python 3.11 or later and `git`.
 
@@ -65,14 +45,13 @@ poetry run pytest -n auto
 
 ## Supported Python versions
 
-Reveille supports **every non-EOL CPython release at or above 3.11**. As of the 0.8.0
-release that is **3.11, 3.12, 3.13, and 3.14**. Each is exercised by the CI matrix on
-every pull request; each appears in the PyPI classifiers.
+Reveille supports **every non-EOL CPython release at or above 3.11**. The CI matrix
+(`.github/workflows/ci.yml`) and the PyPI classifiers list the versions in use:
+**3.11, 3.12, 3.13, and 3.14**. Each is exercised on every pull request.
 
 **The 3.11 floor is technical, not a preference.** `config.py` imports `tomllib` and
 `git_reader.py` uses `datetime.UTC`, both added in 3.11. Lowering the floor means
-vendoring a TOML parser and reworking timezone handling — not worth it while 3.10 is
-weeks from end of life.
+vendoring a TOML parser and reworking timezone handling.
 
 Three rules govern changes to this policy.
 
@@ -143,7 +122,8 @@ packaging check, a version-consistency check, a licence-consistency check, and
 a check that `poetry.lock` still agrees with `pyproject.toml`. All must pass.
 A pull request will not be merged if any check fails.
 
-`make ci` runs the same set locally.
+`make ci` runs the checks that need no network or GitHub; CI adds the Python matrix,
+actionlint, the vulnerability scan, the reproducible-build check, CodeQL and the CLA gate.
 
 One thing worth knowing before you hit it: `poetry.lock` is marked `-merge` in
 `.gitattributes`, so Git will not write conflict markers into it. A conflict
@@ -218,26 +198,15 @@ Filing an issue, reporting a bug, or joining a design discussion does not.
 **Read [CLA.md](CLA.md).** Its first section explains the whole thing in plain
 English and takes about two minutes.
 
-### The short version
+### What it covers
 
-You keep the copyright in everything you write. The agreement is a
-**licence**, not an assignment — nothing is transferred, and you remain free
-to reuse your own code anywhere else on any terms you like. What you grant is
-permission broad enough that this project can distribute your contribution
-under its current licence *and* under a different licence later, if the
-project ever changes licence.
-
-In return, [CLA.md](CLA.md) §2.3(b) fixes a floor: whatever else happens, your
-contribution stays available under the licence the project was using on the day
-you contributed. That licence can be added to. It cannot be taken away.
-
-Apache-2.0 §5 already licenses an ordinary pull request under Apache-2.0
-without any of this. The agreement exists for one reason: §5 licenses your
-contribution under *that* licence and only that licence, so a future licence
-change would otherwise require tracking down every past contributor. The Linux
-Foundation lists this as one of the three standard reasons a project adopts a
-CLA — see
-<https://bestpractices.linuxfoundation.org/ip/contribution-mechanisms-cla.html>.
+You keep the copyright in everything you write: the agreement is a **licence**,
+not an assignment. It lets the project distribute your contribution under its
+current licence and, if the project changes licence, under a different one.
+[CLA.md](CLA.md) §2.3(b) sets a floor: your contribution stays available under the
+licence the project was using on the day you contributed. The
+[plain-English summary](CLA.md#what-this-is-in-plain-english) at the top of CLA.md
+explains the rest.
 
 If you would rather contribute on different terms, say so in the pull request
 and it will be discussed on its merits rather than refused automatically.
@@ -283,8 +252,7 @@ need both:
 
 - **Turn the setting on.** *Settings → Commits → "Require contributors to sign
   off on web-based commits"* makes GitHub add the trailer to commits created
-  through the web interface. It is enabled on this repository, so this should
-  not arise again.
+  through the web interface.
 - **Add a remediation commit** for anything already made without one. This is
   the mechanism the DCO project documents for exactly this case:
 
@@ -300,8 +268,7 @@ need both:
   check prints this template when it fails, so you can copy it rather than
   guess at the wording.
 
-Bot commits need no exemption: Dependabot signs off already, and every one of
-its 78 commits in this repository carries the trailer.
+Bot commits need no exemption: Dependabot signs off already.
 
 **2. Tick the box in the pull request description.** The pull request template
 carries this line:

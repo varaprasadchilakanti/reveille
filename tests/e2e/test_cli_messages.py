@@ -131,7 +131,9 @@ def test_a_warning_starts_its_own_line(capsys: pytest.CaptureFixture[str]) -> No
     from reveille.cli import _configure_logging, _StageSpinner
 
     _configure_logging(verbose=False)
-    spinner = _StageSpinner()
+    # Captured stderr is not a terminal, so the animation must be asked for:
+    # without it no line is ever left open and this test cannot fail.
+    spinner = _StageSpinner(animate=True)
     spinner.begin("Reading commit history")
     time.sleep(0.05)
     logging.getLogger("reveille.test").warning("matched no commits for: x")
@@ -154,3 +156,51 @@ def test_the_progress_line_agrees_with_its_count(
     spinner.complete(elapsed_seconds=0.0, items_processed=count)
 
     assert says in capsys.readouterr().err
+
+
+@pytest.mark.e2e
+class TestProgressOffATerminal:
+    """Progress redrew one line with carriage returns whatever stderr was.
+
+    A script, a CI log or an assistant reading stderr received every frame as
+    text. Off a terminal each stage is now one plain line, and `--quiet`
+    leaves the progress out altogether.
+    """
+
+    def test_no_carriage_return_when_stderr_is_not_a_terminal(
+        self, repo: Path, tmp_path: Path
+    ) -> None:
+        code, stderr = _generate(repo, tmp_path / "r.html")
+
+        assert code == 0
+        assert "Reading commit history ...   done" in stderr, "positive control"
+        assert "\r" not in stderr, repr(stderr)
+
+    def test_quiet_leaves_out_progress_and_keeps_the_report(self, repo: Path) -> None:
+        result = CliRunner().invoke(
+            app, ["generate", "--repo", str(repo), "--format", "json", "--output", "-", "--quiet"]
+        )
+
+        assert result.exit_code == 0
+        assert result.stderr == "", repr(result.stderr)
+        assert result.stdout.lstrip().startswith("{")
+
+    def test_quiet_still_shows_a_warning(self, repo: Path, tmp_path: Path) -> None:
+        code, stderr = _generate(
+            repo, tmp_path / "r.html", "--quiet", "--exclude-author", "nobody@example.com"
+        )
+
+        assert code == 0
+        assert "nobody@example.com" in stderr
+        assert "Reading commit history" not in stderr
+
+    def test_a_spinner_off_a_terminal_writes_one_line_per_stage(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from reveille.cli import _StageSpinner
+
+        spinner = _StageSpinner(animate=False)
+        spinner.begin("Reading commit history")
+        spinner.complete(elapsed_seconds=0.0, items_processed=3)
+
+        assert capsys.readouterr().err == "  Reading commit history ...   done (0.0s, 3 commits)\n"

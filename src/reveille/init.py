@@ -55,9 +55,9 @@ _DEFAULT_CONFIG_TEMPLATE: str = """\
 # Output format for the generated report.
 # Accepted values:
 #   html  -- A single self-contained HTML file (default).
-#   json  -- A structured JSON file containing ranked contributor statistics
+#   json  -- A structured JSON file containing contributor statistics
 #            and repository metadata, suitable for downstream tooling.
-#   csv   -- The ranked contributor table as a UTF-8 CSV file with BOM
+#   csv   -- The contributor table as a UTF-8 CSV file with BOM
 #            encoding for direct import into Microsoft Excel.
 # format = "html"
 

@@ -101,14 +101,53 @@ _GITHUB_NOREPLY_RE = re.compile(
     re.IGNORECASE,
 )
 
-# The four .mailmap forms documented in gitmailmap(5). Ordered most
-# specific first: a four-field line also satisfies no other pattern, but
-# an email-only line would otherwise be captured by the name-only form
-# with the literal "<proper@email>" text taken as a display name.
-_MAILMAP_FOUR_FIELD = re.compile(r"^(.+?)\s+<([^>]+)>\s+(.+?)\s+<([^>]+)>$")
-_MAILMAP_THREE_FIELD = re.compile(r"^(.+?)\s+<([^>]+)>\s+<([^>]+)>$")
-_MAILMAP_EMAIL_ONLY = re.compile(r"^<([^>]+)>\s+<([^>]+)>$")
-_MAILMAP_NAME_ONLY = re.compile(r"^(.+?)\s+<([^>]+)>$")
+
+def _parse_mailmap_line(line: str) -> tuple[str, ...] | None:
+    """Parse one `.mailmap` line in a single pass, as Git does.
+
+    The four forms of gitmailmap(5), returned as the fields they carry:
+    `(name, email)`, `(proper_email, commit_email)`,
+    `(proper_name, proper_email, commit_email)` or
+    `(proper_name, proper_email, commit_name, commit_email)`. A name ends at
+    the first `<`, so no name holds an address; a name must be separated from
+    its `<` by whitespace, and each field after the first must follow its
+    `>` after whitespace, as the patterns this replaced required.
+
+    Four regular expressions did this before, tried in turn. Their lazy
+    `(.+?)` followed by whitespace and `<` backtracked quadratically on a line of `a <b a <b ...`: one
+    200 KB line took about 44 seconds, well inside the size bound.
+
+    Args:
+        line: The line, comment removed and stripped.
+
+    Returns:
+        The fields, or None for a malformed line.
+    """
+    fields: list[tuple[str, str]] = []
+    position = 0
+    while (left := line.find("<", position)) >= 0:
+        right = line.find(">", left + 1)
+        if right <= left + 1 or len(fields) == 2:
+            return None
+        before = line[position:left]
+        if fields and not before[:1].isspace():
+            return None
+        if before.strip() and not before[-1].isspace():
+            return None
+        fields.append((before.strip(), line[left + 1 : right]))
+        position = right + 1
+    if line[position:].strip():
+        return None
+    match fields:
+        case [(name, email)] if name:
+            return (name, email)
+        case [("", proper), ("", commit)]:
+            return (proper, commit)
+        case [(name, proper), ("", commit)] if name:
+            return (name, proper, commit)
+        case [(name, proper), (commit_name, commit)] if name and commit_name:
+            return (name, proper, commit_name, commit)
+    return None
 
 
 def _normalise_github_noreply(email: str) -> str:
@@ -423,7 +462,9 @@ def _without_credentials(url: str) -> str:
     address and is kept; only a password after it is dropped. The query string
     and fragment are removed, since some hosts accept a token there. An SSH
     address of the form `git@host:path` carries no secret and is returned
-    unchanged.
+    unchanged. A transport prefix (`https::https://...`, `<helper>::<url>`)
+    is kept, and the scheme after it decides; read as the scheme, the
+    prefix hid an `https` address and its token was printed.
 
     This is string handling rather than `urllib.parse.urlsplit`, which raises
     on some addresses Git accepts (`https://[::1/r.git`), and a report must not
@@ -442,7 +483,7 @@ def _without_credentials(url: str) -> str:
     authority, slash, path = rest.partition("/")
     userinfo, at, host = authority.rpartition("@")
     if at:
-        if scheme.lower() in ("http", "https"):
+        if scheme.rpartition("::")[2].lower() in ("http", "https"):
             authority = host
         else:
             authority = f"{userinfo.partition(':')[0]}@{host}"
@@ -1102,9 +1143,13 @@ class GitReader:
     def _working_mailmap(self) -> str | None:
         """Return the working tree's `.mailmap`, or None if there is none to read.
 
+        Bounded like the committed file: one larger than `_MAX_MAILMAP_BYTES`
+        is not read. Only the committed file was bounded, so a 66 MB
+        working-tree `.mailmap` was read whole.
+
         Returns:
             The file's text, undecodable bytes replaced; None if the file is
-            absent, unreadable, or a symbolic link.
+            absent, unreadable, a symbolic link, or too large.
         """
         mailmap_path = self._repo_path / ".mailmap"
         # Git itself refuses a symlinked .mailmap in the working tree. Following
@@ -1112,12 +1157,22 @@ class GitReader:
         if mailmap_path.is_symlink() or not mailmap_path.is_file():
             return None
         try:
-            # Undecodable bytes become U+FFFD rather than an exception: one
-            # badly encoded line used to crash the run with exit 1, which this
-            # project's contract reserves for "ran correctly, negative answer".
-            return mailmap_path.read_text(encoding="utf-8", errors="replace")
+            # Read one byte past the limit rather than trusting a size taken
+            # first: the file can grow between the two.
+            with mailmap_path.open("rb") as handle:
+                raw = handle.read(_MAX_MAILMAP_BYTES + 1)
         except OSError:
             return None
+        if len(raw) > _MAX_MAILMAP_BYTES:
+            _logger.warning(
+                "The working-tree .mailmap is over the %s-byte limit and was not read.",
+                f"{_MAX_MAILMAP_BYTES:,}",
+            )
+            return None
+        # Undecodable bytes become U+FFFD rather than an exception: one
+        # badly encoded line used to crash the run with exit 1, which this
+        # project's contract reserves for "ran correctly, negative answer".
+        return raw.decode("utf-8", errors="replace")
 
     def _committed_mailmap(self) -> str | None:
         """Return the `.mailmap` committed at HEAD, for a bare repository.
@@ -1173,33 +1228,23 @@ class GitReader:
             if not stripped:
                 continue
 
-            m4 = _MAILMAP_FOUR_FIELD.match(stripped)
-            if m4:
-                mailmap.by_name_and_email[(m4.group(3).strip().lower(), m4.group(4).lower())] = (
-                    m4.group(1).strip(),
-                    m4.group(2).lower(),
-                )
+            fields = _parse_mailmap_line(stripped)
+            if fields is None:
                 continue
-
-            m3 = _MAILMAP_THREE_FIELD.match(stripped)
-            if m3:
-                mailmap.by_email[m3.group(3).lower()] = (
-                    m3.group(1).strip(),
-                    m3.group(2).lower(),
+            if len(fields) == 4:
+                mailmap.by_name_and_email[(fields[2].strip().lower(), fields[3].lower())] = (
+                    fields[0],
+                    fields[1].lower(),
                 )
-                continue
-
-            m2 = _MAILMAP_EMAIL_ONLY.match(stripped)
-            if m2:
+            elif len(fields) == 3:
+                mailmap.by_email[fields[2].lower()] = (fields[0], fields[1].lower())
+            elif stripped.startswith("<"):
                 # Only the email is replaced; the commit's name is kept,
                 # which None signals to _resolve_identity.
-                mailmap.by_email[m2.group(2).lower()] = (None, m2.group(1).lower())
-                continue
-
-            m1 = _MAILMAP_NAME_ONLY.match(stripped)
-            if m1:
-                email = m1.group(2).lower()
-                mailmap.by_email[email] = (m1.group(1).strip(), email)
+                mailmap.by_email[fields[1].lower()] = (None, fields[0].lower())
+            else:
+                email = fields[1].lower()
+                mailmap.by_email[email] = (fields[0], email)
 
         return mailmap
 

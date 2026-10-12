@@ -513,7 +513,7 @@ class TestEveryEscapeHasAGuard:
 
         A `.mailmap` address may contain `</script`, which ends the block in
         every browser and turns the rest of the JSON into markup. JSON
-        encoding alone does not prevent it; the `</` escape does.
+        encoding alone does not prevent it; escaping `<` does.
         """
         repo = _init_repo(tmp_path / "repo")
         (repo / ".mailmap").write_text(
@@ -523,7 +523,7 @@ class TestEveryEscapeHasAGuard:
         generate_report(ReportConfig(repo_path=repo, output_path=out, deterministic=True))
         html = out.read_text(encoding="utf-8")
 
-        assert "a<\\/script x@e.test" in html, "positive control: address embedded"
+        assert "a\\u003c/script x@e.test" in html, "positive control: address embedded"
         assert "a</script" not in html
 
     def test_an_email_is_escaped_in_the_html_table(self, tmp_path: Path) -> None:
@@ -687,6 +687,77 @@ class TestSecondPassFindings:
 
         assert result.returncode == 2
         assert (store / "HEAD").read_bytes() == head_before
+
+    @pytest.mark.parametrize("fmt", ["html", "json", "csv"])
+    def test_a_hard_link_to_head_is_not_written_through(self, tmp_path: Path, fmt: str) -> None:
+        """A hard link is not a symbolic link, and its path is not inside `.git`.
+
+        A working tree delivered with `reveille-report.html` hard-linked to
+        `.git/HEAD` had the report written over HEAD by a plain `generate`,
+        and `git status` then failed (red team, 2026-10-12).
+        """
+        repo = _init_repo(tmp_path / "hostile")
+        head = repo / ".git" / "HEAD"
+        head_before = head.read_bytes()
+        name = {"html": "reveille-report.html", "json": "r.json", "csv": "r.csv"}[fmt]
+        os.link(head, repo / name)
+
+        result = _run_console_script(["generate", "--format", fmt, "--output", name], cwd=repo)
+
+        assert result.returncode == 0, result.stderr
+        assert head.read_bytes() == head_before
+        assert (repo / name).read_bytes() != head_before, "the report was written"
+        assert subprocess.run(["git", "status"], cwd=repo, capture_output=True).returncode == 0
+
+    def test_a_linked_worktree_protects_the_common_git_directory(self, tmp_path: Path) -> None:
+        """A linked worktree's `.git` points at `worktrees/<name>`; HEAD of the
+        repository it belongs to is in the common directory above that."""
+        source = _init_repo(tmp_path / "source")
+        # A bare repository: its HEAD path has no `.git` component, so the
+        # name check alone cannot see it.
+        common = tmp_path / "proj.git"
+        subprocess.run(["git", "clone", "-q", "--bare", str(source), str(common)], check=True)
+        worktree = tmp_path / "wt"
+        subprocess.run(
+            ["git", "worktree", "add", "-q", "-b", "side", str(worktree)],
+            cwd=common,
+            check=True,
+            capture_output=True,
+        )
+        head = common / "HEAD"
+        head_before = head.read_bytes()
+
+        result = _run_console_script(["generate", "--output", str(head)], cwd=worktree)
+
+        assert result.returncode == 2
+        assert head.read_bytes() == head_before
+
+    def test_a_new_report_is_readable_by_its_owner_only(self, tmp_path: Path) -> None:
+        """A report names people; on a shared machine 0o666 under the usual
+        umask made it readable by every user (CodeQL, 2026-10-12)."""
+        repo = _init_repo(tmp_path / "repo")
+        output = tmp_path / "r.html"
+
+        result = _run_console_script(["generate", "--output", str(output)], cwd=repo)
+
+        assert result.returncode == 0, result.stderr
+        assert output.stat().st_mode & 0o777 == 0o600
+        assert not [p for p in tmp_path.iterdir() if p.name.endswith(".tmp")], "no temporary left"
+
+    @pytest.mark.parametrize("mode", [0o644, 0o640, 0o600])
+    def test_a_rewritten_report_keeps_the_mode_its_owner_gave_it(
+        self, tmp_path: Path, mode: int
+    ) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        output = tmp_path / "r.html"
+        output.write_text("old", encoding="utf-8")
+        output.chmod(mode)
+
+        result = _run_console_script(["generate", "--output", str(output)], cwd=repo)
+
+        assert result.returncode == 0, result.stderr
+        assert output.read_text(encoding="utf-8") != "old", "the report was written"
+        assert output.stat().st_mode & 0o777 == mode
 
     def test_a_discovered_config_file_says_what_it_changed(self, tmp_path: Path) -> None:
         """Turning the ranking on from a file nobody asked for must not be silent."""

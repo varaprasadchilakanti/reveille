@@ -16,8 +16,9 @@ personally; there is no company or organisation behind it.
 anything you are content to discuss in public, or use
 [GitHub's private reporting form](https://github.com/varaprasadchilakanti/reveille/security/advisories/new)
 if you are not — it reaches the same person privately, and you do not have to be
-reporting a vulnerability to use it. No email address is published; there is one
-maintainer and both routes reach him. Questions and requests get a substantive
+reporting a vulnerability to use it. No email address is published for privacy
+requests; the conduct contact is in [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+There is one maintainer and both routes reach him. Questions and requests get a substantive
 answer.
 
 ## What is held, and where

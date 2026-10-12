@@ -41,7 +41,10 @@ import io
 import itertools
 import json
 import math
+import os
 import re
+import secrets
+import stat
 from collections import defaultdict
 from collections.abc import Sequence
 from pathlib import Path
@@ -270,7 +273,7 @@ class Renderer:
             )
         html = self.html_text(data)
         try:
-            resolved.write_text(html, encoding="utf-8")
+            _write_replacing(resolved, html, encoding="utf-8")
         except OSError as exc:
             raise OutputPathError(f"Failed to write report to '{resolved}': {exc}") from exc
 
@@ -352,7 +355,7 @@ class Renderer:
             )
         text = self.json_text(data)
         try:
-            resolved.write_text(text, encoding="utf-8")
+            _write_replacing(resolved, text, encoding="utf-8")
         except OSError as exc:
             raise OutputPathError(f"Failed to write JSON report to '{resolved}': {exc}") from exc
         return resolved
@@ -667,10 +670,13 @@ class Renderer:
 
         commits = f"{answer.commits:,} commit{'' if answer.commits == 1 else 's'}"
         authors = f"{len(answer.authors):,} author{'' if len(answer.authors) == 1 else 's'}"
+        # The window starts at the path's first change and ends where the
+        # analysis does, often months after the path's last change. Printed
+        # as one range beside "last changed", it read as the span of changes.
         lines = [
             f"{answer.path}: {commits} by {authors}, "
-            f"{window[0].isoformat()} to {window[1].isoformat()}; "
-            f"last changed {answer.last_changed.isoformat()}.",
+            f"from {window[0].isoformat()} to {answer.last_changed.isoformat()}, "
+            f"in a window ending {window[1].isoformat()}.",
         ]
         if answer.recently_active:
             lines.append(f"Changed it most recently: {names(answer.recently_active)}.")
@@ -715,8 +721,7 @@ class Renderer:
         try:
             # The BOM is for spreadsheet programs opening the file; stdout
             # output (csv_text) carries none.
-            with resolved.open("w", encoding="utf-8-sig", newline="") as fh:
-                fh.write(text)
+            _write_replacing(resolved, text, encoding="utf-8-sig")
         except OSError as exc:
             raise OutputPathError(f"Failed to write CSV report to '{resolved}': {exc}") from exc
         return resolved
@@ -1517,7 +1522,7 @@ def _build_heatmap_data(
         "contributors": contributors,
         "daily_counts": daily_counts,
     }
-    return json.dumps(payload).replace("</", "<\\/")
+    return _script_safe(json.dumps(payload))
 
 
 def _build_contributor_lines_chart(ranked: list[RankedContributor]) -> str:
@@ -1821,7 +1826,9 @@ def _build_extension_chart(files: list[FileStats]) -> str:
     if not breakdown:
         return "null"
 
-    labels = [label for label, _ in breakdown]
+    # An extension is text from a file name, and Plotly draws a subset of
+    # HTML in labels: unsanitised, `f.<a href=...>` became a clickable link.
+    labels = [_sanitise_chart_label(label) for label, _ in breakdown]
     values = [value for _, value in breakdown]
 
     fig = go.Figure(
@@ -1976,6 +1983,47 @@ def _compute_commit_concentration(counts: list[int]) -> int:
 _CSV_FORMULA_PREFIXES: tuple[str, ...] = ("=", "+", "-", "@", "\t", "\r")
 
 
+def _write_replacing(path: Path, text: str, *, encoding: str) -> None:
+    """Write `text` to a new file and move it over `path`.
+
+    Writing in place goes through every name the file has. A report path
+    hard-linked to `.git/HEAD` (a working tree delivered by someone else can
+    carry one) had a plain `generate` overwrite HEAD; a hard link is neither
+    a symbolic link nor a path inside `.git`, so no path check saw it. Moving
+    a new file into place replaces the name and leaves every other link to
+    the old file as it was.
+
+    A report names people, so a new one is readable and writable by its
+    owner only (0o600); on a shared machine 0o666 under the usual umask made
+    it readable by everyone. Rewriting an existing report keeps the mode its
+    owner gave it, so a report deliberately shared stays shared. The new file
+    is removed if anything fails before the move.
+
+    Args:
+        path: The resolved output path.
+        text: What to write. Newlines are written as given.
+        encoding: The text encoding, `utf-8-sig` for a CSV with a BOM.
+
+    Raises:
+        OSError: If the file cannot be created, written or moved.
+    """
+    try:
+        kept_mode: int | None = stat.S_IMODE(path.stat().st_mode)
+    except FileNotFoundError:
+        kept_mode = None
+    temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(descriptor, "w", encoding=encoding, newline="") as handle:
+            handle.write(text)
+        if kept_mode is not None:
+            temporary.chmod(kept_mode)
+        os.replace(temporary, path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
 def _assert_not_symlink(output_path: Path) -> None:
     """Refuse to write a report through a symbolic link.
 
@@ -2029,6 +2077,24 @@ def _neutralise_csv_cell(value: str) -> str:
     if value.startswith(_CSV_FORMULA_PREFIXES):
         return "'" + value
     return value
+
+
+def _script_safe(text: str) -> str:
+    r"""Escape JSON for embedding in an HTML `<script>` element.
+
+    Every `<` becomes the JSON escape `\u003c`, which `JSON.parse` reads back
+    as `<`. Escaping only `</` left `<!--<script`, which puts the HTML parser
+    in a state where the block's own `</script>` no longer ends it: a path,
+    extension or name holding it blanked every chart in the report. JSON
+    holds `<` only inside strings, so the escape is always valid.
+
+    Args:
+        text: A JSON document.
+
+    Returns:
+        The same document with no `<` in it.
+    """
+    return text.replace("<", "\\u003c")
 
 
 def _sanitise_chart_label(value: str) -> str:
@@ -2158,8 +2224,8 @@ def _to_json(fig: go.Figure) -> str:
     14:1 grid over the plot area, because the manager's attempt to
     override them never took effect.
 
-    The sequence "</" is escaped as "<\/" throughout the output to prevent
-    any "</script>" in label text from terminating the embedding script block.
+    Every `<` is escaped (see `_script_safe`), so no label text can end or
+    reopen the script block the specification is embedded in.
 
     Args:
         fig: A fully configured Plotly Figure instance.
@@ -2185,7 +2251,7 @@ def _to_json(fig: go.Figure) -> str:
 
     _strip_theme_colours(layout)
     raw["layout"] = layout
-    return json.dumps(raw).replace("</", "<\\/")
+    return _script_safe(json.dumps(raw))
 
 
 #: Layout keys whose value is a colour that differs between the two themes.

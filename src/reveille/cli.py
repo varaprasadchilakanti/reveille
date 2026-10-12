@@ -88,6 +88,7 @@ _TERMINAL_UNSAFE: dict[int, str] = {
         range(0x00, 0x09),  # C0 controls before tab
         range(0x0B, 0x20),  # C0 controls after newline, carriage return and escape among them
         range(0x7F, 0xA0),  # DEL and the C1 controls
+        (0x061C, 0x200E, 0x200F),  # ALM, LRM, RLM: implicit direction marks
         range(0x202A, 0x202F),  # LRE, RLE, PDF, LRO, RLO: direction embeddings and overrides
         range(0x2066, 0x206A),  # LRI, RLI, FSI, PDI: direction isolates
     )
@@ -346,6 +347,11 @@ class _StageSpinner:
     begin() and resolves to a static completion line on complete().
     Writes to stderr so stdout remains clean for scripting.
 
+    The animation redraws its line with carriage returns, which only a
+    terminal interprets. Captured by a script, a CI log or an assistant, every
+    frame arrived as text: "Reading commit history .    Reading commit history
+    ...". Off a terminal only the completion lines are written.
+
     complete() is safe to call before begin() has ever been invoked.
     """
 
@@ -355,7 +361,14 @@ class _StageSpinner:
     #: log line can start a fresh one. Shared because only one spinner runs.
     line_open: ClassVar[bool] = False
 
-    def __init__(self) -> None:
+    def __init__(self, *, animate: bool | None = None) -> None:
+        """Create a spinner.
+
+        Args:
+            animate: Whether to draw animation frames. None asks whether
+                stderr is a terminal at the time of construction.
+        """
+        self._animate: bool = sys.stderr.isatty() if animate is None else animate
         self._active: bool = False
         self._stop_event: threading.Event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -376,6 +389,8 @@ class _StageSpinner:
         self._start_time = time.monotonic()
         self._stop_event.clear()
         self._active = True
+        if not self._animate:
+            return
         self._thread = threading.Thread(target=self._run, args=(label,), daemon=True)
         self._thread.start()
 
@@ -403,6 +418,9 @@ class _StageSpinner:
         self._stop_event.set()
         if self._thread is not None:
             self._thread.join()
+            self._thread = None
+        else:
+            self._write_done(self._label)
         self._active = False
 
     def _run(self, label: str) -> None:
@@ -412,13 +430,16 @@ class _StageSpinner:
             _StageSpinner.line_open = True
             if self._stop_event.wait(0.2):
                 break
+        self._write_done(label, prefix="\r")
+
+    def _write_done(self, label: str, prefix: str = "") -> None:
         elapsed = self._elapsed_seconds
         if self._items_processed is not None:
             count = self._items_processed
             suffix = f"({elapsed:.1f}s, {count:,} commit{'' if count == 1 else 's'})"
         else:
             suffix = f"({elapsed:.1f}s)"
-        sys.stderr.write(f"\r  {label} ...   done {suffix}\n")
+        sys.stderr.write(f"{prefix}  {label} ...   done {suffix}\n")
         sys.stderr.flush()
         _StageSpinner.line_open = False
 
@@ -485,7 +506,7 @@ def _resolve_output_path(output: Path, repo_path: Path) -> Path:
     return output
 
 
-def _git_directory(repo_path: Path) -> Path | None:
+def _git_directories(repo_path: Path) -> list[Path]:
     """Find where the repository keeps Git's own files, in any layout.
 
     Usually that is `.git` inside the working tree. A bare repository keeps
@@ -494,26 +515,44 @@ def _git_directory(repo_path: Path) -> Path | None:
     Checking only for a path component named `.git` missed both: in a bare
     repository `--output HEAD` overwrote HEAD.
 
+    A linked worktree's `.git` file points at `worktrees/<name>` inside the
+    repository it belongs to, and that directory's `commondir` file names
+    the rest: HEAD, refs and objects of the main repository. Without it,
+    `--output <main>.git/HEAD` from a worktree of a bare repository was
+    accepted and overwrote HEAD (red team, 2026-10-12).
+
     Args:
         repo_path: The resolved repository root.
 
     Returns:
-        The resolved Git directory, or None if none is recognisable.
+        The resolved Git directories: the repository's own, then the common
+        one if it differs. Empty if none is recognisable.
     """
     dot_git = repo_path / ".git"
     if dot_git.is_dir():
-        return dot_git.resolve()
-    if dot_git.is_file():
+        git_dir = dot_git.resolve()
+    elif dot_git.is_file():
         try:
             pointer = dot_git.read_text(encoding="utf-8", errors="replace").strip()
         except OSError:
-            return None
-        if pointer.startswith("gitdir:"):
-            return (repo_path / pointer.removeprefix("gitdir:").strip()).resolve()
-        return None
-    if (repo_path / "HEAD").is_file() and (repo_path / "objects").is_dir():
-        return repo_path.resolve()
-    return None
+            return []
+        if not pointer.startswith("gitdir:"):
+            return []
+        git_dir = (repo_path / pointer.removeprefix("gitdir:").strip()).resolve()
+    elif (repo_path / "HEAD").is_file() and (repo_path / "objects").is_dir():
+        git_dir = repo_path.resolve()
+    else:
+        return []
+    directories = [git_dir]
+    try:
+        common = (git_dir / "commondir").read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return directories
+    if common:
+        common_dir = (git_dir / common).resolve()
+        if common_dir != git_dir:
+            directories.append(common_dir)
+    return directories
 
 
 def _validate_output_path(output: Path, repo_path: Path, *, from_config: bool = False) -> None:
@@ -563,8 +602,9 @@ def _validate_output_path(output: Path, repo_path: Path, *, from_config: bool = 
     # written over `.git/HEAD` leaves a clone that `git status` refuses to
     # read. No legitimate report belongs there, so this is refused whoever
     # chose the path -- flag, configuration file, or a symlink on the way.
-    git_dir = _git_directory(repo_path)
-    inside_git_dir = git_dir is not None and output.resolve().is_relative_to(git_dir)
+    inside_git_dir = any(
+        output.resolve().is_relative_to(git_dir) for git_dir in _git_directories(repo_path)
+    )
     if inside_git_dir or any(
         part.casefold() == ".git" for part in (*output.parts, *output.resolve().parts)
     ):
@@ -701,7 +741,7 @@ def _merge_cli_flags(
     return cast(ReportConfigKwargs, merged)
 
 
-def _run_report(report_config: ReportConfig, *, to_stdout: bool) -> None:
+def _run_report(report_config: ReportConfig, *, to_stdout: bool, quiet: bool = False) -> None:
     """Run the pipeline with a progress indicator, then print the outcome.
 
     Args:
@@ -709,6 +749,8 @@ def _run_report(report_config: ReportConfig, *, to_stdout: bool) -> None:
         to_stdout: Whether the report itself goes to stdout (`--output -`).
             Progress, notes and errors are on stderr either way, so stdout
             carries the report and nothing else.
+        quiet: Whether to leave out the progress lines. Notes, warnings and
+            errors are still written: they say something about the report.
 
     Raises:
         typer.Exit: NEGATIVE for an empty window, CANNOT_RUN for any other
@@ -720,7 +762,7 @@ def _run_report(report_config: ReportConfig, *, to_stdout: bool) -> None:
     # Held until the spinner has finished, so a notice is not overwritten by
     # the next animation frame.
     notices: list[str] = []
-    progress = _make_progress_callback(spinner)
+    progress = None if quiet else _make_progress_callback(spinner)
     try:
         if to_stdout:
             text = report_text(report_config, on_progress=progress, on_notice=notices.append)
@@ -878,6 +920,14 @@ def generate(
             help="Emit diagnostic logging to stderr. Does not change normal output.",
         ),
     ] = False,
+    quiet: Annotated[
+        bool,
+        typer.Option(
+            "--quiet",
+            "-q",
+            help="Do not show progress. Notes, warnings and errors are still shown.",
+        ),
+    ] = False,
 ) -> None:
     """Generate an HTML activity report for the target repository."""
     from reveille.config import load_config_from_toml
@@ -968,7 +1018,7 @@ def generate(
         report_config.output_format,
     )
 
-    _run_report(report_config, to_stdout=to_stdout)
+    _run_report(report_config, to_stdout=to_stdout, quiet=quiet)
 
 
 def _query_config(
@@ -1022,6 +1072,11 @@ def _run_query(produce: Callable[[Callable[[str], None]], str]) -> None:
         _err(f"Error: {exc}")
         raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
     _print_notices(notices)
+    # The answer carries text the repository chose (its directory name,
+    # names from a .mailmap) and is what a person or an assistant reads.
+    # Escaped like stderr; JSON is unchanged, since json.dumps already
+    # escapes every control and non-ASCII character.
+    text = _printable(text)
     typer.echo(text, nl=not text.endswith("\n"))
 
 
