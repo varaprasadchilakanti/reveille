@@ -3,26 +3,10 @@
 
 """A written summary of a repository's history, generated from its numbers.
 
-This is data-to-text generation in the sense of Reiter and Dale,
-*Building Natural Language Generation Systems* (2000): content is
-selected by rules over computed statistics, and realised through fixed
-templates. There is no model, no inference and no network call. The same
-history always produces the same sentences, which is what makes the
-output checkable -- every claim below is a threshold over a number that
-appears elsewhere in the same report.
-
-What it deliberately does not do:
-
-* name an individual, or say anything evaluative about one. The findings
-  are properties of the repository, in the terms ADR 0010 sets out;
-* describe a number as good, bad, healthy or concerning. A finding
-  states what the history shows and, where a reading is commonly drawn
-  from it wrongly, says so;
-* extrapolate. Nothing here predicts.
-
-The vocabulary is deliberately small. A reader who wants the detail has
-the charts; this exists so that the first fifteen seconds of reading are
-spent on findings rather than on axis labels.
+Data-to-text generation (Reiter and Dale, 2000): rules over computed statistics,
+fixed templates, no model or network. Same history, same sentences; every claim
+is a threshold over a number in the report. Findings never name or evaluate a
+person (ADR 0010), never call a number good or bad, and never predict.
 """
 
 from __future__ import annotations
@@ -35,10 +19,8 @@ from dataclasses import dataclass
 from reveille.domain.concentration import gini_coefficient
 from reveille.domain.models import Commit, ContributorStats
 
-#: A Gini at or above this is described as concentrated. Chosen to match
-#: the point at which the Lorenz curve is visibly bowed rather than any
-#: external benchmark: the coefficient is comparable against a repository
-#: over time, not against another repository.
+#: Gini at or above this reads as concentrated: where the Lorenz curve visibly
+#: bows, not an external benchmark.
 _CONCENTRATION_THRESHOLD = 0.40
 
 #: Below this many commits, distribution and cadence findings are
@@ -48,21 +30,12 @@ _MINIMUM_COMMITS_FOR_SHAPE = 20
 #: A gap in calendar days that is worth naming rather than a normal pause.
 _QUIET_PERIOD_DAYS = 30
 
-#: Share of commits landing on Saturday or Sunday, above which the
-#: pattern is stated. It is stated as an observation, never as a concern:
-#: time zones, contract shapes and release windows all produce it.
+#: Weekend share of commits above which the pattern is stated, as an
+#: observation, never a concern.
 _WEEKEND_SHARE_THRESHOLD = 0.15
 
-#: Below this many contributors, findings that describe *behaviour* are
-#: withheld entirely.
-#:
-#: Omitting a name does not make a sentence non-personal. GDPR Recital 26
-#: asks whether a person can be singled out by any means reasonably likely
-#: to be used, and in a two-person repository "31% of commits were
-#: authored at a weekend" singles somebody out at zero cost -- to their
-#: own colleague, and to anyone the report is forwarded to. Volume and
-#: recency say something about the repository at any size; a working
-#: pattern does not.
+#: Below this many contributors, behaviour findings are withheld: a working
+#: pattern in a tiny repository singles a person out (GDPR Recital 26).
 _MINIMUM_CONTRIBUTORS_FOR_BEHAVIOUR = 3
 
 
@@ -72,10 +45,8 @@ class Finding:
 
     Attributes:
         headline: The finding, in one sentence.
-        detail: The qualification a careful reader needs, or an empty
-            string where none applies.
-        evidence: The figure the headline rests on, formatted for
-            display, so a reader can find it in the charts below.
+        detail: The qualification a careful reader needs, or "".
+        evidence: The figure the headline rests on, formatted for display.
     """
 
     headline: str
@@ -86,19 +57,14 @@ class Finding:
 def longest_quiet_run(commits: list[Commit]) -> int:
     """Return the most consecutive days without a commit between two that had one.
 
-    This is the single definition the summary card, the cadence finding and
-    the JSON all use. Days before the first commit and after the last are not
-    counted: before the first there was nothing to be quiet, and the silence
-    after the last is what the dormancy finding states, against the end of
-    the window. Two functions with two definitions once put "155" on the card
-    and "3 days" in the finding of the same report.
+    The single definition the card, the cadence finding and the JSON share.
+    Silence after the last commit belongs to the dormancy finding.
 
     Args:
         commits: The commits in the analysis window.
 
     Returns:
-        The longest run of commit-free calendar days, or zero when fewer
-        than two days carry a commit.
+        Commit-free calendar days, or 0 when fewer than two days have commits.
     """
     days = sorted({c.timestamp.date() for c in commits})
     if len(days) < 2:
@@ -125,8 +91,7 @@ def _span_finding(commits: list[Commit]) -> Finding:
             f"{_plural(len(commits), 'commit')} over {_plural(days, 'day')}, "
             f"landing on {_plural(active, 'distinct day')}."
         ),
-        # Plain text: the sentence is rendered as HTML, where Markdown
-        # backticks printed literally.
+        # Plain text: rendered as HTML, where backticks print literally.
         detail="Merge commits are excluded, so this is lower than a raw git log count.",
         evidence=f"{first.isoformat()} to {last.isoformat()}",
     )
@@ -141,17 +106,11 @@ def _distribution_finding(contributors: list[ContributorStats]) -> Finding | Non
     total = sum(counts)
     leading_share = counts[0] / total
 
-    # The Gini coefficient is bounded by (n-1)/n, so with two contributors it
-    # cannot exceed 0.50 however lopsided the split. Reading a raw threshold
-    # over small counts produced "spread fairly evenly... the busiest holding
-    # 73%" in one sentence. The leading share decides the wording; the
-    # coefficient is reported as the evidence behind it.
+    # Gini is capped at (n-1)/n, so the leading share decides the wording and
+    # the coefficient is the evidence.
     if len(counts) < _MINIMUM_CONTRIBUTORS_FOR_BEHAVIOUR:
-        # With two contributors, a leading share is a statement about one
-        # named person in the contributor table. The Gini describes the
-        # same distribution without singling anyone out. The finding is also
-        # what `reveille summary` prints, where no table follows, so the
-        # sentence names the table rather than saying where it sits.
+        # A share would single out an identifiable person; the Gini does not.
+        # `reveille summary` prints no table, so the sentence names it.
         return Finding(
             headline=(f"Commits are distributed across {_plural(len(counts), 'contributor')}."),
             detail=(
@@ -223,9 +182,8 @@ def _weekend_finding(
 ) -> Finding | None:
     """State weekend activity as an observation, never as a judgement.
 
-    Withheld below `_MINIMUM_CONTRIBUTORS_FOR_BEHAVIOUR`. This is the most
-    sensitive sentence the module can produce, and in a small repository
-    it is a sentence about one identifiable person's out-of-hours working.
+    Withheld below `_MINIMUM_CONTRIBUTORS_FOR_BEHAVIOUR`: in a small
+    repository it describes one identifiable person.
     """
     if len(commits) < _MINIMUM_COMMITS_FOR_SHAPE:
         return None
@@ -287,13 +245,11 @@ def summarise(
     Args:
         commits: Every commit in the analysis window.
         contributors: Aggregated per-contributor statistics.
-        today: The date to measure recency against. Defaults to the most
-            recent commit date, which keeps the output reproducible for
-            `--deterministic`; pass a real date to measure dormancy.
+        today: Recency reference; defaults to the latest commit date
+            (reproducible); pass a real date to measure dormancy.
 
     Returns:
-        Findings in reading order. Empty if there are no commits, since
-        a summary of nothing is a sentence that says nothing.
+        Findings in reading order; empty when there are no commits.
     """
     if not commits:
         return []

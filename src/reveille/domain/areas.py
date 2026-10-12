@@ -3,30 +3,9 @@
 
 """Who changed each area of a repository, stated by fixed rules (ADR 0013).
 
-The question this answers is "who has worked on this part of the code?",
-asked per directory rather than per person. Each statement describes an
-area: how many commits changed it, how many authors made them, who they
-are, and when it was last changed. People appear only as the list of those
-who touched it.
-
-What it deliberately does not do:
-
-* describe a person. There is no "mainly", "owner" or "expert", no count
-  or share of an area per person, and no lookup from a person to areas;
-* order people. Names are alphabetical, and the only date printed belongs
-  to the area. Newest-first with a date per name would be a recency
-  ranking, and a person's last date reads as a departure date. When there
-  are more than five names, the five shown are those who changed the area
-  most recently -- the useful five for "whom do I ask?" -- and the line
-  says that is how they were chosen;
-* claim knowledge. Commits say where someone's work landed in a window,
-  not what they know: that needs blame and review history, neither of
-  which Reveille reads (ADR 0005).
-
-Like the findings, every statement is a rule over numbers that appear in
-the report, with no model and no network, and the same history always
-produces the same sentences. Unlike the findings, these name people, which
-is why the section exists only when `--area-authors` asks for it.
+Statements describe an area, never a person: no owner, no per-person count or
+date. Names are alphabetical; of more than five, the five most recent, said so.
+It names people, so it appears only with `--area-authors`.
 """
 
 from __future__ import annotations
@@ -39,15 +18,13 @@ from reveille.domain.models import AreaActivity, Commit
 #: The area files at the top level of a repository belong to.
 ROOT_AREA = "(root)"
 
-#: Areas shown, most-changed first. Chosen by commits: by lines would bring
-#: back generated churn, by author count would select for the name lists.
+#: Areas shown, most commits first (lines would favour generated churn).
 _AREAS_SHOWN = 8
 
 #: Names listed per area before the rest are counted as "and N others".
 _NAMES_SHOWN = 5
 
-#: Days without a change, before the end of the window, worth stating. The
-#: same threshold as the dormancy finding.
+#: Quiet days before the window's end worth stating; as the dormancy finding.
 _QUIET_DAYS = 30
 
 
@@ -55,8 +32,7 @@ _QUIET_DAYS = 30
 class AreaStatement:
     """What the report says about one area.
 
-    The facts first, then the sentences made from them, so the HTML and the
-    JSON cannot say different things.
+    Facts and the sentences made from them, so HTML and JSON cannot disagree.
 
     Attributes:
         area: The directory.
@@ -68,8 +44,7 @@ class AreaStatement:
         not_listed: Identities below `--min-commits`, counted and not named.
         last_changed: When the area was last changed.
         headline: Commits and authors, in one sentence.
-        authors: The listed authors, alphabetically, and how many are not
-            listed. Empty when every author is automated.
+        authors: Listed authors and how many are not; empty if all automated.
         automated: The automated identities, or an empty string.
         notes: Qualified statements that apply to this area.
         evidence: The date the area was last changed, for display.
@@ -98,8 +73,7 @@ def area_of(path: str, depth: int) -> str:
         depth: The most directory components an area may have.
 
     Returns:
-        The directory, at most `depth` components long, or ROOT_AREA for a
-        file at the top level.
+        The directory cut to `depth`, or ROOT_AREA at the top level.
     """
     directories = path.split("/")[:-1]
     if not directories:
@@ -110,8 +84,7 @@ def area_of(path: str, depth: int) -> str:
 def is_automated(name: str, email: str) -> bool:
     """Return whether an identity is an automated account.
 
-    A fixed, stated rule rather than a guess: a name or address carrying
-    the `[bot]` suffix that GitHub, GitLab and Bitbucket apps use.
+    Fixed rule: the `[bot]` suffix that GitHub, GitLab and Bitbucket apps use.
 
     Args:
         name: The identity's display name.
@@ -134,17 +107,14 @@ def describe_areas(
     Args:
         areas: Activity per area for the analysis window.
         names: Display name for every author address in the window.
-        listed: Addresses the report lists. An author below `--min-commits`
-            is counted and not named (ADR 0011).
-        window_end: The end of the analysis window, against which an area's
-            quiet spell is measured, so deterministic output stays so.
+        listed: Addresses the report names; others are counted (ADR 0011).
+        window_end: End of the window; quiet spells are measured from it.
 
     Returns:
         One statement per area shown.
     """
     chosen = sorted(areas, key=lambda a: (-a.commits, a.area))[:_AREAS_SHOWN]
-    # A one-author area is worth saying only where other areas have more:
-    # in a one-person repository it would repeat under every area.
+    # A one-author note would repeat under every area of a one-person repository.
     people_in_repository = sum(1 for e, n in names.items() if not is_automated(n, e))
     return [
         _describe(area, names, listed, window_end, qualify_single=people_in_repository > 1)
@@ -180,8 +150,7 @@ def _describe(
         ((names.get(e, e), e) for e in people if e in listed), key=lambda n: n[0].casefold()
     )
     bots = [(names.get(e, e), e) for e in automated if e in listed]
-    # Anybody below the threshold, person or automation, is counted and not
-    # named, and the line says how many (ADR 0011).
+    # Below the threshold: counted, not named (ADR 0011).
     unlisted = len(people) - len(named) + len(automated) - len(bots)
     authors = _people_line(named, activity.authors, every="Authors", some="Authors include")
     if unlisted:
@@ -231,8 +200,7 @@ def _people_line(
 ) -> str:
     """List identities: all of them, or the five most recent of many.
 
-    One rule for authors and automated accounts alike: alphabetical, and
-    of more than five, the five that changed the area most recently, said so.
+    Same rule for authors and automated accounts.
 
     Args:
         named: `(name, address)` of each identity, alphabetically.
@@ -278,21 +246,17 @@ def _count(n: int, singular: str) -> str:
 class PathAnswer:
     """Who changed one path in the window: `reveille who-changed` (ADR 0015).
 
-    The rules of ADR 0013 applied to a single path: authors alphabetically,
-    automated accounts apart, one date for the path, and no count or date
-    for any person.
+    ADR 0013's rules for one path: no count or date for any person.
 
     Attributes:
         path: The path asked about, as given.
         commits: Commits that changed it.
         last_changed: When it was last changed.
         authors: `(name, address)` of every author, alphabetically.
-        recently_active: `(name, address)` of the five authors who changed it
-            most recently, alphabetically -- whom to ask first.
+        recently_active: The five most recent authors, alphabetically.
         automated: `(name, address)` of automated accounts, alphabetically.
         co_authored_commits: Of those commits, how many credit a co-author.
-        co_authors: `(name, address)` of co-authors who did not also author a
-            commit here, alphabetically.
+        co_authors: Co-authors who authored nothing here, alphabetically.
     """
 
     path: str

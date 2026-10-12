@@ -1,11 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti
 # SPDX-License-Identifier: Apache-2.0
 
-"""Domain-specific exception hierarchy for Reveille.
-
-All exceptions raised by Reveille's public interface are subclasses of
-ReveilleError. Catch that class to handle any Reveille-originated failure
-generically, or catch a specific subclass for targeted handling.
+"""Exception hierarchy for Reveille; every public exception is a ReveilleError.
 
 The hierarchy is::
 
@@ -16,11 +12,7 @@ The hierarchy is::
     └── RenderError
         └── OutputPathError
 
-The base class was named ``RevelleError`` — missing the second ``i`` — up to
-and including v0.6.0. That spelling remains importable as a deprecated alias
-and resolves to the same class, so existing ``except RevelleError`` code is
-unaffected. It is scheduled for removal in v1.0.0, where the CLI contract and
-public API become stable.
+``RevelleError`` remains a deprecated alias of the base class until v1.0.0.
 """
 
 from __future__ import annotations
@@ -38,20 +30,11 @@ __all__ = [
 
 
 class ReveilleError(Exception):
-    """Base exception for all Reveille errors.
-
-    Never raised directly. Catch this class to handle any
-    Reveille-originated failure without caring about the specific cause.
-    """
+    """Base exception for all Reveille errors; never raised directly."""
 
 
 class RepositoryError(ReveilleError):
-    """Raised when the target path is not a valid or readable Git repository.
-
-    Covers both the case where no .git directory is present and the case
-    where the repository exists but cannot be read due to permissions or
-    corruption.
-    """
+    """Raised when the target path is not a valid or readable Git repository."""
 
 
 class EmptyRepositoryError(RepositoryError):
@@ -59,36 +42,19 @@ class EmptyRepositoryError(RepositoryError):
 
 
 class ConfigurationError(ReveilleError):
-    """Raised when the supplied configuration is invalid.
-
-    Covers malformed configuration files, invalid field values, and
-    logically inconsistent date ranges where since > until.
-    """
+    """Raised for a malformed config file, invalid value, or since > until."""
 
 
 class RenderError(ReveilleError):
-    """Raised when the HTML report cannot be rendered.
-
-    Typically caused by a template error or an inability to write
-    the output file to the specified path.
-    """
+    """Raised when the HTML report cannot be rendered or written."""
 
 
 class OutputPathError(RenderError):
-    """Raised when the specified output path cannot be written.
-
-    Caused by the parent directory not existing or by insufficient
-    filesystem permissions.
-    """
+    """Raised when the output path cannot be written (missing parent, permissions)."""
 
 
 def __getattr__(name: str) -> type[ReveilleError]:
-    """Resolve the pre-v0.7.0 misspelling of the base exception.
-
-    PEP 562 module-level attribute access. Keeping ``RevelleError``
-    importable means `except RevelleError` in existing consumer code
-    continues to catch every Reveille failure, while new code and the
-    warning steer callers to the corrected spelling.
+    """Resolve the deprecated ``RevelleError`` alias (PEP 562), with a warning.
 
     Args:
         name: The attribute being accessed on this module.

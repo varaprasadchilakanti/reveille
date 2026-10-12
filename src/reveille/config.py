@@ -3,10 +3,8 @@
 
 """Configuration model for Reveille report generation.
 
-ReportConfig is the single validated input object passed from the
-CLI layer to the application service. It is constructed from CLI
-flags and an optional TOML configuration file, with CLI flags
-taking precedence over file values in all cases.
+ReportConfig is the one validated input from CLI to service, built from flags
+and an optional TOML file; flags always take precedence.
 """
 
 from __future__ import annotations
@@ -24,39 +22,12 @@ OutputFormat = Literal["html", "json", "csv"]
 
 
 class RankingWeights(BaseModel):
-    """Configurable weights for the contributor ranking composite score.
+    """Weights for the ranking composite score; they must sum to 1.0.
 
-    All four weights must sum to 1.0, so the composite score stays
-    bounded to [0.0, 1.0] and remains comparable across runs. Validation
-    enforces this at construction time.
+    **The defaults are a documented judgement, not a derived model**; the
+    reasoning is in docs/USER_GUIDE.md. The composite measures volume and
+    regularity of commits, not contribution.
 
-    **The defaults are a judgement call, not an empirically derived
-    model.** No study establishes that these four signals in this
-    proportion measure anything in particular. They are documented here
-    so the judgement can be argued with, and they are configurable so it
-    can be overridden.
-
-    The reasoning behind their relative ordering:
-
-    - `commits` (0.30) is weighted highest because commit count is the
-      least easily distorted of the four. It is insensitive to file type, to
-      generated code, and to how a change happens to be split across
-      lines.
-    - `lines` (0.25) captures volume, but is the easiest to distort:
-      a vendored dependency, a lockfile, or a reformatting pass can
-      dwarf months of considered work.
-    - `consistency` (0.25) is active days over window days. It rewards
-      sustained participation over a single burst, which is the closest
-      any of these gets to a durability signal.
-    - `recency` (0.20) is weighted lowest deliberately. Recency is a
-      property of the analysis window rather than of the person; weight
-      it higher and the same contributor's tier swings on the choice of
-      end date.
-
-    None of this makes the composite a measure of contribution. It
-    measures volume and regularity of commits, which is what Git
-    records. See `reveille.domain.ranking` for the caveat that belongs
-    with any use of it.
     """
 
     commits: float = Field(default=0.30, ge=0.0, le=1.0)
@@ -86,10 +57,6 @@ class RankingWeights(BaseModel):
 class ReportConfig(BaseModel):
     """Validated configuration for a single report generation run.
 
-    Constructed by the CLI layer from flag values and an optional TOML
-    configuration file. Passed as-is to the application service layer.
-    CLI flag values always take precedence over configuration file values.
-
     Raises:
         ValueError: If since > until.
     """
@@ -102,22 +69,16 @@ class ReportConfig(BaseModel):
     until: datetime.date | None = Field(default=None)
     exclude_authors: list[str] = Field(default_factory=list)
     min_commits: int = Field(default=1, ge=1)
-    # Off by default from 0.8.0. The ranking assigns named individuals a
-    # composite score, a percentile and a military tier designation, and a
-    # report that does that by default invites exactly the use its own
-    # documentation says it must not be put to. Opt in with --ranking or
-    # `[ranking] enabled = true`. See docs/adr/0010-ranking-is-opt-in.md.
+    # Off by default: it scores named individuals, inviting the use the docs
+    # forbid. Opt in with --ranking or `[ranking] enabled = true` (ADR 0010).
     ranking_enabled: bool = Field(default=False)
     ranking_weights: RankingWeights = Field(default_factory=RankingWeights)
-    # Off by default, and not implied by the ranking: the "who changed each
-    # area" section names people, so it is a separate, deliberate choice.
-    # Opt in with --area-authors or `[areas] enabled = true`. ADR 0013.
+    # Off by default and not implied by the ranking: it names people (ADR 0013).
     area_authors_enabled: bool = Field(default=False)
     area_depth: int = Field(default=3, ge=1, le=10)
     output_format: OutputFormat = Field(default="html")
     deterministic: bool = Field(default=False)
-    # Bounds every list of people in JSON and CSV (ADR 0015). None keeps
-    # every row, as before.
+    # Bounds every list of people in JSON and CSV (ADR 0015); None keeps all.
     limit: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
@@ -136,16 +97,10 @@ class ReportConfig(BaseModel):
 
 
 class ReportConfigKwargs(TypedDict, total=False):
-    """Typed keyword-argument mapping for ReportConfig construction.
+    """Typed keyword arguments for ReportConfig, assembled from TOML then flags.
 
-    All keys carry total=False because the dict is assembled incrementally:
-    first from an optional TOML file, then from CLI flag overrides. Absent
-    keys fall back to the ReportConfig field default at construction time.
-
-    since and until are typed as datetime.date (not datetime.date | None)
-    because when present in the mapping, the value is always a concrete
-    date. The Optional annotation on ReportConfig expresses the
-    absence-of-key default, not a stored None.
+    total=False: an absent key takes the field default. since and until are
+    plain dates because, when present, they are never None.
     """
 
     repo_path: Path
@@ -168,20 +123,16 @@ class ReportConfigKwargs(TypedDict, total=False):
 def load_config_from_toml(path: Path) -> ReportConfigKwargs:
     """Load and flatten configuration values from a Reveille TOML file.
 
-    Reads the structured TOML format documented in the README and returns
-    a typed keyword-argument mapping suitable for constructing a ReportConfig.
-    Only keys present in the file are included — absent keys do not override
-    CLI defaults.
+    Only keys present in the file are returned, so absent keys override nothing.
 
     Args:
         path: Path to the TOML configuration file.
 
     Returns:
-        A ReportConfigKwargs mapping of ReportConfig-compatible keyword arguments.
+        ReportConfig keyword arguments.
 
     Raises:
-        ConfigurationError: If the file does not exist, cannot be read,
-            is not valid TOML, or contains an invalid date string.
+        ConfigurationError: If the file is missing, unreadable, not TOML, or invalid.
     """
     try:
         with path.open("rb") as fh:
@@ -190,9 +141,8 @@ def load_config_from_toml(path: Path) -> ReportConfigKwargs:
         raise ConfigurationError(f"Configuration file not found: '{path}'.") from exc
     except tomllib.TOMLDecodeError as exc:
         raise ConfigurationError(f"Configuration file is not valid TOML: {exc}") from exc
-    # Both used to escape as tracebacks with exit 1, which this project's
-    # contract reserves for "ran correctly, negative answer". TOML must be
-    # UTF-8, and a directory named reveille.toml is not a file.
+    # Caught so they exit as configuration errors, not tracebacks with exit 1
+    # ("negative answer"). TOML must be UTF-8; a directory is not a file.
     except UnicodeDecodeError as exc:
         raise ConfigurationError(
             f"Configuration file '{path}' is not UTF-8 text, which TOML requires."
@@ -226,10 +176,7 @@ def _parse_report_section(report: dict[str, Any]) -> dict[str, Any]:
         ConfigurationError: If a date field contains an invalid ISO 8601 string.
     """
     kwargs: dict[str, Any] = {}
-    # `str()` on a table or an array succeeds and produces nonsense: a title
-    # of "{'a': 1}", or an output path of "[1, 2]", written out with exit 0.
-    # The sibling type checks in `_parse_filters_section` exist for exactly
-    # this reason; these three keys were missing them.
+    # Type-checked: `str()` on a table or array would succeed with nonsense.
     for key, field in (("title", "title"), ("output", "output_path"), ("branch", "branch")):
         if key not in report:
             continue
@@ -271,8 +218,7 @@ def _strict_bool(section: str, key: str, value: object) -> bool:
         The value.
 
     Raises:
-        ConfigurationError: If the value is not a boolean; a quoted "false"
-            is a non-empty string, which would count as true.
+        ConfigurationError: If not a boolean (a quoted "false" is truthy).
     """
     if not isinstance(value, bool):
         raise ConfigurationError(f"[{section}] {key} must be true or false, not {value!r}.")
@@ -308,12 +254,7 @@ def _parse_filters_section(filters: dict[str, Any]) -> dict[str, Any]:
         A partial kwargs dict for ReportConfig construction.
 
     Raises:
-        ConfigurationError: If a value has the wrong type. These were bare
-            `int()` and `list()` calls, so a mistyped key raised ValueError or
-            TypeError, escaped the CLI's ConfigurationError handler, printed a
-            traceback, and exited 1 -- which on this project's published
-            contract means "ran correctly, negative answer" rather than "could
-            not run".
+        ConfigurationError: If a value has the wrong type.
     """
     kwargs: dict[str, Any] = {}
     if "min_commits" in filters:
@@ -325,8 +266,7 @@ def _parse_filters_section(filters: dict[str, Any]) -> dict[str, Any]:
         kwargs["min_commits"] = value
     if "exclude_authors" in filters:
         authors = filters["exclude_authors"]
-        # A bare string would be split into characters by `list()`, silently
-        # excluding contributors named "a", "b", "c" and nobody the user meant.
+        # A bare string would be split into characters by `list()`.
         if not isinstance(authors, list) or not all(isinstance(a, str) for a in authors):
             raise ConfigurationError(
                 f"[filters] exclude_authors must be a list of strings, not {authors!r}."
@@ -345,13 +285,11 @@ def _parse_areas_section(areas: dict[str, Any]) -> dict[str, Any]:
         A partial kwargs dict for ReportConfig construction.
 
     Raises:
-        ConfigurationError: If `enabled` is not a boolean or `depth` is not
-            an integer.
+        ConfigurationError: If `enabled` or `depth` has the wrong type.
     """
     kwargs: dict[str, Any] = {}
     if "enabled" in areas:
-        # Strict for the same reason as [ranking]: "false" is a non-empty
-        # string, and an accidental enable names people.
+        # Strict: "false" is a truthy string, and an accidental enable names people.
         value = areas["enabled"]
         if not isinstance(value, bool):
             raise ConfigurationError(
@@ -379,10 +317,7 @@ def _parse_ranking_section(ranking: dict[str, Any]) -> dict[str, Any]:
     """
     kwargs: dict[str, Any] = {}
     if "enabled" in ranking:
-        # Strict, not `bool(...)`. Any non-empty string is truthy, so
-        # `enabled = "false"` would have switched the ranking ON -- and the
-        # ranking is the one feature where an accidental enable names
-        # individuals. A config that reads as "off" must never produce tiers.
+        # Strict, not `bool(...)`: `enabled = "false"` must never produce tiers.
         value = ranking["enabled"]
         if not isinstance(value, bool):
             raise ConfigurationError(
@@ -397,12 +332,9 @@ def _parse_ranking_section(ranking: dict[str, Any]) -> dict[str, Any]:
             raise ConfigurationError(
                 f"[ranking] weights must be a table of named weights, not {w!r}."
             )
-        # Both arms matter. `float()` raises ValueError on a non-numeric
-        # value, and RankingWeights raises pydantic's ValidationError when a
-        # weight is out of range or the four do not sum to one. Neither was
-        # caught, so a mistyped weight printed a raw traceback and exited 1 --
-        # which on this project's published contract means "ran correctly,
-        # negative answer" rather than "could not run".
+        # Catches `float()`'s ValueError and pydantic's ValidationError (a
+        # ValueError), so a bad weight is a configuration error, not a traceback.
+
         try:
             kwargs["ranking_weights"] = RankingWeights(
                 commits=float(w.get("commits", 0.30)),

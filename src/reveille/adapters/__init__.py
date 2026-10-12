@@ -1,9 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti
 # SPDX-License-Identifier: Apache-2.0
 
-"""Infrastructure adapter layer for Reveille.
+"""Adapter layer: the Git reader (GitPython) and HTML renderer (Jinja2, Plotly).
 
-Contains the two external boundaries: the Git reader (GitPython)
-and the HTML renderer (Jinja2 + Plotly). Both are replaceable
-without touching domain or service logic.
+Either is replaceable without touching domain or service logic.
 """

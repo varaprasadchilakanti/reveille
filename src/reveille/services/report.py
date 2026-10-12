@@ -3,24 +3,10 @@
 
 """Application service for report generation.
 
-Orchestrates the full report generation pipeline:
-    1. Validate the repository path.
-    2. Read Git log data via the GitReader adapter.
-    3. Derive the analysis window boundaries.
-    4. Aggregate contributor statistics.
-    5. Rank contributors using the ranking engine.
-    6. Assemble the ReportData object.
-    7. Render to the configured format via the Renderer adapter --
-       HTML, JSON, or CSV, dispatched on `config.output_format`.
-    8. Return the absolute path of the written file.
+Reads commits, aggregates and optionally ranks contributors, and renders HTML,
+JSON or CSV. Imports no GitPython, Jinja2, Plotly or Typer; progress goes to a
+`ProgressEvent` callback whose display is the CLI's decision.
 
-This layer has no direct knowledge of GitPython, Jinja2, Plotly,
-or Typer. All external concerns are delegated to adapters.
-
-Progress is reported by emitting `ProgressEvent` objects to an optional
-callback, not by writing to a terminal. Whether those events become an
-animated spinner, log lines, or nothing at all is the CLI's decision;
-the service holds no opinion about output devices.
 """
 
 from __future__ import annotations
@@ -61,11 +47,8 @@ def generate_report(
 
     Args:
         config: Validated report configuration.
-        on_progress: Optional callable invoked with a ProgressEvent at each
-            pipeline stage boundary. Has no effect on the output when omitted.
-        on_notice: Optional callable given one plain sentence for each thing
-            the reader of the report should know about how it was produced,
-            such as commits left out of the window.
+        on_progress: Called with a ProgressEvent at each stage boundary.
+        on_notice: Called with one sentence per caveat about how the report was produced.
 
     Returns:
         The absolute paths of the written files.
@@ -145,8 +128,7 @@ def who_changed_text(
 ) -> str:
     """State who changed one path in the window (ADR 0015).
 
-    Reads only the commits that changed the path, without line counts, so it
-    answers in well under a second on a large history.
+    Reads only commits touching the path, without line counts, so it is fast.
 
     Args:
         config: Validated configuration; output settings are unused.
@@ -201,8 +183,7 @@ def build_report_data(
         config: Validated report configuration.
         on_progress: As for generate_report.
         on_notice: As for generate_report.
-        line_counts: Read per-file line counts; False for callers that
-            state nothing about lines or files.
+        line_counts: Read per-file line counts; False when nothing about lines is stated.
 
     Returns:
         The complete report dataset, ready for any renderer.
@@ -212,13 +193,9 @@ def build_report_data(
     stage_start = time.monotonic()
 
     _emit(on_progress, "Reading commit history", 0.0)
-    # A default window ends today. A commit dated later -- a wrong clock, or
-    # a rebase that kept a future date -- would otherwise be counted in the
-    # totals of a window that says it ended before it. Nor may one such
-    # commit stretch the window: a single 2039 timestamp would drag every
-    # timeline thirteen years to the right. It is left out of every figure
-    # and the omission is stated. An explicit `--until` is taken as asked,
-    # and deterministic mode closes on the last commit (ADR 0008).
+    # A default window ends today; later-dated commits are left out of every
+    # figure, stated, and never stretch the window. An explicit `--until` is
+    # taken as asked; deterministic mode closes on the last commit (ADR 0008).
     cutoff = _today() if config.until is None and not config.deterministic else None
     commits = reader.read_commits(
         branch=config.branch,
@@ -226,8 +203,7 @@ def build_report_data(
         until=config.until,
         exclude_authors=config.exclude_authors,
         dated_until=cutoff,
-        # Collected only when asked for: the section names people by area
-        # (ADR 0013), and nothing about it is kept otherwise.
+        # Collected only when enabled: the section names people (ADR 0013).
         area_depth=config.area_depth if config.area_authors_enabled else None,
         line_counts=line_counts,
     )
@@ -241,10 +217,8 @@ def build_report_data(
 
     window_end = cutoff if cutoff is not None else _resolve_window_end(config, commits)
 
-    # The window starts where the history does, however early `--since` was.
-    # Days before the first commit are not quiet days, and counting them put
-    # "Longest quiet run 8,469 days" on a repository three years old.
-    # `provenance.filters.requested_since` keeps what was asked for.
+    # The window starts at the first commit, however early `--since` was: days
+    # before it are not quiet days. `requested_since` keeps what was asked for.
     first_commit = min(c.timestamp.date() for c in commits)
     window_start = max(config.since, first_commit) if config.since is not None else first_commit
 
@@ -252,11 +226,8 @@ def build_report_data(
     stage_start = time.monotonic()
 
     _emit(on_progress, "Aggregating contributor statistics", elapsed, len(commits))
-    # Aggregated once over everybody, then split. `min_commits` decides who
-    # is *listed*; it does not decide what the figures are about. Computing
-    # the Gini over the survivors reported 0.00 -- perfect equality -- for a
-    # repository split 238/84, because the contributor who made the split
-    # uneven had been filtered out of the population first.
+    # Aggregated over everybody, then split: `min_commits` decides who is
+    # listed, not the population the figures (such as the Gini) describe.
     every_contributor = reader.aggregate_contributor_stats(
         commits=commits,
         min_commits=1,
@@ -308,9 +279,8 @@ def build_report_data(
 
     head_sha = reader.resolve_head_sha(config.branch)
 
-    # Deterministic mode pins the timestamp to the analysed commit, the way a
-    # reproducible build pins to SOURCE_DATE_EPOCH: the value stays meaningful
-    # and stops being a function of when the command happened to run.
+    # Deterministic mode pins the timestamp to the analysed commit, as a
+    # reproducible build pins to SOURCE_DATE_EPOCH.
     if config.deterministic:
         head_commit_time = max(c.timestamp for c in commits)
         metadata = replace(metadata, generated_at=head_commit_time)
@@ -377,13 +347,8 @@ def _emit(
 ) -> None:
     """Emit a progress event if anybody is listening.
 
-    Collapses the `if on_progress is not None` guard that otherwise repeats at
-    every stage boundary. The service holds no opinion about output devices --
-    whether these become a spinner, log lines, or nothing at all is the CLI's
-    decision.
-
     Args:
-        on_progress: The optional callback supplied by the caller.
+        on_progress: The optional callback.
         stage: Label of the stage now starting.
         elapsed_seconds: Duration of the stage that just completed.
         items_processed: Optional item count from the completed stage.
@@ -404,9 +369,6 @@ def _note_cut_csv(
 ) -> None:
     """Say when --limit cut the CSV, which has nowhere to carry a total.
 
-    The JSON states the full count beside every bounded list; a CSV is rows
-    only, so the omission is stated on stderr instead of left silent.
-
     Args:
         config: The configuration, for the format and the limit.
         data: The report dataset.
@@ -425,7 +387,7 @@ def _notify(on_notice: Callable[[str], None] | None, message: str) -> None:
     """Pass a notice to the caller, if anybody is listening.
 
     Args:
-        on_notice: The optional callback supplied by the caller.
+        on_notice: The optional callback.
         message: One plain sentence.
     """
     if on_notice is not None:
@@ -440,19 +402,15 @@ def _count(commits: int) -> str:
 def _resolve_window_end(config: ReportConfig, commits: list[Commit]) -> datetime.date:
     """Decide the closing date of the analysis window.
 
-    In deterministic mode the window must close on something the repository
-    itself determines. `date.today()` is an input from outside the repository
-    and it feeds the recency component of the ranking, so without this two runs
-    over an identical repository on different days produce different scores --
-    and the output is not reproducible in any useful sense.
+    Deterministic mode closes on the last commit, not today: today feeds the
+    ranking's recency, so scores would change from day to day.
 
     Args:
         config: The validated report configuration.
-        commits: The commits inside the window, used only for their timestamps.
+        commits: The commits in the window, for their timestamps.
 
     Returns:
-        An explicit `--until` if given, otherwise the last commit date in
-        deterministic mode, otherwise today.
+        An explicit `--until`, else the last commit date if deterministic, else today.
     """
     if config.until is not None:
         return config.until
@@ -469,10 +427,6 @@ def _plural_refs(n: int) -> str:
 def _today() -> datetime.date:
     """Return today's date in UTC, the zone every commit timestamp is read in.
 
-    The local date was used, and west of UTC it is a day behind for part of
-    every day: a commit made minutes earlier was "dated after today" and left
-    out of the report.
-
     Returns:
         The current UTC calendar date.
     """
@@ -486,10 +440,8 @@ def _build_provenance(
 ) -> AnalysisProvenance:
     """Record what produced this report, and over what.
 
-    Filters are recorded as *requested*, not as resolved. `analysis_since` says
-    where the window began; `requested_since` says whether anybody asked for
-    that, and only the pair distinguishes a filtered report from an unfiltered
-    one that happens to start on the same date.
+    Filters are recorded as requested, not resolved: only `requested_since`
+    beside `analysis_since` tells a filtered report from an unfiltered one.
 
     Args:
         config: The validated report configuration.

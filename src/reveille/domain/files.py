@@ -1,20 +1,11 @@
 # SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti
 # SPDX-License-Identifier: Apache-2.0
 
-"""Where change concentrates in a repository, by path.
+"""Where change concentrates by path, and what kinds of file it goes into.
 
-Two questions, both about files and neither about people:
-
-* which paths absorb the most change, and
-* what kinds of file the work actually goes into.
-
-The first is the churn half of hotspot analysis as popularised by Adam
-Tornhill in *Your Code as a Crime Scene* (2013), and resting on the
-relative-churn measure of Nagappan and Ball, *Use of Relative Code Churn
-Measures to Predict System Defect Density* (ICSE 2005). The full method
-crosses churn with a complexity measure; Reveille reads history and never
-file content, so it reports the churn axis alone and says so. A file that
-changes often is a file to look at, not a file that is wrong.
+Churn half of hotspot analysis (Tornhill, 2013; Nagappan and Ball, ICSE 2005),
+without the complexity axis: file content is never read. Frequent change marks
+a file to look at, not a file that is wrong.
 """
 
 from __future__ import annotations
@@ -23,11 +14,7 @@ from collections import defaultdict
 
 from reveille.domain.models import FileStats
 
-#: Paths whose churn says more about tooling than about the work. Lock
-#: files in particular are machine-generated and dominate any churn
-#: ranking of a repository that has one -- `poetry.lock` is the single
-#: largest source of changed lines in this repository, by a factor of
-#: three, and tells a reader nothing they can act on.
+#: Machine-generated lock files: dominant churn, nothing actionable.
 _GENERATED_NAMES = frozenset(
     {
         "poetry.lock",
@@ -67,17 +54,13 @@ def hotspots(
 ) -> list[FileStats]:
     """Return the paths absorbing the most change, most first.
 
-    Ordered by total churn -- added plus deleted, not net, since a file
-    that gains and loses a thousand lines has been worked on heavily
-    whatever its final size. Ties break on commit count, then on path, so
-    the ordering is total and the output is reproducible.
+    Ordered by churn (added plus deleted, not net), then commit count, then
+    path, so the order is total and reproducible.
 
     Args:
         files: Per-path activity for the analysis window.
         limit: Maximum paths to return.
         include_generated: Whether to include machine-generated files.
-            Off by default: a lock file usually tops the ranking and
-            tells a reader nothing they can act on.
 
     Returns:
         At most `limit` entries, highest churn first.
@@ -93,20 +76,8 @@ def extension_breakdown(
 ) -> list[tuple[str, int]]:
     """Return churn totalled by file extension, largest first.
 
-    Answers what kind of work a period contained -- source, tests,
-    documentation, configuration -- without naming a single file or
-    person. Extensions beyond `limit` are pooled into one trailing
-    "other" entry rather than dropped, so the total is preserved.
-
-    A path with no extension is reported as "(none)"; a dotfile such as
-    `.gitignore` counts as having no extension, matching how a reader
-    would describe it rather than treating `gitignore` as a type.
-
-    Lock files are reported as one entry, "lock files", whatever their
-    extension. Their churn is a kind of change -- dependency updates -- so it
-    is not dropped; but `package-lock.json` counted as `.json` and
-    `pnpm-lock.yaml` as `.yaml` put a tool's output into the same bar as
-    hand-written files of that type.
+    Beyond `limit`, extensions pool into a trailing "other". Dotfiles count as
+    "(none)"; lock files form one "lock files" entry.
 
     Args:
         files: Per-path activity for the analysis window.
@@ -127,17 +98,14 @@ def extension_breakdown(
 
     kept = ranked[:limit]
     pooled = sum(value for _label, value in ranked[limit:])
-    # A pooled remainder of zero is noise: it happens when the tail is
-    # exactly one extension with no churn, and an "other: 0" row invites
-    # the question of what it is.
+    # An "other: 0" row is noise.
     return [*kept, ("other", pooled)] if pooled else kept
 
 
 def generated_churn(files: list[FileStats]) -> tuple[int, int]:
     """Return how many generated files changed, and their lines changed.
 
-    What the hotspot ranking leaves out, so the report can say so beside it
-    rather than leave a reader to wonder where `poetry.lock` went.
+    What the hotspot ranking leaves out, so the report can say so.
 
     Args:
         files: Per-path activity for the analysis window.
@@ -159,8 +127,7 @@ def _extension_of(path: str) -> str:
         The extension including its dot, or "(none)".
     """
     name = path.rsplit("/", 1)[-1]
-    # A leading dot makes a dotfile, not an extension: `.gitignore` is a
-    # file called gitignore, not a gitignore-typed file.
+    # A leading dot makes a dotfile, not an extension.
     if name.startswith("."):
         return "(none)"
     _, dot, extension = name.rpartition(".")

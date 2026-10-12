@@ -1,12 +1,9 @@
 # SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti
 # SPDX-License-Identifier: Apache-2.0
 
-"""Config scaffolding for the `reveille init` command.
+"""Config scaffolding for `reveille init`: the reveille.toml and .mailmap templates.
 
-Provides the annotated default TOML template, the annotated default
-.mailmap template, and the write functions that materialise them on
-disk. This module has no knowledge of the CLI layer -- it accepts
-resolved paths and a force flag, writes files, and returns results.
+Knows nothing of the CLI: it takes paths and a force flag, and writes files.
 """
 
 from __future__ import annotations
@@ -240,22 +237,18 @@ _DEFAULT_MAILMAP_TEMPLATE: str = """\
 
 
 def write_init_config(output_path: Path, *, force: bool = False) -> Path:
-    """Write a fully annotated default reveille.toml to the specified path.
+    """Write the annotated default reveille.toml.
 
     Args:
-        output_path: Destination path for the generated configuration file.
-            The parent directory must exist.
-        force: If True, overwrite an existing file without raising an error.
-            Defaults to False.
+        output_path: Destination; its parent directory must exist.
+        force: Overwrite an existing file.
 
     Returns:
-        The resolved absolute path of the written configuration file.
+        The resolved path written.
 
     Raises:
-        ConfigurationError: If a file already exists at output_path and
-            force is False.
-        OutputPathError: If the parent directory does not exist or the
-            file cannot be written due to a filesystem error.
+        ConfigurationError: If the file exists and force is False.
+        OutputPathError: If the parent is missing or the write fails.
     """
     _refuse_symlink(output_path)
     resolved = output_path.resolve()
@@ -281,25 +274,19 @@ def write_init_config(output_path: Path, *, force: bool = False) -> Path:
 
 
 def write_mailmap_template(output_path: Path, *, force: bool = False) -> Path | None:
-    """Write an annotated .mailmap template to the specified path.
+    """Write the annotated .mailmap template.
 
-    Unlike write_init_config, an existing file at output_path is not an
-    error condition -- .mailmap is a Git-native file the repository may
-    already have configured. When the file exists and force is False, the
-    write is silently skipped and None is returned.
+    An existing .mailmap is the repository's own, so it is skipped, not an error.
 
     Args:
-        output_path: Destination path for the .mailmap template.
-            The parent directory must exist.
-        force: If True, overwrite an existing file. Defaults to False.
+        output_path: Destination; its parent directory must exist.
+        force: Overwrite an existing file.
 
     Returns:
-        The resolved absolute path of the written file, or None if the
-        file already existed and force was False.
+        The resolved path written, or None if the file existed and force was False.
 
     Raises:
-        OutputPathError: If the parent directory does not exist or the
-            file cannot be written due to a filesystem error.
+        OutputPathError: If the parent is missing or the write fails.
     """
     _refuse_symlink(output_path)
     resolved = output_path.resolve()
@@ -324,11 +311,8 @@ def write_mailmap_template(output_path: Path, *, force: bool = False) -> Path | 
 def _refuse_symlink(path: Path) -> None:
     """Refuse to write through a symbolic link.
 
-    `Path.resolve()` follows a link, so the check must run on the path as
-    given. Both destinations here are attacker-reachable: `.mailmap` is a
-    Git-native file that a repository can commit *as a symlink*, and a
-    dangling link passes an `exists()` check while still redirecting the
-    write.
+    Checked before `resolve()`, which follows links: a repository can commit
+    `.mailmap` as a symlink, and a dangling one passes `exists()`.
 
     Args:
         path: The destination as supplied, before resolution.

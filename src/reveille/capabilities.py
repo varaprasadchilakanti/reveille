@@ -3,25 +3,11 @@
 
 """A machine-readable description of what Reveille can and cannot do.
 
-Most tools describe themselves in prose that drifts from the code within two
-releases. This module keeps the two apart deliberately:
+Derived facts (version, commands, options, exit codes) are read from the
+running program, so cannot drift; stated judgements (purpose, refusals,
+caveats) are written here. Written for a program holding only the binary, so
+limits are stated as prominently as features.
 
-* **Derived facts** — the version, the output schema version, the commands and
-  their options, the exit codes — are read from the running program. They
-  cannot drift, because there is nothing to keep in sync.
-* **Stated judgements** — what the tool is *for*, what it refuses to claim, and
-  the caveats a reader needs before trusting a number — are written here in one
-  place, because no amount of introspection can derive them.
-
-The audience is a program, not a person. A coding agent deciding whether to
-reach for Reveille should be able to ask it directly rather than guess from a
-README, and the answer should include the *limits* as prominently as the
-features. A tool that only advertises what it is good at is one an agent will
-misuse.
-
-`docs/` remains the human-facing reference; `llms.txt` remains the pointer for
-an assistant reading the repository. This is the answer for a program holding
-the installed binary and nothing else.
 """
 
 from __future__ import annotations
@@ -33,9 +19,8 @@ from reveille import __version__
 from reveille.config import OutputFormat
 from reveille.domain.models import SCHEMA_VERSION
 
-# The contract version of this document itself, so a consumer can tell a shape
-# change from a content change. Independent of both the release version and the
-# report's schema version, because all three move for different reasons.
+# This document's own contract version, independent of the release and the
+# report schema versions: a shape change versus a content change.
 CAPABILITIES_VERSION = "1.0"
 
 _SUMMARY = (
@@ -128,9 +113,7 @@ _CAPABILITIES: tuple[dict[str, str], ...] = (
     },
 )
 
-# What the tool will not do. This list is the load-bearing half of the
-# document: it is what stops a caller reaching for Reveille to answer a
-# question it cannot answer.
+# What the tool will not do: the load-bearing half of the document.
 _NOT_CAPABILITIES: tuple[dict[str, str], ...] = (
     {
         "id": "productivity-measurement",
@@ -213,8 +196,7 @@ _NOT_CAPABILITIES: tuple[dict[str, str], ...] = (
     },
 )
 
-# Caveats that change how a number should be read. Every one of these is a
-# documented behaviour, not a known bug.
+# Caveats that change how a number is read; documented behaviour, not bugs.
 _CAVEATS: tuple[dict[str, str], ...] = (
     {
         "id": "merge-commits-excluded",
@@ -274,8 +256,7 @@ _CAVEATS: tuple[dict[str, str], ...] = (
     },
 )
 
-# Properties that hold for every invocation. These are the ones worth checking
-# against, because each is asserted by a test.
+# Properties that hold for every invocation, each asserted by a test.
 _GUARANTEES: tuple[dict[str, str], ...] = (
     {
         "id": "offline",
@@ -314,9 +295,7 @@ _GUARANTEES: tuple[dict[str, str], ...] = (
 def _commands(app: Any) -> list[dict[str, Any]]:
     """Describe the CLI surface by inspecting the live Typer application.
 
-    Derived rather than written down, so it cannot disagree with the program.
-    A README once documented a subcommand that had never existed; anything a
-    machine reads about this tool should come from the tool.
+    Derived, not written down, so it cannot disagree with the program.
 
     Args:
         app: The Typer application object.
@@ -328,11 +307,8 @@ def _commands(app: Any) -> list[dict[str, Any]]:
 
     group = typer.main.get_command(app)
 
-    # Fail closed. `getattr(group, "commands", {})` would return an empty
-    # mapping if Click ever restructured, and this function would then emit a
-    # document claiming the tool has no commands -- silently, with exit 0, to a
-    # program that trusts it. An empty command list is never a true answer
-    # here, so it is an error rather than a default.
+    # Fail closed: an empty command list (e.g. if Click restructured) is never
+    # true, so it is an error, not a silent default.
     commands = getattr(group, "commands", None)
     if not commands:
         raise RuntimeError(
@@ -368,12 +344,9 @@ def _commands(app: Any) -> list[dict[str, Any]]:
     return described
 
 
-# Meanings for the exit codes. Kept as an explicit mapping rather than read
-# from the enum: the per-member strings in `ExitCode` are bare expressions, not
-# docstrings, so `member.__doc__` returns the *class* docstring and every code
-# would carry the same wrong text. The names and numbers below are still
-# derived from the enum, and `tests/unit/test_capabilities.py` asserts this
-# mapping covers every member, so a new code cannot be added without one.
+# Exit-code meanings, hand-written: `member.__doc__` on `ExitCode` gives the
+# class docstring. Names and numbers come from the enum, and a test asserts
+# this mapping covers every member.
 _EXIT_CODE_MEANINGS: dict[str, str] = {
     "SUCCESS": "The command ran and its answer is affirmative.",
     "NEGATIVE": (
@@ -435,15 +408,7 @@ def build_capabilities(app: Any, exit_code_enum: type[enum.IntEnum]) -> dict[str
 
 
 def _output_formats() -> list[str]:
-    """The output formats the tool actually accepts, read from the type.
-
-    This was a hardcoded `["html", "json", "csv"]` in the one module whose
-    stated premise is that derived facts cannot drift. `config.OutputFormat`
-    is the single definition the CLI and the config parser both validate
-    against, so adding a format there without touching this list would have
-    published a document that understated the tool -- silently, to a program
-    that trusts it.
-    """
+    """The output formats the tool accepts, derived from `config.OutputFormat`."""
     formats = get_args(OutputFormat)
     if not formats:
         raise RuntimeError(

@@ -3,15 +3,10 @@
 
 """Reveille -- Git Repository Intelligence.
 
-A CLI tool that reports a local Git repository's commit activity
-from local Git repositories.
+A CLI tool that reports a local Git repository's commit activity.
 
-Reveille's modules emit diagnostics through the standard `logging`
-module under the `reveille` logger. A NullHandler is attached here so
-that importing Reveille as a library produces no output unless the host
-application configures a handler itself — the convention for libraries,
-which must not impose logging policy on the program embedding them. The
-CLI attaches its own stderr handler when `--verbose` is passed.
+The `reveille` logger gets a NullHandler: a library must not impose logging
+policy on its host. The CLI adds a stderr handler under `--verbose`.
 """
 
 import logging

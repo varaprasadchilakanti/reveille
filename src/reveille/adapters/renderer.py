@@ -1,36 +1,14 @@
 # SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti
 # SPDX-License-Identifier: Apache-2.0
 
-r"""Report renderer adapter.
+r"""Report renderer adapter: HTML, JSON and CSV; the only module importing Jinja2 or Plotly.
 
-Renders `ReportData` to one of three formats. `render` produces the
-HTML report; `render_json` and `render_csv` produce machine-readable
-output for downstream tooling. This is the only layer in Reveille that
-imports Jinja2 or Plotly.
+The HTML report is one self-contained file making no network requests. Each
+chart is a Plotly JSON spec in an application/json block, plotted client-side
+with Plotly.newPlot() and re-plotted the same way on theme toggle. The heatmap
+is a daily-count payload the client turns into a calendar grid.
 
-The HTML path combines Jinja2 templating with Plotly chart generation
-to produce a single self-contained file. All JavaScript, CSS, and chart
-data are embedded inline. The output makes no network requests, which
-is what makes it safe to forward to someone who will open it on an
-unknown machine.
-
-Chart rendering strategy: each chart is serialised as a Plotly JSON
-specification and embedded in the document as an application/json
-script block. Client-side initialisation renders all charts via
-Plotly.newPlot() at page load, applying the active colour theme at
-that time. On theme toggle every chart is re-plotted through that same
-path, deliberately not through Plotly.relayout(); the template records
-why, and the short version is one path, one set of semantics.
-
-The activity heatmap uses a compact daily-count payload rather than
-a pre-built Plotly spec. The client builds the GitHub-style 7-row
-grid (Mon-Sun rows, calendar-week columns) from the raw counts,
-allowing year and contributor navigation via Plotly.react() without
-re-fetching data from the server.
-
-The string "</script>" is escaped as "<\/script>" in all JSON
-output to prevent premature script block termination when chart
-labels or commit messages contain that sequence.
+"</script>" is escaped as "<\/script>" in all embedded JSON.
 """
 
 from __future__ import annotations
@@ -81,52 +59,9 @@ from reveille.exceptions import OutputPathError, RenderError
 # Label of the aggregated residual slice, referenced where its colour is chosen.
 _OTHER_LABEL: str = "Other Contributors"
 
-# Categorical palette, used wherever colour encodes *identity* -- one hue per
-# contributor, in fixed order.
-#
-# These eight are a measured set, not a chosen one. The previous palette put
-# #22c55e (green) next to #14b8a6 (teal) at a normal-vision perceptual distance
-# of Delta-E 11.3, below the 15 floor at which two adjacent series stop being
-# reliably separable by a reader with full colour vision -- and they were
-# adjacent, so contributors ranked second and third were the pair that
-# collided. It also failed for deuteranopia at the margins.
-#
-# This set was validated against both report surfaces before adoption:
-# the light plot background (#f6f8fa) and the dark one (#161b22). Worst
-# adjacent pair is Delta-E 19.3 normal vision and 8.4 under protanopia,
-# clearing both floors in each mode -- which is why one palette can serve both
-# themes and no colours need to change when the theme toggle is used.
-#
-# Four slots, and four is not a style choice -- it is the measured ceiling.
-#
-# A series colour here has to satisfy three constraints at once, because one
-# fixed set is drawn on both themes:
-#
-#   * >= 3:1 against BOTH plot surfaces (#f6f8fa light, #161b22 dark), since
-#     the theme toggle changes the surface and not the series;
-#   * >= 15 OKLab dE from every other slot in normal vision, below which two
-#     series are indistinguishable to everyone;
-#   * >= 6 OKLab dE from every other slot under simulated protanopia,
-#     deuteranopia and tritanopia (Vienot-Brettel-Mollon), the documented
-#     floor that is admissible only alongside secondary encoding.
-#
-# Searched over a pool of 29 candidates, the largest set satisfying all three
-# is four. The previous eight-slot palette failed 13 of its 28 pairs, and not
-# only for colour-blind readers: orange against red measured 7.1 in NORMAL
-# vision, magenta against red 7.8, blue against violet 9.8. Three pairs of
-# series that nobody could tell apart.
-#
-# Hues are Okabe & Ito's Color Universal Design set (2008) where they clear
-# the dual-surface contrast requirement; their sky blue, yellow and pink do
-# not, and are excluded rather than fixed, since darkening them collapses the
-# separation that made them worth having.
-#
-# Secondary encoding is present and load-bearing: every chart using these has
-# a legend, the pies carry direct labels, and the contributor table restates
-# every figure as text. Beyond four series the honest move is to aggregate,
-# not to invent a fifth colour -- `_MAX_SERIES` and `_PIE_MAX_SLICES` both do.
-# `tests/unit/adapters/test_palette.py` recomputes all three constraints, so
-# a future edit that breaks one fails the build rather than the reader.
+# Identity colours, one per contributor in fixed order, drawn on both themes.
+# Four is the measured ceiling for: >= 3:1 on both plot surfaces, >= 15 OKLab dE
+# apart in normal vision, >= 6 under simulated CVD. Asserted in test_palette.py.
 _CATEGORICAL_PALETTE: list[str] = [
     "#0072B2",  # blue
     "#D55E00",  # vermillion
@@ -134,52 +69,31 @@ _CATEGORICAL_PALETTE: list[str] = [
     "#8E5572",  # muted plum
 ]
 
-# Series colours are assigned in fixed order and never cycled. A ninth
-# contributor does not get slot one again -- two people sharing a colour makes
-# the chart state something false. Charts that could exceed the palette cap
-# their series count instead; see _build_contributor_timeline_chart.
+# Never cycled: two people sharing a colour is a false statement. Charts cap
+# their series count instead.
 _MAX_SERIES: int = len(_CATEGORICAL_PALETTE)
 
-#: Dash patterns paired with the palette, in the same fixed order. Colour
-#: alone cannot carry identity: a reader with a colour vision deficiency,
-#: a greyscale print and a photocopied page all lose it, and a legend is
-#: a key to the colour rather than a substitute for it.
+#: Dash patterns paired with the palette, so identity does not rest on colour alone.
 _LINE_DASHES: tuple[str, ...] = ("solid", "dash", "dot", "dashdot")
 
-# Maximum individual slices in a pie chart. A slice is an identity, so it
-# needs a distinguishable colour; beyond the palette, contributors aggregate
-# into a single "Other Contributors" slice rather than reusing a hue. Derived
-# from the palette so the two cannot drift: a pie once drew a ninth slice in
-# slot one, sharing a colour with the top contributor in the one chart where
-# every slice is visible at once.
+# Maximum named pie slices; the rest aggregate into "Other Contributors".
+# Derived from the palette so the two cannot drift.
 _PIE_MAX_SLICES: int = len(_CATEGORICAL_PALETTE)
 
-# Added and deleted lines are a semantic pair, not two arbitrary categories, so
-# they are named rather than taken from the categorical order. They are not in
-# the categorical palette. Each is held to the same contrast floor as the
-# palette, and the pair stays 9.5 OKLab units apart under simulated
-# protanopia, above the floor of 6 -- asserted in test_palette.py.
+# Added and deleted lines: a semantic pair outside the categorical palette,
+# held to the same floors (asserted in test_palette.py).
 _LINES_ADDED_COLOUR: str = "#008300"
 _LINES_DELETED_COLOUR: str = "#e66767"
 
-# The trailing "Other Contributors" slice is a residual, not an identity, so it
-# gets a neutral rather than a hue from the categorical order. Without this the
-# ninth slice wrapped around to slot one and shared a colour with the
-# top-ranked contributor inside the same pie -- two different things drawn the
-# same way, in the one chart where every slice is visible at once.
-# A true neutral: 4.27:1 on the light plot surface, 3.81:1 on the dark one,
-# and zero chroma, which is what makes it read as an aggregate rather than a
-# fifth person. Asserted in tests/unit/adapters/test_palette.py.
+# The residual slice is not an identity, so it is a zero-chroma neutral
+# (4.27:1 light, 3.81:1 dark; asserted in test_palette.py).
 _OTHER_SLICE_COLOUR: str = "#767676"
 
 
 def _translucent(hex_colour: str, alpha: float) -> str:
     """Return a `#rrggbb` colour as an `rgba(...)` string at the given alpha.
 
-    Area fills were previously written out as literal `rgba(57, 135, 229, ...)`
-    strings that happened to equal `_CATEGORICAL_PALETTE[0]`. Nothing coupled
-    them, so a palette change -- and the palette was replaced wholesale in
-    0.8.0 -- would have left a fill in the old hue under a line in the new one.
+    Fills derive from the palette so the two cannot drift apart.
 
     Args:
         hex_colour: A colour in `#rrggbb` form.
@@ -192,32 +106,20 @@ def _translucent(hex_colour: str, alpha: float) -> str:
     return f"rgba({r}, {g}, {b}, {alpha})"
 
 
-# Ceiling on a per-contributor bar chart. The height grew with the contributor
-# count and nothing bounded it: 5,000 contributors produced a chart 220,080
-# pixels tall, which no browser renders usefully. The bars compress past this
-# point, which is a worse chart -- but a worse chart is not the same kind of
-# problem as an unusable document.
+# Ceiling on a per-contributor bar chart's height, in pixels; bars compress
+# past it rather than grow without bound.
 _MAX_CHART_HEIGHT: int = 2400
 
-# The Lorenz chart's reference diagonal. A reference line is not a series, so
-# it takes the same neutral as the residual slice rather than a categorical hue
-# -- it must read as scaffolding, not as a third contributor.
+# The Lorenz reference diagonal: neutral, so it reads as scaffolding, not a series.
 _EQUALITY_LINE_COLOUR: str = "#767676"
 
-# Pre-compiled patterns for sanitising user-controlled strings.
-# _SCRIPT_BLOCK_RE removes script elements including their content before
-# _HTML_TAG_RE strips remaining tags, preventing script body text from
-# surviving as raw output after tag removal.
+# Sanitising patterns: script blocks go with their content before other tags.
 _SCRIPT_BLOCK_RE: re.Pattern[str] = re.compile(
     r"<script\b[^>]*>.*?</script\b[^>]*>", re.IGNORECASE | re.DOTALL
 )
 _HTML_TAG_RE: re.Pattern[str] = re.compile(r"<[^>]+>")
 
-# Module-level cache for the Plotly JS bundle.
-# plotly.offline.get_plotlyjs() reads ~4.8 MB of minified JavaScript from
-# disk on every call. Caching at module load time means each worker process
-# pays the cost once, regardless of how many reports are rendered in that
-# process. This is the primary driver of e2e test suite runtime.
+# The ~4.8 MB Plotly bundle, read once per process rather than per report.
 _PLOTLY_JS_BUNDLE: str = plotly.offline.get_plotlyjs()
 
 
@@ -228,8 +130,7 @@ class Renderer:
         """Load the Jinja2 environment and validate the template is present.
 
         Raises:
-            RenderError: If the report template cannot be located within
-                the installed package.
+            RenderError: If the report template is missing from the package.
         """
         try:
             self._env = Environment(
@@ -305,8 +206,7 @@ class Renderer:
             html = self._template.render(
                 data=data,
                 charts=charts,
-                # The profile is rendered from these by the template, in HTML
-                # and CSS. It was a Plotly radar until 0.9.0; see ADR 0012.
+                # Rendered by the template in HTML, CSS and SVG (ADR 0012, 0016).
                 profile=profile,
                 flower=_profile_flower(profile),
                 chart_tables={
@@ -322,18 +222,14 @@ class Renderer:
             raise
         except Exception as exc:
             raise RenderError(f"Template rendering failed: {exc}") from exc
-        # The template's macros leave blank lines before the doctype; a
-        # document read from stdout should start with it.
+        # Macros leave blank lines before the doctype; strip them.
         return str(html).lstrip()
 
     def render_json(self, data: ReportData, output_path: Path) -> Path:
         """Serialise the report data to a structured JSON file.
 
-        The payload contains repository metadata, contributor statistics, and
-        the derived summary measures; the scoring fields are present only when
-        ranking is enabled. The raw commits list is excluded. Dates are ISO
-        8601 strings. Suitable for consumption by dashboards, data warehouses,
-        and scripts without parsing HTML.
+        Scoring fields appear only when ranking is enabled; raw commits are
+        excluded; dates are ISO 8601.
 
         Args:
             data: The complete structured report dataset.
@@ -372,8 +268,7 @@ class Renderer:
         derived = self._compute_derived_stats(data)
 
         payload: dict[str, Any] = {
-            # First key in the document, deliberately: a consumer should be
-            # able to decide whether it can parse the rest before it tries.
+            # First, so a consumer can decide whether it can parse the rest.
             "schema_version": data.provenance.schema_version,
             "metadata": {
                 "name": data.metadata.name,
@@ -385,15 +280,13 @@ class Renderer:
                 "analysis_until": data.metadata.analysis_until.isoformat(),
                 "generated_at": data.metadata.generated_at.isoformat(),
             },
-            # What produced these numbers, and over what. Two reports that
-            # disagree can only be reconciled if each states its own inputs.
+            # The inputs, so two disagreeing reports can be reconciled.
             "provenance": {
                 "reveille_version": data.provenance.reveille_version,
                 "head_sha": data.provenance.head_sha,
                 "deterministic": data.provenance.deterministic,
                 "mailmap_applied": data.provenance.mailmap_applied,
-                # Commits dated after the end of a default window: counted in
-                # no figure, and stated here so the omission is not silent.
+                # Counted in no figure; stated so the omission is not silent.
                 "commits_dated_after_window": data.provenance.commits_dated_after_window,
                 "commits_unreadable": data.provenance.commits_unreadable,
                 "shallow_clone": data.provenance.shallow_clone,
@@ -429,11 +322,8 @@ class Renderer:
                     "rank": i + 1,
                     "name": r.stats.name,
                     "email": r.stats.email,
-                    # Ranking fields are omitted entirely when ranking is off,
-                    # rather than emitted with sentinel values. A key carrying
-                    # `"tier": 0` is a number a consumer can read as data; an
-                    # absent key cannot be misread. `provenance.ranking.enabled`
-                    # says which shape to expect.
+                    # Omitted, not zeroed, when ranking is off: an absent key
+                    # cannot be misread as data.
                     **(
                         {
                             "tier": r.tier,
@@ -456,22 +346,16 @@ class Renderer:
                 }
                 for i, r in enumerate(data.ranked_contributors[: data.provenance.limit])
             ],
-            # The full count beside the list, so a bounded list is never read
-            # as the whole (ADR 0015).
+            # The full count, so a bounded list is never read as the whole (ADR 0015).
             "contributors_total": len(data.ranked_contributors),
             "contributors_truncated": _truncated(data.ranked_contributors, data.provenance.limit),
             "derived": {
                 "commit_concentration": derived["commit_concentration"],
                 "gini_coefficient": derived["gini_coefficient"],
                 "longest_inactive_streak": derived["longest_inactive_streak"],
-                # Added at schema 1.1. Without these, a consumer seeing
-                # `min_commits` in the filters cannot tell what population the
-                # figures above describe, and the rows will not sum to
-                # `total_commits`. Both are stated rather than left to
-                # arithmetic.
+                # Schema 1.1: states the population the figures describe.
                 "population_size": derived["population_size"],
-                # Added at schema 1.1 (ADR 0017): the Gini and the commit
-                # concentration describe these people, not every contributor.
+                # Schema 1.1 (ADR 0017): the Gini and concentration describe these people.
                 "people": derived["people"],
                 "automated_accounts": derived["automated_accounts"],
                 "automated_commits": derived["automated_commits"],
@@ -499,9 +383,8 @@ class Renderer:
             "notice": _NOTICE,
         }
         if data.provenance.area_authors_enabled:
-            # The same facts as the HTML section and nothing more: no count
-            # per person, which would be a share of an area per person, and
-            # which a program summarising this document would state (ADR 0013).
+            # As the HTML section: no per-person count, which would read as a
+            # share of an area (ADR 0013).
             payload["areas"] = [
                 {
                     "area": a.area,
@@ -530,10 +413,8 @@ class Renderer:
     def summary_document(self, data: ReportData) -> dict[str, Any]:
         """Describe the repository in about 2 KB, naming no contributor.
 
-        The default answer for an assistant (ADR 0015): the window, totals,
-        the measures and the findings, and the provenance an answer must
-        carry. Every value is about the repository; no name or address is
-        included, so it is safe to hand to any assistant.
+        The default answer for an assistant (ADR 0015): window, totals, measures,
+        findings and provenance, with no name or address.
 
         Args:
             data: The report dataset; line counts are not needed.
@@ -620,8 +501,7 @@ class Renderer:
     ) -> str:
         """Render who changed a path, as JSON or plain lines (ADR 0015).
 
-        Every list of people is bounded by `limit` and carries its full
-        total, so a path with hundreds of authors cannot flood a reader.
+        Every list of people is bounded by `limit` and carries its full total.
 
         Args:
             answer: The facts for the path.
@@ -661,8 +541,7 @@ class Renderer:
             )
 
         def names(people: tuple[tuple[str, str], ...]) -> str:
-            # One person under two addresses reads as a typo when only the
-            # name is printed; a repeated name carries its address.
+            # A repeated name carries its address.
             repeated = {n for n in (p[0] for p in people) if [p[0] for p in people].count(n) > 1}
             shown = ", ".join(f"{n} <{e}>" if n in repeated else n for n, e in people[:limit])
             rest = len(people) - min(len(people), limit)
@@ -670,9 +549,7 @@ class Renderer:
 
         commits = f"{answer.commits:,} commit{'' if answer.commits == 1 else 's'}"
         authors = f"{len(answer.authors):,} author{'' if len(answer.authors) == 1 else 's'}"
-        # The window starts at the path's first change and ends where the
-        # analysis does, often months after the path's last change. Printed
-        # as one range beside "last changed", it read as the span of changes.
+        # The window ends where the analysis does, not at the last change.
         lines = [
             f"{answer.path}: {commits} by {authors}, "
             f"from {window[0].isoformat()} to {answer.last_changed.isoformat()}, "
@@ -694,10 +571,9 @@ class Renderer:
         return "\n".join(lines) + "\n"
 
     def render_csv(self, data: ReportData, output_path: Path) -> Path:
-        """Serialise the ranked contributor table to a UTF-8 CSV file with BOM encoding.
+        """Serialise the ranked contributor table to a UTF-8 CSV file with a BOM.
 
-        BOM encoding ensures correct column rendering in Microsoft Excel on
-        Windows without requiring a manual import wizard configuration.
+        The BOM makes Excel on Windows read the encoding correctly.
 
         Args:
             data: The complete structured report dataset.
@@ -719,8 +595,7 @@ class Renderer:
             )
         text = self.csv_text(data)
         try:
-            # The BOM is for spreadsheet programs opening the file; stdout
-            # output (csv_text) carries none.
+            # BOM for spreadsheets; stdout output (csv_text) carries none.
             _write_replacing(resolved, text, encoding="utf-8-sig")
         except OSError as exc:
             raise OutputPathError(f"Failed to write CSV report to '{resolved}': {exc}") from exc
@@ -735,12 +610,8 @@ class Renderer:
         Returns:
             The CSV document, without a byte-order mark.
         """
-        # Ranking columns are omitted entirely when ranking is off, mirroring
-        # render_json. Emitting `tier,0` and `composite_score,0.0` puts a number
-        # a reader can sort on into the format most likely to be opened in a
-        # spreadsheet -- which is exactly the reading ADR 0010 exists to prevent.
-        # `rank` stays in both formats as the row ordinal; with ranking off the
-        # rows are ordered by commit count.
+        # Ranking columns are omitted when ranking is off (ADR 0010); `rank`
+        # stays as the row ordinal.
         ranked = data.provenance.ranking_enabled
         fieldnames = [
             "rank",
@@ -796,31 +667,20 @@ class Renderer:
         Returns:
             A dict of derived metric names to values for template use.
         """
-        # `min_commits` filters the listing, not the analysis, so every figure
-        # here is computed over the whole repository. See ADR 0011. The
-        # distribution figures count people: an automated account is not one
-        # of the people the question "one person or a team?" is about, and
-        # the profile's Shared petal already left them out. See ADR 0017.
+        # `min_commits` filters the listing, not the figures (ADR 0011);
+        # distribution figures count people, not automated accounts (ADR 0017).
         everyone = _population(data)
         population = [stats.commit_count for stats in _people(data)]
         automated = [s for s in everyone if is_automated(s.name, s.email)]
         return {
             "commit_concentration": _compute_commit_concentration(population),
-            # Rounded to two places: the third decimal of a Gini over a handful
-            # of contributors is noise, and printing it implies a precision the
-            # sample does not carry.
+            # Two places: a third decimal would imply unwarranted precision.
             "gini_coefficient": round(gini_coefficient(population), 2),
-            # Gini's maximum for a sample of n is (n-1)/n, so a report over
-            # two contributors can never exceed 0.50 however lopsided the
-            # split. Showing 0.23 against a stated 0-to-1 scale invites the
-            # reader to conclude "23% of the way to maximum concentration"
-            # when it is 46% of the achievable range.
+            # The sample maximum is (n-1)/n, so the reader needs the ceiling.
             "gini_ceiling": _ceiling_text(len(population)),
-            # Every contributor of any kind, which is not the number of rows
-            # in the table when `min_commits` is in use.
+            # Every contributor, not the table's row count.
             "population_size": len(everyone),
-            # The people the distribution figures above describe, and what
-            # was left out of them, stated where the figures are (ADR 0017).
+            # Who the distribution figures describe, and who they omit (ADR 0017).
             "people": len(population),
             "automated_accounts": len(automated),
             "automated_commits": sum(s.commit_count for s in automated),
@@ -829,19 +689,10 @@ class Renderer:
             "generated_files": generated_churn(data.file_stats)[0],
             "generated_lines": generated_churn(data.file_stats)[1],
             "longest_inactive_streak": longest_quiet_run(data.commits),
-            # A text alternative for the heatmap. Its payload is a daily
-            # grid rather than a Plotly figure, so `_accessible_table` has
-            # nothing to read, and a day-by-day table would run to
-            # hundreds of rows per contributor. These are the figures a
-            # reader takes from the picture: how much, over how many days,
-            # and where the peak is.
+            # Text alternative for the heatmap, which has no figure to tabulate.
             "heatmap_summary": _summarise_activity(data.commits),
-            # Written findings, generated from these same numbers by rules.
-            # See domain/summary.py: no model, no network, and the same
-            # history always produces the same sentences.
-            # Measured against the end of the window, so a repository that
-            # has gone quiet says so. Without it the dormancy finding was
-            # measured against the last commit and could never appear.
+            # Rule-based findings (domain/summary.py), measured against the
+            # window's end so dormancy can be reported.
             "findings": summarise(data.commits, _people(data), today=data.metadata.analysis_until),
             # Who changed each area; empty unless --area-authors (ADR 0013).
             "areas": _area_statements(data),
@@ -869,14 +720,8 @@ class Renderer:
     ) -> dict[str, str]:
         """Build all chart JSON specifications for the report.
 
-        Each returned value is a Plotly figure serialised as a JSON string,
-        suitable for embedding in an application/json script block and
-        rendered client-side via Plotly.newPlot(). Returns the JSON string
-        'null' for any chart that lacks sufficient data.
-
-        The heatmap key contains a compact daily-count payload rather than
-        a Plotly spec. The client builds the GitHub-style grid from this
-        data, navigating between years and contributors via Plotly.react().
+        Each value is Plotly figure JSON, or 'null' when data is insufficient;
+        the heatmap's is a daily-count payload instead.
 
         Args:
             data: The complete report dataset.
@@ -914,12 +759,9 @@ class Renderer:
 
 
 def _ceiling_text(population: int) -> str:
-    """Format the largest Gini a population of this size can reach.
+    """Format the largest Gini a population of this size can reach, (n-1)/n.
 
-    The maximum is (n-1)/n. Rounded to two places it reads "1.00" from 200
-    contributors upward, beside a sentence saying the maximum is not 1, so
-    the figure is truncated, not rounded, to three places when two would
-    reach 1.
+    Truncated to three places where two would round to a misleading "1.00".
 
     Args:
         population: The number of contributors the Gini describes.
@@ -935,10 +777,7 @@ def _ceiling_text(population: int) -> str:
     return f"{math.floor(ceiling * 1000) / 1000:.3f}"
 
 
-#: Stated in every output that carries figures: under the HTML header, in
-#: the full JSON, and with every summary. One copy, so they cannot drift. Short, because it is read by assistants as
-#: often as by people, and plain, because it is the limit of what the
-#: numbers can carry.
+#: Stated in every output that carries figures; one copy, so they cannot drift.
 _NOTICE = (
     "Computed from Git history by fixed rules, offline. History can be incomplete or "
     "wrong (rewritten, shallow, misdated, split identities); check before "
@@ -955,19 +794,15 @@ def _listed_co_authors(data: ReportData) -> list[CoAuthor]:
 _FLOWER_CENTRE = 220.0
 _FLOWER_RADIUS = 120.0
 _FLOWER_LABEL_RADIUS = 140.0
-#: Degrees of each petal's wedge; the rest of its sixth of the circle is gap,
-#: which keeps the petals separate rather than a polygon.
+#: Degrees of each petal's wedge; the remainder is gap, keeping petals separate.
 _PETAL_SPAN = 44.0
 
 
 def _profile_flower(profile: list[ProfileAxis]) -> list[dict[str, Any]]:
     """Lay out the profile as separate petals: geometry only, no colour.
 
-    Each petal is a wedge whose length is its share, from the centre (0%)
-    to the rim (100%), with a pale full-length wedge behind it so the
-    length can be read against the whole, and an arc across it at the
-    expected value where there is one. The template colours everything
-    from the theme, so nothing here depends on light or dark.
+    Each petal's length is its share (centre 0%, rim 100%), over a full-length
+    track, with an arc at the expected value where there is one.
 
     Args:
         profile: The axes, in their fixed order.
@@ -1043,18 +878,9 @@ def _area_statements(data: ReportData) -> list[AreaStatement]:
 def _population(data: ReportData) -> list[ContributorStats]:
     """Every contributor in the repository, listed or not.
 
-    ADR 0011: `min_commits` chooses who is *listed*; every figure describes the
-    whole repository. The Gini honoured that and the Lorenz curve and the
-    profile did not, because each caller assembled the population for itself
-    and two of the three assembled it wrongly. Under `--min-commits 100` this
-    repository printed a Gini of 0.25 over two contributors, a Lorenz
-    specification of `null`, and a profile axis of 0.0 described as "one
-    contributor, so there is nothing to spread" -- three statements about one
-    population, in one document, disagreeing with each other.
-
-    One definition, used by everything that describes the repository, so they
-    cannot diverge again. Per-contributor charts deliberately do not use it: a
-    chart that names people must show only the people who are listed.
+    ADR 0011: `min_commits` chooses who is listed; every figure describes the
+    whole repository, from this one definition. Charts naming people use only
+    the listed.
 
     Args:
         data: The complete report dataset.
@@ -1073,11 +899,9 @@ def _counted(n: int, singular: str) -> str:
 
 
 def _people(data: ReportData) -> list[ContributorStats]:
-    """The population the distribution figures describe: people only.
+    """The population the distribution figures describe: people only (ADR 0017).
 
-    `_population` less the identities `is_automated` marks. One definition,
-    for the same reason `_population` is one: the cards, the Gini, the Lorenz
-    curve and the written findings must describe the same people (ADR 0017).
+    `_population` less automated accounts, so every figure describes the same people.
 
     Args:
         data: The complete report dataset.
@@ -1091,26 +915,8 @@ def _people(data: ReportData) -> list[ContributorStats]:
 def _contributor_labels(ranked: list[RankedContributor]) -> dict[str, str]:
     """Map each contributor's email to a label unique within the report.
 
-    ADR 0002 makes the lowercased email the identity key. The display
-    name is not unique -- two people can share one, and so can one person
-    committing under two addresses before a `.mailmap` ties them
-    together. Charts keyed on the name inherit that ambiguity, and Plotly
-    resolves a repeated category label differently depending on the trace
-    type: a bar chart collapses the bars onto one category, a pie sums
-    the slices, and a line chart draws two legend entries a reader cannot
-    tell apart.
-
-    Measured against this repository before its `.mailmap` existed, with
-    201 commits under one address and 1 under another:
-
-        contributors table   201 and 1, listed separately
-        commits bar chart    201, the second bar drawn over the first
-        commit share pie     202, the two labels silently summed
-
-    Three views of one repository, three answers. A name that occurs once
-    is used as it is; a name that occurs more than once carries the
-    address that distinguishes it, and only then -- disambiguating every
-    label would clutter the common case for no reader benefit.
+    Names are not unique (ADR 0002), and Plotly merges repeated category labels.
+    A repeated name carries its address; a unique one is used as it is.
 
     Args:
         ranked: Every contributor in the report.
@@ -1129,20 +935,14 @@ def _contributor_labels(ranked: list[RankedContributor]) -> dict[str, str]:
     }
 
 
-#: Axis pairs to read a table from, per Plotly trace type. A chart is
-#: drawn from arrays, so its text alternative can be read back out of the
-#: same arrays rather than assembled a second time and left to drift.
+#: Axis pairs to read a table from, per trace type, so the table cannot drift.
 _TABLE_AXES: dict[str, tuple[str, str]] = {
     "bar": ("x", "y"),
     "scatter": ("x", "y"),
     "pie": ("labels", "values"),
 }
 
-#: Column headings for each chart's tabular equivalent. Stated rather
-#: than derived: a polar plot and a pie have no axis titles to read, and
-#: a horizontal bar's titles are the wrong way round. The first entry
-#: names the category column; where a chart has several series, their
-#: names supply the remaining columns.
+#: Column headings per chart's table: the category first, then series names.
 _TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
     "timeline": ("Week", "Commits"),
     "contributor_timeline": ("Week",),
@@ -1158,11 +958,7 @@ _TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
 def _summarise_activity(commits: list[Commit]) -> str:
     """Describe a commit heatmap in one sentence, for assistive technology.
 
-    A heatmap encodes magnitude by colour across a calendar, and its
-    payload is a daily grid rather than a figure specification, so there
-    is nothing to read a table out of and a day-by-day one would run to
-    hundreds of rows. This states what a sighted reader takes from the
-    picture instead.
+    States what a sighted reader takes from the picture: volume, span, peak.
 
     Args:
         commits: All commits in the analysis window.
@@ -1216,24 +1012,16 @@ def _series_from_spec(specification: str) -> list[tuple[str, list[Any], list[Any
 
 
 def _accessible_table(chart: str, specification: str) -> dict[str, Any]:
-    """Return a tabular equivalent of a chart, for assistive technology.
+    """Return a tabular equivalent of a chart, for assistive technology (WCAG 1.1.1).
 
-    `role="img"` makes an SVG's children presentational, so the
-    `aria-label` is the *only* alternative a screen-reader user gets. A
-    label naming the chart type conveys no data, and WCAG 2.1 SC 1.1.1
-    asks for an alternative that serves the equivalent purpose. Seven of
-    the report's ten charts had nothing else.
-
-    The rows are read back out of the emitted specification, so the table
-    cannot come to describe a chart the report is not drawing.
+    Rows are read back from the emitted specification, so they match the chart.
 
     Args:
         chart: The chart's id, used to look up its column headings.
         specification: That chart's Plotly JSON.
 
     Returns:
-        A mapping with `columns` and `rows`, or an empty mapping when
-        there is nothing to describe.
+        A mapping with `columns` and `rows`, or empty when there is nothing.
     """
     series = _series_from_spec(specification)
     headings = _TABLE_COLUMNS.get(chart)
@@ -1271,10 +1059,7 @@ def _commit_span(commits: list[Commit]) -> tuple[datetime.date, datetime.date]:
 def _week_starts(first: datetime.date, last: datetime.date) -> list[str]:
     """Every Monday from the week containing `first` to the week containing `last`.
 
-    A weekly chart built only from weeks that had commits skips the quiet
-    ones, and a line drawn straight across a gap reads as steady activity --
-    the opposite of what happened. Every week in the window gets a point, and
-    a week with no commits is drawn as zero.
+    Quiet weeks are drawn as zero, not bridged by a line implying activity.
 
     Args:
         first: The first day to cover.
@@ -1299,9 +1084,7 @@ def _build_timeline_chart(
 
     Args:
         commits: All commits in the analysis window.
-        window: The analysis window's first and last day. Every week in it is
-            drawn, including weeks with no commits. Without it, the span of
-            the commits themselves is used.
+        window: The analysis window's first and last day; else the commits' span.
 
     Returns:
         A Plotly figure JSON string, or 'null' if commits is empty.
@@ -1333,8 +1116,7 @@ def _build_timeline_chart(
         )
     )
     layout = _base_layout()
-    # A date axis spaces its own ticks by month or year. As a category axis
-    # every week was a label: hundreds of rotated dates over a long window.
+    # A date axis, so ticks space themselves by month or year.
     layout["xaxis"] = _week_axis(sorted_weeks)
     fig.update_layout(
         **layout,
@@ -1352,34 +1134,22 @@ def _build_contributor_timeline_chart(
 ) -> str:
     """Build a per-contributor weekly commit frequency line chart.
 
-    Each contributor is represented as a separate Scatter trace, in ranked
-    order, so the highest-composite-score contributor appears first in the
-    legend. Commits from contributors absent from the ranked list (filtered by
-    min_commits) are excluded.
-
-    At most `_MAX_SERIES` contributors are drawn. Beyond that the palette would
-    have to repeat, and two people sharing a colour and a line style makes the
-    chart assert something untrue -- a reader has no way to tell which line
-    belongs to whom. The per-contributor detail for everyone else remains in
-    the rankings table and in the heatmap's contributor filter, both of which
-    scale without a colour budget.
+    One trace per listed contributor, in ranked order, at most `_MAX_SERIES`:
+    beyond that colours would repeat. Everyone remains in the table and heatmap.
 
     Args:
         commits: All commits in the analysis window.
         ranked: Ranked contributor list in composite score order.
-        window: The analysis window's first and last day, as for
-            `_build_timeline_chart`.
+        window: The analysis window, as for `_build_timeline_chart`.
 
     Returns:
-        A Plotly figure JSON string, or 'null' if fewer than two
-        contributors are present or no commits fall within the window.
+        Plotly figure JSON, or 'null' for fewer than two contributors or no commits.
     """
     if not commits or len(ranked) < 2:
         return "null"
 
     shown = ranked[:_MAX_SERIES]
-    # Built over the full list, not just the drawn subset: a name is only
-    # ambiguous relative to every contributor in the report.
+    # Over the full list: ambiguity is relative to everyone in the report.
     labels = _contributor_labels(ranked)
     weekly_per_email: dict[str, dict[str, int]] = {r.stats.email.lower(): {} for r in shown}
 
@@ -1410,11 +1180,7 @@ def _build_contributor_timeline_chart(
                 line={
                     "color": _CATEGORICAL_PALETTE[i],
                     "width": 2,
-                    # A legend is a colour key, not a second encoding:
-                    # resolving it still needs the colour discrimination it
-                    # is meant to substitute for. WCAG 1.4.1 asks for
-                    # something other than colour, so each series takes its
-                    # own dash as well as its own hue.
+                    # A dash as well as a hue: WCAG 1.4.1, not colour alone.
                     "dash": _LINE_DASHES[i % len(_LINE_DASHES)],
                 },
                 hovertemplate="Week of %{x|%Y-%m-%d}<br>Commits: %{y:,}<extra></extra>",
@@ -1422,8 +1188,7 @@ def _build_contributor_timeline_chart(
         )
 
     layout = _base_layout()
-    # A date axis spaces its own ticks by month or year. As a category axis
-    # every week was a label: hundreds of rotated dates over a long window.
+    # A date axis, so ticks space themselves by month or year.
     layout["xaxis"] = _week_axis(all_weeks)
     layout["showlegend"] = True
     layout["legend"] = {"orientation": "h", "y": 1.12, "x": 0}
@@ -1439,9 +1204,7 @@ def _build_contributor_timeline_chart(
 def _week_axis(weeks: list[str]) -> dict[str, Any]:
     """Return the x axis for a weekly timeline.
 
-    A date axis spaces its own ticks by month or year. Given one week it has
-    no span to scale to, and Plotly drew millisecond ticks; one week either
-    side gives it days.
+    A single week gets a week of padding either side, or Plotly ticks milliseconds.
 
     Args:
         weeks: The ISO dates of the weeks drawn, in order.
@@ -1466,28 +1229,17 @@ def _build_heatmap_data(
 ) -> str:
     """Build a compact daily commit-count payload for client-side heatmap rendering.
 
-    The payload contains three keys:
-    - years: integer list covering analysis_since.year through analysis_until.year
-    - contributors: ordered list of {email, name} dicts; "__aggregated__" is always
-      first, followed by contributors in ranked order
-    - daily_counts: dict keyed by email (including "__aggregated__") mapping
-      ISO 8601 date strings to integer commit counts for that calendar day
-
-    The client builds the GitHub-style grid (7 rows Mon-Sun, calendar-week columns)
-    from this data. Year tabs and a contributor dropdown drive Plotly.react() calls
-    without re-fetching or recomputing server-side data.
+    Keys: `years`; `contributors`, `{email, name}` with "__aggregated__" first;
+    `daily_counts`, email to ISO date to count. The client draws the grid.
 
     Args:
         commits: All commits in the analysis window.
-        ranked_contributors: Contributor list in rank order, used to determine
-            the dropdown ordering and to key per-contributor counts.
+        ranked_contributors: Contributors in rank order, for the dropdown.
         analysis_since: Start of the analysis window.
         analysis_until: End of the analysis window.
 
     Returns:
-        A JSON string safe for embedding in an application/json script block.
-        The sentinel sequence "</" is escaped to prevent premature script
-        block termination.
+        JSON safe to embed in an application/json script block.
     """
     years = list(range(analysis_since.year, analysis_until.year + 1))
 
@@ -1514,9 +1266,7 @@ def _build_heatmap_data(
 
     payload: dict[str, object] = {
         "years": years,
-        # The grid draws these bounds rather than the whole calendar year, so
-        # days before the window or after it are not drawn as days with no
-        # commits.
+        # The grid draws these bounds, so days outside the window are not zeros.
         "since": analysis_since.isoformat(),
         "until": analysis_until.isoformat(),
         "contributors": contributors,
@@ -1576,20 +1326,15 @@ def _build_contributor_lines_chart(ranked: list[RankedContributor]) -> str:
 def _build_commit_share_pie(ranked: list[RankedContributor], unlisted_commits: int = 0) -> str:
     """Build a donut chart showing each contributor's share of total commits.
 
-    Contributors beyond _PIE_MAX_SLICES are aggregated into a single
-    'Other Contributors' slice to maintain legibility. So are the commits of
-    contributors `min_commits` kept out of the table: the slices are shares of
-    every commit, as ADR 0011 requires of every figure. Without them a listed
-    contributor holding 75% of the listed commits was drawn as holding 75% of
-    the repository.
+    Contributors beyond _PIE_MAX_SLICES, and unlisted ones, go into 'Other
+    Contributors', so slices are shares of every commit (ADR 0011).
 
     Args:
         ranked: Ranked contributor list sorted by composite score descending.
         unlisted_commits: Commits by contributors below the listing threshold.
 
     Returns:
-        A Plotly figure JSON string, or 'null' if fewer than two slices would
-        be drawn. A single slice carries no comparative information.
+        Plotly figure JSON, or 'null' if fewer than two slices would be drawn.
     """
     if len(ranked) + (1 if unlisted_commits else 0) < 2 or not ranked:
         return "null"
@@ -1613,9 +1358,7 @@ def _build_commit_share_pie(ranked: list[RankedContributor], unlisted_commits: i
             hole=0.42,
             textposition="outside",
             textinfo="label+percent",
-            # Outside labels are placed after the margins are fixed, so on a
-            # phone a long name ran off the panel ("endabot[bot]"). With
-            # automargin the donut shrinks to make room for its labels.
+            # The donut shrinks to fit outside labels on narrow screens.
             automargin=True,
             marker={"colors": _pie_colors(len(labels), has_other=labels[-1] == _OTHER_LABEL)},
             hovertemplate="%{label}<br>Commits: %{value:,}<br>%{percent}<extra></extra>",
@@ -1632,18 +1375,8 @@ def _build_commit_share_pie(ranked: list[RankedContributor], unlisted_commits: i
 def _build_commit_size_chart(commits: list[Commit]) -> str:
     """Build a histogram of change size per commit, on a log-spaced scale.
 
-    Relative code churn -- lines added plus deleted, per commit -- is the
-    measure Nagappan and Ball put on a formal footing in "Use of Relative
-    Code Churn Measures to Predict System Defect Density" (ICSE 2005).
-    What it shows here is the shape of the working rhythm: whether a
-    repository advances in many small steps or a few large ones.
-
-    Buckets are log-spaced because change size is heavily skewed. Linear
-    buckets over a range that spans one line to ten thousand put almost
-    every commit in the first bar, which states nothing.
-
-    This is a property of the history, not of anyone in it: the commits
-    are pooled, and no contributor is separated out.
+    Lines added plus deleted per commit (relative churn, Nagappan & Ball, ICSE
+    2005), pooled across contributors. Log-spaced, since sizes are heavily skewed.
 
     Args:
         commits: All commits in the analysis window.
@@ -1654,8 +1387,7 @@ def _build_commit_size_chart(commits: list[Commit]) -> str:
     if not commits:
         return "null"
 
-    # The first bin starts at zero: a commit can change no counted line (an
-    # empty commit, or binary files only), and it was counted under "1-9".
+    # The first bin starts at zero: an empty or binary-only commit counts no line.
     edges = [0, 10, 50, 200, 1000, 5000]
     dash = "\u2013"  # en dash, written as an escape so it cannot be mistaken
     labels = [*(f"{low:,}{dash}{high - 1:,}" for low, high in itertools.pairwise(edges)), "5,000+"]
@@ -1682,11 +1414,7 @@ def _build_commit_size_chart(commits: list[Commit]) -> str:
     layout = _base_layout()
     layout["xaxis"] = {"type": "category", "automargin": True}
 
-    # The distribution is heavily skewed and the bins are log-spaced, so
-    # the bars alone do not tell a reader where the middle sits -- the
-    # tallest bar is not the median when the bins double in width each
-    # step. Marking the median bucket gives the shape an anchor, which is
-    # what turns a row of bars into a distribution a reader can describe.
+    # With log-spaced bins the tallest bar is not the median, so mark it.
     sizes = sorted(commit.lines_added + commit.lines_deleted for commit in commits)
     median = sizes[len(sizes) // 2]
     median_index = len(edges) - 1
@@ -1718,11 +1446,8 @@ def _build_commit_size_chart(commits: list[Commit]) -> str:
 def _build_hotspot_chart(files: list[FileStats]) -> str:
     """Build a horizontal bar chart of the paths absorbing the most change.
 
-    The churn axis of hotspot analysis (Tornhill, *Your Code as a Crime
-    Scene*, 2013), resting on relative code churn (Nagappan & Ball, ICSE
-    2005). Reveille reads history and never file content, so it reports
-    churn alone rather than crossing it with complexity -- a file that
-    changes often is one to look at, not one that is wrong.
+    The churn axis of hotspot analysis (Tornhill, 2013) only: Reveille never
+    reads file content, so frequent change marks a file to look at, not a fault.
 
     Args:
         files: Per-path activity for the analysis window.
@@ -1750,19 +1475,14 @@ def _build_hotspot_chart(files: list[FileStats]) -> str:
             ),
             text=[f"{value:,}" for value in churn],
             textposition="outside",
-            # The label sits past the end of the longest bar. Clipped to the
-            # plot area it printed as "3,59" at a printed page's width.
+            # The label sits past the longest bar; clipping would cut it.
             cliponaxis=False,
         )
     )
     layout = _base_layout()
     layout["margin"] = {**layout["margin"], "r": 60}
-    # On a phone the axis cannot widen to fit a long path, and Plotly cut
-    # the label at the panel's left edge: "src/reveille/adapters/renderer.py"
-    # read as "c/reveille/adapters/renderer.py", a path that does not exist.
-    # The template shows these shortened forms below 560 px instead, with an
-    # ellipsis saying something was left out; hover and the text table keep
-    # the full path, which stays the data.
+    # Below 560 px the template shows shortened paths, marked by an ellipsis,
+    # rather than letting Plotly clip them; hover and the table keep full paths.
     layout["meta"] = {
         "narrow_layout": {
             "yaxis": {
@@ -1770,8 +1490,7 @@ def _build_hotspot_chart(files: list[FileStats]) -> str:
                 "tickvals": paths,
                 "ticktext": [_shorten_path(p) for p in paths],
             },
-            # Rotated ticks and a title wider than the plot were the rest of
-            # what a phone cut; three ticks and the short title fit.
+            # Three ticks and a short title fit a phone.
             "xaxis": {"nticks": 3, "title": {"text": "Lines changed"}},
         }
     }
@@ -1786,9 +1505,7 @@ def _build_hotspot_chart(files: list[FileStats]) -> str:
 def _shorten_path(path: str, limit: int = 26) -> str:
     """Return a path short enough for a phone's axis, marked where cut.
 
-    Whole trailing components are kept, so the file name always survives;
-    a name longer than the limit keeps its end. Anything removed is shown
-    as a leading ellipsis.
+    Whole trailing components are kept, so the file name survives.
 
     Args:
         path: A repository-relative path, already sanitised for display.
@@ -1811,10 +1528,7 @@ def _shorten_path(path: str, limit: int = 26) -> str:
 
 
 def _build_extension_chart(files: list[FileStats]) -> str:
-    """Build a bar chart of churn totalled by file extension.
-
-    What kind of work a period contained -- source, tests, documentation,
-    configuration -- without naming a file or a person.
+    """Build a bar chart of churn totalled by file extension, naming nobody.
 
     Args:
         files: Per-path activity for the analysis window.
@@ -1826,8 +1540,7 @@ def _build_extension_chart(files: list[FileStats]) -> str:
     if not breakdown:
         return "null"
 
-    # An extension is text from a file name, and Plotly draws a subset of
-    # HTML in labels: unsanitised, `f.<a href=...>` became a clickable link.
+    # Plotly renders some HTML in labels; an extension is untrusted text.
     labels = [_sanitise_chart_label(label) for label, _ in breakdown]
     values = [value for _, value in breakdown]
 
@@ -1843,8 +1556,7 @@ def _build_extension_chart(files: list[FileStats]) -> str:
     )
     layout = _base_layout()
     layout["xaxis"] = {"type": "category", "automargin": True}
-    # On a phone the nine labels rotate upright and the fixed height cut
-    # their ends ("(non", "othe"); a taller plot leaves them room.
+    # Taller on a phone, where rotated labels need room.
     layout["meta"] = {"narrow_layout": {"height": 360}}
     fig.update_layout(
         **layout,
@@ -1858,29 +1570,15 @@ def _build_extension_chart(files: list[FileStats]) -> str:
 def _build_lorenz_chart(counts: list[int]) -> str:
     """Build a Lorenz curve of commit distribution across contributors.
 
-    The diagonal is perfect equality -- every contributor with the same number
-    of commits. The plotted curve bows beneath it in proportion to how
-    concentrated activity actually is.
-
-    The Gini coefficient summarising that gap is rendered by the template on
-    the section heading, not here. As a chart title it was anchored top-left,
-    which is where Plotly also anchors the legend, so the two overlapped.
-
-    This is a statement about the repository, not about any person in it. No
-    contributor is named, and the curve is unchanged by who is where in it,
-    which is why it remains in the default report while the per-person ranking
-    does not.
+    The curve bows below the equality diagonal as activity concentrates. It names
+    nobody, which is why it is in the default report. The Gini is shown by the
+    template's heading, where it cannot overlap the legend.
 
     Args:
-        counts: Commit count per contributor, in any order. Counts rather
-            than ranked contributors, because the population this describes
-            includes contributors held back by `min_commits`, who have no
-            rank. See `_population`.
+        counts: Commit count per contributor, any order, unlisted included.
 
     Returns:
-        A Plotly figure JSON string, or 'null' if there are fewer than two
-        contributors -- a Lorenz curve over one person is the diagonal, which
-        conveys nothing.
+        Plotly figure JSON, or 'null' for fewer than two contributors.
     """
     if len(counts) < 2:
         return "null"
@@ -1929,30 +1627,16 @@ def _build_lorenz_chart(counts: list[int]) -> str:
 
 
 def _compute_commit_concentration(counts: list[int]) -> int:
-    """Count the contributors who between them authored half the commits.
+    """Count the fewest contributors who between them authored half the commits.
 
-    The minimum number of contributors whose combined commit volume
-    accounts for at least 50 percent of total commits. A lower value
-    indicates a more concentrated history.
-
-    This is deliberately not called a bus factor. Bus factor is a measure
-    of knowledge concentration -- how much of the surviving code only one
-    person understands -- which is a property of line ownership, obtained
-    from `git blame`, not of commit counts. Commit volume is a weak proxy
-    for it: a contributor with many small commits outranks one who wrote
-    a subsystem in a handful of large ones. The honest name is the one
-    that describes what is actually measured.
-
-    Takes commit counts rather than ranked contributors because the
-    population it must describe includes contributors held back from the
-    listing by `min_commits`, who have no rank.
+    Not a bus factor: that measures knowledge concentration, a property of line
+    ownership, not of commit counts. Counts include unlisted contributors.
 
     Args:
         counts: Commit count per contributor, in any order.
 
     Returns:
-        An integer in the range [1, len(counts)]. Returns 0 when `counts`
-        is empty or sums to zero.
+        An integer in [1, len(counts)], or 0 when `counts` is empty or sums to zero.
     """
     if not counts:
         return 0
@@ -1961,10 +1645,7 @@ def _compute_commit_concentration(counts: list[int]) -> int:
         return 0
     threshold = total * 0.5
     cumulative = 0
-    # `no branch`/`no cover`: the loop always returns. `counts` is non-empty and
-    # `total` is positive, both guarded above, so `cumulative` reaches `total`,
-    # which is >= total * 0.5. The tail exists because mypy --strict cannot
-    # prove that and requires a return on every path.
+    # The loop always returns (guarded above); the tail satisfies mypy --strict.
     for position, count in enumerate(sorted(counts, reverse=True), start=1):  # pragma: no branch
         cumulative += count
         if cumulative >= threshold:
@@ -1977,27 +1658,17 @@ def _compute_commit_concentration(counts: list[int]) -> int:
 # ------------------------------------------------------------------
 
 
-# Characters that make a spreadsheet treat a cell as a formula rather than text.
-# Tab and carriage return are included because a leading one is skipped by the
-# parser, exposing whatever follows it.
+# Leading characters that make a spreadsheet read a cell as a formula; a
+# leading tab or carriage return is skipped, exposing what follows.
 _CSV_FORMULA_PREFIXES: tuple[str, ...] = ("=", "+", "-", "@", "\t", "\r")
 
 
 def _write_replacing(path: Path, text: str, *, encoding: str) -> None:
     """Write `text` to a new file and move it over `path`.
 
-    Writing in place goes through every name the file has. A report path
-    hard-linked to `.git/HEAD` (a working tree delivered by someone else can
-    carry one) had a plain `generate` overwrite HEAD; a hard link is neither
-    a symbolic link nor a path inside `.git`, so no path check saw it. Moving
-    a new file into place replaces the name and leaves every other link to
-    the old file as it was.
-
-    A report names people, so a new one is readable and writable by its
-    owner only (0o600); on a shared machine 0o666 under the usual umask made
-    it readable by everyone. Rewriting an existing report keeps the mode its
-    owner gave it, so a report deliberately shared stays shared. The new file
-    is removed if anything fails before the move.
+    Replacing the name, not writing in place, leaves other hard links (such as
+    one to `.git/HEAD`) untouched. A new report is 0o600, since it names people;
+    an existing one keeps its mode. The temporary file is removed on failure.
 
     Args:
         path: The resolved output path.
@@ -2027,15 +1698,8 @@ def _write_replacing(path: Path, text: str, *, encoding: str) -> None:
 def _assert_not_symlink(output_path: Path) -> None:
     """Refuse to write a report through a symbolic link.
 
-    `Path.write_text` follows a symlink, so an output path pointing at one
-    overwrites whatever it targets. Combined with an output path taken from an
-    auto-discovered configuration file, that is a way for a repository to
-    choose which of the victim's files a 4 MB report lands on.
-
-    The check must run on the path **as given**. `Path.resolve()` follows
-    symlinks, so a resolved path is already the target and reports
-    `is_symlink() is False` -- checking after resolution silently passes every
-    time, which is exactly how the first version of this guard failed.
+    An untrusted config could otherwise aim the report at any file. Must run on
+    the path as given: a resolved path is never a symlink.
 
     Args:
         output_path: The output path as supplied, before resolution.
@@ -2054,25 +1718,14 @@ def _assert_not_symlink(output_path: Path) -> None:
 def _neutralise_csv_cell(value: str) -> str:
     """Prevent a text cell from being executed as a spreadsheet formula.
 
-    Author names and addresses come from commit metadata, which anybody who has
-    ever contributed to the analysed repository controls. Excel and LibreOffice
-    evaluate a cell beginning with `=`, `+`, `-` or `@` as a formula, which is a
-    route to `HYPERLINK` exfiltration and, historically, DDE command execution.
-    Reveille writes the CSV with a BOM specifically so Excel opens it directly,
-    which makes this the likely path rather than an unlikely one.
-
-    The mitigation is the conventional one: a leading apostrophe, which every
-    major spreadsheet reads as "treat the rest as text" and does not display.
-
-    Only free-text columns are passed through here. Numeric columns are written
-    from integers and floats, so a leading `-` there is a real minus sign.
+    Names and addresses are attacker-controlled; a leading apostrophe makes a
+    spreadsheet treat the cell as text. Free-text columns only.
 
     Args:
         value: A free-text cell value derived from repository metadata.
 
     Returns:
-        The value, prefixed with an apostrophe if it would otherwise be
-        interpreted as a formula.
+        The value, prefixed with an apostrophe if it would read as a formula.
     """
     if value.startswith(_CSV_FORMULA_PREFIXES):
         return "'" + value
@@ -2082,11 +1735,8 @@ def _neutralise_csv_cell(value: str) -> str:
 def _script_safe(text: str) -> str:
     r"""Escape JSON for embedding in an HTML `<script>` element.
 
-    Every `<` becomes the JSON escape `\u003c`, which `JSON.parse` reads back
-    as `<`. Escaping only `</` left `<!--<script`, which puts the HTML parser
-    in a state where the block's own `</script>` no longer ends it: a path,
-    extension or name holding it blanked every chart in the report. JSON
-    holds `<` only inside strings, so the escape is always valid.
+    Every `<` becomes `\u003c`, not just `</`: `<!--<script` would also break
+    the block. JSON holds `<` only inside strings, so this is always valid.
 
     Args:
         text: A JSON document.
@@ -2100,20 +1750,13 @@ def _script_safe(text: str) -> str:
 def _sanitise_chart_label(value: str) -> str:
     """Strip HTML tags, null bytes, and surrounding whitespace from a chart label.
 
-    Contributor names are sourced from Git commit metadata and must not carry
-    HTML tags into Plotly trace fields. _to_json escapes </script> sequences,
-    but raw HTML tags in label text can produce unexpected browser rendering.
-    This function removes them before trace construction.
-
-    Preserves all characters legitimate in contributor names: letters, digits,
-    spaces, hyphens, apostrophes, periods, ampersands, and parentheses.
+    Labels come from commit metadata, and Plotly renders some HTML in them.
 
     Args:
         value: The raw string to sanitise.
 
     Returns:
-        The sanitised string with HTML tags stripped, null bytes removed,
-        and surrounding whitespace trimmed.
+        The sanitised string.
     """
     value = _SCRIPT_BLOCK_RE.sub("", value)
     value = _HTML_TAG_RE.sub("", value)
@@ -2126,9 +1769,7 @@ def _aggregate_pie_data(
 ) -> tuple[list[str], list[int]]:
     """Aggregate ranked (label, value) pairs for pie chart rendering.
 
-    Items beyond _PIE_MAX_SLICES are summed into a trailing slice
-    labelled 'Other Contributors'. The input order is preserved because
-    the Pie trace uses sort=False.
+    Items beyond _PIE_MAX_SLICES are summed into 'Other Contributors'; order is kept.
 
     Args:
         items: (label, value) pairs, sorted by value descending by the caller.
@@ -2151,13 +1792,10 @@ def _pie_colors(n: int, has_other: bool = False) -> list[str]:
 
     Args:
         n: Number of colours required.
-        has_other: Whether the final slice is the aggregated "Other
-            Contributors" residual rather than a named contributor.
+        has_other: Whether the final slice is the "Other Contributors" residual.
 
     Returns:
-        A list of n hex colour strings. No colour is ever repeated within a
-        single chart: identity slices take the categorical palette in order,
-        and the residual slice takes a reserved neutral.
+        n hex colours, never repeated; the residual takes the reserved neutral.
     """
     if has_other and n >= 1:
         return [_CATEGORICAL_PALETTE[i] for i in range(n - 1)] + [_OTHER_SLICE_COLOUR]
@@ -2172,13 +1810,8 @@ def _pie_colors(n: int, has_other: bool = False) -> list[str]:
 def _base_layout() -> dict[str, Any]:
     """Return shared Plotly layout configuration for all charts.
 
-    Background colours and font colour are intentionally absent. The
-    client-side theme manager supplies them at render time, and on a
-    theme toggle re-plots each chart through the same path as the first
-    paint. Not Plotly.relayout(): handed a nested object it replaces the
-    container it names, so a themed xaxis would take the axis title with
-    it, and it does not touch the trace-level colorscale the heatmap
-    needs. The template carries the full reasoning.
+    No theme colours: the client-side theme manager supplies them, re-plotting
+    on toggle rather than using Plotly.relayout() (the template says why).
 
     Returns:
         A dict of Plotly layout keyword arguments.
@@ -2191,17 +1824,10 @@ def _base_layout() -> dict[str, Any]:
             ),
             "size": 12,
         },
-        # The top margin holds Plotly's toolbar (about 26 px), which otherwise
-        # sat over the first bar, the median label and the legends.
+        # The top margin holds Plotly's toolbar (about 26 px).
         "margin": {"l": 60, "r": 30, "t": 40, "b": 50},
-        # Plotly measures the rendered tick labels and axis title and grows
-        # the margin to fit them. Without it the fixed bottom margin of 50px
-        # is a guess: it was too small for -45 degree date labels, so the
-        # "Week" title was drawn on top of them, and too small on the left
-        # for a contributor axis, which truncated names to "dabot[bot]".
-        # Numbers in full, with separators, as every label and sentence in
-        # the report writes them. Plotly's default printed "1000" beside a
-        # bar labelled "1,594", and switched to "25k" above ten thousand.
+        # automargin grows margins to fit tick labels and titles. Numbers are
+        # in full with separators, as the rest of the report writes them.
         "xaxis": {"automargin": True, "separatethousands": True, "exponentformat": "none"},
         "yaxis": {"automargin": True, "separatethousands": True, "exponentformat": "none"},
         "showlegend": False,
@@ -2212,20 +1838,9 @@ def _base_layout() -> dict[str, Any]:
 def _to_json(fig: go.Figure) -> str:
     r"""Serialise a Plotly figure to a JSON specification string.
 
-    Every theme-dependent colour is stripped from the layout before
-    serialisation, because a chart specification is rendered under both
-    themes and a colour baked in here can only be right under one of them.
-    The client-side theme manager is the single source of these values.
-
-    This runs at the one point every chart passes through, so a builder
-    that sets an axis colour cannot leak it into the document. Before
-    this, two builders and the shared base layout each set the light
-    theme's grid and line colours; under the dark theme they rendered a
-    14:1 grid over the plot area, because the manager's attempt to
-    override them never took effect.
-
-    Every `<` is escaped (see `_script_safe`), so no label text can end or
-    reopen the script block the specification is embedded in.
+    Theme-dependent colours are stripped here, where every chart passes, since
+    a spec renders under both themes; the theme manager is their only source.
+    Every `<` is escaped (see `_script_safe`).
 
     Args:
         fig: A fully configured Plotly Figure instance.
@@ -2237,16 +1852,8 @@ def _to_json(fig: go.Figure) -> str:
     raw: dict[str, Any] = json.loads(figure_json)
     layout = raw.get("layout", {})
 
-    # Plotly.py serialises its entire default template into every figure:
-    # 7,105 bytes per chart, 84% of each specification, and the same bytes
-    # each time. Plotly.js registers the same default client-side, so the
-    # copy carried in the document changes nothing about how a chart draws.
-    # What it does carry is a light-theme palette -- a plot background, a
-    # white grid, an axis colour -- inside a document rendered under two
-    # themes, which is the class of defect this module has just been
-    # cleared of. Every colour a chart actually depends on is set
-    # explicitly, by the builder for the data and by the theme manager for
-    # the surface.
+    # Plotly.js has the same default template client-side; the serialised copy
+    # is most of each spec and carries light-theme colours.
     layout.pop("template", None)
 
     _strip_theme_colours(layout)
@@ -2254,10 +1861,8 @@ def _to_json(fig: go.Figure) -> str:
     return _script_safe(json.dumps(raw))
 
 
-#: Layout keys whose value is a colour that differs between the two themes.
-#: Each entry is a path of nested layout keys. `_strip_theme_colours`
-#: removes every one of these, and a fitness function asserts that no
-#: emitted chart specification contains any of them.
+#: Paths of nested layout keys whose colour differs between themes; a test
+#: asserts no emitted spec contains them.
 _THEME_COLOUR_PATHS: tuple[tuple[str, ...], ...] = (
     ("paper_bgcolor",),
     ("plot_bgcolor",),
@@ -2273,9 +1878,7 @@ _THEME_COLOUR_PATHS: tuple[tuple[str, ...], ...] = (
     ("modebar", "activecolor"),
 )
 
-#: Axis-local colour keys, stripped from every axis the layout declares.
-#: Plotly numbers additional axes `xaxis2`, `yaxis3` and so on, so the
-#: axis names are matched by prefix rather than listed.
+#: Axis-local colour keys, stripped from every axis (matched by prefix: `xaxis2`).
 _AXIS_COLOUR_KEYS: tuple[str, ...] = (
     "gridcolor",
     "linecolor",

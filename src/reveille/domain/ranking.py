@@ -1,66 +1,18 @@
 # SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti
 # SPDX-License-Identifier: Apache-2.0
 
-"""Contributor ranking engine.
+"""Contributor ranking: weighted composite score, percentile and tier.
 
-Assigns each contributor a composite score and tier designation based
-on configurable weighted metrics. Rankings are relative to the
-contributor population within a single analysis window -- no absolute
-thresholds are applied.
+Measures volume and regularity of commits, not contribution; never assess
+individuals with it (SPACE, Forsgren et al., 2021). Opt-in (ADR 0010).
+Min-max within one window; lower-bound percentile (ADR 0003). Tier names are a
+visual device, not a rank:
 
-What this measures, and what it does not
-----------------------------------------
-It measures the volume and regularity of commits, because that is what
-Git records. It does not measure contribution, productivity, or value.
-The distance between those two sentences is the whole caveat.
+    I Private 0-20   II Corporal 21-40   III Sergeant 41-60   IV Lieutenant 61-75
+    V Captain 76-88  VI Major 89-95      VII Commander 96-100
 
-This is not a matter of taste. The SPACE framework (Forsgren et al.,
-2021) holds that "developer productivity is about more than an
-individual's activity levels"; DORA's metrics are defined for
-applications and services, not people. Activity metrics are easy to game and
-systematically misread part-time, review-heavy, mentoring, and on-call
-work as low output.
-
-A contributor who spends a quarter reviewing others' code, unblocking
-people, and deleting a subsystem will rank below one who committed
-generated files. That is not a defect in the implementation; it is what
-commit-derived metrics are. Treat a tier as a description of the *shape
-of participation* in one window, never as a judgement about a person.
-
-Ranking is opt-out via `ranking_enabled=False`, which keeps the plain
-contributor table and drops scores, percentiles, and tiers.
-
-Normalisation is min-max within the population for each metric except
-consistency, which is already bounded to [0.0, 1.0] as a ratio. When
-the population contains only one contributor, all normalised scores
-resolve to 1.0 and the contributor receives the Commander designation
-by definition.
-
-Recency is computed as an exponentially decayed commit frequency. Each
-contributor's commits are binned by calendar week. The most recent week
-in the analysis window receives a weight of 1.0; each prior week is
-discounted by a decay factor of 0.85. This rewards sustained recent
-activity over historical volume while remaining fully reproducible from
-the raw commit timestamps.
-
-Tier designations applied by percentile rank:
-    I    Private     0th  -- 20th
-    II   Corporal    21st -- 40th
-    III  Sergeant    41st -- 60th
-    IV   Lieutenant  61st -- 75th
-    V    Captain     76th -- 88th
-    VI   Major       89th -- 95th
-    VII  Commander   96th -- 100th
-
-Default metric weights (must sum to 1.0):
-    commit_volume    0.30
-    lines            0.25
-    consistency      0.25
-    recency          0.20
-
-These are a documented judgement, not a derived model. See
-`reveille.config.RankingWeights` for the reasoning behind their relative
-ordering and for how to override them.
+Default weights, a documented judgement, not a derived model (`RankingWeights`):
+commits 0.30, lines 0.25, consistency 0.25, recency 0.20.
 """
 
 from __future__ import annotations
@@ -75,9 +27,8 @@ from reveille.domain.models import Commit, ContributorStats, RankedContributor
 # Recency decay applied per calendar week moving back from the most recent week.
 _RECENCY_DECAY: float = 0.85
 
-# Tier boundaries evaluated top-down. The first entry whose threshold
-# is strictly less than the contributor's percentile is applied.
-# Format: (exclusive lower bound, tier number, designation)
+# (exclusive lower bound, tier, designation), evaluated top-down; the first
+# threshold strictly below the percentile applies.
 _TIER_BOUNDARIES: list[tuple[float, int, str]] = [
     (95.0, 7, "Commander"),
     (88.0, 6, "Major"),
@@ -89,7 +40,7 @@ _TIER_BOUNDARIES: list[tuple[float, int, str]] = [
         -1.0,
         1,
         "Private",
-    ),  # Exhaustive fallback. Matches all percentiles in [0.0, 100.0].
+    ),  # Exhaustive fallback for [0.0, 100.0].
 ]
 
 
@@ -103,17 +54,14 @@ def rank_contributors(
     """Compute composite scores and assign tier designations to all contributors.
 
     Args:
-        contributors: Aggregated stats for each contributor in the analysis
-            window. Must contain at least one entry.
-        commits: Raw commit list for the same window, used to compute
-            per-contributor recency scores.
+        contributors: Stats per contributor in the window; at least one.
+        commits: Commits in the same window, for recency.
         weights: Configured metric weights. Must sum to 1.0.
-        window_start: First date of the analysis window, inclusive.
-        window_end: Last date of the analysis window, inclusive.
+        window_start: First date of the window, inclusive.
+        window_end: Last date of the window, inclusive.
 
     Returns:
-        A list of RankedContributor instances sorted by composite_score
-        descending (highest score first).
+        RankedContributor instances, highest composite_score first.
 
     Raises:
         ValueError: If contributors is empty.
@@ -155,8 +103,7 @@ def assign_tier(percentile: float) -> tuple[int, str]:
     """Map a percentile value to a tier number and designation.
 
     Args:
-        percentile: A value in the range [0.0, 100.0] representing the
-            contributor's position within the ranked population.
+        percentile: Position within the population, in [0.0, 100.0].
 
     Returns:
         A tuple of (tier_number, tier_designation).
@@ -176,9 +123,7 @@ def assign_tier(percentile: float) -> tuple[int, str]:
     )
 
 
-# ------------------------------------------------------------------
-# Private computation helpers
-# ------------------------------------------------------------------
+# Private computation helpers.
 
 
 def _build_commit_index(commits: list[Commit]) -> dict[str, list[Commit]]:
@@ -202,11 +147,7 @@ def _compute_raw_scores(
     total_days: int,
     window_end: datetime.date,
 ) -> dict[str, dict[str, float]]:
-    """Compute the four raw metric values for each contributor.
-
-    Consistency is computed as active_days / total_days and is already
-    normalised to [0.0, 1.0]. The remaining three metrics are raw counts
-    and volumes requiring subsequent min-max normalisation.
+    """Compute the four raw metrics; consistency = active_days / total_days.
 
     Args:
         contributors: Contributor stats for the analysis window.
@@ -215,7 +156,7 @@ def _compute_raw_scores(
         window_end: End of the analysis window, used as the recency anchor.
 
     Returns:
-        A dict mapping lowercased email to a dict of metric name to raw value.
+        Lowercased email to {metric name: raw value}.
     """
     raw: dict[str, dict[str, float]] = {}
     for contributor in contributors:
@@ -236,10 +177,8 @@ def _compute_recency_score(
 ) -> float:
     """Compute an exponentially decayed commit frequency score.
 
-    Commits are binned by ISO calendar week. The week containing
-    window_end receives a weight of 1.0. Each prior week is multiplied
-    by _RECENCY_DECAY per week of distance. The score is the sum of
-    (commit_count_in_week * week_weight) across all weeks.
+    Sum over ISO weeks of commits * _RECENCY_DECAY ** weeks before the week
+    containing window_end.
 
     Args:
         commits: All commits for a single contributor in the analysis window.
@@ -259,7 +198,6 @@ def _compute_recency_score(
 
     score = 0.0
     for (year, week), count in weekly_counts.items():
-        # Compute week distance as approximate days / 7.
         anchor_date = datetime.date.fromisocalendar(anchor_week[0], anchor_week[1], 1)
         commit_date = datetime.date.fromisocalendar(year, week, 1)
         weeks_ago = max((anchor_date - commit_date).days // 7, 0)
@@ -274,9 +212,8 @@ def _normalise_scores(
 ) -> dict[str, dict[str, float]]:
     """Apply min-max normalisation to commits, lines, and recency metrics.
 
-    Consistency is already in [0.0, 1.0] and is passed through unchanged.
-    When all contributors share an identical value for a metric (max == min),
-    all normalised values for that metric resolve to 1.0.
+    Consistency passes through unchanged. A metric where max == min
+    normalises to 1.0 for everyone.
 
     Args:
         raw: Raw metric values keyed by lowercased email.
@@ -330,12 +267,8 @@ def _compute_composite(
 def _compute_percentiles(composite: dict[str, float]) -> dict[str, float]:
     """Assign a percentile rank to each contributor based on composite score.
 
-    Uses a lower-bound percentile rank formula. For each contributor,
-    the rank is the number of other contributors with a strictly lower
-    composite score (bisect_left on the sorted score list). Contributors
-    with identical composite scores receive the same lower-bound percentile.
-    For a population of one, the single contributor receives the 100th
-    percentile.
+    Lower-bound rank via bisect_left, so ties share a percentile (ADR 0003).
+    A population of one is the 100th percentile.
 
     Args:
         composite: Composite scores keyed by lowercased email.

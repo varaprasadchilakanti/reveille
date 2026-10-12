@@ -3,47 +3,11 @@
 
 """A six-axis profile of a repository's working pattern (ADR 0012, 0016).
 
-Every axis is a **naturally bounded ratio** -- a share of something out of
-something -- so nothing is rescaled by a constant chosen to make a figure
-look right. That constraint is the whole design.
-
-**Two axes of the 0.8 radar were removed** (ADR 0012) because each restated
-a number the report already prints elsewhere:
-
-* `Spread` was exactly ``1 - Gini / ((n-1)/n)``, a monotone transform of the
-  Gini coefficient shown in the Contribution Distribution section a few
-  hundred pixels above, with better caveats attached to it there. It also
-  returned a hard-coded 0.0 for a single contributor, described as "nothing
-  to spread", which plotted *undefined* at the same position as *worst
-  possible*.
-* `Small steps` was exactly the first three buckets of the change-size
-  histogram summed -- the threshold was chosen to match that boundary -- so
-  it could not tell a different story, only the same one twice.
-
-**Identities are read, people are not named** (ADR 0016). `Shared`,
-`Collaboration` and `Automation` read commit authors and co-author trailers,
-but only to count commits; no axis names, ranks or counts any one person's
-work in its output.
-
-**Expected values are computed, never chosen.** Three of the six axes have an
-expectation that follows from their own arithmetic, and the report shows it so
-a reader can tell an ordinary value from a notable one:
-
-* `Continuity` under commits placed uniformly at random across the window is
-  ``1 - (1 - 1/W)**C`` for C commits over W weeks.
-* `Recent work` measures the share of commits in the window's final quarter,
-  so its expectation under even activity is the share of days that quarter
-  occupies -- close to 0.25, and computed exactly rather than assumed,
-  because the cut-off is inclusive.
-* `Shared` under an even split across the same *n* people is ``1 - 1/n``.
-* `Collaboration`, `Revisiting` and `Automation` have no such expectation. It is shown without one rather than
-  given an invented figure.
-
-That distinction is load-bearing. A computed expectation is a fact about how
-the measure is built. A number somebody thinks is *good* would be a target,
-and none of these axes is a target: a repository can score low on every axis
-for entirely ordinary reasons -- a finished library, a spike, a
-single-maintainer tool -- and this is a description, not a scorecard.
+Every axis is a naturally bounded ratio, so nothing is rescaled by a chosen
+constant. Axes read authors and trailers only to count commits; none names,
+ranks or counts one person's work. Where an expected value follows from the
+measure's own arithmetic it is shown; otherwise none is invented. A
+description, not a scorecard: no axis is a target.
 """
 
 from __future__ import annotations
@@ -55,8 +19,7 @@ from reveille.domain.areas import is_automated
 from reveille.domain.files import is_generated
 from reveille.domain.models import Commit, FileStats
 
-#: Fixed axis order. Part of the contract: a reader comparing two reports of
-#: the same repository should find the measures in the same places.
+#: Fixed axis order, part of the contract so reports compare like for like.
 AXIS_ORDER = (
     "Continuity",
     "Recent work",
@@ -74,11 +37,9 @@ class ProfileAxis:
     Attributes:
         name: The axis label, one of `AXIS_ORDER`.
         value: A share between 0.0 and 1.0.
-        description: What the share is of, in one clause, so a reader can
-            check the number rather than trust it.
-        expected: The value this axis takes under evenly spread activity,
-            where that follows from the measure's own arithmetic, else
-            None. Never a target, and never a figure anyone chose.
+        description: What the share is of, in one clause.
+        expected: The value under evenly spread activity, where the arithmetic
+            gives one, else None. Never a target.
     """
 
     name: str
@@ -94,12 +55,8 @@ def _continuity(
 ) -> ProfileAxis:
     """Share of the window's weeks containing at least one commit.
 
-    The expectation is the share of weeks that would contain a commit if the
-    same number of commits were placed uniformly at random: one minus the
-    chance that a given week is missed by all of them. Without it a reader
-    has no way to tell a high-looking number from an ordinary one -- this
-    repository reads 0.913 against an expectation of about 0.99, so the
-    figure that looks strong is in fact below par.
+    Expected under uniformly random placement: 1 - (1 - 1/W)**C for C commits
+    over W weeks.
     """
     total_weeks = max(((until - since).days // 7) + 1, 1)
     in_window = [c for c in commits if since <= c.timestamp.date() <= until]
@@ -120,14 +77,8 @@ def _recent_share(
 ) -> ProfileAxis:
     """Share of commits falling in the most recent quarter of the window.
 
-    This replaced an axis that measured where the last commit sat inside the
-    window. Under `--deterministic` the window *ends* at the last commit, so
-    that axis was identically 100% for every repository ever analysed -- in
-    precisely the mode the Playbook tells consumers to use.
-
-    The expectation is the share of the window's days that the final quarter
-    occupies. It is computed rather than assumed to be 0.25: the cut-off is
-    inclusive, so the quarter is one day longer than a quarter.
+    Expected: the share of days the final quarter occupies, computed rather
+    than assumed 0.25 because the cut-off is inclusive.
     """
     span = max((until - since).days, 1)
     cutoff = until - datetime.timedelta(days=span // 4)
@@ -144,13 +95,8 @@ def _recent_share(
 def _revisiting(files: list[FileStats]) -> ProfileAxis:
     """Share of hand-written files touched by more than one commit.
 
-    A repository whose files are written once and never returned to looks
-    different from one being iterated on. Generated files are excluded
-    because a lock file's revision count reflects tooling, not work.
-
-    No expectation is offered. One would depend on how long the repository
-    has existed and how many files it has, neither of which this measure
-    knows, and a figure invented to fill the gap would read as a target.
+    Generated files are excluded: their revisions reflect tooling. No
+    expectation: it would depend on age and file count, which are unknown here.
     """
     written = [f for f in files if not is_generated(f.path)]
     if not written:
@@ -170,13 +116,9 @@ def _revisiting(files: list[FileStats]) -> ProfileAxis:
 def _shared(commits: list[Commit]) -> ProfileAxis:
     """Share of people's commits not made by the busiest person (ADR 0016).
 
-    The question readers bring first -- is this one person? -- as a plain
-    share. It partly restates the distribution findings, which ADR 0016
-    records and accepts. Automated accounts are left out on both sides of
-    the ratio: a dependency bot is not the "one person", and its share is
-    `Automation`'s to report. The expectation is what an even split across
-    the same number of people would give: 1 - 1/n. With no human commits
-    there is nothing to share and no expectation.
+    Automated accounts are excluded from both sides; their share is
+    `Automation`'s. Expected under an even split across n people: 1 - 1/n.
+    None without human commits.
     """
     counts: dict[str, int] = {}
     for commit in commits:
@@ -198,8 +140,7 @@ def _shared(commits: list[Commit]) -> ProfileAxis:
 def _collaboration(commits: list[Commit]) -> ProfileAxis:
     """Share of commits that credit a co-author (ADR 0014, 0016).
 
-    No expectation: how often people work together has no arithmetic
-    baseline, and an invented one would read as a target.
+    No expectation: there is no arithmetic baseline.
     """
     return ProfileAxis(
         name="Collaboration",
@@ -211,8 +152,7 @@ def _collaboration(commits: list[Commit]) -> ProfileAxis:
 def _automation(commits: list[Commit]) -> ProfileAxis:
     """Share of commits made by automated accounts (ADR 0013's rule, 0016).
 
-    No expectation, and no judgement: dependency bots in a well-kept
-    project and a project kept alive only by bots read the same here.
+    No expectation and no judgement.
     """
     return ProfileAxis(
         name="Automation",
@@ -229,9 +169,7 @@ def repository_profile(
 ) -> list[ProfileAxis]:
     """Return the six profile axes, always in `AXIS_ORDER`.
 
-    Reads authors and co-author trailers to count commits, never to name
-    anyone: the output holds shares of the repository's work, not any one
-    person's.
+    Shares of the repository's work, never any one person's.
 
     Args:
         commits: Every commit in the analysis window.
@@ -240,8 +178,7 @@ def repository_profile(
         until: Last day of the analysis window.
 
     Returns:
-        Six axes in the fixed documented order. Empty if there are no
-        commits, since a profile of nothing says nothing.
+        Six axes in `AXIS_ORDER`, or empty when there are no commits.
     """
     if not commits:
         return []

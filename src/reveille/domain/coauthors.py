@@ -1,16 +1,10 @@
 # SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti
 # SPDX-License-Identifier: Apache-2.0
 
-"""Co-authorship stated as a fact beside authorship (ADR 0014).
+"""Co-authorship stated beside authorship, never added to it (ADR 0014).
 
-Git records one author per commit; a `Co-authored-by` trailer credits the
-others. Authorship figures stay as they are -- a co-authored commit counted
-once per identity would stop the share chart and the timelines adding up --
-and co-authorship is stated beside them: a count on each contributor's row,
-and the identities credited only as co-authors, listed apart.
-
-A trailer is a claim made by whoever wrote the message. Nothing here
-verifies it, and the report says "credited", not "wrote".
+Counting a commit per identity would stop the charts adding up. A trailer is
+an unverified claim: "credited", not "wrote".
 """
 
 from __future__ import annotations
@@ -27,8 +21,8 @@ def co_authors_only(commits: list[Commit]) -> list[CoAuthor]:
         commits: The commits in the window, with their co-authors attached.
 
     Returns:
-        One entry per identity that co-authored and authored nothing,
-        ordered by name: never by count, which would make it a ranking.
+        One entry per identity that only co-authored, ordered by name, never
+        by count (which would make it a ranking).
     """
     authors = {c.author_email.lower() for c in commits}
     counts: dict[str, int] = defaultdict(int)
