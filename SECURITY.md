@@ -220,8 +220,26 @@ v0.9.0 closed eleven more, each with a test observed failing before the fix:
   another name. Every commit under an address the value reached, anywhere in
   the branch's history, is now removed.
 
-Verified unaffected, by testing: HTML and JavaScript injection into the report,
-the report's loading of remote resources, and the CI workflows. The tool's own
+A red-team pass on 2026-10-12 found five more, fixed for the next release, each
+with a test observed failing before the fix:
+
+- A `.mailmap` could stall a run for minutes: its line patterns backtracked
+  quadratically, and the working-tree file had no size bound. Lines are parsed
+  in one pass and the file is bounded at 1 MiB.
+- A report path hard-linked to `.git/HEAD` was written through, and `--output`
+  could name the HEAD of the repository a linked worktree belongs to. Reports
+  are written to a new file and moved into place, and a worktree's common Git
+  directory is refused.
+- A file extension could put a clickable link into a chart, and `<!--<script`
+  in a path, extension or name blanked every chart. No script ran in either
+  case.
+- `summary` and `who-changed` printed control characters from a directory name
+  or a `.mailmap` name on stdout.
+- A token in a transport-prefixed remote (`https::https://TOKEN@host/...`) was
+  printed.
+
+Verified unaffected, by testing: script execution from repository text, the
+report's loading of remote resources, and the CI workflows. The tool's own
 offline guarantee was affected: see the partial-clone entry above.
 
 **One limit, stated plainly.** Git honours the configuration in a repository's
