@@ -130,6 +130,8 @@ pre-commit = ">=3.6,<5.0"
 
 [tool.poetry.scripts]
 reveille = "reveille.cli:app"
+# A short name for the same command: two other projects install a `reveille` command too.
+reile = "reveille.cli:app"
 
 
 # ------------------------------------------------------------------

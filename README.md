@@ -116,7 +116,9 @@ pipx install reveille      # or: uv tool install reveille, or pip install reveil
 reveille --version
 ```
 
-To run it once without installing: `uvx reveille summary`. To remove it, use the tool that
+It installs two names for one command, `reveille` and the shorter `reile`; where another tool
+owns either, `python -m reveille` always works. To run it once without installing:
+`uvx reveille summary`. To remove it, use the tool that
 installed it (`pipx uninstall reveille`, `pip uninstall reveille` or `uv tool uninstall reveille`).
 Reveille keeps no cache or settings; it leaves only the files you asked it to write.
 

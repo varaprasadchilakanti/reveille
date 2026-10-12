@@ -97,3 +97,22 @@ class TestTheInstalledCommand:
 
         assert result.returncode == 0, result.stderr
         assert json.loads(result.stdout)["totals"]["commits"] == 2
+
+
+def test_reile_is_the_same_command(repo: Path) -> None:
+    """`reile` is a second name for `reveille`, for when another tool owns that one."""
+    bindir = Path(sys.executable).parent
+    reile = next((bindir / n for n in ("reile", "reile.exe") if (bindir / n).is_file()), None)
+    assert reile is not None, f"no installed `reile` command beside {sys.executable}"
+
+    version = subprocess.run([str(reile), "--version"], capture_output=True, text=True, check=False)
+    state = subprocess.run(
+        [str(reile), "state", "--repo", str(repo), "--format", "json"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert version.stdout.strip() == f"reveille {__version__}"
+    assert state.returncode == 0, state.stderr
+    assert '"document": "state"' in state.stdout

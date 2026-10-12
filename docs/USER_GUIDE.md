@@ -63,6 +63,9 @@ chart data embedded; it opens offline in any modern browser.
 
 ## Commands and Outputs
 
+Every command can also be run as `reile` (a shorter name for the same program) or as
+`python -m reveille`.
+
 `reveille generate` takes the options below. `summary`, `who-changed`, `init`, `validate` and
 `capabilities` are described after the table; each of their options is listed with its command.
 
