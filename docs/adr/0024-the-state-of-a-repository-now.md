@@ -17,6 +17,11 @@ Two of them are not passive. Measured on 2026-10-12 (Git 2.55) in a scratch repo
   after `touch` and a plain `git status`); `git --no-optional-locks status` left it identical.
 - **`git status` runs the program a repository's own `core.fsmonitor` names** (a script set there
   ran); with `-c core.fsmonitor=false` it did not.
+- **`git status` runs a content filter** (`clean`, or `process`) that the repository's
+  `.gitattributes` assigns and its config defines, to compare a file whose stat data changed.
+  Overriding that driver for the call (`clean=cat`, `smudge=cat`, `process=` empty,
+  `required=false`) stopped it. History reads (`log --numstat`, `--name-status`) did not start a
+  `textconv` driver.
 
 So running Git by hand changes Git data and can run code the repository chose.
 
@@ -37,9 +42,12 @@ answer, changing nothing and running nothing.**
   worktrees' (branch names can name people; ADR 0022, `05-` research). Paths are listed because
   they are what the reader acts on; they are bounded by `--limit` (default 10).
 - **Changes nothing, runs nothing:** every Git call runs with `GIT_OPTIONAL_LOCKS=0` and
-  `core.fsmonitor=false`, submodule summaries off. A test changes stat data and asserts
-  `.git/index` is byte-identical afterwards; another sets a `core.fsmonitor` program and asserts
-  it did not run. Both must fail with the pin removed.
+  `core.fsmonitor=false`, submodule summaries off. Content filters the repository's own config
+  defines (local or worktree scope, found with `git config --show-scope`) are overridden for the
+  status call and named in the answer; a filter in the user's global or system config runs as
+  they set it. If Git cannot report scopes, no file is compared. Tests assert the index is
+  byte-identical, and that neither an fsmonitor program nor a repository's filter runs; each
+  fails with its pin removed.
 - **Output:** text under 2 KB and `--format json` (`"document": "state"`). Exit 0 when it ran,
   2 when it could not; there is no negative answer. Reads no `reveille.toml`, like `summary`.
 
@@ -58,6 +66,9 @@ answer, changing nothing and running nothing.**
 
 - **Git reads file contents** to compare the working tree with the index; Reveille receives
   paths and status letters only, as for line counts (COMPLIANCE wording).
+- **A file a repository-defined filter covers may show as modified**, because it is compared
+  unfiltered. Correctness gives way to not running the repository's program, and the answer says
+  which filters were not run.
 - **Paths on the user's machine appear** (worktree paths, changed files). The answer describes
   the user's own checkout; the docs say so before anyone pastes it elsewhere.
 - **The pins apply to every read**, not only this command: no behaviour change for history reads,

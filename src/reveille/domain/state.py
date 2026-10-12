@@ -60,6 +60,10 @@ class RepositoryState:
         last_commit: Date of the current commit.
         bare: Whether the repository has no working tree.
         shallow: Whether only part of the history is present.
+        filters_not_run: Content filters the repository's own config names, which
+            status was computed without; files they cover may show as modified.
+        working_tree_unread: Whether the working tree was not compared, because
+            Git could not say which config defines its filters.
     """
 
     branch: str | None
@@ -84,6 +88,8 @@ class RepositoryState:
     last_commit: datetime.date | None
     bare: bool
     shallow: bool
+    filters_not_run: tuple[str, ...] = ()
+    working_tree_unread: bool = False
 
     @property
     def clean(self) -> bool:

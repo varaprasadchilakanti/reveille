@@ -51,9 +51,10 @@ before 0.8.0 predate the convention and are left as they were released.
   progress, conflicted paths, staged, modified, deleted, renamed and untracked files (bounded by
   `--limit`), stashes, worktrees, local branches as counts, and the latest tag with the commits
   since it (ADR 0024). It names no author and lists no branch beyond the current one and the
-  worktrees'. A plain `git status` rewrites `.git/index` and runs a `core.fsmonitor` program the
-  repository names; every Git call Reveille makes now has optional locks and fsmonitor off, and
-  tests check that the index is byte-identical and the program never runs.
+  worktrees'. A plain `git status` rewrites `.git/index` and runs `core.fsmonitor` and content
+  filter programs the repository's own config names; Reveille switches all three off (filters
+  only where the repository itself defines them), and tests check that the index is
+  byte-identical and no such program runs.
 - **`python -m reveille`** runs Reveille where another tool already owns the `reveille` command.
 
 - **`reveille brief`** says what changed since a tag, a commit or a date (`--from <revision>` or

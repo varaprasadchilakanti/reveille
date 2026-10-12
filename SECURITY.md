@@ -201,12 +201,13 @@ offline guarantee was affected: see the partial-clone entry above.
 
 **One limit, stated plainly.** Git honours the configuration in a repository's
 own `.git/config`, and some settings name a program for Git to run. Reveille
-pins off the one its reads were found to trigger — `log.showSignature`, which
-runs `gpg.program` on a signed commit; a test proves the program does not run —
-and asks for no filters, text conversion or external diff. Git has many
-settings, though, and Reveille cannot rule out every one, so analysing a
-repository whose `.git` directory came from someone else may run what that
-file names. `git clone` does not copy `.git/config`; a copied directory, an
+switches off the ones its reads were measured to start, each proven by a test
+that watches the program not run: `gpg.program` (`log.showSignature`), a
+`core.fsmonitor` program, and, for `reveille state`, the content filters
+(`clean`, `smudge`, `process`) the repository's own config defines. Its history
+reads were measured not to start a `textconv` driver. Git has many settings,
+though, and Reveille cannot rule out every one, so analysing a repository whose
+`.git` directory came from someone else may still run what that file names. `git clone` does not copy `.git/config`; a copied directory, an
 archive or a shared drive does. Treat such a repository as you would any
 untrusted code.
 

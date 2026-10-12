@@ -2082,6 +2082,8 @@ def _state_document(
         "latest_tag": state.latest_tag,
         "commits_since_tag": state.commits_since_tag,
         "history_replaced_not_followed": history_replaced,
+        "filters_not_run": list(state.filters_not_run),
+        "working_tree_read": not (state.bare or state.working_tree_unread),
         "notice": _NOTICE,
     }
 
@@ -2125,6 +2127,11 @@ def _state_lines(
         lines.append("Shallow clone: only part of the history is present.")
     if history_replaced:
         lines.append("Replace refs or a graft file are present and not followed.")
+    if state.filters_not_run:
+        lines.append(
+            f"Not run: the content filters this repository's own config names "
+            f"({_listed(state.filters_not_run, limit)}); files they cover may show as modified."
+        )
     lines.append(_NOTICE)
     return lines
 
@@ -2133,6 +2140,11 @@ def _working_tree_lines(state: RepositoryState, limit: int) -> list[str]:
     """Say what is staged, modified and untracked, or that the tree is clean."""
     if state.bare:
         return ["Bare repository: no working tree."]
+    if state.working_tree_unread:
+        return [
+            "Working tree: not compared. Git could not say which config defines its content "
+            "filters, and comparing files could run one the repository names."
+        ]
     if state.clean:
         return ["Working tree: clean."]
     counts = [

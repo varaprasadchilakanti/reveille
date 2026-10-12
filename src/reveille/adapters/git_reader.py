@@ -18,7 +18,7 @@ import logging
 import os
 import re
 from collections import defaultdict
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
@@ -942,11 +942,14 @@ class GitReader:
                 credited[sha] = found
         return [replace(c, co_authors=credited[c.sha]) if c.sha in credited else c for c in commits]
 
-    def _git(self) -> Any:
+    def _git(self, extra: Sequence[str] = ()) -> Any:
         """Return the Git command runner, with settings that change what is read pinned.
 
         `log.follow` would desynchronise `log` from `rev-list`, so results must
         not depend on the user's configuration.
+
+        Args:
+            extra: More `name=value` settings for this call only.
 
         Returns:
             GitPython's command runner for this repository.
@@ -959,6 +962,7 @@ class GitReader:
                 "log.showSignature=false",
                 "core.fsmonitor=false",
                 "status.submoduleSummary=false",
+                *extra,
             ]
         )
 
@@ -1016,9 +1020,23 @@ class GitReader:
             counts and latest tag.
         """
         status = _Status()
-        if not self._repo.bare:
+        filters = None if self._repo.bare else self._repository_filters()
+        unread = not self._repo.bare and filters is None
+        if not self._repo.bare and filters is not None:
+            # Each driver the repository's own config names is replaced for this
+            # call: `git status` runs a clean or process filter to compare files.
+            overrides = [
+                setting
+                for name in filters
+                for setting in (
+                    f"filter.{name}.clean=cat",
+                    f"filter.{name}.smudge=cat",
+                    f"filter.{name}.process=",
+                    f"filter.{name}.required=false",
+                )
+            ]
             raw = str(
-                self._git().status(
+                self._git(overrides).status(
                     "--porcelain=v2",
                     "--branch",
                     "-z",
@@ -1028,6 +1046,7 @@ class GitReader:
             )
             status = _parse_status(raw)
         else:
+            # Bare, or filters unknown: read where HEAD is, compare no files.
             status.head = self.resolve_head_sha()
             try:
                 status.branch = str(self._git().symbolic_ref("--short", "HEAD")).strip()
@@ -1059,7 +1078,35 @@ class GitReader:
             last_commit=head_time.date() if head_time else None,
             bare=self._repo.bare,
             shallow=self.is_shallow(),
+            filters_not_run=filters or (),
+            working_tree_unread=unread,
         )
+
+    def _repository_filters(self) -> tuple[str, ...] | None:
+        """Name the content filters the repository's own config defines (ADR 0024).
+
+        Only local and worktree scope, and files they include: global and system
+        config are the user's own. None when Git cannot report scopes, so the
+        caller compares no files rather than guess.
+
+        Returns:
+            The driver names, or None if they cannot be known.
+        """
+        try:
+            out = str(
+                self._git().config(
+                    "--show-scope", "--get-regexp", r"^filter\..+\.(clean|smudge|process)$"
+                )
+            )
+        except GitCommandError as exc:
+            return () if exc.status == 1 else None
+        names = {
+            key.removeprefix("filter.").rsplit(".", 1)[0]
+            for scope, _, rest in (line.partition("\t") for line in out.splitlines())
+            for key in [rest.split(" ", 1)[0]]
+            if scope in ("local", "worktree")
+        }
+        return tuple(sorted(names))
 
     def _commit_time(self, sha: str) -> datetime.datetime | None:
         """Return a commit's committer time in UTC, or None if it cannot be read."""

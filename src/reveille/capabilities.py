@@ -288,9 +288,11 @@ _GUARANTEES: tuple[dict[str, str], ...] = (
         "description": (
             "No network call is made at any point, and the generated report "
             "loads no remote resource. A partial clone is refused rather than "
-            "read, because reading it would make Git fetch. Git obeys a "
-            "repository's own .git/config, which can name a program for Git to "
-            "run; such a program is outside these properties."
+            "read, because reading it would make Git fetch. Programs a "
+            "repository's own .git/config can make its reads start are switched "
+            "off (signature checking, fsmonitor, content filters during `state`); "
+            "Git has many settings, and one not switched off is outside these "
+            "properties."
         ),
     },
     {

@@ -98,6 +98,89 @@ class TestItChangesNothingAndRunsNothing:
         assert marker.exists(), "positive control: plain git status runs it"
 
 
+class TestContentFilters:
+    """`git status` runs a clean or process filter to compare a file; a repository's own
+    config can name any program as one (measured 2026-10-12, Git 2.55)."""
+
+    def _filtered(self, repo: Path, tmp_path: Path, key: str) -> Path:
+        marker = tmp_path / "ran"
+        program = tmp_path / "filter.sh"
+        program.write_text(f"#!/bin/sh\necho ran >> '{marker}'\ncat\n", encoding="utf-8")
+        program.chmod(0o755)
+        (repo / ".gitattributes").write_text("*.txt filter=evil\n", encoding="utf-8")
+        _git(repo, "config", f"filter.evil.{key}", str(program))
+        time.sleep(1.1)
+        os.utime(repo / "a.txt")
+        return marker
+
+    @pytest.mark.parametrize("key", ["clean", "process"])
+    def test_a_filter_the_repository_names_does_not_run(
+        self, repo: Path, tmp_path: Path, key: str
+    ) -> None:
+        marker = self._filtered(repo, tmp_path, key)
+
+        state = _state(repo)
+
+        assert not marker.exists()
+        assert state["filters_not_run"] == ["evil"]
+        assert "Not run: the content filters" in _text(repo)
+        _git(repo, "status", "--porcelain", check=False)
+        assert marker.exists(), "positive control: plain git status runs it"
+
+    def test_a_filter_in_the_users_own_config_is_respected(
+        self, repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        marker = tmp_path / "ran"
+        program = tmp_path / "filter.sh"
+        program.write_text(f"#!/bin/sh\necho ran >> '{marker}'\ncat\n", encoding="utf-8")
+        program.chmod(0o755)
+        own = tmp_path / "own.gitconfig"
+        own.write_text(f'[filter "mine"]\n\tclean = {program}\n', encoding="utf-8")
+        monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(own))
+        (repo / ".gitattributes").write_text("*.txt filter=mine\n", encoding="utf-8")
+        time.sleep(1.1)
+        os.utime(repo / "a.txt")
+
+        state = _state(repo)
+
+        assert state["filters_not_run"] == []
+        assert marker.exists(), "the user's own filter runs as they configured it"
+
+    @pytest.mark.parametrize(("status", "expected"), [(1, ()), (129, None)])
+    def test_no_match_is_none_found_and_a_failure_is_unknown(
+        self, repo: Path, monkeypatch: pytest.MonkeyPatch, status: int, expected: object
+    ) -> None:
+        """Exit 1 from `git config --get-regexp` means no match; anything else, such as
+        an old Git without `--show-scope`, must not be read as "no filters"."""
+        from git.exc import GitCommandError
+
+        from reveille.adapters.git_reader import GitReader
+
+        class _Git:
+            def config(self, *_args: str) -> str:
+                raise GitCommandError("config", status)
+
+        reader = GitReader(repo)
+        monkeypatch.setattr(reader, "_git", lambda extra=(): _Git())
+
+        assert reader._repository_filters() == expected
+
+    def test_when_scopes_cannot_be_known_no_file_is_compared(
+        self, repo: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from reveille.adapters.git_reader import GitReader
+
+        monkeypatch.setattr(GitReader, "_repository_filters", lambda self: None)
+        (repo / "new.txt").write_text("n\n", encoding="utf-8")
+
+        state = _state(repo)
+
+        assert state["working_tree_read"] is False
+        assert state["untracked"]["total"] == 0
+        assert state["branch"] == "main"
+        assert "Working tree: not compared." in _text(repo)
+
+
 class TestTheWorkingTree:
     def test_a_clean_tree(self, repo: Path) -> None:
         state = _state(repo)

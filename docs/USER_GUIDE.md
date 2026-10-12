@@ -219,9 +219,11 @@ stashes; worktrees; local branches as counts (total, merged into the current com
 90 days before it); and the latest tag with the commits since, so the next call can be
 `reveille brief --from <tag>`. Options: `--repo`, `--limit`, `--verbose`, `--format text|json`.
 
-It changes nothing and runs nothing. A plain `git status` rewrites `.git/index` when file stat
-data is stale, and runs the program a repository's `core.fsmonitor` setting names; every Git call
-Reveille makes has optional locks and fsmonitor off, and tests check both. It names no author and
+It changes nothing and runs nothing it was not asked to. A plain `git status` rewrites
+`.git/index` when file stat data is stale, and runs the programs a repository's own config names
+as `core.fsmonitor` or as a content filter; Reveille switches all three off, and tests check
+each. A filter from your own global config runs as you set it; one the repository defines does
+not, so files it covers may show as modified, and the answer says so. It names no author and
 lists no branch other than the current one and the worktrees'. It does show your own paths:
 changed files and worktree directories, which can include your home directory's name.
 
@@ -804,6 +806,7 @@ template beside a new `reveille.toml`; if `reveille.toml` already exists it stop
 `--force` replaces both files.
 
 **Is it safe to run on a repository someone sent me?** Git obeys a repository's own `.git/config`,
-which can name a program for Git to run, and Reveille runs Git. `git clone` does not copy that
-file; a copied directory or an archive does. Run Reveille on a fresh clone of anything you do not
+which can name a program for Git to run. Reveille switches off the ones its reads start
+(signature checking, fsmonitor, and content filters during `state`), but Git has many settings.
+`git clone` does not copy that file; a copied directory or an archive does. Run Reveille on a fresh clone of anything you do not
 trust. See [SECURITY.md](../SECURITY.md).

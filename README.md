@@ -35,13 +35,17 @@ reveille generate
 - **No network calls.** The report loads no remote resource and opens with no internet connection.
 - **No changes to Git data.** History, refs, index, objects and configuration are never changed,
   and an output path inside the repository's Git directory is refused.
+- **It is called; it calls nothing.** An assistant or script runs it; it makes no outbound call,
+  and it switches off the programs a repository's own config can make its Git reads start:
+  signature checking, fsmonitor, and content filters during `state`. A plain `git status` runs
+  the last two.
 - **Same input, same output.** With `--deterministic`, an unchanged repository produces a
   byte-identical report on the same Reveille version, installed dependencies and Git settings.
 
-One limit: Reveille runs Git, and Git obeys a repository's own `.git/config`, which can name a
-program to run. Such a program is outside these properties. `git clone` does not copy that file;
-a copied directory or an archive does. A partial clone (`git clone --filter`) is refused, because
-reading it would make Git fetch.
+One limit: Git has many settings, and Reveille switches off only those its reads were found to
+use, so a repository whose `.git` came from someone else may still run one. `git clone` does not
+copy `.git/config`; a copied directory or an archive does. A partial clone (`git clone --filter`)
+is refused, because reading it would make Git fetch.
 
 Reveille is provided under the Apache Licence 2.0 "AS IS", without warranties or conditions of
 any kind; sections 7 and 8 of the [LICENSE](https://github.com/varaprasadchilakanti/reveille/blob/main/LICENSE)
@@ -93,7 +97,7 @@ what the software is designed and tested to do; they are not a warranty.
   same repository, and the JSON records the analysed commit and the options used. The
   [Playbook](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/PLAYBOOK.md#for-an-audit-or-due-diligence)
   says what history is and is not evidence of.
-- **An AI assistant or a script**, through `summary`, `who-changed`, JSON on stdout, a declared
+- **An AI assistant or a script**, through `state`, `brief`, `summary`, `who-changed`, JSON on stdout, a declared
   schema version and exit codes that separate "no" from "could not run". `summary --format json`
   names no contributor but carries the repository and branch names; with one or two people its
   figures describe identifiable individuals. `generate --format json --output -` prints names and
