@@ -65,6 +65,8 @@ _MODULE_RULES: dict[str, frozenset[str]] = {
     "reveille.init": _IO_AND_PRESENTATION,
     # The outermost layer. Typer and Click are its job.
     "reveille.cli": frozenset(),
+    # Loads the CLI only when run as `python -m reveille`; importing it loads nothing.
+    "reveille.__main__": _IO_AND_PRESENTATION,
 }
 
 _PROBE = """

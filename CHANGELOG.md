@@ -54,6 +54,7 @@ before 0.8.0 predate the convention and are left as they were released.
   worktrees'. A plain `git status` rewrites `.git/index` and runs a `core.fsmonitor` program the
   repository names; every Git call Reveille makes now has optional locks and fsmonitor off, and
   tests check that the index is byte-identical and the program never runs.
+- **`python -m reveille`** runs Reveille where another tool already owns the `reveille` command.
 
 - **`reveille brief`** says what changed since a tag, a commit or a date (`--from <revision>` or
   `--since <date>`), in counts, naming nobody: commits, people and automated accounts, the most
