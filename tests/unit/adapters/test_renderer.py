@@ -783,7 +783,7 @@ class TestToJson:
         fig = go.Figure(go.Bar(x=["</script>"], y=[1]))
         result = _to_json(fig)
         assert "</script>" not in result
-        assert "<\\/script>" in result
+        assert "\\u003c/script>" in result
 
 
 @pytest.mark.unit

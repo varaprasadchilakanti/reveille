@@ -1521,7 +1521,7 @@ def _build_heatmap_data(
         "contributors": contributors,
         "daily_counts": daily_counts,
     }
-    return json.dumps(payload).replace("</", "<\\/")
+    return _script_safe(json.dumps(payload))
 
 
 def _build_contributor_lines_chart(ranked: list[RankedContributor]) -> str:
@@ -1825,7 +1825,9 @@ def _build_extension_chart(files: list[FileStats]) -> str:
     if not breakdown:
         return "null"
 
-    labels = [label for label, _ in breakdown]
+    # An extension is text from a file name, and Plotly draws a subset of
+    # HTML in labels: unsanitised, `f.<a href=...>` became a clickable link.
+    labels = [_sanitise_chart_label(label) for label, _ in breakdown]
     values = [value for _, value in breakdown]
 
     fig = go.Figure(
@@ -2067,6 +2069,24 @@ def _neutralise_csv_cell(value: str) -> str:
     return value
 
 
+def _script_safe(text: str) -> str:
+    r"""Escape JSON for embedding in an HTML `<script>` element.
+
+    Every `<` becomes the JSON escape `\u003c`, which `JSON.parse` reads back
+    as `<`. Escaping only `</` left `<!--<script`, which puts the HTML parser
+    in a state where the block's own `</script>` no longer ends it: a path,
+    extension or name holding it blanked every chart in the report. JSON
+    holds `<` only inside strings, so the escape is always valid.
+
+    Args:
+        text: A JSON document.
+
+    Returns:
+        The same document with no `<` in it.
+    """
+    return text.replace("<", "\\u003c")
+
+
 def _sanitise_chart_label(value: str) -> str:
     """Strip HTML tags, null bytes, and surrounding whitespace from a chart label.
 
@@ -2194,8 +2214,8 @@ def _to_json(fig: go.Figure) -> str:
     14:1 grid over the plot area, because the manager's attempt to
     override them never took effect.
 
-    The sequence "</" is escaped as "<\/" throughout the output to prevent
-    any "</script>" in label text from terminating the embedding script block.
+    Every `<` is escaped (see `_script_safe`), so no label text can end or
+    reopen the script block the specification is embedded in.
 
     Args:
         fig: A fully configured Plotly Figure instance.
@@ -2221,7 +2241,7 @@ def _to_json(fig: go.Figure) -> str:
 
     _strip_theme_colours(layout)
     raw["layout"] = layout
-    return json.dumps(raw).replace("</", "<\\/")
+    return _script_safe(json.dumps(raw))
 
 
 #: Layout keys whose value is a colour that differs between the two themes.

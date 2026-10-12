@@ -27,6 +27,12 @@ before 0.8.0 predate the convention and are left as they were released.
   the old file keep their content, and a worktree's common Git directory is refused like its own.
   A rewritten report now takes the umask like any new file rather than keeping the old file's
   permissions.
+- **Text from a repository could change what a report shows.** A file extension reached the
+  extension chart unsanitised, and Plotly draws a subset of HTML in labels, so a file named
+  `f.<a href="https:...">Click` put a clickable link into the report. And a path, extension or
+  name holding `<!--<script` blanked every chart: the chart data escaped only `</`, and the HTML
+  parser read the rest as an unfinished comment. Extension labels are now sanitised like every
+  other label, and every `<` in the embedded chart data is escaped. No script ran in either case.
 
 ### Added
 

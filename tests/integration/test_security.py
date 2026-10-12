@@ -513,7 +513,7 @@ class TestEveryEscapeHasAGuard:
 
         A `.mailmap` address may contain `</script`, which ends the block in
         every browser and turns the rest of the JSON into markup. JSON
-        encoding alone does not prevent it; the `</` escape does.
+        encoding alone does not prevent it; escaping `<` does.
         """
         repo = _init_repo(tmp_path / "repo")
         (repo / ".mailmap").write_text(
@@ -523,7 +523,7 @@ class TestEveryEscapeHasAGuard:
         generate_report(ReportConfig(repo_path=repo, output_path=out, deterministic=True))
         html = out.read_text(encoding="utf-8")
 
-        assert "a<\\/script x@e.test" in html, "positive control: address embedded"
+        assert "a\\u003c/script x@e.test" in html, "positive control: address embedded"
         assert "a</script" not in html
 
     def test_an_email_is_escaped_in_the_html_table(self, tmp_path: Path) -> None:
