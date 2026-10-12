@@ -105,7 +105,7 @@ class TestTheOutputIsNotCalledAPerformanceReport:
         # The tagline is the first bold line under the title.
         taglines = [line for line in readme if line.startswith("**")][:1]
         assert taglines, "the README has no tagline"
-        assert "Commit-history analytics" in taglines[0], (
+        assert "Offline Git history reports" in taglines[0], (
             f"the README tagline no longer says what the tool does: {taglines[0]!r}"
         )
 

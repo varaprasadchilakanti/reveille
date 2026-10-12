@@ -1,11 +1,8 @@
 # Playbook
 
-How to read a Reveille report and act on it, in one page. Written for
-whoever is holding the report — an engineering manager, a maintainer, or
-an agent summarising it for someone else.
-
-This page states *use*. It does not restate what the measures are; that
-is [USER_GUIDE.md](USER_GUIDE.md), and the machine-readable version is
+How to read a Reveille report and act on it, for whoever holds it: a manager, a maintainer or an
+agent summarising it for someone else. This page states *use*; what the measures are is in
+[USER_GUIDE.md](USER_GUIDE.md), and the machine-readable version is
 `reveille capabilities --format json`.
 
 ---
@@ -23,11 +20,9 @@ is [USER_GUIDE.md](USER_GUIDE.md), and the machine-readable version is
 | 7 | Change Size, Where Change Concentrates, Change by File Type | How big are changes, where do they land, and what kind of work is it? |
 | 8 | Contributors | The figures per person, as text. |
 
-This is the order the report shows them in. What each section contains is in
+This is the report's own order: findings first, evidence after. Stop at the first section that
+answers your question. What each section contains is in
 [USER_GUIDE.md](USER_GUIDE.md#understanding-the-report).
-
-Stop at the first section that answers your question. The order is
-deliberate: findings first, evidence after.
 
 ## What each measure supports, and what it does not
 
@@ -42,18 +37,15 @@ deliberate: findings first, evidence after.
 | Weekend share | When commits were timestamped | Overwork — time zones and rebases move commits across the boundary |
 | Ranking (`--ranking`) | Volume and regularity, nothing else | Any assessment of a person |
 
-The ranking is off by default and should usually stay off. The SPACE
-framework (Forsgren et al., 2021) holds that "developer productivity is
-about more than an individual's activity levels";
-[ADR 0010](adr/0010-ranking-is-opt-in.md) records why this project does
-not rank people by default.
+The ranking is off by default and should usually stay off. The SPACE framework (Forsgren et al.,
+2021) holds that "developer productivity is about more than an individual's activity levels";
+[ADR 0010](adr/0010-ranking-is-opt-in.md) records why this project does not rank people by default.
 
 ## Three questions it answers well
 
 **"Has anything been committed lately?"**
-`reveille generate --repo . --since 2025-01-01`. Read the timeline and
-the dormancy finding. A flat tail means no commits in the window; it does
-not say why. Released software commits rarely.
+`reveille generate --repo . --since 2025-01-01`. Read the timeline and the dormancy finding. A flat
+tail means no commits in the window; it does not say why. Released software commits rarely.
 
 **"Is most of the activity from one or two people?"**
 Read the distribution finding and the Lorenz curve. A high Gini with a
@@ -111,22 +103,5 @@ Read [llms.txt](../llms.txt) first — it is the short index. Then:
 
 ## Where the measures come from
 
-Each measure is a published instrument, not an invention of this project. The
-table of instruments and sources, with the reasoning for each choice and what is
-local to this project, is in [ARCHITECTURE.md](ARCHITECTURE.md#lineage).
-
-## Conventions this project holds to
-
-These are the working rules, not aspirations. They are stated once here
-and enforced elsewhere:
-
-- **A guard that has not been observed to fail is not a guard.** Break
-  the thing a new test protects, watch it fail, restore it.
-- **An empty result from a tool that did not run is not evidence.**
-  Check exit codes.
-- **Execute the documentation; do not read it.**
-- **One branch, one purpose.**
-
-Full contributor detail is in [CONTRIBUTING.md](../CONTRIBUTING.md); the
-design record is [ARCHITECTURE.md](ARCHITECTURE.md) and
-[adr/](adr/).
+The published instrument behind each measure is listed in
+[ARCHITECTURE.md](ARCHITECTURE.md#lineage). Contributing: [CONTRIBUTING.md](../CONTRIBUTING.md).

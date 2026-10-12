@@ -31,10 +31,8 @@ workflow authenticates as a
 OIDC, and the token it receives is minted per run and scoped to this
 project.
 
-Every GitHub Action used in this repository is pinned to an immutable
-commit SHA, with a comment naming the exact version that SHA resolves
-to. A test asserts both properties, so an action reintroduced by a
-mutable tag fails CI rather than silently widening the release path.
+Every GitHub Action used here is pinned to an immutable commit SHA, with a comment naming the
+version it resolves to. A test asserts both, so an action reintroduced by a mutable tag fails CI.
 
 ### Attestations
 
@@ -57,12 +55,9 @@ $ pypi-attestations verify pypi \
     <direct URL of the file on files.pythonhosted.org>
 ```
 
-The command downloads the file and its provenance through PyPI's
-Integrity API and checks that the Trusted Publisher identity matches the
-repository given. Note that the `pypi-attestations` CLI describes itself
-as intended for experimentation and not a stable interface; the
-attestations themselves are a published standard, but this particular
-front end to them may change.
+The command downloads the file and its provenance through PyPI's Integrity API and checks that the
+Trusted Publisher identity matches the repository given. The `pypi-attestations` CLI describes
+itself as experimental and not a stable interface; the attestations are a published standard.
 
 ### Software Bill of Materials
 
@@ -72,17 +67,11 @@ runtime dependency graph resolved from `poetry.lock`. Development and
 test dependencies are excluded: they describe how Reveille is built, not
 what an installation of it contains.
 
-The SBOM is produced by a job that is independent of publishing, so a
-failure to generate one cannot withhold a release. It is uploaded as the
-`sbom` artifact of the workflow run and attached to the GitHub Release,
-together with its Sigstore attestation bundle as a second asset named
-`<sbom filename>.sigstore.json`.
-
-That bundle is the same attestation the workflow writes to GitHub's
-attestation store, kept next to the file it describes. The store is
-reachable only through the API, which makes an SBOM downloaded from the
-Release checkable only by asking the host that served it. With the bundle
-alongside, it can be verified from the two files alone:
+The SBOM is produced by a job independent of publishing, so a failure to generate one cannot
+withhold a release. It is uploaded as the `sbom` artifact of the workflow run and attached to the
+GitHub Release with its Sigstore attestation bundle (`<sbom filename>.sigstore.json`). The bundle
+is the attestation the workflow also writes to GitHub's attestation store, so the SBOM can be
+verified from the two files alone:
 
 ```console
 $ gh attestation verify reveille-X.Y.Z-sbom.cdx.json \
@@ -98,75 +87,43 @@ Releases from v0.8.1 and earlier carry no such bundle; the attestation
 for those exists in the attestation store and is reachable with the same
 command minus `--bundle`.
 
-The Release itself is drafted by that workflow, with both files already
-attached, so there is no step in which a human has to remember to attach
-them. It is created as a draft: a draft accepts assets and a published
-release does not, because this repository enables release immutability.
-
-Where that was missed, the SBOM is still obtainable. It remains the
-`sbom` artifact of the workflow run, and it can be regenerated from the
-tag as below — the two are byte-identical, so neither is more
-authoritative than the other. **v0.8.0 has no SBOM attached to its
-Release**, because the attesting step failed on a glob it could not
-expand; the artifact and the regeneration path both work.
-
-The same file can be regenerated from a checkout at any tag:
+The workflow drafts the Release with both files attached; it is a draft because a published
+release accepts no assets once release immutability is enabled. **v0.8.0 has no SBOM attached to
+its Release**, because the attesting step failed on a glob it could not expand; its `sbom`
+workflow artifact and the regeneration path both work. Regenerate from a checkout at any tag:
 
 ```console
 $ make sbom
 ```
 
-The output is byte-reproducible for a given `poetry.lock`, so a
-regenerated SBOM can be compared directly against a published one.
+The output is byte-reproducible for a given `poetry.lock`, so it can be compared directly against
+a published one.
 
 ## Project Posture
 
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/varaprasadchilakanti/reveille/badge)](https://scorecard.dev/viewer/?uri=github.com/varaprasadchilakanti/reveille)
 
-The Scorecard score above is live and is a composite. The checks that score zero
-are explained below; one of them scores zero because the work has not been done.
+The Scorecard score above is live and is a composite. Reveille has a **single maintainer**, so
+two checks cannot honestly be satisfied.
 
-Reveille has a **single maintainer**. That is a real limitation and it is stated
-here rather than left to be discovered, because two of the checks a security
-scanner applies to this repository cannot honestly be satisfied by one person,
-and pretending otherwise would be worse than the gap.
-
-**Code review.** OpenSSF Scorecard's Code-Review check samples recent commits
-for a second person's approval. There is no second person. Scorecard's own
-documentation concedes the case: *"Requiring reviews for all changes is
-infeasible for some projects, such as those with only one active participant."*
-GitHub also forbids approving your own pull request, so enabling a review
-requirement would either block every merge or require a bypass entry — which
-records an approval that did not happen. **This alert is dismissed deliberately,
-not overlooked.**
-
-What compensates for it, none of which is a substitute:
+**Code review.** Scorecard's Code-Review check looks for a second person's approval. There is
+none, and GitHub forbids approving your own pull request, so a review requirement would block
+every merge or need a bypass that records an approval that did not happen. The alert is dismissed
+deliberately. What partly compensates, and does not substitute:
 
 - Every change reaches `main` through a pull request with required status checks.
 - CodeQL runs on every pull request with the `security-extended` query set.
-- Every GitHub Action is pinned to a commit SHA with a comment naming the
-  version, and a test fails the build if either property lapses.
-- Publishing is by Trusted Publisher over OIDC with PEP 740 attestations, so a
-  released artefact can be traced to the workflow run that built it.
-- Architectural properties are asserted by tests, not by review habit: the
-  layering rule, action pinning, lock-file validity, licence consistency, and
-  agreement between the capability document and the program it describes.
+- Every GitHub Action is pinned to a commit SHA, and a test fails the build if that lapses.
+- Publishing is by Trusted Publisher over OIDC with PEP 740 attestations.
+- Architectural properties are asserted by tests, not review habit: layering, action pinning,
+  lock-file validity, licence consistency, and agreement between the capability document and the
+  program it describes.
 
-**Fuzzing.** Scorecard's Fuzzing check credits OSS-Fuzz membership,
-ClusterFuzzLite, or a user-defined harness in one of the languages it
-recognises — Go, Haskell, JavaScript and TypeScript, Erlang, C# and F#. Python
-is not among them, so for this project the check can be satisfied only by
-joining OSS-Fuzz or deploying ClusterFuzzLite. Neither has been done.
-
-An earlier version of this paragraph said the check credits `atheris` for
-Python; `ossf/scorecard/docs/checks.md` mentions neither, so that was wrong.
-
-The honest position is that fuzzing *would* be worthwhile here and has not been
-done. Reveille parses untrusted input — author names, addresses and `.mailmap`
-contents from an arbitrary repository — and renders it into HTML and CSV. That
-is a genuine target with a genuine bug class, and an adversarial review of
-v0.8.0 found five real issues in exactly that surface. **The reason to fuzz is
-those bugs, not the badge**, and if it is adopted it will be for that reason.
+**Fuzzing.** Scorecard's Fuzzing check credits OSS-Fuzz membership, ClusterFuzzLite, or a harness
+in a language it recognises: Go, Haskell, JavaScript and TypeScript, Erlang, C# and F#. Python is
+not among them. Fuzzing would be worthwhile here and has not been done: Reveille parses untrusted input (author names, addresses
+and `.mailmap` contents from an arbitrary repository) and renders it into HTML and CSV, and an
+adversarial review of v0.8.0 found five real issues in that surface.
 
 ## Threat Model
 
