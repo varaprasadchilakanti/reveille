@@ -171,6 +171,29 @@ def who_changed_text(
     return Renderer.who_changed_text(who_changed(path, commits), window, output_format, limit)
 
 
+def state_text(repo_path: Path, output_format: str, limit: int) -> str:
+    """Say where a repository stands now, changing nothing (ADR 0024).
+
+    Args:
+        repo_path: The repository root.
+        output_format: "json" or "text".
+        limit: The most paths any list carries.
+
+    Returns:
+        The state.
+    """
+    reader = GitReader(repo_path)
+    state = reader.read_state()
+    replace_refs, graft_file = reader.history_not_followed()
+    return Renderer.state_text(
+        state,
+        name=repo_path.name,
+        history_replaced=bool(replace_refs or graft_file),
+        output_format=output_format,
+        limit=limit,
+    )
+
+
 #: Areas whose earlier history is looked up for "active again": one `git log -1` each.
 _MAX_AREAS_LOOKED_UP = 50
 

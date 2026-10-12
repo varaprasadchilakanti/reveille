@@ -46,6 +46,15 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Added
 
+- **`reveille state`** says where a repository stands now: branch or detached commit, upstream
+  ahead/behind as of the last fetch, a merge, rebase, `git am`, cherry-pick, revert or bisect in
+  progress, conflicted paths, staged, modified, deleted, renamed and untracked files (bounded by
+  `--limit`), stashes, worktrees, local branches as counts, and the latest tag with the commits
+  since it (ADR 0024). It names no author and lists no branch beyond the current one and the
+  worktrees'. A plain `git status` rewrites `.git/index` and runs a `core.fsmonitor` program the
+  repository names; every Git call Reveille makes now has optional locks and fsmonitor off, and
+  tests check that the index is byte-identical and the program never runs.
+
 - **`reveille brief`** says what changed since a tag, a commit or a date (`--from <revision>` or
   `--since <date>`), in counts, naming nobody: commits, people and automated accounts, the most
   changed areas and file types, files added, areas active again after 90 quiet days, and tags in

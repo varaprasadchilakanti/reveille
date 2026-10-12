@@ -83,6 +83,19 @@ _CAPABILITIES: tuple[dict[str, str], ...] = (
         ),
     },
     {
+        "id": "state",
+        "description": (
+            "Say where a repository stands now with `reveille state`: the branch or "
+            "detached commit, upstream ahead/behind as of the last fetch, a merge, "
+            "rebase, cherry-pick, revert or bisect in progress, conflicted paths, "
+            "staged, modified, deleted, renamed and untracked counts with bounded "
+            "lists, stashes, worktrees, local branches as counts, and the latest tag "
+            "with the commits since it. Every Git call runs with optional locks and "
+            "fsmonitor off, so it neither rewrites the index nor runs a program the "
+            "repository names. Names no author."
+        ),
+    },
+    {
         "id": "who-changed",
         "description": (
             "Say who changed one file or directory with `reveille who-changed "
@@ -173,8 +186,9 @@ _NOT_CAPABILITIES: tuple[dict[str, str], ...] = (
             "name, author name, author email, timestamp -- those trailers, and, "
             "per file in each commit, the path and the number of lines added "
             "and deleted, as reported by `git log --numstat`. How many lines "
-            "changed in a file, never which lines. Reveille receives paths and "
-            "counts; Git reads the files to compute the counts."
+            "changed in a file, never which lines. Reveille receives paths, "
+            "counts and, for `state`, status letters; Git reads the files to "
+            "compute them."
         ),
         "instead": "Use a static analysis tool or a code search tool.",
     },

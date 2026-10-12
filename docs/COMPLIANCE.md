@@ -21,8 +21,9 @@ Every conclusion depends on these facts:
 - It reads commit metadata (object name, author name and address, timestamp), the
   `Co-authored-by` trailers (names and addresses of people credited), and, per file in each
   commit, the **path and the number of lines added and deleted**, as `git log --numstat` reports
-  them. Reveille receives paths and counts; Git reads the files to compute the counts. It reads no
-  source code, no other part of any commit message, and no diff content.
+  them; for `reveille state`, the working tree's paths and their status letters. Reveille receives
+  paths, counts and status letters; Git reads the files to compute them. It reads no source code,
+  no other part of any commit message, and no diff content.
 - It contains **no machine learning and no model**. Every number is arithmetic over commit counts,
   lines and dates.
 - It is supplied **free of charge and outside any commercial activity**: no paid tier, hosted

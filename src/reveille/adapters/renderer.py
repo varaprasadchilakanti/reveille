@@ -54,6 +54,7 @@ from reveille.domain.models import (
     ReportData,
 )
 from reveille.domain.profile import ProfileAxis, repository_profile
+from reveille.domain.state import QUIET_BRANCH_DAYS, RepositoryState
 from reveille.domain.summary import Finding, longest_quiet_run, summarise
 from reveille.exceptions import OutputPathError, RenderError
 
@@ -660,6 +661,31 @@ class Renderer:
         lines.append(f"Next: reveille brief --from {tip[:12]}")
         lines.append(_NOTICE)
         return "\n".join(lines) + "\n"
+
+    @staticmethod
+    def state_text(
+        state: RepositoryState,
+        *,
+        name: str,
+        history_replaced: bool,
+        output_format: str,
+        limit: int,
+    ) -> str:
+        """Render a repository's present state as JSON or plain lines (ADR 0024).
+
+        Args:
+            state: What was read.
+            name: The repository's directory name.
+            history_replaced: Whether replace refs or a graft file are present and not followed.
+            output_format: "json" or "text".
+            limit: The most paths any list carries.
+
+        Returns:
+            The state; text stays under 2 KB.
+        """
+        if output_format == "json":
+            return json.dumps(_state_document(state, name, history_replaced, limit), indent=2)
+        return "\n".join(_state_lines(state, name, history_replaced, limit)) + "\n"
 
     def render_csv(self, data: ReportData, output_path: Path) -> Path:
         """Serialise the ranked contributor table to a UTF-8 CSV file with a BOM.
@@ -1998,3 +2024,130 @@ def _strip_theme_colours(layout: dict[str, Any]) -> None:
             continue
         for key in _AXIS_COLOUR_KEYS:
             value.pop(key, None)
+
+
+def _listed(items: tuple[str, ...] | list[str], limit: int) -> str:
+    """Join at most `limit` items, saying how many more there are."""
+    rest = len(items) - limit
+    shown = ", ".join(items[:limit])
+    return f"{shown} and {rest:,} more" if rest > 0 else shown
+
+
+def _state_document(
+    state: RepositoryState, name: str, history_replaced: bool, limit: int
+) -> dict[str, Any]:
+    """Build the `state` JSON document (ADR 0024)."""
+
+    def bounded(items: tuple[str, ...]) -> dict[str, Any]:
+        return {"total": len(items), "truncated": len(items) > limit, "list": list(items[:limit])}
+
+    upstream = (
+        {
+            "name": state.upstream,
+            "ahead": state.ahead,
+            "behind": state.behind,
+            "as_of": "last fetch",
+        }
+        if state.upstream
+        else None
+    )
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "document": "state",
+        "repository": {"name": name, "bare": state.bare, "shallow": state.shallow},
+        "branch": state.branch,
+        "head": state.head,
+        "last_commit_date": state.last_commit.isoformat() if state.last_commit else None,
+        "upstream": upstream,
+        "operation_in_progress": state.operation,
+        "clean": state.clean,
+        "conflicted": bounded(state.conflicted),
+        "staged": bounded(state.staged),
+        "modified": bounded(state.modified),
+        "deleted": bounded(state.deleted),
+        "renamed": bounded(state.renamed),
+        "untracked": bounded(state.untracked),
+        "stashes": state.stashes,
+        "worktrees": [
+            {"path": w.path, "branch": w.branch, "locked": w.locked, "prunable": w.prunable}
+            for w in state.worktrees[:limit]
+        ],
+        "worktrees_total": len(state.worktrees),
+        "branches": {
+            "local": state.branches,
+            "merged_into_head": state.branches_merged,
+            "quiet": state.branches_quiet,
+            "quiet_days": QUIET_BRANCH_DAYS,
+        },
+        "latest_tag": state.latest_tag,
+        "commits_since_tag": state.commits_since_tag,
+        "history_replaced_not_followed": history_replaced,
+        "notice": _NOTICE,
+    }
+
+
+def _state_lines(
+    state: RepositoryState, name: str, history_replaced: bool, limit: int
+) -> list[str]:
+    """Build the `state` text, one fact per line, under 2 KB."""
+    where = f"on {state.branch}" if state.branch else "detached"
+    if state.head is None:
+        where += ", no commits yet"
+    else:
+        day = state.last_commit.isoformat() if state.last_commit else "?"
+        where += f" ({state.head[:7]}, {day})"
+    lines = [f"{name}: {where}."]
+    if state.upstream:
+        lines.append(
+            f"Tracking {state.upstream}: {state.ahead or 0:,} ahead, "
+            f"{state.behind or 0:,} behind, as of the last fetch."
+        )
+    if state.operation:
+        lines.append(f"In progress: {state.operation}.")
+    if state.conflicted:
+        lines.append(f"Conflicted: {_listed(state.conflicted, limit)}.")
+    lines.extend(_working_tree_lines(state, limit))
+    extra = ["1 stash" if state.stashes == 1 else f"{state.stashes:,} stashes"]
+    if len(state.worktrees) > 1:
+        others = [f"{w.path} ({w.branch or 'detached'})" for w in state.worktrees[1:]]
+        extra.append(f"{len(others):,} other worktrees: {_listed(others, limit)}")
+    lines.append("; ".join(extra) + ".")
+    lines.append(
+        f"Branches: {state.branches:,} local, {state.branches_merged:,} merged into this commit, "
+        f"{state.branches_quiet:,} with no commit in {QUIET_BRANCH_DAYS} days before it."
+    )
+    if state.latest_tag:
+        lines.append(
+            f"Latest tag: {state.latest_tag}, {state.commits_since_tag or 0:,} commits since. "
+            f"Next: reveille brief --from {state.latest_tag}"
+        )
+    if state.shallow:
+        lines.append("Shallow clone: only part of the history is present.")
+    if history_replaced:
+        lines.append("Replace refs or a graft file are present and not followed.")
+    lines.append(_NOTICE)
+    return lines
+
+
+def _working_tree_lines(state: RepositoryState, limit: int) -> list[str]:
+    """Say what is staged, modified and untracked, or that the tree is clean."""
+    if state.bare:
+        return ["Bare repository: no working tree."]
+    if state.clean:
+        return ["Working tree: clean."]
+    counts = [
+        (len(state.staged), "staged"),
+        (len(state.modified), "modified"),
+        (len(state.deleted), "deleted"),
+        (len(state.renamed), "renamed"),
+        (len(state.untracked), "untracked"),
+    ]
+    lines = ["Working tree: " + ", ".join(f"{n:,} {label}" for n, label in counts if n) + "."]
+    for label, items in (
+        ("Staged", state.staged),
+        ("Modified", state.modified),
+        ("Untracked", state.untracked),
+    ):
+        if items:
+            lines.append(f"  {label}: {_listed(items, limit)}.")
+    return lines

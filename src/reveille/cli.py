@@ -1036,6 +1036,23 @@ def brief(
     )
 
 
+@app.command()
+def state(
+    repo: _RepoOption = Path("."),
+    output_format: _QueryFormatOption = "text",
+    limit: Annotated[
+        int, typer.Option("--limit", min=1, help="The most paths any list shows.")
+    ] = 10,
+    verbose: _VerboseOption = False,
+) -> None:
+    """Say where the repository stands now: branch, work in progress, changes, worktrees."""
+    from reveille.services.report import state_text
+
+    _configure_logging(verbose)
+    _check_query_format(output_format)
+    _run_query(lambda _notice: state_text(repo.resolve(), output_format, limit))
+
+
 def _repository_path(path: str, repo: Path) -> str:
     """Turn the path given to who-changed into a repository-relative one.
 

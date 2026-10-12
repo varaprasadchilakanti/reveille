@@ -204,7 +204,27 @@ no contributor name or address, but it does carry the repository and branch name
 someone, and with one or two people its figures describe identifiable individuals. Check it before
 sending it to a hosted model.
 
-### `reveille brief`
+### `reveille state`
+
+```bash
+reveille state
+reveille state --format json --limit 20
+```
+
+Where the repository stands now, in one bounded answer: the branch or detached commit; its
+upstream and how far ahead or behind, as of the last fetch (Reveille never fetches); a merge,
+rebase, `git am`, cherry-pick, revert or bisect stopped part-way; conflicted paths; what is
+staged, modified, deleted, renamed and untracked, with lists bounded by `--limit` (default 10);
+stashes; worktrees; local branches as counts (total, merged into the current commit, no commit in
+90 days before it); and the latest tag with the commits since, so the next call can be
+`reveille brief --from <tag>`. Options: `--repo`, `--limit`, `--verbose`, `--format text|json`.
+
+It changes nothing and runs nothing. A plain `git status` rewrites `.git/index` when file stat
+data is stale, and runs the program a repository's `core.fsmonitor` setting names; every Git call
+Reveille makes has optional locks and fsmonitor off, and tests check both. It names no author and
+lists no branch other than the current one and the worktrees'. It does show your own paths:
+changed files and worktree directories, which can include your home directory's name.
+
 
 ```bash
 reveille brief --from v0.9.0

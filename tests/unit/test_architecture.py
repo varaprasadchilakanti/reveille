@@ -376,8 +376,10 @@ class TestFilesystemWrites:
     #
     # `bare` is a property read from the repository's configuration: whether it
     # has a working tree, which decides where its `.mailmap` is read from.
+    # `git_dir` is the Git directory's path, read to find a stopped merge or
+    # rebase by the files Git leaves there (ADR 0024); nothing is written.
     _READ_ONLY_REPO_MEMBERS = frozenset(
-        {"active_branch", "bare", "commit", "git", "head", "remotes"}
+        {"active_branch", "bare", "commit", "git", "git_dir", "head", "remotes"}
     )
 
     def test_only_designated_modules_write_to_disk(self) -> None:

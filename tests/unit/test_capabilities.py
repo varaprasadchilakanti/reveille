@@ -62,6 +62,7 @@ class TestDerivedFactsCannotDrift:
         assert described == registered
         assert described == {
             "brief",
+            "state",
             "generate",
             "summary",
             "who-changed",

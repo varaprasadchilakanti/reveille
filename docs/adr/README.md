@@ -47,6 +47,7 @@ Deprecated.
 | [0021](0021-what-provenance-records-about-filters-and-time.md) | What provenance records about filters and time | Accepted |
 | [0022](0022-a-brief-from-a-point.md) | A brief from a point: `reveille brief --from` | Accepted |
 | [0023](0023-noreply-addresses-fold-on-the-account-number.md) | GitHub noreply addresses fold on the account number | Proposed |
+| [0024](0024-the-state-of-a-repository-now.md) | The state of a repository now: `reveille state` | Proposed |
 
 ## Notes from the review of 2026-10-09
 

@@ -35,6 +35,7 @@ from reveille.domain.models import (
     FileStats,
     RepositoryMetadata,
 )
+from reveille.domain.state import RepositoryState, Worktree, quiet_branches
 from reveille.exceptions import EmptyRepositoryError, RepositoryError
 
 # Separators for the `git log` read: 0x1E and 0x1F are rare, not impossible.
@@ -280,6 +281,105 @@ def _record_files(record: str, name_status: bool) -> tuple[list[tuple[str, int, 
     return files, added
 
 
+@dataclass
+class _Status:
+    """The parsed `git status --porcelain=v2 --branch -z` output."""
+
+    head: str | None = None
+    branch: str | None = None
+    upstream: str | None = None
+    ahead: int | None = None
+    behind: int | None = None
+    conflicted: list[str] = field(default_factory=list)
+    staged: list[str] = field(default_factory=list)
+    modified: list[str] = field(default_factory=list)
+    deleted: list[str] = field(default_factory=list)
+    renamed: list[str] = field(default_factory=list)
+    untracked: list[str] = field(default_factory=list)
+
+
+def _parse_status(output: str) -> _Status:
+    """Parse `git status --porcelain=v2 --branch -z`: NUL-separated, paths unquoted.
+
+    Args:
+        output: Git's output.
+
+    Returns:
+        Branch headers and paths by category; a path may be in more than one.
+    """
+    status = _Status()
+    fields = iter(output.split("\0"))
+    for entry in fields:
+        if entry.startswith("# "):
+            _status_header(entry, status)
+        elif entry.startswith("? "):
+            status.untracked.append(entry[2:])
+        elif entry.startswith("u "):
+            status.conflicted.append(entry.split(" ", 10)[-1])
+        elif entry.startswith(("1 ", "2 ")):
+            _status_change(entry, status)
+            if entry.startswith("2 "):
+                next(fields, None)  # a rename's original path
+    return status
+
+
+def _status_header(entry: str, status: _Status) -> None:
+    """Fold one `# branch.*` header into `status`."""
+    key, _, value = entry.removeprefix("# ").partition(" ")
+    if key == "branch.oid":
+        status.head = None if value == "(initial)" else value
+    elif key == "branch.head":
+        status.branch = None if value == "(detached)" else value
+    elif key == "branch.upstream":
+        status.upstream = value
+    elif key == "branch.ab":
+        ahead, _, behind = value.partition(" ")
+        status.ahead, status.behind = int(ahead.lstrip("+")), int(behind.lstrip("-"))
+
+
+def _status_change(entry: str, status: _Status) -> None:
+    """Fold one ordinary (`1`) or renamed (`2`) entry into `status`."""
+    parts = entry.split(" ", 9 if entry.startswith("2 ") else 8)
+    path, xy = parts[-1], parts[1]
+    if entry.startswith("2 "):
+        status.renamed.append(path)
+    if xy[0] != ".":
+        status.staged.append(path)
+    if xy[1] in "MT":
+        status.modified.append(path)
+    if "D" in xy:
+        status.deleted.append(path)
+
+
+def _parse_worktrees(output: str) -> list[Worktree]:
+    """Parse `git worktree list --porcelain`: blank-line separated records.
+
+    Args:
+        output: Git's output.
+
+    Returns:
+        The worktrees, the main one first.
+    """
+    found: list[Worktree] = []
+    for record in output.strip().split("\n\n"):
+        values: dict[str, str] = {}
+        for line in record.splitlines():
+            key, _, value = line.partition(" ")
+            values[key] = value
+        if "worktree" not in values:
+            continue
+        branch = values.get("branch", "").removeprefix("refs/heads/") or None
+        found.append(
+            Worktree(
+                path=values["worktree"],
+                branch=branch,
+                locked="locked" in values,
+                prunable="prunable" in values,
+            )
+        )
+    return found
+
+
 def _numstat_path(field: str) -> str:
     """Return the path a numstat field names, decoded and after any rename.
 
@@ -499,9 +599,13 @@ class GitReader:
         self._repo_path = repo_path.resolve()
         # A partial clone fetches missing objects on read: a network call and a
         # Git data change. GIT_NO_LAZY_FETCH needs Git 2.44, so it is refused.
-        # Replace refs and grafts are ignored too (ADR 0018).
+        # Replace refs and grafts are ignored too (ADR 0018). No optional locks: a
+        # plain `git status` rewrites the index (ADR 0024).
         self._repo.git.update_environment(
-            GIT_NO_LAZY_FETCH="1", GIT_NO_REPLACE_OBJECTS="1", GIT_GRAFT_FILE=os.devnull
+            GIT_NO_LAZY_FETCH="1",
+            GIT_NO_REPLACE_OBJECTS="1",
+            GIT_GRAFT_FILE=os.devnull,
+            GIT_OPTIONAL_LOCKS="0",
         )
         if _is_partial_clone(self._repo):
             raise RepositoryError(
@@ -847,8 +951,16 @@ class GitReader:
         Returns:
             GitPython's command runner for this repository.
         """
-        # Pinned off: a repository's config could make Git run gpg.program.
-        return self._repo.git(c=["log.follow=false", "log.showSignature=false"])
+        # Pinned off: a repository's config could make Git run gpg.program or an
+        # fsmonitor program (ADR 0024).
+        return self._repo.git(
+            c=[
+                "log.follow=false",
+                "log.showSignature=false",
+                "core.fsmonitor=false",
+                "status.submoduleSummary=false",
+            ]
+        )
 
     def _trailer_log(self, selection: list[str]) -> str:
         """Run the co-author read: NUL-separated hashes and trailer values.
@@ -892,6 +1004,137 @@ class GitReader:
             u: accounts[next(iter(ids))] for u, ids in accounts_of.items() if len(ids) == 1
         }
         return accounts, usernames
+
+    def read_state(self) -> RepositoryState:
+        """Read the repository's present state, changing nothing (ADR 0024).
+
+        Every call runs with optional locks off and fsmonitor pinned off (`_git`), so
+        `git status` neither rewrites the index nor runs a program the repository names.
+
+        Returns:
+            The branch, work in progress, working tree, stashes, worktrees, branch
+            counts and latest tag.
+        """
+        status = _Status()
+        if not self._repo.bare:
+            raw = str(
+                self._git().status(
+                    "--porcelain=v2",
+                    "--branch",
+                    "-z",
+                    "--untracked-files=normal",
+                    "--ignore-submodules=all",
+                )
+            )
+            status = _parse_status(raw)
+        else:
+            status.head = self.resolve_head_sha()
+            try:
+                status.branch = str(self._git().symbolic_ref("--short", "HEAD")).strip()
+            except GitCommandError:
+                status.branch = None
+        head_time = self._commit_time(status.head) if status.head else None
+        tips = self._branch_tips()
+        tag, since_tag = self._latest_tag(status.head)
+        return RepositoryState(
+            branch=status.branch,
+            head=status.head,
+            upstream=status.upstream,
+            ahead=status.ahead,
+            behind=status.behind,
+            operation=self._operation_in_progress(),
+            conflicted=tuple(status.conflicted),
+            staged=tuple(status.staged),
+            modified=tuple(status.modified),
+            deleted=tuple(status.deleted),
+            renamed=tuple(status.renamed),
+            untracked=tuple(status.untracked),
+            stashes=self._stash_count(),
+            worktrees=tuple(self._worktrees()),
+            branches=len(tips),
+            branches_merged=self._merged_branch_count(status.head),
+            branches_quiet=quiet_branches(list(tips.values()), head_time),
+            latest_tag=tag,
+            commits_since_tag=since_tag,
+            last_commit=head_time.date() if head_time else None,
+            bare=self._repo.bare,
+            shallow=self.is_shallow(),
+        )
+
+    def _commit_time(self, sha: str) -> datetime.datetime | None:
+        """Return a commit's committer time in UTC, or None if it cannot be read."""
+        try:
+            out = str(self._git().log("-1", "--format=%ct", "--end-of-options", sha, "--")).strip()
+        except GitCommandError:
+            return None
+        return datetime.datetime.fromtimestamp(int(out), tz=datetime.UTC) if out.isdigit() else None
+
+    def _operation_in_progress(self) -> str | None:
+        """Name the operation Git has stopped in, from its own files, or None."""
+        git_dir = Path(self._repo.git_dir)
+        if (git_dir / "rebase-apply" / "applying").exists():
+            return "am"
+        markers = (
+            ("rebase-merge", "rebase"),
+            ("rebase-apply", "rebase"),
+            ("MERGE_HEAD", "merge"),
+            ("CHERRY_PICK_HEAD", "cherry-pick"),
+            ("REVERT_HEAD", "revert"),
+            ("BISECT_LOG", "bisect"),
+        )
+        for name, operation in markers:
+            if (git_dir / name).exists():
+                return operation
+        return None
+
+    def _stash_count(self) -> int:
+        """Count stash entries; none when there is no stash."""
+        try:
+            out = str(self._git().log("--walk-reflogs", "--format=%H", "refs/stash", "--"))
+        except GitCommandError:
+            return 0
+        return len(out.split())
+
+    def _worktrees(self) -> list[Worktree]:
+        """List the working trees attached to this repository."""
+        try:
+            return _parse_worktrees(str(self._git().worktree("list", "--porcelain")))
+        except GitCommandError:
+            return []
+
+    def _branch_tips(self) -> dict[str, datetime.datetime]:
+        """Map each local branch to its last commit time (UTC)."""
+        out = str(
+            self._git().for_each_ref("--format=%(committerdate:unix)%00%(refname)", "refs/heads")
+        )
+        tips: dict[str, datetime.datetime] = {}
+        for line in out.splitlines():
+            stamp, _, ref = line.partition("\0")
+            if stamp.isdigit():
+                tips[ref] = datetime.datetime.fromtimestamp(int(stamp), tz=datetime.UTC)
+        return tips
+
+    def _merged_branch_count(self, head: str | None) -> int:
+        """Count local branches whose tip the current commit contains."""
+        if head is None:
+            return 0
+        out = str(self._git().for_each_ref(f"--merged={head}", "--format=%(refname)", "refs/heads"))
+        return len(out.split())
+
+    def _latest_tag(self, head: str | None) -> tuple[str | None, int | None]:
+        """Return the nearest reachable tag and the non-merge commits after it."""
+        if head is None:
+            return None, None
+        try:
+            tag = str(
+                self._git().describe("--tags", "--abbrev=0", "--end-of-options", head)
+            ).strip()
+            count = str(
+                self._git().rev_list("--no-merges", "--count", f"{tag}..{head}", "--")
+            ).strip()
+        except GitCommandError:
+            return None, None
+        return tag, int(count) if count.isdigit() else None
 
     def resolve_commit(self, revision: str) -> str:
         """Resolve a tag, branch or commit name to a full commit SHA, locally.

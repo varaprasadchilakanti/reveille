@@ -256,6 +256,17 @@ the commit it reached, so the next brief can start there.
 reveille brief --from v0.9.0
 ```
 
+### `reveille state`
+
+Where the repository stands now: branch, upstream, a merge or rebase in progress, conflicts, what
+is staged, modified or untracked, stashes, worktrees, branch counts and the latest tag. Unlike
+running `git status` yourself, it neither rewrites `.git/index` nor runs a program the
+repository's own config names.
+
+```bash
+reveille state --format json
+```
+
 ### `reveille who-changed`
 
 Who changed a file or directory, and who changed it most recently. It says who changed the code,
