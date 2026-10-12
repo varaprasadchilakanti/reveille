@@ -1992,8 +1992,8 @@ def _write_replacing(path: Path, text: str, *, encoding: str) -> None:
     a new file into place replaces the name and leaves every other link to
     the old file as it was.
 
-    The new file is created with mode 0o666, so the umask applies as it does
-    to any new file, and is removed if anything fails before the move.
+    The new file is created with mode 0o600 (owner read/write only) and is
+    removed if anything fails before the move.
 
     Args:
         path: The resolved output path.
@@ -2004,7 +2004,7 @@ def _write_replacing(path: Path, text: str, *, encoding: str) -> None:
         OSError: If the file cannot be created, written or moved.
     """
     temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
-    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
         with os.fdopen(descriptor, "w", encoding=encoding, newline="") as handle:
             handle.write(text)
