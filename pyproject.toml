@@ -7,7 +7,7 @@
 [tool.poetry]
 name = "reveille"
 version = "0.9.0"
-description = "A CLI tool that reports a local Git repository's commit activity as self-contained HTML, JSON, or CSV."
+description = "Offline reports of a local Git repository's commit activity: a commit calendar, activity over time and how evenly commits are spread, as one self-contained HTML file, JSON or CSV."
 authors = ["Vara Prasad Chilakanti <varaprasadchilakanti@gmail.com>"]
 license = "Apache-2.0"
 readme = "README.md"
@@ -16,12 +16,15 @@ repository = "https://github.com/varaprasadchilakanti/reveille"
 documentation = "https://github.com/varaprasadchilakanti/reveille#readme"
 keywords = [
     "git",
-    "analytics",
-    "reporting",
+    "git-history",
+    "commit-history",
+    "commit-calendar",
+    "heatmap",
+    "offline",
+    "report",
     "cli",
-    "dashboard",
-    "contributors",
-    "devtools",
+    "bitbucket",
+    "privacy",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
