@@ -20,6 +20,13 @@ before 0.8.0 predate the convention and are left as they were released.
   `.mailmap`, and the working-tree file had no bound at all (a 66 MB file took 30 seconds and
   517 MB). Lines are now parsed in one pass, as Git does, and the working-tree file is bounded
   at 1 MiB like the committed one, with a warning when it is not read.
+- **A report could still be written over Git's own files.** A report path hard-linked to
+  `.git/HEAD`, which a working tree delivered by someone else can carry, was written through by
+  a plain `generate`, and `--output` could name the HEAD of the repository a linked worktree
+  belongs to. Every format is now written to a new file and moved into place, so other links to
+  the old file keep their content, and a worktree's common Git directory is refused like its own.
+  A rewritten report now takes the umask like any new file rather than keeping the old file's
+  permissions.
 
 ### Added
 

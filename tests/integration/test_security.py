@@ -688,6 +688,62 @@ class TestSecondPassFindings:
         assert result.returncode == 2
         assert (store / "HEAD").read_bytes() == head_before
 
+    @pytest.mark.parametrize("fmt", ["html", "json", "csv"])
+    def test_a_hard_link_to_head_is_not_written_through(self, tmp_path: Path, fmt: str) -> None:
+        """A hard link is not a symbolic link, and its path is not inside `.git`.
+
+        A working tree delivered with `reveille-report.html` hard-linked to
+        `.git/HEAD` had the report written over HEAD by a plain `generate`,
+        and `git status` then failed (red team, 2026-10-12).
+        """
+        repo = _init_repo(tmp_path / "hostile")
+        head = repo / ".git" / "HEAD"
+        head_before = head.read_bytes()
+        name = {"html": "reveille-report.html", "json": "r.json", "csv": "r.csv"}[fmt]
+        os.link(head, repo / name)
+
+        result = _run_console_script(["generate", "--format", fmt, "--output", name], cwd=repo)
+
+        assert result.returncode == 0, result.stderr
+        assert head.read_bytes() == head_before
+        assert (repo / name).read_bytes() != head_before, "the report was written"
+        assert subprocess.run(["git", "status"], cwd=repo, capture_output=True).returncode == 0
+
+    def test_a_linked_worktree_protects_the_common_git_directory(self, tmp_path: Path) -> None:
+        """A linked worktree's `.git` points at `worktrees/<name>`; HEAD of the
+        repository it belongs to is in the common directory above that."""
+        source = _init_repo(tmp_path / "source")
+        # A bare repository: its HEAD path has no `.git` component, so the
+        # name check alone cannot see it.
+        common = tmp_path / "proj.git"
+        subprocess.run(["git", "clone", "-q", "--bare", str(source), str(common)], check=True)
+        worktree = tmp_path / "wt"
+        subprocess.run(
+            ["git", "worktree", "add", "-q", "-b", "side", str(worktree)],
+            cwd=common,
+            check=True,
+            capture_output=True,
+        )
+        head = common / "HEAD"
+        head_before = head.read_bytes()
+
+        result = _run_console_script(["generate", "--output", str(head)], cwd=worktree)
+
+        assert result.returncode == 2
+        assert head.read_bytes() == head_before
+
+    def test_a_report_takes_the_umask_like_any_new_file(self, tmp_path: Path) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        output = tmp_path / "r.html"
+        output.write_text("old", encoding="utf-8")
+        output.chmod(0o644)
+
+        result = _run_console_script(["generate", "--output", str(output)], cwd=repo)
+
+        assert result.returncode == 0, result.stderr
+        assert output.stat().st_mode & 0o777 == 0o666 & ~_current_umask()
+        assert not [p for p in tmp_path.iterdir() if p.name.endswith(".tmp")], "no temporary left"
+
     def test_a_discovered_config_file_says_what_it_changed(self, tmp_path: Path) -> None:
         """Turning the ranking on from a file nobody asked for must not be silent."""
         repo = _init_repo(tmp_path / "repo")
@@ -1296,3 +1352,9 @@ def test_a_name_of_invisible_characters_only_shows_the_address(tmp_path: Path) -
     _commit_as(repo, "‮​﻿", "ghost@example.com")
 
     assert ("ghost@example.com", "ghost@example.com") in _identities(repo)
+
+
+def _current_umask() -> int:
+    mask = os.umask(0)
+    os.umask(mask)
+    return mask

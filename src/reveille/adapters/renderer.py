@@ -41,7 +41,9 @@ import io
 import itertools
 import json
 import math
+import os
 import re
+import secrets
 from collections import defaultdict
 from collections.abc import Sequence
 from pathlib import Path
@@ -270,7 +272,7 @@ class Renderer:
             )
         html = self.html_text(data)
         try:
-            resolved.write_text(html, encoding="utf-8")
+            _write_replacing(resolved, html, encoding="utf-8")
         except OSError as exc:
             raise OutputPathError(f"Failed to write report to '{resolved}': {exc}") from exc
 
@@ -352,7 +354,7 @@ class Renderer:
             )
         text = self.json_text(data)
         try:
-            resolved.write_text(text, encoding="utf-8")
+            _write_replacing(resolved, text, encoding="utf-8")
         except OSError as exc:
             raise OutputPathError(f"Failed to write JSON report to '{resolved}': {exc}") from exc
         return resolved
@@ -718,8 +720,7 @@ class Renderer:
         try:
             # The BOM is for spreadsheet programs opening the file; stdout
             # output (csv_text) carries none.
-            with resolved.open("w", encoding="utf-8-sig", newline="") as fh:
-                fh.write(text)
+            _write_replacing(resolved, text, encoding="utf-8-sig")
         except OSError as exc:
             raise OutputPathError(f"Failed to write CSV report to '{resolved}': {exc}") from exc
         return resolved
@@ -1977,6 +1978,38 @@ def _compute_commit_concentration(counts: list[int]) -> int:
 # Tab and carriage return are included because a leading one is skipped by the
 # parser, exposing whatever follows it.
 _CSV_FORMULA_PREFIXES: tuple[str, ...] = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _write_replacing(path: Path, text: str, *, encoding: str) -> None:
+    """Write `text` to a new file and move it over `path`.
+
+    Writing in place goes through every name the file has. A report path
+    hard-linked to `.git/HEAD` (a working tree delivered by someone else can
+    carry one) had a plain `generate` overwrite HEAD; a hard link is neither
+    a symbolic link nor a path inside `.git`, so no path check saw it. Moving
+    a new file into place replaces the name and leaves every other link to
+    the old file as it was.
+
+    The new file is created with mode 0o666, so the umask applies as it does
+    to any new file, and is removed if anything fails before the move.
+
+    Args:
+        path: The resolved output path.
+        text: What to write. Newlines are written as given.
+        encoding: The text encoding, `utf-8-sig` for a CSV with a BOM.
+
+    Raises:
+        OSError: If the file cannot be created, written or moved.
+    """
+    temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+    try:
+        with os.fdopen(descriptor, "w", encoding=encoding, newline="") as handle:
+            handle.write(text)
+        os.replace(temporary, path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
 
 
 def _assert_not_symlink(output_path: Path) -> None:

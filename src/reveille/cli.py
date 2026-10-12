@@ -505,7 +505,7 @@ def _resolve_output_path(output: Path, repo_path: Path) -> Path:
     return output
 
 
-def _git_directory(repo_path: Path) -> Path | None:
+def _git_directories(repo_path: Path) -> list[Path]:
     """Find where the repository keeps Git's own files, in any layout.
 
     Usually that is `.git` inside the working tree. A bare repository keeps
@@ -514,26 +514,44 @@ def _git_directory(repo_path: Path) -> Path | None:
     Checking only for a path component named `.git` missed both: in a bare
     repository `--output HEAD` overwrote HEAD.
 
+    A linked worktree's `.git` file points at `worktrees/<name>` inside the
+    repository it belongs to, and that directory's `commondir` file names
+    the rest: HEAD, refs and objects of the main repository. Without it,
+    `--output <main>.git/HEAD` from a worktree of a bare repository was
+    accepted and overwrote HEAD (red team, 2026-10-12).
+
     Args:
         repo_path: The resolved repository root.
 
     Returns:
-        The resolved Git directory, or None if none is recognisable.
+        The resolved Git directories: the repository's own, then the common
+        one if it differs. Empty if none is recognisable.
     """
     dot_git = repo_path / ".git"
     if dot_git.is_dir():
-        return dot_git.resolve()
-    if dot_git.is_file():
+        git_dir = dot_git.resolve()
+    elif dot_git.is_file():
         try:
             pointer = dot_git.read_text(encoding="utf-8", errors="replace").strip()
         except OSError:
-            return None
-        if pointer.startswith("gitdir:"):
-            return (repo_path / pointer.removeprefix("gitdir:").strip()).resolve()
-        return None
-    if (repo_path / "HEAD").is_file() and (repo_path / "objects").is_dir():
-        return repo_path.resolve()
-    return None
+            return []
+        if not pointer.startswith("gitdir:"):
+            return []
+        git_dir = (repo_path / pointer.removeprefix("gitdir:").strip()).resolve()
+    elif (repo_path / "HEAD").is_file() and (repo_path / "objects").is_dir():
+        git_dir = repo_path.resolve()
+    else:
+        return []
+    directories = [git_dir]
+    try:
+        common = (git_dir / "commondir").read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return directories
+    if common:
+        common_dir = (git_dir / common).resolve()
+        if common_dir != git_dir:
+            directories.append(common_dir)
+    return directories
 
 
 def _validate_output_path(output: Path, repo_path: Path, *, from_config: bool = False) -> None:
@@ -583,8 +601,9 @@ def _validate_output_path(output: Path, repo_path: Path, *, from_config: bool = 
     # written over `.git/HEAD` leaves a clone that `git status` refuses to
     # read. No legitimate report belongs there, so this is refused whoever
     # chose the path -- flag, configuration file, or a symlink on the way.
-    git_dir = _git_directory(repo_path)
-    inside_git_dir = git_dir is not None and output.resolve().is_relative_to(git_dir)
+    inside_git_dir = any(
+        output.resolve().is_relative_to(git_dir) for git_dir in _git_directories(repo_path)
+    )
     if inside_git_dir or any(
         part.casefold() == ".git" for part in (*output.parts, *output.resolve().parts)
     ):
