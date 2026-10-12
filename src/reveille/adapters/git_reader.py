@@ -462,7 +462,9 @@ def _without_credentials(url: str) -> str:
     address and is kept; only a password after it is dropped. The query string
     and fragment are removed, since some hosts accept a token there. An SSH
     address of the form `git@host:path` carries no secret and is returned
-    unchanged.
+    unchanged. A transport prefix (`https::https://...`, `<helper>::<url>`)
+    is kept, and the scheme after it decides; read as the scheme, the
+    prefix hid an `https` address and its token was printed.
 
     This is string handling rather than `urllib.parse.urlsplit`, which raises
     on some addresses Git accepts (`https://[::1/r.git`), and a report must not
@@ -481,7 +483,7 @@ def _without_credentials(url: str) -> str:
     authority, slash, path = rest.partition("/")
     userinfo, at, host = authority.rpartition("@")
     if at:
-        if scheme.lower() in ("http", "https"):
+        if scheme.rpartition("::")[2].lower() in ("http", "https"):
             authority = host
         else:
             authority = f"{userinfo.partition(':')[0]}@{host}"

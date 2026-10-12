@@ -39,6 +39,10 @@ before 0.8.0 predate the convention and are left as they were released.
   C1 control or a direction mark. Their text output is now escaped like stderr, and the three
   implicit direction marks (U+061C, U+200E, U+200F) are escaped everywhere. JSON output was
   already escaped and is unchanged.
+- **A token in a transport-prefixed remote was printed.** 0.9.0 removed tokens from remote URLs
+  such as `https://TOKEN@host/...`, but `https::https://TOKEN@host/...`, a form Git accepts, was
+  read as an unknown scheme and printed whole in the HTML and JSON. The scheme after the prefix
+  now decides.
 
 ### Added
 
