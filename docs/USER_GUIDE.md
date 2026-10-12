@@ -1131,6 +1131,10 @@ Attach the file to a wiki page or an email, or put it on a shared drive and send
 a link. Whether a mail system accepts a 4.9 MB attachment has not been measured;
 if one refuses it, compress the file or use a file store. Whichever you choose, it still names everyone listed in it.
 
+A new report file is readable only by you (mode 600 on Linux and macOS). To
+share it from a shared machine or a web directory, change its permissions;
+regenerating it later keeps the permissions you set.
+
 ## Troubleshooting and Questions
 
 **Why does Reveille count fewer commits than `git log`?** Merge commits are

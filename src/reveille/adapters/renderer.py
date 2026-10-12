@@ -44,6 +44,7 @@ import math
 import os
 import re
 import secrets
+import stat
 from collections import defaultdict
 from collections.abc import Sequence
 from pathlib import Path
@@ -1992,8 +1993,11 @@ def _write_replacing(path: Path, text: str, *, encoding: str) -> None:
     a new file into place replaces the name and leaves every other link to
     the old file as it was.
 
-    The new file is created with mode 0o600 (owner read/write only) and is
-    removed if anything fails before the move.
+    A report names people, so a new one is readable and writable by its
+    owner only (0o600); on a shared machine 0o666 under the usual umask made
+    it readable by everyone. Rewriting an existing report keeps the mode its
+    owner gave it, so a report deliberately shared stays shared. The new file
+    is removed if anything fails before the move.
 
     Args:
         path: The resolved output path.
@@ -2003,11 +2007,17 @@ def _write_replacing(path: Path, text: str, *, encoding: str) -> None:
     Raises:
         OSError: If the file cannot be created, written or moved.
     """
+    try:
+        kept_mode: int | None = stat.S_IMODE(path.stat().st_mode)
+    except FileNotFoundError:
+        kept_mode = None
     temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
     descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
         with os.fdopen(descriptor, "w", encoding=encoding, newline="") as handle:
             handle.write(text)
+        if kept_mode is not None:
+            temporary.chmod(kept_mode)
         os.replace(temporary, path)
     except BaseException:
         temporary.unlink(missing_ok=True)

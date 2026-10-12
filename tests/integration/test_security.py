@@ -732,17 +732,32 @@ class TestSecondPassFindings:
         assert result.returncode == 2
         assert head.read_bytes() == head_before
 
-    def test_a_report_takes_the_umask_like_any_new_file(self, tmp_path: Path) -> None:
+    def test_a_new_report_is_readable_by_its_owner_only(self, tmp_path: Path) -> None:
+        """A report names people; on a shared machine 0o666 under the usual
+        umask made it readable by every user (CodeQL, 2026-10-12)."""
         repo = _init_repo(tmp_path / "repo")
         output = tmp_path / "r.html"
-        output.write_text("old", encoding="utf-8")
-        output.chmod(0o644)
 
         result = _run_console_script(["generate", "--output", str(output)], cwd=repo)
 
         assert result.returncode == 0, result.stderr
-        assert output.stat().st_mode & 0o777 == 0o666 & ~_current_umask()
+        assert output.stat().st_mode & 0o777 == 0o600
         assert not [p for p in tmp_path.iterdir() if p.name.endswith(".tmp")], "no temporary left"
+
+    @pytest.mark.parametrize("mode", [0o644, 0o640, 0o600])
+    def test_a_rewritten_report_keeps_the_mode_its_owner_gave_it(
+        self, tmp_path: Path, mode: int
+    ) -> None:
+        repo = _init_repo(tmp_path / "repo")
+        output = tmp_path / "r.html"
+        output.write_text("old", encoding="utf-8")
+        output.chmod(mode)
+
+        result = _run_console_script(["generate", "--output", str(output)], cwd=repo)
+
+        assert result.returncode == 0, result.stderr
+        assert output.read_text(encoding="utf-8") != "old", "the report was written"
+        assert output.stat().st_mode & 0o777 == mode
 
     def test_a_discovered_config_file_says_what_it_changed(self, tmp_path: Path) -> None:
         """Turning the ranking on from a file nobody asked for must not be silent."""
@@ -1352,9 +1367,3 @@ def test_a_name_of_invisible_characters_only_shows_the_address(tmp_path: Path) -
     _commit_as(repo, "‮​﻿", "ghost@example.com")
 
     assert ("ghost@example.com", "ghost@example.com") in _identities(repo)
-
-
-def _current_umask() -> int:
-    mask = os.umask(0)
-    os.umask(mask)
-    return mask
