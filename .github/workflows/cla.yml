@@ -22,8 +22,13 @@ on:
   pull_request:
     types: [opened, edited, synchronize, reopened]
 
-permissions:
-  contents: read
+# Nothing by default; the job below asks for what it reads.
+permissions: {}
+
+# A newer push or an edited description supersedes the run in progress.
+concurrency:
+  group: cla-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 env:
   CLA_VERSION: "1.0"
