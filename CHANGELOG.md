@@ -52,6 +52,9 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Added
 
+- **`capabilities --command <name>`** gives one command's description, options and exit codes:
+  2.3 KB for `state` as JSON, against about 24 KB for everything.
+
 - **The merge commits left out are counted.** `provenance.merge_commits_excluded` in the full
   JSON and `repository.merge_commits_excluded` in the summary give how many merges the selection
   held; the summary text says it when it is not zero. Additive to schema 1.2.

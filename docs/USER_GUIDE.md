@@ -355,11 +355,14 @@ notes, warnings and errors.
 
 ## The `reveille capabilities` Command
 
-Describes what Reveille can and cannot do, for a person or a program. Its one option is
-`--format text|json` (default `text`).
+Describes what Reveille can and cannot do, for a person or a program. Options:
+`--format text|json` (default `text`) and `--command <name>`, which gives only that command's
+description, options and exit codes (2.3 KB for `state` as JSON, against about 24 KB for
+everything).
 
 ```bash
 reveille capabilities --format json
+reveille capabilities --command brief --format json
 ```
 
 The JSON carries `capabilities_version`, the tool and output-schema versions, a `guarantees` list

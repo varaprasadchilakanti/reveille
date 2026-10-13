@@ -456,6 +456,53 @@ def _output_formats() -> list[str]:
     return [str(item) for item in formats]
 
 
+#: The `can` entry that describes each command, where its id differs from the name.
+_DESCRIBED_BY = {"summary": "repository-summary", "generate": "activity-calendar"}
+
+
+def command_capabilities(document: dict[str, Any], name: str) -> dict[str, Any] | None:
+    """Narrow the capability document to one command, its description and the exit codes.
+
+    Args:
+        document: The mapping returned by `build_capabilities`.
+        name: A command name, such as "state".
+
+    Returns:
+        The narrowed document, or None if there is no such command.
+    """
+    commands = {command["name"]: command for command in document["commands"]}
+    if name not in commands:
+        return None
+    described = {item["id"]: item["description"] for item in document["can"]}
+    command = dict(commands[name])
+    command["description"] = described.get(_DESCRIBED_BY.get(name, name), command["summary"])
+    return {
+        "capabilities_version": document["capabilities_version"],
+        "name": document["name"],
+        "version": document["version"],
+        "command": command,
+        "exit_codes": document["exit_codes"],
+    }
+
+
+def render_command_text(document: dict[str, Any]) -> str:
+    """Render one command's capabilities for a terminal.
+
+    Args:
+        document: The mapping returned by `command_capabilities`.
+
+    Returns:
+        A plain-text rendering.
+    """
+    command = document["command"]
+    lines = [f"reveille {command['name']} ({document['version']})", "", command["description"]]
+    lines += ["", "OPTIONS"]
+    lines += [f"  {', '.join(o['flags'])}  {o['help']}" for o in command["options"]]
+    lines += ["", "EXIT CODES"]
+    lines += [f"  {item['code']}  {item['meaning']}" for item in document["exit_codes"]]
+    return "\n".join(lines)
+
+
 def render_text(document: dict[str, Any]) -> str:
     """Render the capability document for a person reading a terminal.
 

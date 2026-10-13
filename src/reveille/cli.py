@@ -1303,9 +1303,18 @@ def capabilities(
             help="Output format. Accepted values: text, json.",
         ),
     ] = "text",
+    command: Annotated[
+        str | None,
+        typer.Option("--command", help="Describe only this command, its options and exit codes."),
+    ] = None,
 ) -> None:
     """Describe what Reveille can and cannot do, for a person or a program."""
-    from reveille.capabilities import build_capabilities, render_text
+    from reveille.capabilities import (
+        build_capabilities,
+        command_capabilities,
+        render_command_text,
+        render_text,
+    )
 
     _stderr_json["on"] = output_format == "json"
     if output_format not in {"text", "json"}:
@@ -1313,6 +1322,18 @@ def capabilities(
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
     document = build_capabilities(app, ExitCode)
+    if command is not None:
+        narrowed = command_capabilities(document, command)
+        if narrowed is None:
+            known = ", ".join(c["name"] for c in document["commands"])
+            _err(f"Error: no command {command!r}; the commands are {known}.")
+            raise typer.Exit(code=ExitCode.CANNOT_RUN)
+        typer.echo(
+            json.dumps(narrowed, indent=2)
+            if output_format == "json"
+            else render_command_text(narrowed)
+        )
+        return
     if output_format == "json":
         typer.echo(json.dumps(document, indent=2))
     else:
