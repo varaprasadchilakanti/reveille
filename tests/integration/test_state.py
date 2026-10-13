@@ -325,6 +325,15 @@ class TestBranchesAndWorktrees:
         assert (state["latest_tag"], state["commits_since_tag"]) == ("v1.0", 1)
         assert "Next: reveille brief --from v1.0" in _text(repo)
 
+    def test_a_tag_named_like_an_option_writes_no_file(self, repo: Path) -> None:
+        # A valid ref name a clone can bring; as an option it would make rev-list write a file.
+        _git(repo, "update-ref", "refs/tags/--output=pwned", "HEAD~1")
+
+        state = _state(repo)
+
+        assert list(repo.glob("pwned*")) == []
+        assert (state["latest_tag"], state["commits_since_tag"]) == ("--output=pwned", 1)
+
 
 class TestUnusualRepositories:
     def test_no_commits_yet(self, tmp_path: Path) -> None:

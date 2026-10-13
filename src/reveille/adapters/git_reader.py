@@ -1177,7 +1177,9 @@ class GitReader:
                 self._git().describe("--tags", "--abbrev=0", "--end-of-options", head)
             ).strip()
             count = str(
-                self._git().rev_list("--no-merges", "--count", f"{tag}..{head}", "--")
+                self._git().rev_list(
+                    "--no-merges", "--count", "--end-of-options", f"{tag}..{head}", "--"
+                )
             ).strip()
         except GitCommandError:
             return None, None
