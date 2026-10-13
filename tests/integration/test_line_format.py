@@ -93,8 +93,9 @@ def test_state_names_an_operation_in_progress(repo: Path) -> None:
     (repo / "b.txt").write_text("side", encoding="utf-8")
     _git(repo, "add", "-A")
     _git(repo, "commit", "-qm", "side")
+    # Expected to stop on a conflict; the identity lets Git get that far.
     subprocess.run(
-        ["git", "-c", "commit.gpgSign=false", "merge", "-q", "main"],
+        ["git", "-c", "user.name=Ana", "-c", "user.email=ana@e.test", "merge", "-q", "main"],
         cwd=repo,
         capture_output=True,
         check=False,

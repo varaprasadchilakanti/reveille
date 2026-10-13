@@ -14,6 +14,22 @@ import pytest
 from reveille.domain.models import Commit, ContributorStats
 
 
+@pytest.fixture(autouse=True)
+def _only_the_repositorys_own_git_config(
+    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Run every test with no global or system Git config, as CI has none of its own.
+
+    A developer's config (an identity, `safe.directory = *`, signing) otherwise
+    lets a test pass locally that fails in CI. A test that needs a global
+    setting sets `GIT_CONFIG_GLOBAL` itself.
+    """
+    empty = tmp_path_factory.getbasetemp() / "empty.gitconfig"
+    empty.touch()
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(empty))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+
+
 @pytest.fixture()
 def sample_commit() -> Commit:
     """A single valid Commit instance for use in unit tests."""
