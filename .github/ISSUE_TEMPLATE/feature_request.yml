@@ -1,0 +1,26 @@
+name: Feature request
+description: A question Reveille should answer, or an output it should offer.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Reveille reads Git history offline, changes no Git data and runs no program a repository
+        names. Requests that need the network, or that measure or rank individuals, are out of scope.
+  - type: textarea
+    id: question
+    attributes:
+      label: The question you want answered
+      description: What you are trying to find out, and who reads the answer (you, a team, a script, an agent).
+    validations:
+      required: true
+  - type: textarea
+    id: today
+    attributes:
+      label: How you answer it today
+      description: The Git commands or tools you use now.
+  - type: textarea
+    id: output
+    attributes:
+      label: The output you would want
+      description: Text, JSON, markdown, a field in an existing command, or a new command.

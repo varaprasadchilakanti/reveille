@@ -1,0 +1,22 @@
+# Codecov: what a pull request must meet. The total floor (90%) is also
+# enforced by pytest-cov in CI; this adds the lines a pull request changes.
+codecov:
+  require_ci_to_pass: true
+
+coverage:
+  precision: 1
+  round: down
+  status:
+    project:
+      default:
+        target: 90%
+        threshold: 1%
+    patch:
+      default:
+        # The lines a pull request adds or changes. The total can stay high
+        # while new code goes untested; this catches that.
+        target: 90%
+
+comment:
+  layout: "condensed_header, diff, files"
+  require_changes: true

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/varaprasadchilakanti/reveille/security/advisories/new
+    about: Privately, not in a public issue. See SECURITY.md.
+  - name: Read the User Guide
+    url: https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md
+    about: Every command, option, exit code and known limit.

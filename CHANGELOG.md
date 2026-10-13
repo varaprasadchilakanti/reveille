@@ -112,6 +112,10 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Changed
 
+- **Repository tooling.** Codecov now checks each pull request's changed lines against a 90% target
+  (`.github/codecov.yml`). Dependabot also proposes updates to the pre-commit hooks. Issue forms ask
+  for the Reveille and Git versions and the command, and send security reports to the private form.
+
 - **Release path.** Packages are built in a job that cannot obtain the PyPI upload token, and the
   build stops if the tag does not name the version in `pyproject.toml`. CI also checks formatting
   and runs the repository-hygiene hooks. The Makefile's `publish` targets are gone: publishing is

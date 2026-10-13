@@ -4,7 +4,8 @@ Thank you for considering a contribution. Please read this before opening a pull
 
 ## Reporting Issues
 
-Use [GitHub Issues](https://github.com/varaprasadchilakanti/reveille/issues).
+Use [GitHub Issues](https://github.com/varaprasadchilakanti/reveille/issues); the bug report form
+asks for the versions and the command.
 Include `reveille --version`, your operating system and Python version, and a minimal
 reproduction. If a specific repository is involved, a sanitised `git log --oneline` of the
 relevant range is enough; do not include source code. Report security issues privately, as

@@ -1,8 +1,8 @@
 # ==================================================================
 # Reveille -- Dependabot Configuration
 #
-# Weekly automated dependency update PRs for pip packages and
-# GitHub Actions.
+# Weekly automated dependency update PRs for pip packages, GitHub Actions
+# and the pre-commit hooks pinned in .pre-commit-config.yaml.
 #
 # Updates are grouped into one PR per ecosystem. Ungrouped, this opened up
 # to five PRs per ecosystem per week. Each merge is a chance to hand-resolve
@@ -37,7 +37,7 @@
 # Security updates are unaffected. GitHub's reference is explicit that
 # `cooldown` "is only available for version updates, not security
 # updates", so a dependency with a known vulnerability is still raised
-# immediately. `make ci`'s osv-scanner job is the backstop regardless.
+# immediately. CI's osv-scanner job is the backstop regardless.
 # ==================================================================
 
 version: 2
@@ -69,5 +69,22 @@ updates:
       - dependencies
     groups:
       github-actions:
+        patterns:
+          - "*"
+
+  # Hook revisions are pinned by commit SHA with a version comment, like the
+  # actions; without this they are never proposed for update.
+  - package-ecosystem: pre-commit
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+    groups:
+      pre-commit-hooks:
         patterns:
           - "*"
