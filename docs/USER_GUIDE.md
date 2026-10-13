@@ -70,6 +70,10 @@ Every command can also be run as `reile` (a shorter name for the same program) o
 request or a CI job summary. Paths, branch and tag names are put in code spans, with newlines
 shown as `\n`, so a name cannot add a heading, a link or HTML.
 
+`state` and `brief` also take `--format line`: one line of counts, for a shell prompt or a status
+bar, such as `r: main 1a2b3c4; 1 staged, 2 untracked; 1 stash; v1.0 +3`. It lists no path and no
+author, carries no notice, and a newline in a name is shown as `\n`.
+
 `reveille generate` takes the options below. `summary`, `who-changed`, `init`, `validate` and
 `capabilities` are described after the table; each of their options is listed with its command.
 
@@ -224,7 +228,8 @@ rebase, `git am`, cherry-pick, revert or bisect stopped part-way; conflicted pat
 staged, modified, deleted, renamed and untracked, with lists bounded by `--limit` (default 10);
 stashes; worktrees; local branches as counts (total, merged into the current commit, no commit in
 90 days before it); and the latest tag with the commits since, so the next call can be
-`reveille brief --from <tag>`. Options: `--repo`, `--limit`, `--verbose`, `--format text|json|markdown`.
+`reveille brief --from <tag>`. Options: `--repo`, `--limit`, `--verbose`,
+`--format text|json|markdown|line`.
 
 It changes nothing and runs nothing it was not asked to. A plain `git status` rewrites
 `.git/index` when file stat data is stale, and runs the programs a repository's own config names
@@ -243,7 +248,7 @@ reveille brief --since 2026-10-01 --format json
 What changed since a point you name, in counts. Exactly one of `--from <revision>` (a tag, branch
 or commit, read by ancestry as `git log <revision>..<branch>` is) or `--since <date>`. Other
 options: `--repo`, `--branch`, `--until`, `--exclude-author`, `--deterministic`, `--limit`
-(default 5), `--verbose` and `--format text|json|markdown`.
+(default 5), `--verbose` and `--format text|json|markdown|line`.
 
 It states commits (merges excluded), people and automated accounts as counts, commits crediting a
 co-author, the most changed areas (directories three deep) and file types, files added, areas

@@ -176,7 +176,7 @@ def state_text(repo_path: Path, output_format: str, limit: int) -> str:
 
     Args:
         repo_path: The repository root.
-        output_format: "json" or "text".
+        output_format: "json", "text", "markdown" or "line".
         limit: The most paths any list carries.
 
     Returns:
@@ -213,7 +213,7 @@ def brief_text(
     Args:
         config: Validated configuration; output settings are unused.
         from_revision: A tag, branch or commit; None when `config.since` is the point.
-        output_format: "json" or "text".
+        output_format: "json", "text", "markdown" or "line".
         limit: The most entries any list carries.
         on_notice: As for generate_report.
 

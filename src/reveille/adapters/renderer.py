@@ -593,7 +593,7 @@ class Renderer:
             point: What the caller named, and the commit it resolved to (None for a date).
             tip: The analysed commit, which the next brief can start from.
             tags: Tags whose commit lies in the range, newest first.
-            output_format: "json" or "text".
+            output_format: "json", "text", "markdown" or "line".
             limit: The most entries any list carries.
 
         Returns:
@@ -637,6 +637,8 @@ class Renderer:
 
         if output_format == "markdown":
             return _brief_markdown(facts, repository, point, tip, tags, limit)
+        if output_format == "line":
+            return _brief_line(facts, repository, named, tip, tags)
 
         def listed(items: list[str]) -> str:
             rest = len(items) - limit
@@ -682,7 +684,7 @@ class Renderer:
             state: What was read.
             name: The repository's directory name.
             history_replaced: Whether replace refs or a graft file are present and not followed.
-            output_format: "json" or "text".
+            output_format: "json", "text", "markdown" or "line".
             limit: The most paths any list carries.
 
         Returns:
@@ -692,6 +694,8 @@ class Renderer:
             return json.dumps(_state_document(state, name, history_replaced, limit), indent=2)
         if output_format == "markdown":
             return _state_markdown(state, name, history_replaced, limit)
+        if output_format == "line":
+            return _state_line(state, name)
         return "\n".join(_state_lines(state, name, history_replaced, limit)) + "\n"
 
     def render_csv(self, data: ReportData, output_path: Path) -> Path:
@@ -2314,3 +2318,62 @@ def _state_markdown_notes(state: RepositoryState, history_replaced: bool, limit:
     if history_replaced:
         notes.append("- Replace refs or a graft file are present and not followed.")
     return notes
+
+
+def _one_line(text: str) -> str:
+    """End `text` with its only newline: a CR or LF inside a name is shown as an escape."""
+    return text.replace("\r", "\\r").replace("\n", "\\n") + "\n"
+
+
+def _state_line(state: RepositoryState, name: str) -> str:
+    """Render a repository's present state as one line of counts, naming no path."""
+    where = f"{name}: {state.branch or 'detached'}"
+    where += f" {state.head[:7]}" if state.head else ", no commits yet"
+    parts = [where]
+    if state.upstream:
+        parts.append(f"{state.ahead or 0:,} ahead, {state.behind or 0:,} behind")
+    if state.operation:
+        parts.append(f"{state.operation} in progress")
+    if state.bare:
+        parts.append("bare")
+    elif state.working_tree_unread:
+        parts.append("working tree not compared")
+    elif state.clean:
+        parts.append("clean")
+    else:
+        counts = [
+            (len(state.conflicted), "conflicted"),
+            (len(state.staged), "staged"),
+            (len(state.modified), "modified"),
+            (len(state.deleted), "deleted"),
+            (len(state.renamed), "renamed"),
+            (len(state.untracked), "untracked"),
+        ]
+        parts.append(", ".join(f"{n:,} {label}" for n, label in counts if n))
+    if state.stashes:
+        parts.append("1 stash" if state.stashes == 1 else f"{state.stashes:,} stashes")
+    if state.latest_tag:
+        parts.append(f"{state.latest_tag} +{state.commits_since_tag or 0:,}")
+    if state.filters_not_run:
+        parts.append(_counted(len(state.filters_not_run), "filter") + " not run")
+    if state.shallow:
+        parts.append("shallow")
+    return _one_line("; ".join(parts))
+
+
+def _brief_line(
+    facts: Brief, repository: tuple[str, str], named: str, tip: str, tags: list[str]
+) -> str:
+    """Render a brief as one line of counts."""
+    who = "1 person" if facts.people == 1 else f"{facts.people:,} people"
+    parts = [
+        f"{repository[0]} {repository[1]} since {named} to {tip[:7]}: "
+        f"{_counted(facts.commits, 'commit')} by {who}"
+    ]
+    if facts.automated:
+        parts.append(_counted(facts.automated, "automated account"))
+    if facts.files_added:
+        parts.append(f"{_counted(facts.files_added, 'file')} added")
+    if tags:
+        parts.append(_counted(len(tags), "tag"))
+    return _one_line(", ".join(parts))
