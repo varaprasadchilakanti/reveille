@@ -38,3 +38,23 @@ def test_an_unexpected_exception_cannot_run() -> None:
     assert result.stdout == ""
     assert "RuntimeError: boom" in result.stderr
     assert "Traceback" not in result.stderr
+
+
+@pytest.mark.e2e
+def test_the_handler_in_process(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The same path, measured by coverage, which does not follow the subprocess."""
+    import reveille.services.report as report
+    from reveille.cli import app
+
+    def boom(*_args: object, **_kwargs: object) -> str:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(report, "summary_text", boom)
+
+    with pytest.raises(SystemExit) as exited:
+        app(["summary", "--repo", "."], prog_name="reveille")
+
+    assert exited.value.code == ExitCode.CANNOT_RUN
+    assert "RuntimeError: boom" in capsys.readouterr().err

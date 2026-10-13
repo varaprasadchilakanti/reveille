@@ -292,6 +292,29 @@ class TestWorkInProgress:
 
         assert _state(repo)["operation_in_progress"] == "rebase"
 
+    def test_git_am_stopped_on_a_conflict(self, repo: Path, tmp_path: Path) -> None:
+        _git(repo, "switch", "-q", "-c", "topic")
+        _commit(repo, "a.txt", "topic\n")
+        patch = _git(repo, "format-patch", "-1", "--stdout").stdout
+        (tmp_path / "p.patch").write_text(patch, encoding="utf-8")
+        _git(repo, "switch", "-q", "main")
+        _commit(repo, "a.txt", "main\n")
+        _git(repo, "am", str(tmp_path / "p.patch"), check=False)
+
+        assert _state(repo)["operation_in_progress"] == "am"
+
+    def test_a_detached_head_with_the_tree_uncompared(
+        self, repo: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from reveille.adapters.git_reader import GitReader
+
+        _git(repo, "switch", "-q", "--detach", "HEAD~1")
+        monkeypatch.setattr(GitReader, "_repository_filters", lambda self: None)
+
+        state = _state(repo)
+
+        assert (state["branch"], state["working_tree_read"]) == (None, False)
+
     def test_stashes_are_counted(self, repo: Path) -> None:
         for text in ("x\n", "y\n"):
             (repo / "a.txt").write_text(text, encoding="utf-8")

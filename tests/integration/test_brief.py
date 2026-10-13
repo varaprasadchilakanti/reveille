@@ -236,6 +236,29 @@ class TestTheDefaultPointFailsForTheRightReason:
         assert "no tag" not in err
 
 
+class TestTheNotices:
+    def test_a_shallow_clone_is_said(self, released: _Repo, tmp_path: Path) -> None:
+        clone = tmp_path / "shallow"
+        subprocess.run(
+            ["git", "clone", "-q", "--depth", "2", f"file://{released.path}", str(clone)],
+            check=True,
+            capture_output=True,
+        )
+
+        exit_code, _, err = _brief(clone, "--since", "2000-01-01")
+
+        assert exit_code == ExitCode.SUCCESS, err
+        assert "shallow clone" in err
+
+    def test_a_commit_dated_after_today_is_said(self, released: _Repo) -> None:
+        released.commit("src/core/future.py", "2090-01-01T10:00:00+00:00")
+
+        exit_code, _, err = _brief(released.path, "--since", "2026-01-01")
+
+        assert exit_code == ExitCode.SUCCESS, err
+        assert "dated after" in err and "not counted" in err
+
+
 class TestThePoint:
     def test_a_date_point(self, released: _Repo) -> None:
         brief = _json(released.path, "--since", "2026-03-02", "--deterministic")

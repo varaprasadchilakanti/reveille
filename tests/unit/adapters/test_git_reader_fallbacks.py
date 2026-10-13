@@ -1,0 +1,95 @@
+# SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti
+# SPDX-License-Identifier: Apache-2.0
+
+"""What the reader does when Git is older or fails, which Git 2.55 here never does."""
+
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+from typing import Any
+
+import pytest
+from git.exc import GitCommandError
+
+from reveille.adapters.git_reader import GitReader
+from reveille.exceptions import RepositoryError
+
+pytestmark = pytest.mark.unit
+
+
+@pytest.fixture
+def repo(tmp_path: Path) -> Path:
+    path = tmp_path / "r"
+    path.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=path, check=True)
+    (path / "a.txt").write_text("a", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=path, check=True)
+    subprocess.run(
+        ["git", "-c", "user.name=A", "-c", "user.email=a@e.test", "commit", "-qm", "a"],
+        cwd=path,
+        check=True,
+    )
+    return path
+
+
+class _Runner:
+    """Stands in for `GitReader._git()`; `fail` names commands that raise."""
+
+    def __init__(self, real: Any, fail: dict[str, int], worktrees: str = "") -> None:
+        self._real, self._fail, self._worktrees = real, fail, worktrees
+
+    def __getattr__(self, command: str) -> Any:
+        def call(*args: str) -> Any:
+            key = command if command != "worktree" else f"worktree{'-z' if '-z' in args else ''}"
+            if key in self._fail:
+                raise GitCommandError(command, self._fail[key])
+            if command == "worktree":
+                return self._worktrees
+            return getattr(self._real, command)(*args)
+
+        return call
+
+
+def test_old_git_lists_worktrees_without_z(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    reader = GitReader(repo)
+    real = reader._git()
+    records = "worktree /r\nHEAD 1\nbranch refs/heads/main\n\nworktree /w\ndetached\n"
+    monkeypatch.setattr(
+        reader, "_git", lambda extra=(): _Runner(real, {"worktree-z": 129}, records)
+    )
+
+    assert [w.path for w in reader._worktrees()] == ["/r", "/w"]
+
+
+def test_worktrees_that_cannot_be_listed_are_none(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reader = GitReader(repo)
+    real = reader._git()
+    monkeypatch.setattr(
+        reader, "_git", lambda extra=(): _Runner(real, {"worktree-z": 129, "worktree": 128})
+    )
+
+    assert reader._worktrees() == []
+
+
+def test_an_unreadable_git_version_is_none(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    reader = GitReader(repo)
+    real = reader._git()
+    monkeypatch.setattr(reader, "_git", lambda extra=(): _Runner(real, {"version": 1}))
+
+    assert reader._git_version() is None
+    assert reader._supports_since_as_filter() is False
+
+
+def test_a_rev_parse_failure_other_than_ownership_cannot_run(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def failing_git(self: GitReader, extra: Any = ()) -> Any:
+        return _Runner(self._repo.git, {"rev_parse": 128})
+
+    monkeypatch.setattr(GitReader, "_git", failing_git)
+
+    with pytest.raises(RepositoryError, match="Git cannot read"):
+        GitReader(repo)

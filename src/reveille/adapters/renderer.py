@@ -2139,7 +2139,7 @@ def _state_lines(
     extra = ["1 stash" if state.stashes == 1 else f"{state.stashes:,} stashes"]
     if len(state.worktrees) > 1:
         others = [f"{w.path} ({w.branch or 'detached'})" for w in state.worktrees[1:]]
-        extra.append(f"{len(others):,} other worktrees: {_listed(others, limit)}")
+        extra.append(f"{_counted(len(others), 'other worktree')}: {_listed(others, limit)}")
     lines.append("; ".join(extra) + ".")
     lines.append(
         f"Branches: {state.branches:,} local, {state.branches_merged:,} merged into this commit, "
