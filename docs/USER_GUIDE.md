@@ -189,7 +189,12 @@ reveille generate --area-authors --area-depth 2
 
 Two runs over an unchanged repository give identical bytes, in every format, on the same Reveille
 version, installed dependencies and Git settings. Git settings matter because some change the
-counts Git reports: a different `diff.algorithm` moves line counts by a few per cent.
+counts Git reports. Reveille pins the ones measured to do so to Git's defaults on every read, so a
+repository's own `.git/config`, or yours, cannot change them: `diff.algorithm` (another algorithm
+moved line counts), `diff.renames` (off, a renamed file counts as deleted and added),
+`core.bigFileThreshold` (a low value turns large files into binary, counted as no lines),
+`log.showRoot` (off, the first commit's lines vanish) and `trailer.separators` (another separator
+hides `Co-authored-by` trailers). Other settings are not pinned.
 
 It pins `generated_at` to the analysed commit's timestamp instead of the clock (the idea behind
 `SOURCE_DATE_EPOCH`), and closes the analysis window on the last commit instead of today.

@@ -114,6 +114,13 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Fixed
 
+- **A repository's own Git settings could change the figures.** Set in `.git/config` (or the
+  user's config), `diff.renames=false` counted a renamed file as deleted and added,
+  `core.bigFileThreshold` turned large files into binary with no lines, `log.showRoot=false` dropped
+  the first commit's lines, another `diff.algorithm` moved line counts, and another
+  `trailer.separators` hid co-authors. Each is now pinned to Git's default on every read; a test
+  per setting failed before.
+
 - **A worktree path holding a newline was misread** by `state`: the path was cut short and the
   rest could be read as a field, such as "locked". Worktrees are now listed with `-z` (Git 2.36
   or later), falling back to the old format on older Git.

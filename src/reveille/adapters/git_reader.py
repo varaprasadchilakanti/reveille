@@ -987,13 +987,19 @@ class GitReader:
             GitPython's command runner for this repository.
         """
         # Pinned off: a repository's config could make Git run gpg.program or an
-        # fsmonitor program (ADR 0024).
+        # fsmonitor program (ADR 0024). Pinned to Git's defaults: each of the rest,
+        # set in a repository, changed line or co-author counts (Git 2.55).
         return self._repo.git(
             c=[
                 "log.follow=false",
                 "log.showSignature=false",
                 "core.fsmonitor=false",
                 "status.submoduleSummary=false",
+                "log.showRoot=true",
+                "diff.renames=true",
+                "diff.algorithm=myers",
+                "core.bigFileThreshold=512m",
+                "trailer.separators=:",
                 *extra,
             ]
         )
