@@ -127,6 +127,34 @@ class TestContentFilters:
         _git(repo, "status", "--porcelain", check=False)
         assert marker.exists(), "positive control: plain git status runs it"
 
+    def test_a_filter_name_with_an_equals_sign_does_not_run(
+        self, repo: Path, tmp_path: Path
+    ) -> None:
+        """`git -c` splits at the first `=`, so no override can name `a=b`: compare nothing."""
+        marker = tmp_path / "ran"
+        program = tmp_path / "filter.sh"
+        program.write_text(f"#!/bin/sh\necho ran >> '{marker}'\ncat\n", encoding="utf-8")
+        program.chmod(0o755)
+        (repo / ".gitattributes").write_text("*.txt filter=a=b\n", encoding="utf-8")
+        _git(repo, "config", "filter.a=b.clean", str(program))
+        time.sleep(1.1)
+        os.utime(repo / "a.txt")
+
+        state = _state(repo)
+
+        assert not marker.exists()
+        assert state["working_tree_read"] is False
+        assert "Working tree: not compared" in _text(repo)
+        _git(repo, "status", "--porcelain", check=False)
+        assert marker.exists(), "positive control: plain git status runs it"
+
+    def test_a_filter_name_with_a_space_is_read_whole(self, repo: Path) -> None:
+        from reveille.adapters.git_reader import GitReader
+
+        _git(repo, "config", "filter.c d.clean", "cat")
+
+        assert GitReader(repo)._repository_filters() == ("c d",)
+
     def test_a_filter_in_the_users_own_config_is_respected(
         self, repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

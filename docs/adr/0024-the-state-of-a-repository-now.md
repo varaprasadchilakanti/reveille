@@ -45,7 +45,8 @@ answer, changing nothing and running nothing.**
   `core.fsmonitor=false`, submodule summaries off. Content filters the repository's own config
   defines (local or worktree scope, found with `git config --show-scope`) are overridden for the
   status call and named in the answer; a filter in the user's global or system config runs as
-  they set it. If Git cannot report scopes, no file is compared. Tests assert the index is
+  they set it. If Git cannot report scopes, or a filter's name holds `=` (which `git -c` cannot
+  name), no file is compared. Tests assert the index is
   byte-identical, and that neither an fsmonitor program nor a repository's filter runs; each
   fails with its pin removed.
 - **Output:** text under 2 KB and `--format json` (`"document": "state"`). Exit 0 when it ran,

@@ -62,8 +62,8 @@ class RepositoryState:
         shallow: Whether only part of the history is present.
         filters_not_run: Content filters the repository's own config names, which
             status was computed without; files they cover may show as modified.
-        working_tree_unread: Whether the working tree was not compared, because
-            Git could not say which config defines its filters.
+        working_tree_unread: Whether the working tree was not compared, because a
+            filter the repository's config names could not be switched off.
     """
 
     branch: str | None

@@ -2153,8 +2153,8 @@ def _working_tree_lines(state: RepositoryState, limit: int) -> list[str]:
         return ["Bare repository: no working tree."]
     if state.working_tree_unread:
         return [
-            "Working tree: not compared. Git could not say which config defines its content "
-            "filters, and comparing files could run one the repository names."
+            "Working tree: not compared. Comparing files could run a content filter the "
+            "repository's own config names, and Reveille could not switch it off."
         ]
     if state.clean:
         return ["Working tree: clean."]

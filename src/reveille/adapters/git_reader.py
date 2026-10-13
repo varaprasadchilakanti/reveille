@@ -1086,26 +1086,33 @@ class GitReader:
         """Name the content filters the repository's own config defines (ADR 0024).
 
         Only local and worktree scope, and files they include: global and system
-        config are the user's own. None when Git cannot report scopes, so the
-        caller compares no files rather than guess.
+        config are the user's own. None when Git cannot report scopes, or when a
+        name holds `=`, which no `-c` override can name; the caller then compares
+        no files rather than guess.
 
         Returns:
-            The driver names, or None if they cannot be known.
+            The driver names, or None if they cannot be known or overridden.
         """
         try:
             out = str(
                 self._git().config(
-                    "--show-scope", "--get-regexp", r"^filter\..+\.(clean|smudge|process)$"
+                    "--show-scope",
+                    "-z",
+                    "--get-regexp",
+                    r"^filter\..+\.(clean|smudge|process)$",
                 )
             )
         except GitCommandError as exc:
             return () if exc.status == 1 else None
+        # -z gives scope NUL key LF value NUL; a subsection may hold spaces.
+        fields = out.split("\0")
         names = {
-            key.removeprefix("filter.").rsplit(".", 1)[0]
-            for scope, _, rest in (line.partition("\t") for line in out.splitlines())
-            for key in [rest.split(" ", 1)[0]]
+            entry.split("\n", 1)[0].removeprefix("filter.").rsplit(".", 1)[0]
+            for scope, entry in zip(fields[::2], fields[1::2], strict=False)
             if scope in ("local", "worktree")
         }
+        if any("=" in name for name in names):
+            return None
         return tuple(sorted(names))
 
     def _commit_time(self, sha: str) -> datetime.datetime | None:
