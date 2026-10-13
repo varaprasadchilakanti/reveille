@@ -60,7 +60,7 @@ class TestLockfileIntegrity:
             pytest.fail(
                 f"poetry.lock is not valid TOML: {exc}\n"
                 "A generated lock file must never be hand-merged. "
-                "Regenerate it with: poetry lock --no-update"
+                "Regenerate it with: poetry lock"
             )
 
     def test_lockfile_declares_metadata(self) -> None:

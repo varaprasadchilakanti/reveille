@@ -96,7 +96,7 @@ the vulnerability scan, the reproducible-build check, CodeQL and the CLA gate.
 `poetry.lock` is marked `-merge` in `.gitattributes`, so Git writes no conflict markers into it: a
 conflict prints `warning: Cannot merge binary files: poetry.lock` and leaves your version in
 place. The file is generated, and "keep both sides" silently duplicates TOML keys. Resolve it by
-regenerating: `poetry lock --no-update`.
+regenerating: `poetry lock`.
 
 The HTML report is always a single self-contained file with no external dependencies, no CDN
 calls, no cookies and no tracking. A change that breaks that will not be merged.
