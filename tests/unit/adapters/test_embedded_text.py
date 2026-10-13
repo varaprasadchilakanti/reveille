@@ -3,13 +3,12 @@
 
 """Text from a repository reaches the report as data, never as markup.
 
-Two defects, found by the 2026-10-12 red team. File extensions reached the
-extension chart unsanitised, and Plotly draws a subset of HTML in labels: a
-file named `f.<a href="https:...">Click` put a clickable link into a report
-sold as safe to forward. And the chart specifications escaped only `</`: a
-path, extension or name holding `<!--<script` put the HTML parser into a state
-where the block's own `</script>` no longer closed it, and every chart in the
-report was blank.
+Two rules. File extensions are sanitised before they reach the extension
+chart, because Plotly draws a subset of HTML in labels and a crafted file name
+could otherwise put a clickable link into the report. And the chart
+specifications escape more than `</`: an HTML comment opener followed by
+`<script` in a path, extension or name would otherwise change how the parser
+reads the script block and blank every chart.
 """
 
 from __future__ import annotations

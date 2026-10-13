@@ -25,7 +25,7 @@ Deprecated.
 | # | Decision | Status |
 |---|---|---|
 | [0001](0001-exclude-merge-commits.md) | Merge commits are excluded unconditionally | Accepted |
-| [0002](0002-email-as-identity-key.md) | Email is the contributor identity key | Accepted; extended by 0020 |
+| [0002](0002-email-as-identity-key.md) | Email is the contributor identity key | Accepted; extended by 0020; partly superseded by 0023 |
 | [0003](0003-bisect-left-for-percentile-ties.md) | Percentiles use lower-bound ranking | Accepted |
 | [0004](0004-single-pass-numstat-read.md) | History is read in a single `git log --numstat` pass | Superseded by 0019 |
 | [0005](0005-commit-concentration-not-bus-factor.md) | The concentration metric is not called a bus factor | Accepted |
@@ -45,11 +45,14 @@ Deprecated.
 | [0019](0019-how-history-is-read.md) | How history is read: an allowlisted log, and nothing lost without a word | Accepted |
 | [0020](0020-exclude-author-removes-a-person-by-address.md) | `--exclude-author` removes a person by every address the value reaches | Accepted |
 | [0021](0021-what-provenance-records-about-filters-and-time.md) | What provenance records about filters and time | Accepted |
-| [0022](0022-a-brief-from-a-point.md) | A brief from a point: `reveille brief --from` | Proposed |
+| [0022](0022-a-brief-from-a-point.md) | A brief from a point: `reveille brief --from` | Accepted; partly superseded by 0025 |
+| [0023](0023-noreply-addresses-fold-on-the-account-number.md) | GitHub noreply addresses fold on the account number | Proposed |
+| [0024](0024-the-state-of-a-repository-now.md) | The state of a repository now: `reveille state` | Proposed |
+| [0025](0025-brief-starts-at-the-latest-tag.md) | `brief` starts at the latest tag when no point is given | Proposed |
 
 ## Notes from the review of 2026-10-09
 
-An accepted record is not edited (CLAUDE.md). Where one has drifted from the program without its
+An accepted record is not edited. Where one has drifted from the program without its
 decision changing, the drift is noted here instead; where its decision changed, a later record
 supersedes it, and the table says so. The review itself is kept outside the repository.
 

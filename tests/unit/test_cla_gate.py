@@ -4,12 +4,10 @@ These tests do not reimplement the check. They extract the script from
 `.github/workflows/cla.yml` and run it, so what is asserted is the code that
 actually gates contributions.
 
-The defect that motivated them: the acceptance pattern required the tick and
-the CLA version on one physical line, while the shipped template wraps that
-bullet across three. Every external pull request using the template failed the
-gate, and the failure message told the contributor to tick a box they had
-already ticked. Nothing tested the gate against the template, so nothing caught
-it.
+The acceptance pattern must match the tick and the CLA version across the
+physical lines the shipped template wraps that bullet over; otherwise every
+pull request using the template fails the gate and is told to tick a box it
+has already ticked.
 """
 
 from __future__ import annotations

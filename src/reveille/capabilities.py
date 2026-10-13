@@ -3,25 +3,14 @@
 
 """A machine-readable description of what Reveille can and cannot do.
 
-Most tools describe themselves in prose that drifts from the code within two
-releases. This module keeps the two apart deliberately:
+Derived facts (version, commands, options, exit codes) are read from the
+running program, so they cannot drift; judgements (purpose, refusals, caveats)
+are written here. The reader may hold only the installed program, so limits
+get as much room as features.
 
-* **Derived facts** — the version, the output schema version, the commands and
-  their options, the exit codes — are read from the running program. They
-  cannot drift, because there is nothing to keep in sync.
-* **Stated judgements** — what the tool is *for*, what it refuses to claim, and
-  the caveats a reader needs before trusting a number — are written here in one
-  place, because no amount of introspection can derive them.
+The JSON key `guarantees` is a schema field and keeps its name. Its entries are
+properties that are designed and tested, not a warranty.
 
-The audience is a program, not a person. A coding agent deciding whether to
-reach for Reveille should be able to ask it directly rather than guess from a
-README, and the answer should include the *limits* as prominently as the
-features. A tool that only advertises what it is good at is one an agent will
-misuse.
-
-`docs/` remains the human-facing reference; `llms.txt` remains the pointer for
-an assistant reading the repository. This is the answer for a program holding
-the installed binary and nothing else.
 """
 
 from __future__ import annotations
@@ -33,9 +22,7 @@ from reveille import __version__
 from reveille.config import OutputFormat
 from reveille.domain.models import SCHEMA_VERSION
 
-# The contract version of this document itself, so a consumer can tell a shape
-# change from a content change. Independent of both the release version and the
-# report's schema version, because all three move for different reasons.
+# Versions this document's shape, independently of the release and the report schema.
 CAPABILITIES_VERSION = "1.0"
 
 _SUMMARY = (
@@ -43,7 +30,7 @@ _SUMMARY = (
     "self-contained offline report of commit activity over time."
 )
 
-# What the tool does, phrased as claims that could be checked.
+# What the tool does, phrased so each statement can be checked.
 _CAPABILITIES: tuple[dict[str, str], ...] = (
     {
         "id": "activity-calendar",
@@ -73,8 +60,8 @@ _CAPABILITIES: tuple[dict[str, str], ...] = (
             "Report how evenly commits are distributed across the people in "
             "the window: how many account for a majority, and the full "
             "distribution as a Lorenz curve with its Gini coefficient. This "
-            "characterises the repository and names nobody, which is why it is "
-            "in the default report while the per-person ranking is not."
+            "characterises the repository as a whole, which is why it is in the "
+            "default report while the per-person ranking is not."
         ),
     },
     {
@@ -82,8 +69,37 @@ _CAPABILITIES: tuple[dict[str, str], ...] = (
         "description": (
             "Summarise a repository with `reveille summary`, in under 1 KB of "
             "text or about 2 KB of JSON: window, commit and people counts, Gini, "
-            "quiet run and the written findings, naming nobody (with one or two "
-            "people its figures describe identifiable individuals)."
+            "quiet run and the written findings. It names nobody, but with one or "
+            "two people, counts can identify someone."
+        ),
+    },
+    {
+        "id": "brief",
+        "description": (
+            "Say what changed since a tag, a commit or a date with `reveille brief "
+            "--from <revision>` or `--since <date>` (with neither, since the latest "
+            "tag): commits, people and automated "
+            "accounts as counts, the most changed areas and file types, files "
+            "added, areas active again after 90 quiet days and tags in the range. "
+            "It names nobody, but with one or two people, counts can identify "
+            "someone. A revision is read by ancestry, without line counts, "
+            "and the analysed commit is printed so the next brief can start there."
+        ),
+    },
+    {
+        "id": "state",
+        "description": (
+            "Say where a repository stands now with `reveille state`: the branch or "
+            "detached commit, upstream ahead/behind as of the last fetch, a merge, "
+            "rebase, cherry-pick, revert or bisect in progress, conflicted paths, "
+            "staged, modified, deleted, renamed and untracked counts with bounded "
+            "lists, stashes, worktrees, local branches as counts, and the latest tag "
+            "with the commits since it. Every Git call runs with optional locks and "
+            "fsmonitor off and repository-defined content filters not run, so it "
+            "neither rewrites the index nor starts a program the repository names. "
+            "It names no author, but lists local paths (changed files and worktree "
+            "directories, which can contain your login name) and the current "
+            "branch name."
         ),
     },
     {
@@ -128,9 +144,7 @@ _CAPABILITIES: tuple[dict[str, str], ...] = (
     },
 )
 
-# What the tool will not do. This list is the load-bearing half of the
-# document: it is what stops a caller reaching for Reveille to answer a
-# question it cannot answer.
+# What the tool will not do.
 _NOT_CAPABILITIES: tuple[dict[str, str], ...] = (
     {
         "id": "productivity-measurement",
@@ -155,9 +169,11 @@ _NOT_CAPABILITIES: tuple[dict[str, str], ...] = (
         ),
         "instead": (
             "Nothing here is fit for that purpose. The contributor ranking is a "
-            "visual ordering of commit volume, not an evaluation. It is off by "
-            "default and is enabled only by an explicit --ranking flag or an "
-            "`enabled = true` entry in a reveille.toml."
+            "visual ordering of commit volume, not an evaluation. The scored "
+            "table is off by default and is enabled only by an explicit --ranking "
+            "flag or an `enabled = true` entry in a reveille.toml. JSON and CSV "
+            "output carry a `rank` column in table order: by commits, or by score "
+            "with --ranking."
         ),
     },
     {
@@ -179,8 +195,9 @@ _NOT_CAPABILITIES: tuple[dict[str, str], ...] = (
             "name, author name, author email, timestamp -- those trailers, and, "
             "per file in each commit, the path and the number of lines added "
             "and deleted, as reported by `git log --numstat`. How many lines "
-            "changed in a file, never which lines. Reveille receives paths and "
-            "counts; Git reads the files to compute the counts."
+            "changed in a file, never which lines. Reveille receives paths, "
+            "counts and, for `state`, status letters; Git reads the files to "
+            "compute them."
         ),
         "instead": "Use a static analysis tool or a code search tool.",
     },
@@ -205,22 +222,22 @@ _NOT_CAPABILITIES: tuple[dict[str, str], ...] = (
     {
         "id": "cross-repository-aggregation",
         "description": (
-            "Combine several repositories into one per-person view. This was "
-            "considered and deliberately cut: aggregating an individual's "
-            "activity across repositories builds a surveillance tool."
+            "Combine several repositories into one per-person view. Not offered "
+            "by design. Separate JSON outputs can still be joined by email "
+            "address, so this limits convenience, not capability."
         ),
         "instead": "Run Reveille per repository and compare the reports.",
     },
 )
 
-# Caveats that change how a number should be read. Every one of these is a
-# documented behaviour, not a known bug.
+# Caveats that change how a number is read; documented behaviour.
 _CAVEATS: tuple[dict[str, str], ...] = (
     {
         "id": "merge-commits-excluded",
         "description": (
             "Merge commits are excluded unconditionally, so commit counts are "
-            "lower than `git log` reports for the same range."
+            "lower than `git log` reports for the same range, by the number "
+            "`merge_commits_excluded` gives in the JSON."
         ),
     },
     {
@@ -274,17 +291,18 @@ _CAVEATS: tuple[dict[str, str], ...] = (
     },
 )
 
-# Properties that hold for every invocation. These are the ones worth checking
-# against, because each is asserted by a test.
+# Properties designed into every invocation, each asserted by a test. Not a warranty.
 _GUARANTEES: tuple[dict[str, str], ...] = (
     {
         "id": "offline",
         "description": (
-            "No network call is made at any point, and the generated report "
-            "loads no remote resource. A partial clone is refused rather than "
-            "read, because reading it would make Git fetch. Git obeys a "
-            "repository's own .git/config, which can name a program for Git to "
-            "run; such a program is outside these properties."
+            "The tool makes no outbound call, and the generated report loads no "
+            "remote resource. A SHA-256 repository is refused. A partial clone is "
+            "refused rather than read, because reading it would make Git fetch. Programs a "
+            "repository's own .git/config can make its reads start are switched "
+            "off (signature checking, fsmonitor, content filters during `state`); "
+            "Git has many settings, and one not switched off is outside these "
+            "properties."
         ),
     },
     {
@@ -314,9 +332,7 @@ _GUARANTEES: tuple[dict[str, str], ...] = (
 def _commands(app: Any) -> list[dict[str, Any]]:
     """Describe the CLI surface by inspecting the live Typer application.
 
-    Derived rather than written down, so it cannot disagree with the program.
-    A README once documented a subcommand that had never existed; anything a
-    machine reads about this tool should come from the tool.
+    Derived, not written down, so it cannot disagree with the program.
 
     Args:
         app: The Typer application object.
@@ -328,11 +344,8 @@ def _commands(app: Any) -> list[dict[str, Any]]:
 
     group = typer.main.get_command(app)
 
-    # Fail closed. `getattr(group, "commands", {})` would return an empty
-    # mapping if Click ever restructured, and this function would then emit a
-    # document claiming the tool has no commands -- silently, with exit 0, to a
-    # program that trusts it. An empty command list is never a true answer
-    # here, so it is an error rather than a default.
+    # An empty command list (for example if Click restructured) is never true,
+    # so fail rather than describe a tool with no commands.
     commands = getattr(group, "commands", None)
     if not commands:
         raise RuntimeError(
@@ -368,16 +381,13 @@ def _commands(app: Any) -> list[dict[str, Any]]:
     return described
 
 
-# Meanings for the exit codes. Kept as an explicit mapping rather than read
-# from the enum: the per-member strings in `ExitCode` are bare expressions, not
-# docstrings, so `member.__doc__` returns the *class* docstring and every code
-# would carry the same wrong text. The names and numbers below are still
-# derived from the enum, and `tests/unit/test_capabilities.py` asserts this
-# mapping covers every member, so a new code cannot be added without one.
+# Hand-written because `member.__doc__` on `ExitCode` returns the class
+# docstring. Names and numbers come from the enum; a test checks this mapping
+# covers every member.
 _EXIT_CODE_MEANINGS: dict[str, str] = {
     "SUCCESS": "The command ran and its answer is affirmative.",
     "NEGATIVE": (
-        "The command ran correctly and its answer is negative -- the "
+        "The command ran correctly and its answer is negative: the "
         "repository state does not satisfy the request, such as an analysis "
         "window containing no commits."
     ),
@@ -435,23 +445,62 @@ def build_capabilities(app: Any, exit_code_enum: type[enum.IntEnum]) -> dict[str
 
 
 def _output_formats() -> list[str]:
-    """The output formats the tool actually accepts, read from the type.
-
-    This was a hardcoded `["html", "json", "csv"]` in the one module whose
-    stated premise is that derived facts cannot drift. `config.OutputFormat`
-    is the single definition the CLI and the config parser both validate
-    against, so adding a format there without touching this list would have
-    published a document that understated the tool -- silently, to a program
-    that trusts it.
-    """
+    """The output formats the tool accepts, derived from `config.OutputFormat`."""
     formats = get_args(OutputFormat)
     if not formats:
         raise RuntimeError(
             "Could not read the output formats from config.OutputFormat. "
-            "The capability document must not claim a format list it cannot "
-            "derive; refusing to emit a document rather than emit a wrong one."
+            "Refusing to emit a capability document with a format list it "
+            "cannot derive."
         )
     return [str(item) for item in formats]
+
+
+#: The `can` entry that describes each command, where its id differs from the name.
+_DESCRIBED_BY = {"summary": "repository-summary"}
+
+
+def command_capabilities(document: dict[str, Any], name: str) -> dict[str, Any] | None:
+    """Narrow the capability document to one command, its description and the exit codes.
+
+    Args:
+        document: The mapping returned by `build_capabilities`.
+        name: A command name, such as "state".
+
+    Returns:
+        The narrowed document, or None if there is no such command.
+    """
+    commands = {command["name"]: command for command in document["commands"]}
+    if name not in commands:
+        return None
+    described = {item["id"]: item["description"] for item in document["can"]}
+    command = dict(commands[name])
+    command["description"] = described.get(_DESCRIBED_BY.get(name, name), command["summary"])
+    return {
+        "capabilities_version": document["capabilities_version"],
+        "name": document["name"],
+        "version": document["version"],
+        "command": command,
+        "exit_codes": document["exit_codes"],
+    }
+
+
+def render_command_text(document: dict[str, Any]) -> str:
+    """Render one command's capabilities for a terminal.
+
+    Args:
+        document: The mapping returned by `command_capabilities`.
+
+    Returns:
+        A plain-text rendering.
+    """
+    command = document["command"]
+    lines = [f"reveille {command['name']} ({document['version']})", "", command["description"]]
+    lines += ["", "OPTIONS"]
+    lines += [f"  {', '.join(o['flags'])}  {o['help']}" for o in command["options"]]
+    lines += ["", "EXIT CODES"]
+    lines += [f"  {item['code']}  {item['meaning']}" for item in document["exit_codes"]]
+    return "\n".join(lines)
 
 
 def render_text(document: dict[str, Any]) -> str:
@@ -468,7 +517,7 @@ def render_text(document: dict[str, Any]) -> str:
         "",
         document["summary"],
         "",
-        "GUARANTEES",
+        "PROPERTIES (designed and tested; not a warranty)",
     ]
     lines += [f"  - {item['description']}" for item in document["guarantees"]]
 

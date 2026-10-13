@@ -1,0 +1,49 @@
+name: Bug report
+description: Reveille gave a wrong answer, crashed, or did something its documentation says it does not.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not paste a report or JSON that names people, or a repository you may not share.
+        Security issues go to the private advisory form, not here.
+  - type: input
+    id: version
+    attributes:
+      label: Reveille version
+      description: Output of `reveille --version`.
+    validations:
+      required: true
+  - type: input
+    id: git
+    attributes:
+      label: Git version and operating system
+      description: Output of `git --version`, and your OS.
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command run
+      description: The exact command, and its exit code (`echo $?`).
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened
+      description: Output or error message, with names and paths removed if needed.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: Ideally a few `git` commands that build a small repository showing it.

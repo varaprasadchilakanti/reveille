@@ -56,18 +56,13 @@ def _is_app_account(identity: str) -> bool:
     general form of "not a person", and the shipped `reveille.toml`
     template already uses it as such in its `exclude_authors` example.
 
-    This matters because the stray check below tested the literal string
-    `dependabot`. The first commit any *second* bot landed on `main` would
-    have failed that assertion, with a message instructing the maintainer
-    to add a `.mailmap` entry -- the one remedy that is wrong, because a
-    `.mailmap` states who is the same *person* and a bot is not one of us.
-    Verified by replaying it: a `renovate[bot]` commit in a clone of this
-    repository failed the old form of this check.
+    The stray check must treat any bot as a non-person, not only the literal
+    `dependabot`: telling the maintainer to add a `.mailmap` entry is the wrong
+    remedy, because a `.mailmap` states who is the same *person*.
 
     Both the author name and the address local part are tested. They
-    normally agree, and either alone would do; two cheap signals is worth
-    more than picking one and being wrong about an app that sets an
-    unusual display name.
+    normally agree, and either alone would do; testing both covers an app
+    that sets an unusual display name.
 
     Args:
         identity: One `git shortlog -sne` identity line.
@@ -159,9 +154,8 @@ class TestTheRepositoryMailmapFoldsItsOwnAliases:
             mailmap,
         )
         assert name == "dependabot[bot]"
-        assert email == "dependabot[bot]@users.noreply.github.com", (
-            "the numeric prefix is stripped by noreply normalisation, which "
-            "needs no .mailmap entry; nothing else about the bot may change"
+        assert email == "49699333+dependabot[bot]@users.noreply.github.com", (
+            "an account number is its identity (ADR 0023); nothing about the bot may change"
         )
 
     def test_an_unrelated_identity_is_untouched(self, mailmap: _Mailmap) -> None:

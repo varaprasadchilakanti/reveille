@@ -188,8 +188,8 @@ class TestHeatmapRamps:
 class TestChartHeightIsBounded:
     """A per-item chart grows with its data and must stop somewhere.
 
-    The ceiling exists because an unbounded height once produced a chart
-    220,080 pixels tall, which no browser renders usefully. The hotspot
+    The ceiling exists because an unbounded height can produce a chart
+    hundreds of thousands of pixels tall, which no browser renders usefully. The hotspot
     ranking is the remaining chart whose height tracks its row count --
     the contributor charts became fixed-height when the commits bar was
     replaced by the share pie.

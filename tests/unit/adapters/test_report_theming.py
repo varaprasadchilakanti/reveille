@@ -177,8 +177,8 @@ class TestChartTextMeetsContrastUnderBothThemes:
     def test_the_grid_is_visible_but_recessive(self, theme: str) -> None:
         """A grid must be findable without competing with the data.
 
-        The dark theme once painted the light theme's `#e2e8f0` grid over
-        a `#161b22` plot: 14.03:1, louder than the series drawn on it.
+        The light theme's `#e2e8f0` grid over the dark theme's `#161b22` plot
+        would be 14.03:1, louder than the series drawn on it.
         """
         layout = _theme_layouts()[theme]
         ratio = contrast_ratio(layout["xaxis"]["gridcolor"], layout["plot_bgcolor"])

@@ -77,8 +77,9 @@ class TestCoAuthorsAreAFact:
     def test_the_automated_co_author_is_reported(self, repo: Path, tmp_path: Path) -> None:
         payload = _json(repo, tmp_path / "r.json")
         only = {c["email"]: c for c in payload["co_authors_only"]}
-        # Folded like an author address: the numeric noreply prefix is dropped.
-        bot = only["github-advanced-security[bot]@users.noreply.github.com"]
+        # Keyed on the account number like an author address (ADR 0023), case-insensitively.
+        bot = next(c for e, c in only.items() if "github-advanced-security[bot]@" in e)
+        assert bot["email"].startswith("62310815+"), bot["email"]
 
         assert bot["co_authored_commits"] == 2, "the key is matched case-insensitively"
         assert bot["automated"] is True

@@ -62,11 +62,9 @@ jobs:
 
   # Workflow correctness
   #
-  # actionlint was configured as a pre-commit hook and cited as the
-  # workflow-correctness guard, but nothing on the server ran it: `make
-  # precommit` was referenced by no workflow, so the check only happened
-  # for developers who had installed the git hooks locally. A guard that
-  # depends on each contributor's local setup is not a gate.
+  # actionlint is a pre-commit hook, but a hook runs only for developers
+  # who installed the git hooks locally. This job runs it on the server, so
+  # the check does not depend on each contributor's setup.
   #
   # It runs through pre-commit rather than a separately downloaded binary
   # so the version stays pinned in one place, `.pre-commit-config.yaml`.
@@ -90,9 +88,17 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install pre-commit
-        run: python -m pip install --disable-pip-version-check "pre-commit==4.6.2"
+        run: python -m pip install --disable-pip-version-check "pre-commit==4.7.0"
       - name: Run actionlint
         run: pre-commit run actionlint --all-files --show-diff-on-failure
+      # The repository-hygiene hooks otherwise run only where a contributor
+      # installed pre-commit.
+      - name: Run hygiene hooks
+        run: |
+          for hook in trailing-whitespace end-of-file-fixer check-yaml check-case-conflict \
+              check-merge-conflict detect-private-key; do
+            pre-commit run "$hook" --all-files --show-diff-on-failure
+          done
 
   lint:
     name: Lint (ruff)
@@ -117,6 +123,8 @@ jobs:
         run: poetry install --no-interaction
       - name: Run ruff
         run: poetry run ruff check src tests
+      - name: Check formatting
+        run: poetry run ruff format --check src tests
       - name: Check version sync
         run: make check-version
       - name: Check licence declarations agree

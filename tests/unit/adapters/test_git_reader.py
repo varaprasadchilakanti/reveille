@@ -63,52 +63,59 @@ class TestSumNumstat:
 
 @pytest.mark.unit
 class TestNormaliseGithubNoreply:
-    """Tests for _normalise_github_noreply, the GitHub address folder."""
+    """Folding GitHub noreply addresses on the account number (ADR 0023)."""
 
-    def test_prefixed_address_loses_its_numeric_id(self) -> None:
-        assert (
-            _normalise_github_noreply("140685918+alice@users.noreply.github.com")
-            == "alice@users.noreply.github.com"
+    TABLE = _Mailmap(
+        noreply_accounts={
+            "111": "111+alice2@users.noreply.github.com",
+            "222": "222+alice@users.noreply.github.com",
+            "333": "333+carol@users.noreply.github.com",
+        },
+        noreply_usernames={"carol": "333+carol@users.noreply.github.com"},
+    )
+
+    def test_a_renamed_account_folds_to_its_current_username(self) -> None:
+        for address in (
+            "111+alice@users.noreply.github.com",
+            "111+alice2@users.noreply.github.com",
+        ):
+            assert _normalise_github_noreply(address, self.TABLE) == (
+                "111+alice2@users.noreply.github.com"
+            )
+
+    def test_two_accounts_that_used_one_username_stay_apart(self) -> None:
+        assert _normalise_github_noreply("222+alice@users.noreply.github.com", self.TABLE) != (
+            _normalise_github_noreply("111+alice@users.noreply.github.com", self.TABLE)
         )
 
-    def test_legacy_address_is_unchanged(self) -> None:
-        # Already canonical; normalising must be idempotent.
-        assert (
-            _normalise_github_noreply("alice@users.noreply.github.com")
-            == "alice@users.noreply.github.com"
+    def test_a_legacy_address_joins_only_an_unambiguous_account(self) -> None:
+        assert _normalise_github_noreply("carol@users.noreply.github.com", self.TABLE) == (
+            "333+carol@users.noreply.github.com"
         )
+        address = "alice@users.noreply.github.com"
+        assert _normalise_github_noreply(address, self.TABLE) == address, "two accounts used it"
 
-    def test_normalisation_is_idempotent(self) -> None:
-        once = _normalise_github_noreply("1+alice@users.noreply.github.com")
-        assert _normalise_github_noreply(once) == once
+    def test_folding_is_idempotent(self) -> None:
+        once = _normalise_github_noreply("111+alice@users.noreply.github.com", self.TABLE)
+        assert _normalise_github_noreply(once, self.TABLE) == once
 
-    def test_ordinary_address_is_unchanged(self) -> None:
-        assert _normalise_github_noreply("alice@example.com") == "alice@example.com"
+    @pytest.mark.parametrize(
+        "address",
+        [
+            "alice@example.com",
+            "12345+alice@users.noreply.gitlab.com",
+            "team+alice@users.noreply.github.com",
+            "999+nobody@users.noreply.github.com",
+            "",
+        ],
+    )
+    def test_anything_else_is_unchanged(self, address: str) -> None:
+        assert _normalise_github_noreply(address, self.TABLE) == address
 
-    def test_bot_username_with_brackets_is_handled(self) -> None:
-        # dependabot commits under 49699333+dependabot[bot]@users.noreply.github.com
-        assert (
-            _normalise_github_noreply("49699333+dependabot[bot]@users.noreply.github.com")
-            == "dependabot[bot]@users.noreply.github.com"
+    def test_the_domain_matches_case_insensitively(self) -> None:
+        assert _normalise_github_noreply("333+Carol@Users.NoReply.GitHub.Com", self.TABLE) == (
+            "333+carol@users.noreply.github.com"
         )
-
-    def test_domain_match_is_case_insensitive(self) -> None:
-        assert (
-            _normalise_github_noreply("42+Alice@Users.NoReply.GitHub.Com")
-            == "Alice@users.noreply.github.com"
-        )
-
-    def test_other_noreply_domain_is_unchanged(self) -> None:
-        # Only GitHub's domain is folded; a lookalike must pass through.
-        address = "12345+alice@users.noreply.gitlab.com"
-        assert _normalise_github_noreply(address) == address
-
-    def test_prefix_without_digits_is_unchanged(self) -> None:
-        address = "team+alice@users.noreply.github.com"
-        assert _normalise_github_noreply(address) == address
-
-    def test_empty_string_is_unchanged(self) -> None:
-        assert _normalise_github_noreply("") == ""
 
 
 @pytest.mark.unit
@@ -121,10 +128,10 @@ class TestResolveIdentity:
             "alice@example.com",
         )
 
-    def test_unmapped_noreply_address_is_normalised(self) -> None:
+    def test_without_an_account_table_the_address_is_kept_whole(self) -> None:
         assert _resolve_identity("Alice", "99+alice@users.noreply.github.com", _Mailmap()) == (
             "Alice",
-            "alice@users.noreply.github.com",
+            "99+alice@users.noreply.github.com",
         )
 
     def test_mailmap_entry_on_raw_address_wins(self) -> None:

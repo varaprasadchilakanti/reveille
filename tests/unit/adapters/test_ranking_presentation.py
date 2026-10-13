@@ -248,8 +248,8 @@ class TestTheDefaultReportNamesNobodyInItsSummary:
         was corrected to "Highest Score" -- the card is ordered by
         composite score, not by commit volume. The moment the string
         disappeared from the template, the assertion began passing
-        whatever the card did. A guard that cannot fail is the failure
-        mode CLAUDE.md names, so it is pinned to the live label and the
+        whatever the card did. A guard that cannot fail is no guard,
+        so it is pinned to the live label and the
         superlative is checked as well.
         """
         html = _html(tmp_path, ranking=False)

@@ -5,11 +5,10 @@ does instead of inferring it from prose. That is only worth anything if the
 answer stays true, so the parts that *can* be derived from the running program
 are derived, and the parts that cannot are pinned here.
 
-The failure this guards against is specific and has already happened once in
-this project: the README documented a `reveille version` subcommand that had
-never existed, and survived a documentation branch and an audit because every
-check compared text to text. A capability document written by hand would rot
-the same way, only now a machine would be reading it.
+The failure this guards against: documentation that compares text to text
+can describe a command that does not exist (the README once documented a
+`reveille version` subcommand). A capability document written by hand would
+rot the same way, and a machine would be reading it.
 """
 
 from __future__ import annotations
@@ -61,6 +60,8 @@ class TestDerivedFactsCannotDrift:
 
         assert described == registered
         assert described == {
+            "brief",
+            "state",
             "generate",
             "summary",
             "who-changed",
@@ -208,15 +209,14 @@ class TestGuaranteeTextsSayWhatTheyClaim:
 
     def test_offline_denies_network_use(self) -> None:
         text = self._guarantee("offline")
-        assert "no network call" in text
+        assert "no outbound call" in text
         assert "no remote resource" in text
 
     def test_read_only_analysis_denies_modifying_the_repository(self) -> None:
         text = self._guarantee("read-only-analysis")
         assert "never changes the repository's git data" in text
         assert "inside .git is refused" in text
-        # And still discloses the one command that does write, which the
-        # earlier wording of llms.txt and this module both once omitted.
+        # It must still disclose the one command that does write.
         assert "init" in text
 
     def test_no_telemetry_denies_collection(self) -> None:
@@ -278,8 +278,7 @@ class TestDerivedFactsAreActuallyDerived:
 
 @pytest.mark.unit
 class TestTheStatedPropertiesAreQualifiedWhereTheyMustBe:
-    """A property an assistant repeats is read as a promise. The 2026-10-09
-    verification found three stated without the condition that makes them true."""
+    """A property an agent repeats is read as a promise, so each carries its condition."""
 
     def _by_id(self, document: dict, key: str) -> dict[str, str]:
         return {item["id"]: item["description"] for item in document[key]}

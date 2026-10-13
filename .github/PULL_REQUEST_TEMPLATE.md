@@ -15,7 +15,10 @@ protects and confirm it actually fails -- a guard that has never been
 observed failing is not a guard.
 -->
 
-- [ ] `make ci` passes locally
+- [ ] `make ci` and `pre-commit run --all-files` pass locally
+- [ ] Each new test was seen failing with the change removed
+- [ ] User-visible changes are in `CHANGELOG.md` under `[Unreleased]`, and the docs say the same
+- [ ] Every new sentence in the docs was checked by running it
 
 ## Contributor Licence Agreement
 

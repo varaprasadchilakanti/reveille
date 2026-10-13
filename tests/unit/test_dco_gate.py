@@ -147,12 +147,9 @@ class TestRemediation:
     def test_a_wrapped_declaration_still_counts(self, tmp_path: Path, wrapped: str) -> None:
         """Commit messages wrap, and so does the template printed on failure.
 
-        Requiring the declaration on one physical line is the defect this
-        release already fixed once in the checkbox check above: the
-        wording a contributor was told to copy did not fit on a line, so
-        the gate could never match what it asked for. It was reintroduced
-        here, and caught by running the gate over this repository's own
-        branch rather than by any test.
+        Requiring the declaration on one physical line would reject the
+        wording a contributor is told to copy, which does not fit on a line,
+        as the checkbox check above already accounts for.
         """
         code, output = _run(tmp_path, ["web ui commit", wrapped + _SIGN_OFF])
         assert code == 0, output

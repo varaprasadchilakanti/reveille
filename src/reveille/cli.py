@@ -1,18 +1,10 @@
 # SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti
 # SPDX-License-Identifier: Apache-2.0
 
-"""CLI entry point for Reveille.
+"""CLI entry point for Reveille (`reveille = "reveille.cli:app"`).
 
-Defines the public commands: generate, validate, init, version, help.
-Responsible for flag parsing, boundary validation, constructing
-a ReportConfig, and delegating to the application service.
-Contains no business logic.
-
-Entry point registered in pyproject.toml:
-    reveille = "reveille.cli:app"
-
-Exit codes are a supported contract — see `ExitCode` below and the
-"Exit Codes" section of docs/USER_GUIDE.md.
+Parses flags, builds a ReportConfig and delegates; no business logic.
+Exit codes are a contract: see `ExitCode` and docs/USER_GUIDE.md.
 """
 
 from __future__ import annotations
@@ -22,6 +14,7 @@ import enum
 import itertools
 import json
 import logging
+import os
 import sys
 import threading
 import time
@@ -42,16 +35,8 @@ _logger = logging.getLogger("reveille.cli")
 class ExitCode(enum.IntEnum):
     """Process exit codes. Part of Reveille's public CLI contract.
 
-    The split follows the convention used by `grep` and `diff`, where the
-    code distinguishes *a negative answer* from *an inability to answer*.
-    That distinction is the one a CI job acts on: a negative answer may be
-    an acceptable state to record, whereas an inability to answer is a
-    broken pipeline step.
-
-    Diagnostic detail beyond this three-way split belongs in the stderr
-    message, not in the exit code. Encoding individual causes as distinct
-    codes does not scale — the range is small, and every new cause becomes
-    a breaking change for anyone branching on the old numbering.
+    As with `grep` and `diff`, a negative answer differs from an inability to
+    answer. Finer causes go to stderr: new codes would break callers.
     """
 
     SUCCESS = 0
@@ -61,7 +46,7 @@ class ExitCode(enum.IntEnum):
     """The command ran correctly and its answer is negative.
 
     Reveille worked as intended and the repository state does not satisfy
-    the request — currently, an analysis window containing no commits.
+    the request: currently, an analysis window containing no commits.
     """
 
     CANNOT_RUN = 2
@@ -73,23 +58,17 @@ class ExitCode(enum.IntEnum):
     """
 
 
-# Characters that make a terminal do something rather than show something: C0
-# controls other than newline and tab, DEL, C1 controls, and the Unicode
-# direction overrides and isolates. A value from a `reveille.toml` reaches
-# these messages, and that file may come from a repository somebody else
-# controls; an escape sequence in it could erase the very warning about it.
-#
-# A translation table rather than a regular expression: each block is named,
-# so what is escaped can be read off the code, where a character range over
-# control codes reads as a mistake (CodeQL py/overly-large-range).
+# Terminal control characters, escaped because an untrusted reveille.toml value
+# could otherwise erase the warning about it. A table rather than a regex range,
+# which CodeQL flags (py/overly-large-range).
 _TERMINAL_UNSAFE: dict[int, str] = {
     code: f"\\x{code:02x}" if code < 0x100 else f"\\u{code:04x}"
     for block in (
         range(0x00, 0x09),  # C0 controls before tab
-        range(0x0B, 0x20),  # C0 controls after newline, carriage return and escape among them
+        range(0x0B, 0x20),  # C0 controls after newline, CR and ESC among them
         range(0x7F, 0xA0),  # DEL and the C1 controls
         (0x061C, 0x200E, 0x200F),  # ALM, LRM, RLM: implicit direction marks
-        range(0x202A, 0x202F),  # LRE, RLE, PDF, LRO, RLO: direction embeddings and overrides
+        range(0x202A, 0x202F),  # LRE, RLE, PDF, LRO, RLO: embeddings and overrides
         range(0x2066, 0x206A),  # LRI, RLI, FSI, PDI: direction isolates
     )
     for code in block
@@ -105,15 +84,35 @@ def _printable(text: str) -> str:
     Returns:
         The message with each unsafe character written as a hexadecimal escape.
     """
+    if any("\udc80" <= ch <= "\udcff" for ch in text):
+        # A byte Git output held that is not UTF-8 (read with surrogateescape).
+        text = text.encode("utf-8", "surrogateescape").decode("utf-8", "backslashreplace")
     return text.translate(_TERMINAL_UNSAFE)
+
+
+#: Whether stderr carries JSON: set when the command was asked for `--format json`,
+#: and reset by the root callback for every invocation.
+_stderr_json = {"on": False}
+
+_LEVELS = {"Error: ": "error", "Warning: ": "warning", "Note: ": "note"}
 
 
 def _err(message: str) -> None:
     """Write one message to stderr, with terminal control characters escaped.
 
+    Under `--format json` the message is one JSON object on its own line,
+    `{"level": "error" | "warning" | "note" | "message", "message": ...}`.
+
     Args:
-        message: The message to print.
+        message: The message to print, starting "Error: ", "Warning: " or "Note: ".
     """
+    if _stderr_json["on"]:
+        level, text = "message", message
+        for prefix, name in _LEVELS.items():
+            if message.startswith(prefix):
+                level, text = name, message.removeprefix(prefix)
+        typer.echo(json.dumps({"level": level, "message": text}), err=True)
+        return
     typer.echo(_printable(message), err=True)
 
 
@@ -136,10 +135,7 @@ _OPTION_NAMES = {
 def _describe_config_error(exc: Exception) -> str:
     """Say what is wrong with a configuration in plain words.
 
-    Pydantic's own text names the model, dumps every input value and links
-    to its website, and for a date range given in the wrong order the reason
-    was the fourth thing on the line. This keeps the reason and the option it
-    concerns, and nothing else.
+    Keeps only the reason and the option, not Pydantic's dump of every input.
 
     Args:
         exc: The error raised while building the configuration.
@@ -162,9 +158,6 @@ def _describe_config_error(exc: Exception) -> str:
 def _option_label(field: str) -> str:
     """Name a configuration field as both a flag and a reveille.toml key.
 
-    The same field is set either way, and a message naming only the flag was
-    wrong when the value came from the file.
-
     Args:
         field: A ReportConfig field name.
 
@@ -179,11 +172,7 @@ def _option_label(field: str) -> str:
 
 
 class _EscapingFormatter(logging.Formatter):
-    """A log formatter that escapes terminal control characters.
-
-    The warning for an `--exclude-author` that matched nobody quotes the value,
-    which may have come from a configuration file.
-    """
+    """A log formatter that escapes terminal control characters in quoted values."""
 
     def format(self, record: logging.LogRecord) -> str:
         """Format the record, then escape it.
@@ -200,12 +189,8 @@ class _EscapingFormatter(logging.Formatter):
 class _StderrHandler(logging.StreamHandler):  # type: ignore[type-arg]
     """A stderr handler that resolves the stream at emit time.
 
-    `logging.StreamHandler` captures `sys.stderr` when it is constructed. A
-    handler now outlives a single invocation -- it is attached on every run, not
-    only under `--verbose` -- so a captured stream can be closed or replaced
-    beneath it, which raises `ValueError: I/O operation on closed file` from
-    inside the logging machinery. Looking the stream up on each write costs an
-    attribute access and removes the failure mode.
+    The handler outlives one invocation, so a stream captured at construction
+    could be closed beneath it ("I/O operation on closed file").
     """
 
     @property
@@ -220,40 +205,31 @@ class _StderrHandler(logging.StreamHandler):  # type: ignore[type-arg]
     def emit(self, record: logging.LogRecord) -> None:
         """Write the record, on a line of its own if the progress line is open.
 
-        The spinner redraws its line with a carriage return and leaves it
-        open; a warning raised meanwhile was printed on the end of it.
-
         Args:
             record: The log record.
         """
         if _StageSpinner.line_open:
             _StageSpinner.line_open = False
             self.stream.write("\n")
+        if _stderr_json["on"]:
+            entry = {"level": record.levelname.lower(), "message": record.getMessage()}
+            self.stream.write(json.dumps(entry) + "\n")
+            return
         super().emit(record)
 
 
 def _configure_logging(verbose: bool) -> None:
-    """Attach a stderr log handler when diagnostics are requested.
+    """Attach the stderr log handler; `verbose` chooses the level.
 
-    Reveille's library modules log through the standard `logging` module
-    and never install a handler of their own, per the convention for
-    libraries. This is the only place a handler is attached, so importing
-    Reveille as a library stays silent unless the host application opts in.
-
-    A handler is always attached; `verbose` chooses the level. Warnings are
-    not diagnostics -- `--exclude-author` matching nobody is the case this
-    matters for, and it was previously visible only with `--verbose`, so a
-    filter that silently did nothing looked exactly like one that worked. That
-    is the wrong thing to hide for the one flag whose purpose is privacy.
+    The only place a handler is attached. Always attached, so a warning such as
+    an `--exclude-author` matching nobody shows without `--verbose`.
 
     Args:
         verbose: True to emit DEBUG-level diagnostics as well as warnings.
     """
     level = logging.DEBUG if verbose else logging.WARNING
     package_logger = logging.getLogger("reveille")
-    # Idempotent: a second call in the same process must not duplicate
-    # every diagnostic line. Only the NullHandler installed at import
-    # time is expected to be present here.
+    # Idempotent: a second call must not duplicate every diagnostic line.
     if any(isinstance(h, _StderrHandler) for h in package_logger.handlers):
         package_logger.setLevel(level)
         return
@@ -263,39 +239,52 @@ def _configure_logging(verbose: bool) -> None:
     package_logger.setLevel(level)
 
 
-app = typer.Typer(
+class _App(typer.Typer):
+    """The Typer application, with an exit code for errors nobody anticipated."""
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        """Run the CLI; an uncaught exception exits 2 (cannot run), never 1.
+
+        Python exits 1 on an uncaught exception, which the contract reserves for
+        a negative answer. The traceback goes to the debug log (`--verbose`).
+        """
+        try:
+            return super().__call__(*args, **kwargs)
+        except Exception as exc:
+            _logger.debug("Unexpected error", exc_info=True)
+            _err(
+                f"Error: {type(exc).__name__}: {exc}. This is a defect in Reveille; please report it."
+            )
+            sys.exit(ExitCode.CANNOT_RUN)
+
+
+app = _App(
     name="reveille",
-    help="Report a local Git repository's commit activity as self-contained HTML, JSON, or CSV.",
+    help=(
+        "Offline reports and summaries of a local Git repository: HTML, JSON, CSV "
+        "and text for scripts, CI and coding agents."
+    ),
     add_completion=False,
     no_args_is_help=True,
     context_settings={"help_option_names": ["-h", "--help"]},
 )
 
 
-# Conventional configuration file name. Resolved against the current
-# working directory at invocation time. Users are not required to pass
-# --config when this file is present at the repository root.
+# Conventional configuration file, looked up in the working directory.
 _CONVENTIONAL_CONFIG: str = "reveille.toml"
 
 
 def _discover_config() -> Path | None:
-    """Return the path to the conventional configuration file if present.
-
-    Looks for reveille.toml in the current working directory. This
-    implements the convention-over-configuration lookup: users who run
-    reveille generate from their repository root do not need to pass
-    --config explicitly when the canonical file name is used.
+    """Return reveille.toml in the working directory, if present.
 
     Returns:
-        The Path to reveille.toml if it exists in the current directory,
-        or None if no conventional configuration file is present.
+        Its path, or None.
     """
     candidate = Path(_CONVENTIONAL_CONFIG)
     return candidate if candidate.exists() else None
 
 
-# Where each loaded setting lives in reveille.toml, so a notice can name it
-# the way the user would write it.
+# Each setting's reveille.toml key, so a notice names it as the user writes it.
 _TOML_KEYS: dict[str, str] = {
     "title": "report.title",
     "output_path": "report.output",
@@ -317,10 +306,8 @@ _TOML_KEYS: dict[str, str] = {
 def _announce_discovered_settings(path: Path, settings: Mapping[str, object]) -> None:
     """Say on stderr that a configuration file was picked up, and what it set.
 
-    `reveille.toml` is loaded from the working directory without being asked
-    for, and that directory may be a repository somebody else controls. A file
-    that turns the ranking on, excludes a contributor or retitles the report
-    changes what the report says, so it must not do so silently.
+    An auto-discovered file may come from someone else's repository, so it must
+    not change what the report says silently.
 
     Args:
         path: The configuration file that was loaded.
@@ -341,18 +328,10 @@ def _print_notices(notices: list[str]) -> None:
 
 
 class _StageSpinner:
-    """Per-stage progress indicator for the generate pipeline.
+    """Per-stage progress indicator on stderr, keeping stdout clean.
 
-    Writes animated stage labels to stderr. Each stage begins with
-    begin() and resolves to a static completion line on complete().
-    Writes to stderr so stdout remains clean for scripting.
-
-    The animation redraws its line with carriage returns, which only a
-    terminal interprets. Captured by a script, a CI log or an assistant, every
-    frame arrived as text: "Reading commit history .    Reading commit history
-    ...". Off a terminal only the completion lines are written.
-
-    complete() is safe to call before begin() has ever been invoked.
+    Animates only on a terminal, where carriage returns redraw; elsewhere only
+    completion lines are written.
     """
 
     _FRAMES: ClassVar[list[str]] = [".  ", ".. ", "..."]
@@ -365,8 +344,7 @@ class _StageSpinner:
         """Create a spinner.
 
         Args:
-            animate: Whether to draw animation frames. None asks whether
-                stderr is a terminal at the time of construction.
+            animate: Whether to animate; None means "if stderr is a terminal".
         """
         self._animate: bool = sys.stderr.isatty() if animate is None else animate
         self._active: bool = False
@@ -399,15 +377,11 @@ class _StageSpinner:
         elapsed_seconds: float | None = None,
         items_processed: int | None = None,
     ) -> None:
-        """Stop the current animation and write the completion line.
-
-        No-op if begin() has not been called or if already completed.
+        """Stop the animation and write the completion line; no-op if none is running.
 
         Args:
-            elapsed_seconds: Elapsed time to display. When None, computed
-                from the spinner's own start time.
-            items_processed: Optional item count appended to the completion
-                line (e.g. commit count from the reading stage).
+            elapsed_seconds: Time to display; None measures from begin().
+            items_processed: Optional item count for the completion line.
         """
         if not self._active:
             return
@@ -445,16 +419,13 @@ class _StageSpinner:
 
 
 def _make_progress_callback(spinner: _StageSpinner) -> Callable[[ProgressEvent], None]:
-    """Return a progress callback that drives the given spinner.
-
-    On each invocation, completes the previous stage animation with timing
-    from the event and starts a new one for the incoming stage label.
+    """Return a progress callback that completes one stage and begins the next.
 
     Args:
         spinner: The _StageSpinner instance to drive.
 
     Returns:
-        A callable suitable for passing as on_progress to generate_report.
+        An on_progress callable for generate_report.
     """
 
     def _callback(event: ProgressEvent) -> None:
@@ -483,16 +454,19 @@ def main(
         ),
     ] = None,
 ) -> None:
-    """Reveille -- Git Repository Intelligence."""
+    """Offline reports of a Git repository's history."""
+    _stderr_json["on"] = False
+
+
+def _root(repo: Path) -> Path:
+    """Return the repository `repo` lies in, searching upwards as Git does."""
+    from reveille.adapters.git_reader import repository_root
+
+    return repository_root(repo)
 
 
 def _resolve_output_path(output: Path, repo_path: Path) -> Path:
-    """Return the resolved output path for the generated report.
-
-    When the output argument is still at its CLI default value, the report
-    is placed at the repository root rather than the current working directory.
-    This matches the documented behaviour: the default output path is
-    relative to the repository, not the shell's working directory.
+    """Return the resolved output path; the default is relative to the repository.
 
     Args:
         output: The output path value received from the CLI flag.
@@ -509,24 +483,15 @@ def _resolve_output_path(output: Path, repo_path: Path) -> Path:
 def _git_directories(repo_path: Path) -> list[Path]:
     """Find where the repository keeps Git's own files, in any layout.
 
-    Usually that is `.git` inside the working tree. A bare repository keeps
-    them at its top level, so `HEAD` there is Git's HEAD, and a repository
-    made with `--separate-git-dir` has a `.git` file pointing elsewhere.
-    Checking only for a path component named `.git` missed both: in a bare
-    repository `--output HEAD` overwrote HEAD.
-
-    A linked worktree's `.git` file points at `worktrees/<name>` inside the
-    repository it belongs to, and that directory's `commondir` file names
-    the rest: HEAD, refs and objects of the main repository. Without it,
-    `--output <main>.git/HEAD` from a worktree of a bare repository was
-    accepted and overwrote HEAD (red team, 2026-10-12).
+    Covers `.git`, a bare repository's top level, `--separate-git-dir`, and a
+    linked worktree's `commondir`; matching a `.git` component alone let a
+    report overwrite HEAD.
 
     Args:
         repo_path: The resolved repository root.
 
     Returns:
-        The resolved Git directories: the repository's own, then the common
-        one if it differs. Empty if none is recognisable.
+        The repository's Git directory, then the common one if different.
     """
     dot_git = repo_path / ".git"
     if dot_git.is_dir():
@@ -556,32 +521,20 @@ def _git_directories(repo_path: Path) -> list[Path]:
 
 
 def _validate_output_path(output: Path, repo_path: Path, *, from_config: bool = False) -> None:
-    """Validate the output path for traversal components and boundary awareness.
+    """Validate the output path for traversal and the repository boundary.
 
-    Rejects paths containing upward traversal components before resolution.
-    Emits a stderr warning when the resolved output path falls outside the
-    repository root, making cross-boundary writes auditable in CI without
-    restricting legitimate use.
+    Refuses `..`, a Git directory or a directory; warns outside the repository.
 
     Args:
-        output: The output path as provided by the user (pre-resolution).
-        repo_path: The resolved repository root used as the boundary reference.
-        from_config: Whether the path came from a configuration file rather
-            than from an explicit `--output` flag. A path the user typed may
-            legitimately point anywhere; a path a *file* supplied may not,
-            because `reveille.toml` is auto-discovered from the working
-            directory and can therefore arrive inside a repository somebody
-            else controls.
+        output: The output path as given, before resolution.
+        repo_path: The resolved repository root.
+        from_config: An auto-discovered (untrusted) file supplied the path.
 
     Raises:
-        typer.Exit: ExitCode.CANNOT_RUN if the path contains upward
-            traversal components.
+        typer.Exit: ExitCode.CANNOT_RUN if the path is refused.
     """
-    # A symlinked *parent* directory is not a symlink at the leaf, so checking
-    # only the final component misses it. Resolving first and then comparing
-    # against the repository root catches the whole chain -- and refusing only
-    # for a config-supplied path keeps `-o /tmp/report.html` working, which is
-    # ordinary use.
+    # Resolve first, so a symlinked parent is caught; refuse only for a
+    # config-supplied path, so `-o /tmp/report.html` still works.
     if from_config:
         resolved = output.expanduser().resolve()
         try:
@@ -598,10 +551,8 @@ def _validate_output_path(output: Path, repo_path: Path, *, from_config: bool = 
             )
             raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
-    # Writing into a Git directory can corrupt the repository: a report
-    # written over `.git/HEAD` leaves a clone that `git status` refuses to
-    # read. No legitimate report belongs there, so this is refused whoever
-    # chose the path -- flag, configuration file, or a symlink on the way.
+    # Writing into a Git directory can corrupt the repository, so it is
+    # refused whoever chose the path: flag, config file, or symlink.
     inside_git_dir = any(
         output.resolve().is_relative_to(git_dir) for git_dir in _git_directories(repo_path)
     )
@@ -644,10 +595,8 @@ def _apply_ranking_flags(
 ) -> None:
     """Resolve the two ranking flags against the configuration file.
 
-    Explicit flags win over the file. If both are given, `--no-ranking` wins:
-    between two contradictory instructions, the one that produces less is the
-    safer reading, and the ranking is the part of the output that most needs a
-    deliberate decision behind it.
+    Flags win over the file; if both are given, `--no-ranking` wins, as the
+    more conservative reading.
 
     Args:
         merged: The configuration mapping being assembled, modified in place.
@@ -678,11 +627,9 @@ def _merge_cli_flags(
     area_depth: int | None = None,
     limit: int | None = None,
 ) -> ReportConfigKwargs:
-    """Merge CLI flag values into the base configuration dict.
+    """Merge CLI flag values over the configuration file's values.
 
-    CLI flag values always take precedence over configuration file values.
-    Flags that were not explicitly set by the user (i.e. still at their
-    default) are only applied when no configuration file provided a value.
+    A flag left at its default applies only when the file set no value.
 
     Args:
         config_kwargs: Base kwargs loaded from a TOML file, or empty mapping.
@@ -696,24 +643,18 @@ def _merge_cli_flags(
         min_commits: Minimum commit threshold, or None if not provided.
         no_ranking: Whether ranking is explicitly disabled.
         ranking: Whether ranking is explicitly enabled.
-        output_format: Output format string, or None if the flag was not given.
-            A `None` sentinel rather than the default value, because comparing
-            against "html" cannot tell an explicit `--format html` from an
-            absent flag -- and an unconditional assignment here silently
-            overwrote whatever `reveille.toml` had set.
+        output_format: Output format, or None if the flag was not given, so the
+            file's value is not overwritten by the default.
         deterministic: Whether to produce byte-reproducible output.
-        area_authors: Whether the "who changed each area" section was asked
-            for. Only ever switches it on; a config file's setting stands
-            when the flag is absent.
+        area_authors: Whether --area-authors was given; it only switches on.
         area_depth: Area depth, or None if the flag was not given.
-        limit: The most entries a list of people carries in JSON and CSV,
-            or None for every one.
+        limit: The most entries per list of people in JSON and CSV, or None.
 
     Returns:
         A merged ReportConfigKwargs ready for ReportConfig construction.
     """
     merged: dict[str, Any] = dict(config_kwargs)
-    resolved_repo = repo.resolve()
+    resolved_repo = _root(repo)
     merged["repo_path"] = resolved_repo
     if deterministic:
         merged["deterministic"] = True
@@ -746,21 +687,16 @@ def _run_report(report_config: ReportConfig, *, to_stdout: bool, quiet: bool = F
 
     Args:
         report_config: The validated configuration.
-        to_stdout: Whether the report itself goes to stdout (`--output -`).
-            Progress, notes and errors are on stderr either way, so stdout
-            carries the report and nothing else.
-        quiet: Whether to leave out the progress lines. Notes, warnings and
-            errors are still written: they say something about the report.
+        to_stdout: Whether the report goes to stdout (`--output -`).
+        quiet: Omit progress lines; notes, warnings and errors still print.
 
     Raises:
-        typer.Exit: NEGATIVE for an empty window, CANNOT_RUN for any other
-            failure to produce the report.
+        typer.Exit: NEGATIVE for an empty window, CANNOT_RUN otherwise.
     """
     from reveille.services.report import generate_report, report_text
 
     spinner = _StageSpinner()
-    # Held until the spinner has finished, so a notice is not overwritten by
-    # the next animation frame.
+    # Held until the spinner finishes, so no frame overwrites a notice.
     notices: list[str] = []
     progress = None if quiet else _make_progress_callback(spinner)
     try:
@@ -807,7 +743,7 @@ def _apply_area_flags(
 def generate(
     repo: Annotated[
         Path,
-        typer.Option("--repo", "-r", help="Path to the Git repository root."),
+        typer.Option("--repo", "-r", help="The Git repository, or any directory inside it."),
     ] = Path("."),
     output: Annotated[
         Path,
@@ -876,9 +812,9 @@ def generate(
         typer.Option(
             "--deterministic",
             help=(
-                "Produce byte-reproducible output. Pins the timestamp to the "
-                "analysed commit and closes the window on the last commit "
-                "rather than today."
+                "Produce byte-identical output on the same version, dependencies "
+                "and Git settings. Pins the timestamp to the analysed commit "
+                "and closes the window on the last commit rather than today."
             ),
         ),
     ] = False,
@@ -973,28 +909,20 @@ def generate(
         limit,
     )
 
-    # Validate the EFFECTIVE path, not the flag. `merged["output_path"]` may
-    # have come from a reveille.toml -- including one auto-discovered inside a
-    # repository somebody else controls -- and validating the CLI argument left
-    # that path unchecked, so a config file could write outside the repository
-    # with no traversal warning at all.
-    # Only an AUTO-DISCOVERED config is untrusted. `--config /path/to.toml` is a
-    # path the user typed, exactly like `--output`, so it earns the same
-    # latitude: a warning rather than a refusal. Treating both alike blocked a
-    # deliberate choice and told the user their file had been "discovered
-    # automatically", which was not true.
+    # Validate the effective path, which a reveille.toml may have supplied.
+    # Only an auto-discovered config is untrusted; `--config` is typed, like
+    # `--output`, so it gets a warning rather than a refusal.
     _output_from_config = (
         _auto_discovered
         and "output_path" in config_kwargs
         and output == Path("reveille-report.html")
     )
-    # `--output -` writes the report to stdout and nothing else goes there
-    # (ADR 0015); there is no file, so there is no path to check.
+    # `--output -` writes only the report to stdout (ADR 0015); no path to check.
     to_stdout = str(merged.get("output_path", output)) == "-"
     if not to_stdout:
         _validate_output_path(
             Path(merged.get("output_path", output)),
-            repo.resolve(),
+            merged["repo_path"],
             from_config=_output_from_config,
         )
 
@@ -1031,13 +959,12 @@ def _query_config(
 ) -> ReportConfig:
     """Build the configuration for `summary` and `who-changed` from options.
 
-    These commands read no reveille.toml: an assistant calling them gets the
-    answer to the options it passed, not to a file it may not know exists.
+    No reveille.toml is read, so the answer depends only on the options passed.
 
     Raises:
         typer.Exit: CANNOT_RUN if an option is invalid.
     """
-    kwargs: dict[str, Any] = {"repo_path": repo.resolve(), "deterministic": deterministic}
+    kwargs: dict[str, Any] = {"repo_path": _root(repo), "deterministic": deterministic}
     if since is not None:
         kwargs["since"] = _parse_date(since, "--since")
     if until is not None:
@@ -1072,22 +999,24 @@ def _run_query(produce: Callable[[Callable[[str], None]], str]) -> None:
         _err(f"Error: {exc}")
         raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
     _print_notices(notices)
-    # The answer carries text the repository chose (its directory name,
-    # names from a .mailmap) and is what a person or an assistant reads.
-    # Escaped like stderr; JSON is unchanged, since json.dumps already
-    # escapes every control and non-ASCII character.
+    # The text carries repository-chosen names, so it is escaped like
+    # stderr; json.dumps already escapes control characters.
     text = _printable(text)
     typer.echo(text, nl=not text.endswith("\n"))
 
 
-def _check_query_format(output_format: str) -> None:
-    """Refuse a --format other than text or json."""
-    if output_format not in ("text", "json"):
-        _err(f"Error: --format must be text or json, not {output_format!r}.")
+def _check_query_format(output_format: str, allowed: tuple[str, ...] = ("text", "json")) -> None:
+    """Refuse a --format the command does not offer; under json, stderr is JSON too."""
+    _stderr_json["on"] = output_format == "json"
+    if output_format not in allowed:
+        choices = ", ".join(allowed[:-1]) + f" or {allowed[-1]}"
+        _err(f"Error: --format must be {choices}, not {output_format!r}.")
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
 
-_RepoOption = Annotated[Path, typer.Option("--repo", "-r", help="Path to the Git repository root.")]
+_RepoOption = Annotated[
+    Path, typer.Option("--repo", "-r", help="The Git repository, or any directory inside it.")
+]
 _SinceOption = Annotated[
     str | None, typer.Option("--since", help="Include commits on or after this date (YYYY-MM-DD).")
 ]
@@ -1106,6 +1035,12 @@ _DeterministicOption = Annotated[
     typer.Option("--deterministic", help="Close the window on the last commit, not today."),
 ]
 _QueryFormatOption = Annotated[str, typer.Option("--format", help="Output format: text or json.")]
+_ShareFormatOption = Annotated[
+    str, typer.Option("--format", help="Output format: text, json or markdown.")
+]
+_StatusFormatOption = Annotated[
+    str, typer.Option("--format", help="Output format: text, json, markdown or line.")
+]
 _VerboseOption = Annotated[
     bool, typer.Option("--verbose", help="Emit diagnostic logging to stderr.")
 ]
@@ -1119,44 +1054,109 @@ def summary(
     branch: _BranchOption = None,
     exclude_author: _ExcludeOption = None,
     deterministic: _DeterministicOption = False,
-    output_format: _QueryFormatOption = "text",
+    output_format: _ShareFormatOption = "text",
     verbose: _VerboseOption = False,
 ) -> None:
-    """Summarise the repository in a few lines, naming no contributor."""
+    """Summarise the repository in a few lines, naming no contributor.
+
+    Small counts can identify someone.
+    """
     from reveille.services.report import summary_text
 
     _configure_logging(verbose)
-    _check_query_format(output_format)
+    _check_query_format(output_format, ("text", "json", "markdown"))
     config = _query_config(repo, since, until, branch, exclude_author, deterministic)
     _run_query(lambda notice: summary_text(config, output_format, on_notice=notice))
+
+
+@app.command()
+def brief(
+    repo: _RepoOption = Path("."),
+    from_revision: Annotated[
+        str | None,
+        typer.Option(
+            "--from",
+            help="A tag, branch or commit; count what came after it on the branch.",
+        ),
+    ] = None,
+    since: _SinceOption = None,
+    until: _UntilOption = None,
+    branch: _BranchOption = None,
+    exclude_author: _ExcludeOption = None,
+    deterministic: _DeterministicOption = False,
+    output_format: _StatusFormatOption = "text",
+    limit: Annotated[
+        int, typer.Option("--limit", min=1, help="The most entries any list shows.")
+    ] = 5,
+    verbose: _VerboseOption = False,
+) -> None:
+    """Say what changed since a tag, a commit or a date, in counts naming no one.
+
+    Small counts can identify someone.
+    """
+    from reveille.services.report import brief_text
+
+    _configure_logging(verbose)
+    _check_query_format(output_format, ("text", "json", "markdown", "line"))
+    if from_revision is not None and since is not None:
+        _err("Error: give --from <revision> or --since <date>, not both.")
+        raise typer.Exit(code=ExitCode.CANNOT_RUN)
+    config = _query_config(repo, since, until, branch, exclude_author, deterministic)
+    _run_query(
+        lambda notice: brief_text(config, from_revision, output_format, limit, on_notice=notice)
+    )
+
+
+@app.command()
+def state(
+    repo: _RepoOption = Path("."),
+    output_format: _StatusFormatOption = "text",
+    limit: Annotated[
+        int, typer.Option("--limit", min=1, help="The most paths any list shows.")
+    ] = 10,
+    verbose: _VerboseOption = False,
+) -> None:
+    """Say where the repository stands now: branch, work in progress, changes, worktrees.
+
+    Names no author, but lists local paths (changed files and worktree
+    directories, which can contain your login name), the current branch, its
+    upstream and the branches checked out in worktrees.
+    """
+    from reveille.services.report import state_text
+
+    _configure_logging(verbose)
+    _check_query_format(output_format, ("text", "json", "markdown", "line"))
+    _run_query(lambda _notice: state_text(_root(repo), output_format, limit))
 
 
 def _repository_path(path: str, repo: Path) -> str:
     """Turn the path given to who-changed into a repository-relative one.
 
     Args:
-        path: As typed: relative to the repository, or absolute inside it.
-        repo: The repository root.
+        path: As typed: absolute, or relative to the working directory when that
+            is inside the repository, else to the repository root.
+        repo: The repository root, resolved.
 
     Returns:
         A repository-relative path with forward slashes ("." for the root).
 
     Raises:
-        typer.Exit: CANNOT_RUN for a path outside the repository or one that
-            climbs out of it with "..".
+        typer.Exit: CANNOT_RUN for a path outside the repository.
     """
     if not path.strip():
         _err("Error: give a path inside the repository; use '.' for all of it.")
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
     candidate = Path(path)
+    here = Path.cwd().resolve()
+    if not candidate.is_absolute() and here.is_relative_to(repo) and here != repo:
+        # Inside the repository, a relative path is relative to where it runs, as in Git.
+        candidate = Path(os.path.normpath(here / candidate))
     if candidate.is_absolute():
         try:
-            # The directory is resolved, the final name is not: a symlink is
-            # a file in the repository with a history of its own, and
-            # resolving it answered for the file it points to.
-            candidate = (candidate.parent.resolve() / candidate.name).relative_to(repo.resolve())
+            # Resolve the directory, not the final name: a symlink has its own history.
+            candidate = (candidate.parent.resolve() / candidate.name).relative_to(repo)
         except ValueError as exc:
-            _err(f"Error: '{path}' is outside the repository '{repo.resolve()}'.")
+            _err(f"Error: '{path}' is outside the repository '{repo}'.")
             raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
     if ".." in candidate.parts:
         _err(f"Error: '{path}' climbs out of the repository; give a path inside it.")
@@ -1167,7 +1167,11 @@ def _repository_path(path: str, repo: Path) -> str:
 @app.command(name="who-changed")
 def who_changed(
     path: Annotated[
-        str, typer.Argument(help="A file or directory, relative to the repository root.")
+        str,
+        typer.Argument(
+            help="A file or directory: relative to the current directory inside the "
+            "repository, else to its root."
+        ),
     ],
     repo: _RepoOption = Path("."),
     since: _SinceOption = None,
@@ -1186,7 +1190,7 @@ def who_changed(
 
     _configure_logging(verbose)
     _check_query_format(output_format)
-    relative = _repository_path(path, repo)
+    relative = _repository_path(path, _root(repo))
     config = _query_config(repo, since, until, branch, exclude_author, deterministic)
     _run_query(
         lambda notice: who_changed_text(config, relative, output_format, limit, on_notice=notice)
@@ -1197,7 +1201,7 @@ def who_changed(
 def validate(
     repo: Annotated[
         Path,
-        typer.Option("--repo", "-r", help="Path to the Git repository root."),
+        typer.Option("--repo", "-r", help="The Git repository, or any directory inside it."),
     ] = Path("."),
     verbose: Annotated[
         bool,
@@ -1211,7 +1215,7 @@ def validate(
     from reveille.adapters.git_reader import GitReader
 
     _configure_logging(verbose)
-    resolved = repo.resolve()
+    resolved = _root(repo)
     try:
         reader = GitReader(resolved)
     except ReveilleError as exc:
@@ -1244,7 +1248,7 @@ def init(
         bool,
         typer.Option(
             "--force",
-            help="Overwrite an existing configuration file without prompting.",
+            help="Replace an existing file.",
         ),
     ] = False,
     mailmap: Annotated[
@@ -1257,10 +1261,10 @@ def init(
 ) -> None:
     """Scaffold an annotated reveille.toml configuration file.
 
-    Writes a fully commented configuration file to the current directory
-    (or the path specified by --output) with all keys present and set to
-    their defaults. Uncomment and edit only the keys you want to override.
-    Pass --mailmap to also generate an annotated .mailmap template at the
+    Writes a configuration file to the current directory (or the path given
+    by --output) with every key present and commented out, showing its
+    default. Uncomment and edit only the keys you want to override. Pass
+    --mailmap to also generate an annotated .mailmap template at the
     repository root.
     """
     cwd = Path(".").resolve()
@@ -1291,7 +1295,7 @@ def init(
         if mailmap_result is not None:
             typer.echo(f".mailmap template written to: {mailmap_result}")
         else:
-            typer.echo(".mailmap already exists — skipped.")
+            typer.echo(".mailmap already exists; skipped.")
 
 
 @app.command()
@@ -1303,15 +1307,37 @@ def capabilities(
             help="Output format. Accepted values: text, json.",
         ),
     ] = "text",
+    command: Annotated[
+        str | None,
+        typer.Option("--command", help="Describe only this command, its options and exit codes."),
+    ] = None,
 ) -> None:
     """Describe what Reveille can and cannot do, for a person or a program."""
-    from reveille.capabilities import build_capabilities, render_text
+    from reveille.capabilities import (
+        build_capabilities,
+        command_capabilities,
+        render_command_text,
+        render_text,
+    )
 
+    _stderr_json["on"] = output_format == "json"
     if output_format not in {"text", "json"}:
         _err(f"Error: unsupported format '{output_format}'. Accepted values: text, json.")
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
     document = build_capabilities(app, ExitCode)
+    if command is not None:
+        narrowed = command_capabilities(document, command)
+        if narrowed is None:
+            known = ", ".join(c["name"] for c in document["commands"])
+            _err(f"Error: no command {command!r}; the commands are {known}.")
+            raise typer.Exit(code=ExitCode.CANNOT_RUN)
+        typer.echo(
+            json.dumps(narrowed, indent=2)
+            if output_format == "json"
+            else render_command_text(narrowed)
+        )
+        return
     if output_format == "json":
         typer.echo(json.dumps(document, indent=2))
     else:

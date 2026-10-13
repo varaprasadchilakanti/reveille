@@ -1,13 +1,12 @@
 # ==================================================================
-# Reveille -- Git Repository Intelligence
-# CLI tool for reporting a local Git repository's commit activity
-# from local Git repositories.
+# Reveille -- offline reports of a Git repository's history
+# CLI tool for reporting a local Git repository's commit activity.
 # ==================================================================
 
 [tool.poetry]
 name = "reveille"
 version = "0.9.0"
-description = "Offline reports of a local Git repository's commit activity: a commit calendar, activity over time and how evenly commits are spread, as one self-contained HTML file, JSON or CSV."
+description = "Offline reports of a Git repository's commit activity, and repository summaries that never change Git data: an HTML report, plus repository state and what changed since a tag as JSON for scripts, CI and coding agents."
 authors = ["Vara Prasad Chilakanti <varaprasadchilakanti@gmail.com>"]
 license = "Apache-2.0"
 readme = "README.md"
@@ -17,14 +16,16 @@ documentation = "https://github.com/varaprasadchilakanti/reveille#readme"
 keywords = [
     "git",
     "git-history",
-    "commit-history",
-    "commit-calendar",
-    "heatmap",
+    "git-status",
+    "repository-summary",
+    "commit-heatmap",
+    "code-churn",
+    "git-cli",
     "offline",
-    "report",
+    "json",
     "cli",
-    "bitbucket",
-    "privacy",
+    "ci",
+    "ai-agents",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -32,14 +33,11 @@ classifiers = [
     "Intended Audience :: Developers",
     "Intended Audience :: Information Technology",
     # PEP 639 deprecates licence classifiers in favour of a `License-Expression`
-    # SPDX field. The pinned Poetry 2.4.2 supports it and now warns about this
-    # classifier, so the blocker is no longer the toolchain -- it is that the
-    # migration means moving the whole of `[tool.poetry]` to the PEP 621
-    # `[project]` table, which is a packaging change of its own and does not
-    # belong in a release already carrying a relicensing. Dropping the
-    # classifier without adding the expression would leave the distribution
-    # with no structured licence metadata at all. The SPDX identifier is
-    # `Apache-2.0`.
+    # SPDX field, and Poetry now warns about this classifier. Moving to the
+    # field means moving all of `[tool.poetry]` to the PEP 621 `[project]`
+    # table, which is a separate packaging change. Dropping the classifier
+    # without adding the expression would leave no structured licence metadata.
+    # The SPDX identifier is `Apache-2.0`.
     "License :: OSI Approved :: Apache Software License",
     "Natural Language :: English",
     "Operating System :: OS Independent",
@@ -64,34 +62,34 @@ packages = [
 [tool.poetry.dependencies]
 # Floor is a real technical constraint, not a preference: config.py imports
 # tomllib and git_reader.py uses datetime.UTC, both added in 3.11.
-# Deliberately no upper cap below 4.0 — see CONTRIBUTING.md,
+# No upper cap below 4.0; see CONTRIBUTING.md,
 # "Supported Python versions", for why capping is not done here.
 python = "^3.11"
 
 # CLI Layer
-# Typer 0.18.0 restored full Click 8.3.x compatibility. The <8.3.0 upper
-# bound introduced in v0.3.0 is no longer required.
+# Typer 0.18.0 restored Click 8.3.x compatibility, so no Click upper bound.
 #
-# Deliberately no `extras = ["all"]`. Typer declares no extras at any
-# version in this range, so pip emitted "typer X does not provide the
-# extra 'all'" on every install. It was never load-bearing: `rich` and
-# `shellingham` -- what the extra used to pull -- are ordinary
-# dependencies of `typer` itself. `typer-slim` is the variant that omits
-# them, and Reveille does not use it.
+# No `extras = ["all"]`: Typer declares no extras in this range, and pip warns
+# about a missing one. `rich` and `shellingham` are ordinary dependencies of
+# `typer` itself; `typer-slim` omits them and Reveille does not use it.
 typer = ">=0.18,<0.28"
 click = ">=8.0.0"
 
 # Git Data Layer
-gitpython = "^3.1.40"
+# Floor: 3.1.60 fixed repository content posing as the Git directory. No
+# published advisory affects 3.1.62 (OSV, 2026-10-13).
+gitpython = "^3.1.62"
 
 # Templating
-jinja2 = "^3.1.0"
+# Floor: no published advisory affects 3.1.6 (OSV, 2026-10-13).
+jinja2 = "^3.1.6"
 
 # Charts -- self-contained JS bundle embedded in output HTML
 plotly = ">=5.20,<8.0"
 
 # Data Validation & Settings
-pydantic = "^2.0"
+# Floor: no published advisory affects 2.4.0 (OSV, 2026-10-13).
+pydantic = "^2.4"
 pydantic-settings = "^2.0"
 
 # Date & Time Utilities
@@ -130,6 +128,8 @@ pre-commit = ">=3.6,<5.0"
 
 [tool.poetry.scripts]
 reveille = "reveille.cli:app"
+# A short name for the same command: two other projects install a `reveille` command too.
+reile = "reveille.cli:app"
 
 
 # ------------------------------------------------------------------
@@ -137,11 +137,9 @@ reveille = "reveille.cli:app"
 # ------------------------------------------------------------------
 
 [build-system]
-# Floor raised from 1.0.0 with the toolchain. This is not cosmetic: anyone
-# building from the sdist resolves poetry-core by this constraint, and 1.x
-# emits Metadata 2.1 without `License-File`, ignores SOURCE_DATE_EPOCH, and so
-# produces a different artefact from the one CI verifies as reproducible. The
-# constraint should describe what the project actually needs.
+# Anyone building from the sdist resolves poetry-core by this constraint. 1.x
+# emits Metadata 2.1 without `License-File` and ignores SOURCE_DATE_EPOCH, so it
+# produces a different artefact from the one CI checks for reproducibility.
 requires = ["poetry-core>=2.0,<3.0"]
 build-backend = "poetry.core.masonry.api"
 
@@ -196,10 +194,8 @@ ignore = [
 "tests/**/*.py" = ["S101", "D"]
 
 [tool.ruff.lint.mccabe]
-# Stated rather than inherited. The `C` selector already enables C901 through
-# mccabe -- it caught three genuine cases during the 0.8.0 work, each of which
-# was resolved by extracting a function rather than by raising the ceiling. The
-# limit is a contract, so it should not depend on a tool default that can move.
+# Set explicitly: the `C` selector already enables C901 through mccabe, and the
+# limit should not depend on a tool default that can change.
 max-complexity = 10
 
 [tool.ruff.lint.pydocstyle]

@@ -650,12 +650,12 @@ def noreply_repo(tmp_path_factory: pytest.TempPathFactory) -> Path:
 class TestGithubNoreplyIdentity:
     """Tests for GitHub noreply address folding in read_commits."""
 
-    def test_github_noreply_prefix_stripped(self, noreply_repo: Path) -> None:
+    def test_both_forms_take_the_accounts_address(self, noreply_repo: Path) -> None:
         reader = GitReader(noreply_repo)
         commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
         emails = {c.author_email for c in commits}
-        assert "140685918+alice@users.noreply.github.com" not in emails
-        assert "alice@users.noreply.github.com" in emails
+        assert "alice@users.noreply.github.com" not in emails
+        assert "140685918+alice@users.noreply.github.com" in emails
 
     def test_non_noreply_email_unaffected(self, noreply_repo: Path) -> None:
         reader = GitReader(noreply_repo)
@@ -668,7 +668,7 @@ class TestGithubNoreplyIdentity:
         commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
         stats = reader.aggregate_contributor_stats(commits=commits, min_commits=1)
         assert len(stats) == 2
-        alice = next(s for s in stats if s.email == "alice@users.noreply.github.com")
+        alice = next(s for s in stats if s.email == "140685918+alice@users.noreply.github.com")
         assert alice.commit_count == 2
 
     def test_exclusion_by_raw_prefixed_address_still_works(self, noreply_repo: Path) -> None:
@@ -836,3 +836,51 @@ class TestMailmapComments:
         commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
         grace = next(c for c in commits if c.author_email == "grace@example.com")
         assert grace.author_name == "Grace Kim-Watanabe"
+
+
+@pytest.mark.integration
+class TestNoreplyAccountsAreAccounts:
+    """ADR 0023: GitHub lets a username change and be reused; the account number does not."""
+
+    def _repo(self, path: Path, identities: list[tuple[str, str]]) -> Path:
+        path.mkdir()
+        subprocess.run(["git", "init", "-q", "-b", "main"], cwd=path, check=True)
+        for day, (name, email) in enumerate(identities, start=1):
+            (path / "f.txt").write_text(f"{day}\n", encoding="utf-8")
+            stamp = f"2026-0{day}-01T10:00:00+00:00"
+            env = {**os.environ, "GIT_AUTHOR_DATE": stamp, "GIT_COMMITTER_DATE": stamp}
+            subprocess.run(["git", "add", "-A"], cwd=path, check=True)
+            subprocess.run(
+                [
+                    "git",
+                    "-c",
+                    f"user.name={name}",
+                    "-c",
+                    f"user.email={email}",
+                    "commit",
+                    "-qm",
+                    "c",
+                ],
+                cwd=path,
+                check=True,
+                env=env,
+            )
+        return path
+
+    def test_a_renamed_account_is_one_person_and_a_reused_name_is_two(self, tmp_path: Path) -> None:
+        repo = self._repo(
+            tmp_path / "r",
+            [
+                ("Old", "111+alice@users.noreply.github.com"),
+                ("New", "111+alice2@users.noreply.github.com"),
+                ("Other", "222+alice@users.noreply.github.com"),
+            ],
+        )
+        reader = GitReader(repo)
+        commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
+        people = {s.email: s.commit_count for s in reader.aggregate_contributor_stats(commits, 1)}
+
+        assert people == {
+            "111+alice2@users.noreply.github.com": 2,
+            "222+alice@users.noreply.github.com": 1,
+        }

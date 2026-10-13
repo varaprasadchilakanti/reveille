@@ -11,8 +11,8 @@ test process is already polluted by everything the suite has imported.
 A subprocess is the only way to observe what a module *actually* pulls
 in, including transitively.
 
-**The module list is discovered, not written down.** CLAUDE.md and
-`docs/ARCHITECTURE.md` both say this file asserts the rule "by importing
+**The module list is discovered, not written down.**
+`docs/ARCHITECTURE.md` says this file asserts the rule "by importing
 each module". For a long time it imported two of eighteen, and the
 sentence was false: `import plotly` added to `reveille.domain.summary`
 left the layering checks green and the whole suite passing at 805 tests.
@@ -33,7 +33,7 @@ import pytest
 # Frameworks that must never appear in the inner layers. Pydantic is
 # deliberately absent: `domain/ranking.py` imports `RankingWeights` from
 # `config.py` by design, which is documented in ARCHITECTURE.md under
-# "One honest exception". What this list protects is the real rule --
+# "One exception". What this list protects is the real rule --
 # the domain performs no I/O and no presentation.
 _IO_AND_PRESENTATION = frozenset({"git", "plotly", "jinja2", "typer", "click"})
 
@@ -65,6 +65,8 @@ _MODULE_RULES: dict[str, frozenset[str]] = {
     "reveille.init": _IO_AND_PRESENTATION,
     # The outermost layer. Typer and Click are its job.
     "reveille.cli": frozenset(),
+    # Loads the CLI only when run as `python -m reveille`; importing it loads nothing.
+    "reveille.__main__": _IO_AND_PRESENTATION,
 }
 
 _PROBE = """

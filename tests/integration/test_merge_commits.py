@@ -133,3 +133,36 @@ class TestMergeCommitsAreExcluded:
 
         assert result.exit_code == ExitCode.NEGATIVE, result.stdout
         assert "Mo Merger" not in result.stdout
+
+
+@pytest.mark.integration
+class TestTheExclusionIsStated:
+    """Counts are lower than `git log`'s by the merges; the output says by how many."""
+
+    def test_provenance_counts_the_merges_left_out(self, repo: Path) -> None:
+        payload = _run("generate", "--repo", str(repo), "--deterministic", "-o", "-")
+
+        assert payload["provenance"]["merge_commits_excluded"] == 1
+
+    def test_the_summary_counts_them_too(self, repo: Path) -> None:
+        payload = _run("summary", "--repo", str(repo))
+
+        assert payload["repository"]["merge_commits_excluded"] == 1
+
+    def test_only_merges_in_the_window_are_counted(self, repo: Path) -> None:
+        payload = _run("summary", "--repo", str(repo), "--until", "2026-03-03")
+
+        assert payload["repository"]["merge_commits_excluded"] == 0
+
+    def test_the_summary_text_says_so(self, repo: Path) -> None:
+        result = CliRunner().invoke(app, ["summary", "--repo", str(repo)])
+
+        assert "1 merge commit is not counted" in result.stdout
+
+
+@pytest.mark.integration
+def test_the_merge_count_ignores_exclude_author(repo: Path) -> None:
+    """Documented: merges in the range, whoever made them."""
+    payload = _run("summary", "--repo", str(repo), "--exclude-author", "mo@e.test")
+
+    assert payload["repository"]["merge_commits_excluded"] == 1

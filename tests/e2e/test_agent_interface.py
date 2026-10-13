@@ -126,8 +126,7 @@ class TestSummary:
         assert len(out.encode()) < 4096
 
     def test_the_text_is_under_a_kilobyte(self, repo: Path) -> None:
-        """`capabilities` says so. It once said "about 2 KB" for both forms,
-        while the text measured 0.5 to 0.65 KB on three repositories."""
+        """`capabilities` states the size, so the text must stay under a kilobyte."""
         _, out, _ = _run("summary", "--repo", str(repo))
 
         assert 0 < len(out.encode()) < 1024
@@ -142,7 +141,7 @@ class TestSummary:
         code, _, err = _run("summary", "--repo", str(repo), "--format", "yaml")
 
         assert code == ExitCode.CANNOT_RUN
-        assert "text or json" in err
+        assert "text, json or markdown" in err
 
 
 @pytest.fixture(scope="module")
@@ -332,8 +331,8 @@ class TestBoundedLists:
 
 
 @pytest.mark.e2e
-class TestVerifierFindings:
-    """Each found by the independent verification of the agent interface."""
+class TestReviewFindings:
+    """Checks on details of the agent interface."""
 
     def test_html_on_stdout_starts_at_the_doctype(self, repo: Path) -> None:
         _, out, _ = _run("generate", "--repo", str(repo), "-o", "-")

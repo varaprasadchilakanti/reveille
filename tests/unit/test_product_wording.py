@@ -23,8 +23,8 @@ tagline and CLI reference, the `--help` text of the application and of
 `generate`, the package docstring, the service docstring, the scaffolded
 `reveille.toml`, and the sample configuration in both the README and the
 User Guide. CHANGELOG 0.8.0 had already removed it from the report's own
-subtitle, for the same reason, and this guard exists because a phrase
-removed once came back.
+subtitle, for the same reason, and this guard exists to keep a
+removed phrase out.
 """
 
 from __future__ import annotations
@@ -105,7 +105,7 @@ class TestTheOutputIsNotCalledAPerformanceReport:
         # The tagline is the first bold line under the title.
         taglines = [line for line in readme if line.startswith("**")][:1]
         assert taglines, "the README has no tagline"
-        assert "Commit-history analytics" in taglines[0], (
+        assert "Offline Git history reports" in taglines[0], (
             f"the README tagline no longer says what the tool does: {taglines[0]!r}"
         )
 
@@ -216,7 +216,7 @@ _UNSUPPORTED = (
     # no explicit statement about individuals. SPACE is quoted from its abstract.
     "dora and space",
     # A paraphrase of SPACE that could not be checked against the paper (its
-    # full text was unreachable on 2026-10-09); the abstract is quoted instead.
+    # full text was not available to check); the abstract is quoted instead.
     "never be used on their own to reward",
     "reporting only anonymised, aggregate",
     # A reveille.toml naming .git/HEAD disproved it; the exact claim replaced it.
@@ -230,7 +230,7 @@ _UNSUPPORTED = (
 
 @pytest.mark.unit
 class TestUnsupportedClaimsStayOut:
-    """Each phrase below was once published and turned out not to be true."""
+    """Each phrase below made a claim that could not be supported."""
 
     @pytest.mark.parametrize("phrase", _UNSUPPORTED)
     def test_no_surface_makes_the_claim(self, phrase: str) -> None:

@@ -37,11 +37,9 @@ _CONFIG_SOURCE = _SRC / "config.py"
 def _modules() -> list[Path]:
     """Every Python module in the package, `__init__.py` included.
 
-    The exemption these once carried blinded three guarantees at once. A
-    package's `__init__.py` executes at import, so `import socket` placed
-    there would have been invisible to the offline check, to the dependency
-    direction check, and to the filesystem-write check -- in the one file that
-    is guaranteed to run.
+    `__init__.py` is included because it executes at import: an `import socket`
+    there would otherwise be invisible to the offline check, the dependency
+    direction check and the filesystem-write check.
     """
     return sorted(_SRC.rglob("*.py"))
 
@@ -179,7 +177,7 @@ class TestOfflineGuarantee:
     """Reveille makes no network call. That is product behaviour, not a detail."""
 
     def test_no_module_imports_a_network_capability(self) -> None:
-        """The guarantee is asserted at the source, not only at runtime.
+        """The property is asserted at the source, not only at runtime.
 
         An end-to-end test can only show that a *particular* run made no
         request. This shows that no module names a network-capable import.
@@ -208,7 +206,7 @@ class TestOfflineGuarantee:
         `importlib.import_module("socket")` and `subprocess.run(["curl", ...])`
         both defeat the check above completely, and both passed it. Neither is
         used anywhere in the package, so forbidding them outright costs nothing
-        and closes the two obvious ways round the guarantee.
+        and closes the two obvious ways round the property.
         """
         escapes = frozenset({"importlib", "subprocess", "runpy", "ctypes", "multiprocessing"})
         offenders = [
@@ -376,14 +374,16 @@ class TestFilesystemWrites:
     #
     # `bare` is a property read from the repository's configuration: whether it
     # has a working tree, which decides where its `.mailmap` is read from.
+    # `git_dir` is the Git directory's path, read to find a stopped merge or
+    # rebase by the files Git leaves there (ADR 0024); nothing is written.
     _READ_ONLY_REPO_MEMBERS = frozenset(
-        {"active_branch", "bare", "commit", "git", "head", "remotes"}
+        {"active_branch", "bare", "commit", "git", "git_dir", "head", "remotes"}
     )
 
     def test_only_designated_modules_write_to_disk(self) -> None:
         """A write from the reader or the domain would break the read-only claim.
 
-        This is the structural form of a guarantee `SECURITY.md` makes in prose
+        This is the structural form of a property `SECURITY.md` states in prose
         and `reveille capabilities` states to any program that asks.
         """
         offenders: list[str] = []
@@ -628,10 +628,9 @@ class TestConfigurationSurface:
     def test_every_config_field_is_reachable_from_toml(self) -> None:
         """A field the file cannot set is a flag pretending to be configuration.
 
-        This caught `deterministic` shipping as a CLI flag with no TOML key: the
-        field existed on the model, the docs described `reveille.toml` as the
-        single configuration surface, and the parser never read it. Nothing else
-        in the suite would have noticed, because every individual piece worked.
+        The docs describe `reveille.toml` as the single configuration surface, so a
+        model field that only a CLI flag can set contradicts them. Nothing else
+        in the suite notices, because each piece works on its own.
         """
         # Only subscript *assignment targets* count -- `kwargs["field"] = ...`
         # and the loop form `for field in (...): kwargs[field] = ...`.

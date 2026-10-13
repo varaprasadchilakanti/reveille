@@ -1,49 +1,31 @@
 # Architecture
 
-This document describes how Reveille is built and, more importantly,
-*why* it is built that way. It is written for someone about to change the
-code.
+How Reveille is built and why. It is written for someone about to change the code, and it
+describes the system as it exists. If a statement no longer holds, the statement is the bug: fix
+it in the same pull request as the code that outdated it.
 
-It describes the system **as it exists**, not as it was once intended.
-Every claim here was checked against the source when written. If you
-find a statement that no longer holds, the statement is the bug — fix it
-in the same pull request as the code that outdated it.
-
-For how to *use* Reveille, see [USER_GUIDE.md](USER_GUIDE.md). For
-individual decisions and the reasoning behind them, see
-[adr/](adr/).
+To use Reveille, see [USER_GUIDE.md](USER_GUIDE.md). For individual decisions, see [adr/](adr/).
 
 ---
 
 ## What Reveille is
 
-A command-line tool that reads a local Git repository and writes a
-single self-contained HTML file describing its commit history.
+A command-line tool that reads a local Git repository and writes a single self-contained HTML file
+describing its commit history. Three properties constrain nearly every decision; a change that
+breaks one changes what the product is, and needs to be argued as such.
 
-Three properties constrain nearly every design decision, and are worth
-stating before anything else:
+It does not change Git data (history, refs, index, objects or configuration). Reveille opens a
+repository, reads history, and writes one output file. It refuses any output path inside `.git`
+and never runs a mutating Git command. The report goes where you point it, by default
+`reveille-report.html` in the repository root, which for a working tree is inside the working
+tree.
 
-**It does not change Git data** (history, refs, index, objects or
-configuration). Reveille opens a repository, reads history, and writes one
-output file. It refuses any output path inside `.git` and never runs a mutating
-Git command. The report goes where you point it, by default
-`reveille-report.html` in the repository root, which for a working tree is
-inside the working tree. Anything that would change repository state is out of
-scope by construction, not by omission.
+It is offline. Nothing is transmitted, and a partial clone is refused because Git would fetch the missing objects. The report loads no CDN, no web font and no remote
+image; the ~4.8 MB Plotly bundle is embedded in the file. A test asserts that no `<link>`,
+`<script>` or `<img>` in the template references a remote host.
 
-**It is offline.** Nothing is transmitted anywhere. The generated report
-loads no CDN, no web font, and no remote image — the ~4.8 MB Plotly
-bundle is embedded in the file itself. This is what lets the output be
-opened from an email attachment or a downloaded file, and it is enforced by
-a test asserting no `<link>`, `<script>`, or `<img>` in the template
-references a remote host.
-
-**It is a single file.** The report is one HTML document with no
-sidecar assets. A stakeholder can open it from a download folder on a
-machine with no network connection.
-
-These are not incidental. A change that breaks any of the three is a
-change to what the product *is*, and needs to be argued as such.
+It is a single file: one HTML document with no sidecar assets, openable from a download folder
+on a machine with no network.
 
 ---
 
@@ -56,8 +38,7 @@ change to what the product *is*, and needs to be argued as such.
                                     config.py
 ```
 
-Dependencies point inward. The domain knows nothing about how commits
-are read or how reports are drawn.
+Dependencies point inward. The domain knows nothing about how commits are read or reports drawn.
 
 | Layer | May import | Must not import |
 |---|---|---|
@@ -66,37 +47,24 @@ are read or how reports are drawn.
 | `services/` | `domain/`, `adapters/`, `config.py` | Typer, GitPython, Plotly, Jinja2 |
 | `cli.py` | `services/`, `config.py`, `exceptions.py` | GitPython, Plotly, Jinja2 |
 
-Framework ownership is exclusive, and deliberately so:
+Framework ownership is exclusive: `adapters/git_reader.py` is the only module that imports
+GitPython, `adapters/renderer.py` the only one that imports Plotly or Jinja2, and `cli.py` the only
+one that imports Typer. Reading history from another source, or rendering another format, then
+means writing one adapter. `tests/unit/test_layering.py` enforces this by importing each layer in a
+clean interpreter and asserting which frameworks appear in `sys.modules`.
 
-- `adapters/git_reader.py` is the **only** module that imports GitPython.
-- `adapters/renderer.py` is the **only** module that imports Plotly or Jinja2.
-- `cli.py` is the **only** module that imports Typer.
+### One exception
 
-The point is substitutability. Reading history from a different source,
-or rendering to a different format, means writing one new adapter — not
-tracing framework calls through the codebase.
+`domain/ranking.py` imports `RankingWeights` from `config.py`, which is a Pydantic model. So the
+domain is not literally free of third-party imports: it transitively imports Pydantic.
 
-`tests/unit/test_layering.py` enforces this by importing each layer in a
-clean interpreter and asserting which frameworks appear in
-`sys.modules`. A layering violation fails the suite rather than being
-noticed in review, or not noticed.
+This is deliberate. `RankingWeights` is a value object whose only
+behaviour is validating that four weights sum to 1.0, and Pydantic is the project's validation
+library. A plain-dataclass copy would be two definitions of one concept that can drift apart.
 
-### One honest exception
-
-`domain/ranking.py` imports `RankingWeights` from `config.py`, which is
-a Pydantic model. So the domain is not literally free of third-party
-imports — it transitively imports Pydantic.
-
-This is a deliberate trade, not an oversight. `RankingWeights` is a
-value object whose only behaviour is validating that four weights sum to
-1.0, and Pydantic is the project's validation library. Duplicating it as
-a plain dataclass would mean two definitions of the same concept that
-can drift apart.
-
-What the rule actually protects is stated precisely: **the domain
-imports no I/O and no presentation framework.** It reads nothing,
-writes nothing, and draws nothing. That is the property that makes the
-ranking engine testable without a repository on disk, and it holds.
+The rule is that the domain imports no I/O and no presentation framework. It reads nothing,
+writes nothing and draws nothing, which is what makes the ranking engine testable without a
+repository on disk.
 
 ---
 
@@ -105,28 +73,29 @@ ranking engine testable without a repository on disk, and it holds.
 ```
 src/reveille/
     __init__.py       __version__; installs a logging NullHandler
+    __main__.py       python -m reveille
     cli.py            Typer app, exit codes, progress display
     config.py         Pydantic config models and TOML loading
     init.py           reveille.toml and .mailmap scaffold generation
-    capabilities.py   the machine-readable self-description; what the tool
-                      can and, more usefully, cannot do
+    capabilities.py   the machine-readable self-description: what the tool can and cannot do
     exceptions.py     the exception hierarchy
-    py.typed          PEP 561 marker — this package ships type information
+    py.typed          PEP 561 marker
     domain/
         models.py     frozen dataclasses; no behaviour beyond derived properties
-        ranking.py    the scoring and tiering algorithm (opt-in from 0.8.0)
-        concentration.py  Lorenz curve and Gini coefficient; describes the
-                      distribution and names nobody
+        ranking.py    scoring and tiering (opt-in)
+        concentration.py  Lorenz curve and Gini coefficient; names no author
         summary.py    the written findings, by fixed rules over the numbers
         files.py      churn per path, hotspots, change by file type
         profile.py    the six-axis repository profile
         areas.py      who changed each area (opt-in, ADR 0013)
         coauthors.py  Co-authored-by credits, kept apart from authorship
+        brief.py      what changed since a point, in counts (ADR 0022)
+        state.py      the repository's present state (ADR 0024)
     adapters/
         git_reader.py GitPython in; domain models out
-        renderer.py   domain models in; HTML, JSON, or CSV out
+        renderer.py   domain models in; HTML, JSON or CSV out
     services/
-        report.py     generate_report — the pipeline
+        report.py     generate_report, the pipeline
     templates/
         report.html.j2
 ```
@@ -135,35 +104,28 @@ src/reveille/
 
 ## Domain model
 
-All frozen dataclasses in `domain/models.py`. They carry data and
-derived properties, never I/O.
+Frozen dataclasses in `domain/models.py` carry data and derived properties, never I/O. Their
+fields are listed there; this section keeps only what the code does not say. `ReportData` is the
+sole input to `Renderer`.
 
-The dataclasses, and their fields, are listed in `domain/models.py`; this
-section keeps only what the code does not say. `ReportData` is the sole input to
-`Renderer`.
+`analysed_branch` is the ref the analysis walked. It was called `default_branch` through v0.7.0
+and held neither the default branch nor the analysed one
+([ADR 0008](adr/0008-output-provenance-and-schema-version.md)).
 
-`analysed_branch` is the ref the analysis actually walked. It was called
-`default_branch` through v0.7.0 and held neither the default branch nor the
-analysed one — see [ADR 0008](adr/0008-output-provenance-and-schema-version.md).
+**`CoAuthor`** and `Commit.co_authors` are identities a `Co-authored-by` trailer credits, read in a
+separate NUL-separated pass that must line up with `rev-list` one for one and resolved like
+authors (ADR 0014). `domain/coauthors.py` lists those credited only as co-authors; authorship
+figures never use them.
 
-**`CoAuthor`** and `Commit.co_authors` — identities a `Co-authored-by` trailer
-credits, read in a separate NUL-separated pass that must line up with
-`rev-list` one for one, resolved like authors (ADR 0014). `domain/coauthors.py`
-lists those credited only as co-authors; authorship figures never use them.
+**`AreaActivity`** is collected only under `--area-authors`; `domain/areas.py` turns it into
+statements that name authors alphabetically and never print a per-person count or date.
 
-**`AreaActivity`** is collected by the reader only under `--area-authors`;
-`domain/areas.py` turns it into statements that name authors alphabetically and
-never print a per-person count or date.
+The requested/resolved distinction is the point of provenance: `analysis_since` records where the
+window began, `requested_since` whether anybody asked for it. `exclude_authors_count` is a count,
+because naming the excluded in provenance would put them back.
 
-The requested/resolved distinction is the point: `analysis_since` records where
-the window began, `requested_since` records whether anybody asked for it. Note
-`exclude_authors_count` is a count rather than the values — the operation exists
-to keep somebody out of the report, so naming them in provenance would put them
-back.
-
-**`ProgressEvent`** — the service emits these; the CLI decides whether to
-animate them, log them, or ignore them. The service has no opinion about
-terminals.
+**`ProgressEvent`** is emitted by the service; the CLI decides whether to animate, log or ignore
+it. The service has no opinion about terminals.
 
 ---
 
@@ -178,15 +140,11 @@ ReveilleError
     └── OutputPathError
 ```
 
-Everything Reveille raises across a layer boundary descends from
-`ReveilleError`, so the CLI can catch one type and be sure nothing
-escapes as a traceback. Adapters raise the specific subclass; the CLI
-maps it to an exit code.
-
-`RevelleError` — the original misspelling — remains available as a
-deprecated alias via a module-level `__getattr__` (PEP 562). It emits a
-`DeprecationWarning` and is scheduled for removal in v1.0.0. It is
-absent from `__all__`.
+Everything Reveille raises across a layer boundary descends from `ReveilleError`, so the CLI can
+catch one type and be sure nothing escapes as a traceback. Adapters raise the specific subclass;
+the CLI maps it to an exit code. `RevelleError`, the original misspelling, survives only as a
+deprecated alias through a module-level `__getattr__` (PEP 562) that emits a `DeprecationWarning`;
+it is absent from `__all__`.
 
 ### Exit codes
 
@@ -195,142 +153,97 @@ absent from `__all__`.
 | Code | Meaning |
 |---|---|
 | `0` `SUCCESS` | Ran; answer affirmative. |
-| `1` `NEGATIVE` | Ran correctly; answer negative — an analysis window with no commits. |
+| `1` `NEGATIVE` | Ran correctly; answer negative, such as an analysis window with no commits. |
 | `2` `CANNOT_RUN` | Could not run: bad invocation, bad config, unreadable repository, unwritable output. |
 
-The split follows `grep` and `diff`, distinguishing *a negative answer*
-from *an inability to answer*. That is the distinction a CI job acts on:
-an empty window may be an acceptable state to record; an unreadable
-repository is a broken pipeline step. Finer causes belong in the stderr
-message — encoding each one as its own code does not scale, and every
-addition would break callers branching on the old numbering.
+The split follows `grep` and `diff`: a negative answer is not an inability to answer. A CI job can
+accept an empty window and fail on an unreadable repository. Finer causes belong in stderr;
+a code per cause does not scale and would break callers branching on the old numbering.
 
 ---
 
 ## The pipeline
 
-`services/report.py::generate_report(config, on_progress=None)` runs
-up to four stages, emitting a `ProgressEvent` before each; the ranking stage is
-skipped when ranking is off:
+`services/report.py::generate_report(config, on_progress=None)` runs up to four stages, emitting a
+`ProgressEvent` before each:
 
-1. **Reading commit history** — `GitReader.read_commits`
-2. **Aggregating contributor statistics** — `GitReader.aggregate_contributor_stats`
-3. **Ranking contributors** — `domain.ranking.rank_contributors` (only when ranking is enabled)
-4. **Rendering report** — `Renderer.render` / `render_json` / `render_csv`
+1. **Reading commit history**: `GitReader.read_commits`
+2. **Aggregating contributor statistics**: `GitReader.aggregate_contributor_stats`
+3. **Ranking contributors**: `domain.ranking.rank_contributors` (only when ranking is enabled)
+4. **Rendering report**: `Renderer.render` / `render_json` / `render_csv`
 
-With `ranking_enabled=False`, stage 3 still produces
-`RankedContributor` objects, with `tier=0`, designation `"--"`, and
-score and percentile zeroed. The shape stays constant so the *pipeline*
-needs no branch for it — but every renderer does branch, on
-`provenance.ranking_enabled` rather than on the list being non-empty.
-The placeholders are an internal convenience and must never reach a
-reader: HTML drops the rank, designation and score columns and retitles
-the section, and CSV omits those columns exactly as JSON omits the
-corresponding keys. Gating on `ranked_contributors` instead is the
-defect that shipped a "Contributor Rankings" table full of zeroes into
-the default report.
+With `ranking_enabled=False`, stage 3 still produces `RankedContributor` objects with `tier=0`,
+designation `"--"` and zeroed score and percentile, so the pipeline needs no branch. Every
+renderer does branch, on `provenance.ranking_enabled` rather than on the list being non-empty.
+The placeholders must never reach a reader: HTML drops the rank, designation and score columns
+and retitles the section, and CSV omits the designation and score columns as JSON omits those
+keys. The `rank` field itself, the position in table order by commits, is still written to JSON
+and CSV. Gating on `ranked_contributors` instead shipped a "Contributor Rankings" table full
+of zeroes into the default report.
 
 ### Reading history
 
-`read_commits` reads the history in one `git log --numstat` pass rather than
-iterating commits and asking GitPython for per-commit stats, because
-`Commit.stats` shells out to `git diff` once per commit. Beside it run a
-`git rev-list --no-merges` that authenticates each record and a second
-`git log` that reads only `Co-authored-by` trailers. See
-[ADR-0019](adr/0019-how-history-is-read.md), which supersedes
-[ADR-0004](adr/0004-single-pass-numstat-read.md). Timings on real repositories
-are in the [User Guide](USER_GUIDE.md#how-reveille-works).
-
-Merge commits are excluded unconditionally — see
-[ADR-0001](adr/0001-exclude-merge-commits.md).
-
-An unborn `HEAD` — a repository that is readable but has no commits at
-all — raises `EmptyRepositoryError`, which the CLI maps to `NEGATIVE`.
-It is a negative answer, not a failure to read.
+`read_commits` reads the history in one `git log --numstat` pass rather than asking GitPython for
+per-commit stats, because `Commit.stats` shells out to `git diff` once per commit. Beside it run a
+`git rev-list --no-merges` that authenticates each record and a second `git log` that reads only
+`Co-authored-by` trailers ([ADR-0019](adr/0019-how-history-is-read.md), which supersedes
+[ADR-0004](adr/0004-single-pass-numstat-read.md)). Timings are in the
+[User Guide](USER_GUIDE.md#how-reveille-works). Merge commits are excluded unconditionally
+([ADR-0001](adr/0001-exclude-merge-commits.md)). An unborn `HEAD` raises `EmptyRepositoryError`,
+which the CLI maps to `NEGATIVE`: readable, but nothing to report.
 
 ### Identity resolution
 
-Contributors are keyed on lowercased email — see
-[ADR-0002](adr/0002-email-as-identity-key.md). Two normalisations run
-before that key is taken:
-
-**`.mailmap`**, all four forms from `gitmailmap(5)`, matched
-most-specific-first: name-and-email → email-only → name-only. Matching
-is case-insensitive. Malformed lines are skipped silently, matching
-Git's own behaviour.
-
-**GitHub noreply addresses.** Both the legacy
-`username@users.noreply.github.com` and the post-2017
-`12345678+username@users.noreply.github.com` forms exist, and the same
-person often appears under both. The numeric prefix is stripped so they
-fold together.
+Contributors are keyed on lowercased email ([ADR-0002](adr/0002-email-as-identity-key.md)). Two
+normalisations run first. **`.mailmap`**: all four `gitmailmap(5)` forms, matched
+most-specific-first (name and email, then email, then name), case-insensitively, with malformed
+lines skipped silently as Git does. **GitHub noreply addresses** fold on the account number; a legacy
+address joins an account only when one account used its username (ADR 0023).
 
 ### Rendering
 
-`_build_charts` returns a dict with one entry per chart. Each value is a Plotly
-JSON string, or the string `"null"` when there is nothing to draw -- the
-template checks for that sentinel rather than the renderer deciding what the
-page looks like.
+`_build_charts` returns one entry per chart: a Plotly JSON string, or the string `"null"` when
+there is nothing to draw, so the template decides what the page looks like. The heatmap is the
+exception. It ships a compact daily-count payload and client-side JavaScript builds the Mon-Sun
+grid over the window's weeks, because a per-day Plotly spec for a multi-year repository is far
+larger than the counts it encodes.
 
-The heatmap is the exception: it ships a compact daily-count payload,
-not a Plotly figure, and client-side JavaScript builds the Mon–Sun grid
-over the weeks of the analysis window, whose bounds the payload carries.
-A per-day Plotly spec for a multi-year repository is far larger than the
-counts it encodes.
+JSON written into a `<script>` block has every `<` escaped to `\u003c` (`_script_safe`).
+Without it, a name containing `</script>` would close the block and run as markup, and an
+unfinished HTML comment would blank every chart.
+`_sanitise_chart_label` strips HTML tags from labels. Jinja autoescaping is on but does not apply
+inside a JSON script block, which is why the escaping is explicit.
 
-Everything written into a `<script>` block has `</` escaped to `<\/`.
-Without it, a contributor whose name contains `</script>` closes the
-block and executes the remainder as markup. `_sanitise_chart_label`
-strips HTML tags from labels for the same reason. Jinja autoescaping is
-on (`select_autoescape(["html", "j2"])`), but it does not apply inside a
-JSON script block — that is why the escaping is explicit.
-
-`_to_json` strips `paper_bgcolor`, `plot_bgcolor`, and `font.color`
-from the serialised layout. Theme colours are supplied client-side, and
-when the toggle flips every chart is re-plotted through the same path as
-the first paint — deliberately *not* `Plotly.relayout()`, which replaces
-any nested container it is handed and does not touch the trace-level
-colorscale the heatmap's two ramps depend on. One path, one set of
-semantics.
-
-`_PLOTLY_JS_BUNDLE` is read once at module import, because `get_plotlyjs()`
-reads ~4.8 MB from disk per call.
+`_to_json` strips `paper_bgcolor`, `plot_bgcolor` and `font.color` from the serialised layout.
+Theme colours are supplied client-side, and a theme toggle re-plots every chart through the same
+path as the first paint, deliberately not `Plotly.relayout()`, which replaces any nested container
+it is handed and does not touch the trace-level colorscale the heatmap's two ramps depend on.
+`_PLOTLY_JS_BUNDLE` is read once at import, because `get_plotlyjs()` reads ~4.8 MB per call.
 
 ---
 
 ## Configuration
 
-`ReportConfig` (Pydantic) is defined in `config.py`; a validator enforces
-`since < until`. `RankingWeights` holds `commits=0.30`, `lines=0.25`,
-`consistency=0.25`, `recency=0.20`, each in `[0, 1]`, with a validator enforcing
-that they sum to 1.0 within `1e-6`.
-
-`load_config_from_toml` reads via stdlib `tomllib` and flattens
-its tables (`[report]`, `[filters]`, `[ranking]`, `[areas]`) into a
+`ReportConfig` (Pydantic) lives in `config.py`; a validator enforces `since < until`.
+`RankingWeights` holds `commits=0.30`, `lines=0.25`, `consistency=0.25`, `recency=0.20`, each in
+`[0, 1]`, with a validator enforcing that they sum to 1.0 within `1e-6`. `load_config_from_toml`
+reads via stdlib `tomllib` and flattens `[report]`, `[filters]`, `[ranking]` and `[areas]` into a
 `ReportConfigKwargs` `TypedDict`.
 
-**Precedence: an explicitly provided CLI flag always beats the config
-file.** `min_commits` carries a `None` sentinel for this reason —
-without it, `--min-commits 1` is indistinguishable from "not provided",
-and a config file setting `min_commits = 2` silently wins over an
-explicit flag.
+**An explicitly provided CLI flag always beats the config file.** `min_commits` carries a `None`
+sentinel for this reason: without it, `--min-commits 1` is indistinguishable from "not provided",
+and a config file setting `min_commits = 2` would silently win.
 
 ---
 
 ## Ranking
 
-Contributors are scored on four components, min-max normalised, combined
-by weighted sum, then converted to percentiles and tiers.
-
-Consistency is passed through `_normalise_scores` unchanged; it is
-already in `[0, 1]`. When max equals min, every value resolves to 1.0.
-
-Recency bins commits by ISO calendar week, weights the anchor week 1.0,
-and decays each earlier week by `_RECENCY_DECAY = 0.85`.
-
-Percentiles use `bisect.bisect_left` for lower-bound semantics, so tied
-scores get identical percentiles — see
-[ADR-0003](adr/0003-bisect-left-for-percentile-ties.md).
+Four components are min-max normalised, combined by weighted sum, then converted to percentiles
+and tiers. Consistency is already in `[0, 1]` and passes through `_normalise_scores` unchanged;
+when max equals min, every value resolves to 1.0. Recency bins commits by ISO week, weights the
+anchor week 1.0, and decays each earlier week by `_RECENCY_DECAY = 0.85`. Percentiles use
+`bisect.bisect_left`, so tied scores get identical percentiles
+([ADR-0003](adr/0003-bisect-left-for-percentile-ties.md)).
 
 `assign_tier` walks `_TIER_BOUNDARIES` top-down on strict `>`:
 
@@ -344,18 +257,15 @@ scores get identical percentiles — see
 | 20.0 | 2 | Corporal |
 | −1.0 | 1 | Private |
 
-The `-1.0` entry is an exhaustive fallback, so no valid percentile can
-fail to match. `assign_tier` raises `AssertionError` if none matches —
-unreachable in production, and a loud signal that `_TIER_BOUNDARIES`
-was misconfigured. It replaced a silent `return "Recruit"` default that
-would have hidden exactly that.
+The `-1.0` entry is an exhaustive fallback. `assign_tier` raises `AssertionError` if nothing
+matches, which is unreachable in production and a loud signal that `_TIER_BOUNDARIES` was
+misconfigured; it replaced a silent default that would have hidden exactly that.
 
-> **On interpreting these numbers.** Ranking measures commit and line
-> volume. It does not measure contribution. The SPACE framework holds that
-> "developer productivity is about more than an individual's activity
-> levels"; DORA's metrics describe applications and services, not people. The rankings exist to
-> show *shape of participation*, not to grade people. See the User
-> Guide for the caveat that ships to users.
+> On interpreting these numbers: the ranking measures commit and line volume. It does not measure
+> contribution, and the tier names are labels on that score, not an evaluation of anyone. The SPACE framework holds that "developer productivity is about more than an
+> individual's activity levels"; DORA's metrics describe applications and services, not people.
+> The ranking shows the shape of participation, not a grade. See the User Guide for the caveat that
+> ships to users.
 
 ---
 
@@ -367,18 +277,16 @@ would have hidden exactly that.
 | Integration | `tests/integration/` | Real Git repositories built by fixtures via `subprocess`. |
 | E2E | `tests/e2e/` | Full CLI invocation through Typer's `CliRunner`. |
 
-The suite runs under `pytest-xdist` (`-n auto`). Fixtures that build
-repositories are module-scoped and use `tmp_path_factory`, not
-`tmp_path`, which is per-test and not worker-safe. Coverage gate is 90%.
+The suite runs under `pytest-xdist` (`-n auto`). Repository fixtures are module-scoped and use
+`tmp_path_factory`, which is worker-safe where `tmp_path` is not. The coverage gate is 90%.
 
-Several tests exist specifically to stop a guarantee eroding, and are
-worth knowing about before you change what they cover:
+Several tests protect properties that could erode unnoticed; know them before changing what they cover:
 
-- **Offline moat** — no `<link>`, `<script>`, or `<img>` in the output references a remote host.
-- **Layering** — no framework import crosses the boundaries above.
-- **Contrast** — WCAG AA ratios computed from the template's own CSS custom properties, so a palette edit is checked without anyone updating a fixture.
-- **Packaging** — the `py.typed` marker is present in both wheel and sdist.
-- **Workflow pins** — every GitHub Action is pinned to a commit SHA with a comment naming a precise version.
+- **Offline moat**: no `<link>`, `<script>` or `<img>` in the output references a remote host.
+- **Layering**: no framework import crosses the boundaries above.
+- **Contrast**: WCAG AA ratios computed from the template's own CSS custom properties.
+- **Packaging**: the `py.typed` marker is present in both wheel and sdist.
+- **Workflow pins**: every GitHub Action is pinned to a commit SHA with a comment naming a precise version.
 
 ---
 
@@ -387,60 +295,42 @@ worth knowing about before you change what they cover:
 | Tool | Role |
 |---|---|
 | Poetry | Dependencies, virtualenv, build, publish |
-| ruff | Lint (E,W,F,I,C,B,UP,N,SIM,D,RUF) and format — the sole formatter |
+| ruff | Lint (E,W,F,I,C,B,UP,N,SIM,D,RUF) and format; the sole formatter |
 | mypy `strict` | Type checking |
 | pytest + xdist + cov | Testing, parallelism, coverage |
-| pre-commit (`repo: local`) | ruff and mypy, run inside the Poetry venv so versions cannot diverge from CI |
-| GitHub Actions | CI across Python 3.11–3.14; publish on `v*` tag |
+| pre-commit (`repo: local`) | ruff and mypy inside the Poetry venv, so versions cannot diverge from CI |
+| GitHub Actions | CI across Python 3.11-3.14; publish on `v*` tag |
 | PyPI OIDC trusted publisher | No stored credentials; PEP 740 attestations |
 
-`make ci` runs the checks that need no network or GitHub; CI adds the Python
-matrix, actionlint, the vulnerability scan, the reproducible-build check,
-CodeQL and the CLA gate. Run `make ci` before opening a pull request.
+`make ci` runs the checks that need no network or GitHub; CI adds the Python matrix, actionlint,
+the vulnerability scan, the reproducible-build check, CodeQL and the CLA gate. Run `make ci`
+before opening a pull request.
 
 ---
 
 ## Lineage
 
-Almost nothing in this design is novel, and that is the point. Naming the
-established technique behind each choice makes it checkable against a
-literature rather than against the author's judgement, and it makes the two or
-three genuinely local decisions easier to find and argue with.
+Almost nothing here is novel. Each choice below names the established technique behind it, so it can be checked against the literature.
 
-| In this codebase | Established as | How it applies here |
-|---|---|---|
-| `CLI → Service → Domain ← Adapters`, with adapters as the only importers of GitPython, Plotly, Jinja2 and Typer | **Ports and adapters** (Cockburn, 2005), commonly *hexagonal architecture* | The domain depends on no I/O and no presentation framework, so the analysis can be reasoned about without a repository or a browser in the picture. The one honest exception is documented above. |
-| `test_layering.py`, `test_workflow_pins.py`, `test_lockfile.py`, `test_licence.py`, `test_capabilities.py`, `test_docs_links.py` | **Architectural fitness functions** (Ford, Parsons and Kua, *Building Evolutionary Architectures*, 2017) | Tests whose subject is an architectural property rather than a behaviour: the build fails when the *structure* stops holding, not when a feature breaks. They assert the dependency rule by importing each module in a subprocess and inspecting `sys.modules`; that every action is SHA-pinned with a truthful comment; that the lock parses; that every licence declaration agrees; that the capability document matches the program it describes. |
-| Refusing a revision that begins with `-`; accepting only object names `git rev-list` produced; refusing to write through a symlink; guards that exit non-zero when they cannot check | **Fail-safe defaults** and **complete mediation** (Saltzer and Schroeder, 1975) | The default is refusal, and every write passes the same check. This was learnt rather than designed: two release guards were found to *fail open* — comparing two empty strings and reporting agreement — which is the precise failure fail-safe defaults exists to name. |
-| `AnalysisProvenance` on every JSON report — tool version, analysed commit, filters as requested | **Data provenance** | An artefact that cannot state what it measured, over what, with which filters, is not evidence. The distinction between a filter *as requested* and the window that resulted is the part that does the work. |
-| `schema_version` as the first key of the payload | **Schema versioning** | A consumer decides whether it can parse the document before it tries. Introduced because a breaking key rename once shipped with no way to detect it except a `KeyError` at runtime. |
-| The Lorenz curve and Gini coefficient in `domain/concentration.py` | **Lorenz (1905)**, **Gini (1912)** | Standard instruments for concentration in a population, chosen over a bespoke "how many contributors make up a majority" precisely because a century of interpretation — and of documented weakness — comes with them. |
-| `domain/summary.py` — the written findings at the top of the report | **Data-to-text generation** (Reiter and Dale, *Building Natural Language Generation Systems*, 2000) | Content selected by rules over computed statistics, realised through fixed templates. Deterministic, offline, and no model — which is the only kind of generated prose that can live in a tool making an offline guarantee. The findings are checkable because each carries the figure it rests on. |
-| `domain/files.py` — churn per path, and the hotspot ranking | **Relative code churn** (Nagappan and Ball, *Use of Relative Code Churn Measures to Predict System Defect Density*, ICSE 2005); **hotspot analysis** (Tornhill, *Your Code as a Crime Scene*, 2013) | Churn is added plus deleted, not net. The full hotspot method crosses churn with a complexity measure; Reveille receives paths and line counts, not file contents, so it reports the churn axis alone and says so under the chart. A file that changes often is one to look at, not one that is wrong. |
-| `domain/profile.py` and `_profile_flower` — six shares drawn as separate petals beside a table (above it on a narrow screen) | **Graphical perception** (Cleveland and McGill, *Graphical Perception: Theory, Experimentation, and Application to the Development of Graphical Methods*, JASA 1984); **radial indicators** (Albo, Lanir, Bak and Rafaeli, *Off the Radar*, IEEE TVCG 2016; Fuchs et al., IEEE TVCG 2014) | Length is read far more accurately than area, and a radar's area depends on an arbitrary axis order (ADR 0012). The flower was preferred over the radar in Albo et al.'s comparison, and star glyphs compare better without a contour, so each share is a separate petal of length, never joined into a polygon; every petal carries its value as text and the table is the authoritative figure (ADR 0016). Expectations are computed from each measure's arithmetic, never chosen. |
-| `_CATEGORICAL_PALETTE`, and the decision that four is the maximum | **Color Universal Design** (Okabe and Ito, 2008); **dichromat simulation** (Viénot, Brettel and Mollon, 1999); **WCAG 2.1** contrast | A series colour must clear three constraints at once — contrast against both plot surfaces, separation in normal vision, and separation under simulated colour blindness. Over a 29-candidate pool the largest satisfying set is four, so beyond four the report aggregates rather than inventing a fifth hue. `tests/unit/adapters/test_palette.py` carries the arithmetic and recomputes it on every run. |
-| `.mailmap` handling, and email as the identity key | **`gitmailmap(5)`** | All four documented forms, with Git's own matching precedence, so a `.mailmap` that works with `git shortlog` works here. |
-| `docs/adr/` | **Architecture decision records** (Nygard, 2011) | Immutable once accepted; a changed decision gets a new record that supersedes the old one. |
-| `CHANGELOG.md`, version numbering | **Keep a Changelog**, **Semantic Versioning** | Under `0.y.z` the spec permits breaking changes in a minor bump, which is why the JSON key renames in 0.8.0 are documented loudly rather than deferred. |
-| Trusted Publishing, PEP 740 attestations, a CycloneDX SBOM, SHA-pinned actions | **Software supply chain integrity** (SLSA-adjacent; OpenSSF Scorecard) | Each answers "did this artefact come from this repository's release workflow", which a checksum cannot. |
+| In this codebase | Established as |
+|---|---|
+| `CLI → Service → Domain ← Adapters` | **Ports and adapters** (Cockburn, 2005), or *hexagonal architecture*. The domain depends on no I/O and no presentation framework. |
+| `test_layering.py`, `test_workflow_pins.py`, `test_lockfile.py`, `test_licence.py`, `test_capabilities.py`, `test_docs_links.py` | **Architectural fitness functions** (Ford, Parsons and Kua, *Building Evolutionary Architectures*, 2017): the build fails when a structural property stops holding, not only when a feature breaks. |
+| Refusing a revision that begins with `-`; accepting only object names `git rev-list` produced; refusing to write through a symlink; guards that exit non-zero when they cannot check | **Fail-safe defaults** and **complete mediation** (Saltzer and Schroeder, 1975): the default is refusal, and every write passes the same check. |
+| `AnalysisProvenance` on every JSON report | **Data provenance**: a figure that cannot state what it measured, over what, with which filters, is not evidence. |
+| `schema_version` as the first key | **Schema versioning**: a consumer decides whether it can parse before it tries. |
+| The Lorenz curve and Gini coefficient | **Lorenz (1905)**, **Gini (1912)**: standard instruments for concentration, with a century of interpretation and documented weakness. |
+| `domain/summary.py`, the written findings | **Data-to-text generation** (Reiter and Dale, 2000): rules over computed statistics, realised through fixed templates. Deterministic, offline, no model. |
+| `domain/files.py`, churn and hotspots | **Relative code churn** (Nagappan and Ball, ICSE 2005); **hotspot analysis** (Tornhill, 2013). Churn is added plus deleted. The full method crosses churn with complexity; Reveille receives paths and line counts, not contents, so it reports churn alone and says so under the chart. |
+| `domain/profile.py`, six shares as separate petals beside a table | **Graphical perception** (Cleveland and McGill, JASA 1984); **radial indicators** (Albo et al., IEEE TVCG 2016). Length is read more accurately than area, and a radar's area depends on axis order (ADR 0012). Each share is a separate petal, never a joined polygon, and the table is the authoritative figure (ADR 0016). |
+| `_CATEGORICAL_PALETTE`, four series at most | **Color Universal Design** (Okabe and Ito, 2008); **dichromat simulation** (Viénot, Brettel and Mollon, 1999); **WCAG 2.1**. Over a 29-candidate pool the largest set satisfying all three constraints is four, so beyond four the report aggregates. `tests/unit/adapters/test_palette.py` recomputes it. |
+| `.mailmap` handling | **`gitmailmap(5)`**: a `.mailmap` that works with `git shortlog` works here. |
+| `docs/adr/` | **Architecture decision records** (Nygard, 2011): immutable once accepted; a changed decision gets a new record that supersedes the old. |
+| `CHANGELOG.md`, version numbers | **Keep a Changelog**, **Semantic Versioning**. Under `0.y.z` a minor bump may break. |
+| Trusted Publishing, PEP 740, a CycloneDX SBOM, SHA-pinned actions | **Software supply chain integrity** (SLSA-adjacent; OpenSSF Scorecard): did this artefact come from this repository's release workflow? |
 
-**What is local to this project, and therefore where scrutiny belongs.** Two
-things, and both are judgements rather than techniques:
-
-1. **The refusal to rank people by default** ([ADR 0010](adr/0010-ranking-is-opt-in.md)),
-   and the decision to state that refusal in machine-readable form so a program
-   reading `reveille capabilities` is told what the tool is not for. The
-   technique — a self-describing capability document — is ordinary. Putting the
-   *limits* in it, as prominently as the features, is the part worth arguing
-   with.
-2. **The rule that a guard is not trusted until it has been observed failing.**
-   Every check in this repository was verified by reintroducing the defect it
-   protects against and watching it fail. This is not a named practice as far as
-   the author is aware, and it is the single most productive habit in the
-   project's history: it has caught a documentation test that passed with the
-   defect present, a licence guard that passed while checking nothing, and a
-   security regression test that was rejecting its own payload for the wrong
-   reason.
-
-If either of those is wrong, the design is wrong, and it is better to find out
-by argument than after more is built on top.
+Two things are local judgements rather than techniques. The first is that scores, tiers and
+designations are off by default ([ADR 0010](adr/0010-ranking-is-opt-in.md)), with that stated in
+machine-readable form so a program reading `reveille capabilities` is told what the tool is not
+for. The second is that a guard counts only once it has been seen to fail: each check was tried
+by reintroducing the defect it covers.
