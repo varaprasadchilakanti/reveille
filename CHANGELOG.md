@@ -111,6 +111,11 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Changed
 
+- **Release path.** Packages are built in a job that cannot obtain the PyPI upload token, and the
+  build stops if the tag does not name the version in `pyproject.toml`. CI also checks formatting
+  and runs the repository-hygiene hooks. The Makefile's `publish` targets are gone: publishing is
+  done by the tagged workflow only.
+
 - **`schema_version` is 1.2.** The brief is a new JSON document; every 1.1 field is unchanged.
 - **SECURITY.md no longer promises a response time.** Reveille has one maintainer; reports are
   normally acknowledged within a few days.

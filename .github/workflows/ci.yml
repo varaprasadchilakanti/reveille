@@ -91,6 +91,14 @@ jobs:
         run: python -m pip install --disable-pip-version-check "pre-commit==4.6.2"
       - name: Run actionlint
         run: pre-commit run actionlint --all-files --show-diff-on-failure
+      # The repository-hygiene hooks otherwise run only where a contributor
+      # installed pre-commit.
+      - name: Run hygiene hooks
+        run: |
+          for hook in trailing-whitespace end-of-file-fixer check-yaml check-case-conflict \
+              check-merge-conflict detect-private-key; do
+            pre-commit run "$hook" --all-files --show-diff-on-failure
+          done
 
   lint:
     name: Lint (ruff)
@@ -115,6 +123,8 @@ jobs:
         run: poetry install --no-interaction
       - name: Run ruff
         run: poetry run ruff check src tests
+      - name: Check formatting
+        run: poetry run ruff format --check src tests
       - name: Check version sync
         run: make check-version
       - name: Check licence declarations agree

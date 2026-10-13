@@ -35,6 +35,10 @@ workflow authenticates as a
 OIDC, and the token it receives is minted per run and scoped to this
 project.
 
+The packages are built in a separate job that cannot obtain that token, and the build stops if
+the tag does not name the version in `pyproject.toml`. The publishing job only downloads the
+built files and uploads them.
+
 Every GitHub Action used here is pinned to an immutable commit SHA, with a comment naming the
 version it resolves to. A test asserts both, so an action reintroduced by a mutable tag fails CI.
 

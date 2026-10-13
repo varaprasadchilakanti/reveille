@@ -149,8 +149,8 @@ Metadata cannot be edited after upload, and a filename can never be reused.
 Keyring on a fresh Linux machine: Poetry may hang trying to reach a system keyring that is not
 running: `poetry config keyring.enabled false`.
 
-Publishing is done by CI. `make publish` exists, but the PyPI Trusted Publisher trusts only the
-tagged workflow; publishing by hand would need credentials that deliberately do not exist.
+Publishing is done by CI only. There is no publish target: the PyPI Trusted Publisher trusts only
+the tagged workflow, and publishing by hand would need credentials that deliberately do not exist.
 
 ## Repository settings this depends on
 

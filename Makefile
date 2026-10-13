@@ -6,8 +6,7 @@
 
 .PHONY: help install lint format fix typecheck precommit check-lock check-lock-sync check-licence check-version \
 	    check-packaging test test-unit \
-	    test-integration test-e2e coverage ci build sbom publish-test \
-	    publish clean
+	    test-integration test-e2e coverage ci build sbom clean
 
 # ------------------------------------------------------------------
 # Help
@@ -160,7 +159,7 @@ ci:  ## Full CI workflow: lint, typecheck, test
 	$(MAKE) test
 
 # ------------------------------------------------------------------
-# Build & Publish
+# Build
 # ------------------------------------------------------------------
 
 build:  ## Build the distribution packages
@@ -186,11 +185,6 @@ sbom: $(SBOM_VENV)  ## Generate a CycloneDX SBOM of the runtime dependency graph
 		--of JSON -o "dist/reveille-$$VER-sbom.cdx.json" . && \
 	echo "SBOM written to dist/reveille-$$VER-sbom.cdx.json"
 
-publish-test:  ## Publish to TestPyPI
-	poetry publish --repository testpypi
-
-publish:  ## Publish to PyPI (requires credentials)
-	poetry publish
 
 # ------------------------------------------------------------------
 # Cleanup

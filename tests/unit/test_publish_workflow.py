@@ -309,3 +309,37 @@ class TestBothReleaseAssetsMustExist:
         assert result.returncode == 0
         assert "::warning::could not attach the SBOM" in result.stdout
         assert "make sbom" in result.stdout
+
+
+@pytest.mark.unit
+class TestOnlyTheTaggedVersionIsBuilt:
+    """A tag that does not name the version in pyproject.toml publishes nothing."""
+
+    @staticmethod
+    def _check(tmp_path: Path, tag: str) -> subprocess.CompletedProcess[str]:
+        (tmp_path / "pyproject.toml").write_text(
+            '[tool.poetry]\nname = "reveille"\nversion = "1.2.3"\n', encoding="utf-8"
+        )
+        return _run(_step_script("Check the tag names this version"), tmp_path, {"TAG": tag})
+
+    def test_the_matching_tag_passes(self, tmp_path: Path) -> None:
+        assert self._check(tmp_path, "v1.2.3").returncode == 0
+
+    @pytest.mark.parametrize("tag", ["v1.2.4", "1.2.3", "v1.2.3-rc1", ""])
+    def test_any_other_tag_stops_the_build(self, tmp_path: Path, tag: str) -> None:
+        result = self._check(tmp_path, tag)
+
+        assert result.returncode != 0
+        assert "1.2.3" in result.stdout + result.stderr
+
+
+@pytest.mark.unit
+def test_the_job_holding_the_upload_token_does_not_build() -> None:
+    """Build tooling never runs where the OIDC token can be minted."""
+    workflow = _WORKFLOW.read_text(encoding="utf-8")
+    publish = workflow[workflow.index("\n  publish:\n") : workflow.index("\n  sbom:\n")]
+
+    assert "id-token: write" in publish
+    assert "poetry build" not in publish
+    assert "actions/checkout" not in publish
+    assert "needs: [vulnerabilities, build]" in publish
