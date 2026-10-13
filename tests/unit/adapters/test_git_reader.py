@@ -255,3 +255,11 @@ class TestResolveIdentityEmailOnlyForm:
         mailmap = _Mailmap(by_email={"shared@example.com": (None, "proper@example.com")})
         assert _resolve_identity("Alice", "shared@example.com", mailmap)[0] == "Alice"
         assert _resolve_identity("Bob", "shared@example.com", mailmap)[0] == "Bob"
+
+
+@pytest.mark.unit
+def test_c1_controls_are_removed_from_names() -> None:
+    """U+009B is CSI: some terminals obey it, given as UTF-8, like ESC [."""
+    from reveille.adapters.git_reader import _strip_control_chars
+
+    assert _strip_control_chars("Ana\x9b31m Silva\x85") == "Ana31m Silva"

@@ -92,3 +92,15 @@ def test_a_named_branch_is_read_when_head_has_no_commits(tmp_path: Path) -> None
 
     assert result.exit_code == ExitCode.SUCCESS, result.stderr
     assert "2 commits" in result.stdout
+
+
+@pytest.mark.parametrize("value", ["HEAD~1..main", "main^!", "main^@", "HEAD...main"])
+def test_branch_names_one_commit_not_a_range(tmp_path: Path, value: str) -> None:
+    """A range given as a branch narrowed the history while the report said "branch";
+    an auto-discovered reveille.toml could set it."""
+    repo = _repo(tmp_path / "r")
+
+    result = CliRunner().invoke(app, ["summary", "--repo", str(repo), "--branch", value])
+
+    assert result.exit_code == ExitCode.CANNOT_RUN, result.stdout
+    assert "does not name a commit" in result.stderr

@@ -94,3 +94,33 @@ class TestAPartialCloneIsRefused:
 
         assert result.exit_code == ExitCode.SUCCESS, result.stderr
         assert "3 commits" in result.stdout
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("scope", ["worktree", "include"])
+def test_a_promisor_set_outside_git_config_is_refused_too(tmp_path: Path, scope: str) -> None:
+    """Before Git 2.44 nothing stops a lazy fetch, so the refusal must see every
+    config scope Git reads: worktree config and included files as well."""
+    repo = tmp_path / "r"
+    repo.mkdir()
+    run = {"cwd": repo, "check": True, "capture_output": True}
+    subprocess.run(["git", "init", "-q", "-b", "main"], **run)  # type: ignore[call-overload]
+    (repo / "a.txt").write_text("a", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], **run)  # type: ignore[call-overload]
+    subprocess.run(
+        ["git", "-c", "user.name=A", "-c", "user.email=a@e.test", "commit", "-qm", "a"], **run
+    )  # type: ignore[call-overload]
+    subprocess.run(["git", "remote", "add", "origin", "https://example.test/r.git"], **run)  # type: ignore[call-overload]
+    if scope == "worktree":
+        subprocess.run(["git", "config", "extensions.worktreeConfig", "true"], **run)  # type: ignore[call-overload]
+        subprocess.run(["git", "config", "--worktree", "remote.origin.promisor", "true"], **run)  # type: ignore[call-overload]
+    else:
+        (tmp_path / "extra.cfg").write_text(
+            '[remote "origin"]\n\tpromisor = true\n', encoding="utf-8"
+        )
+        subprocess.run(["git", "config", "include.path", str(tmp_path / "extra.cfg")], **run)  # type: ignore[call-overload]
+
+    result = CliRunner().invoke(app, ["summary", "--repo", str(repo)])
+
+    assert result.exit_code == ExitCode.CANNOT_RUN, result.stdout
+    assert "partial clone" in result.stderr

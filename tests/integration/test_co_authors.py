@@ -15,7 +15,9 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from typer.testing import CliRunner
 
+from reveille.cli import ExitCode, app
 from reveille.config import ReportConfig
 from reveille.services.report import generate_report
 
@@ -249,3 +251,30 @@ def test_trailers_out_of_order_credit_nobody(
 
     assert all(c.co_authors == () for c in commits)
     assert "did not line up" in caplog.text
+
+
+@pytest.mark.integration
+def test_a_hostile_trailer_is_read_in_linear_time(tmp_path: Path) -> None:
+    """A Co-authored-by value with a long run of spaces and no address made the old
+    pattern backtrack quadratically: 256k spaces took 40 s for one commit."""
+    import time
+
+    repo = tmp_path / "r"
+    repo.mkdir()
+    run = {"cwd": repo, "check": True, "capture_output": True}
+    subprocess.run(["git", "init", "-q", "-b", "main"], **run)  # type: ignore[call-overload]
+    (repo / "a.txt").write_text("a", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], **run)  # type: ignore[call-overload]
+    message = "subject\n\nCo-authored-by: a" + " " * 200_000 + "a\n"
+    subprocess.run(
+        ["git", "-c", "user.name=A", "-c", "user.email=a@e.test", "commit", "-q", "-F", "-"],
+        input=message.encode(),
+        **run,  # type: ignore[arg-type]
+    )
+
+    started = time.monotonic()
+    result = CliRunner().invoke(app, ["summary", "--repo", str(repo)])
+    elapsed = time.monotonic() - started
+
+    assert result.exit_code == ExitCode.SUCCESS, result.stderr
+    assert elapsed < 3, f"{elapsed:.1f} s"

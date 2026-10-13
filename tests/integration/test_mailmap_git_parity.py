@@ -95,3 +95,21 @@ def test_a_later_line_updates_one_field_of_an_entry(repo: Path) -> None:
     reader = GitReader(repo)
 
     assert _reveille_maps(reader, "Zed <old@e.test>") == _git_maps(repo, "Zed <old@e.test>")
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Proper Kim <p1@e.test> Kim <kim@e.test>\n<p2@e.test> Kim <kim@e.test>\n",
+        "Ana <a1@e.test> <old@e.test>\n<a2@e.test> <old@e.test>\n",
+        "<a2@e.test> <old@e.test>\nAna <old@e.test>\n",
+    ],
+)
+def test_a_repeated_entry_replaces_or_merges_as_git_does(repo: Path, text: str) -> None:
+    """A name-keyed entry is replaced whole; an address-keyed one is updated field by field."""
+    (repo / ".mailmap").write_text(text, encoding="utf-8")
+    reader = GitReader(repo)
+
+    for probe in ("Kim <kim@e.test>", "Zed <old@e.test>"):
+        expected = _git_maps(repo, probe)
+        assert _reveille_maps(reader, probe).lower() == expected.lower(), (text, probe, expected)

@@ -236,7 +236,10 @@ def brief_text(
             raise RepositoryError(
                 "The branch has no tag to start from: give --from <revision> or --since <date>."
             )
-    from_commit = reader.resolve_commit(from_revision) if from_revision is not None else None
+        # Resolved as a tag: a tag named like a commit hash would resolve to that commit.
+        from_commit: str | None = reader.resolve_commit(f"refs/tags/{from_revision}")
+    else:
+        from_commit = reader.resolve_commit(from_revision) if from_revision is not None else None
     # Between two commits no clock enters; a date point ends the window today, as summary does.
     cutoff = (
         _today()

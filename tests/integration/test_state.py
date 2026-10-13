@@ -465,3 +465,19 @@ class TestTheSuggestedCommand:
 
         assert "Next: reveille brief --from 'v1;$(id)'" in text
         assert "reveille brief --from 'v1;$(id)'" in markdown
+
+
+class TestATagNamedLikeAHash:
+    def test_the_tag_is_read_not_the_commit_of_that_name(self, repo: Path) -> None:
+        """Git resolves a 40-hex name to the commit before the tag; Reveille reads the tag."""
+        first = _git(repo, "rev-parse", "HEAD~1").stdout.strip()
+        _commit(repo, "c.txt", "three\n")
+        head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+        # A tag named after the first commit's hash, pointing at the newest one.
+        _git(repo, "update-ref", f"refs/tags/{first}", head)
+
+        state = _state(repo)
+        brief = CliRunner().invoke(app, ["brief", "--repo", str(repo), "--format", "json"])
+
+        assert (state["latest_tag"], state["commits_since_tag"]) == (first, 0)
+        assert brief.exit_code == ExitCode.NEGATIVE, brief.stdout

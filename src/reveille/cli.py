@@ -718,7 +718,7 @@ def _run_report(report_config: ReportConfig, *, to_stdout: bool, quiet: bool = F
         typer.echo(text, nl=not text.endswith("\n"))
         return
     for path in written:
-        typer.echo(f"Report written to: {path}")
+        typer.echo(_printable(f"Report written to: {path}"))
 
 
 def _apply_area_flags(
@@ -1231,7 +1231,7 @@ def validate(
         _err(f"Error: {exc}")
         raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
 
-    typer.echo(f"Repository at {resolved} is valid.")
+    typer.echo(_printable(f"Repository at {resolved} is valid."))
 
 
 @app.command()

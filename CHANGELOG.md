@@ -33,6 +33,22 @@ before 0.8.0 predate the convention and are left as they were released.
   repository name was printed as it was, so a name could make `state` show a line such as
   "Working tree: clean." that Reveille did not write. Text output now shows CR and LF inside a
   value as `\r` and `\n`, as markdown and the one-line form already did.
+- **An author name could add commits and people to every figure.** A name holding the separators
+  Reveille reads `git log` with, and a real commit's hash, produced records Git does not have. Each
+  record is now framed by its commit's hash at both ends, and a hash with more than one record is
+  counted as unreadable, never credited.
+- **One `Co-authored-by` line could stall a run for minutes.** Its pattern backtracked on a long
+  run of spaces. It is now read in one pass, and a value over 4,096 characters is skipped.
+- **The HTML report's charts offered "Share chart...",** which sends the chart data, names
+  included, to Plotly's cloud after a click and a sign-in. Sharing is now switched off, and the
+  button removed; nothing was ever sent on load.
+- **On Git older than 2.44, a promisor remote set in worktree config was not refused**, and a read
+  could fetch from the network and write objects into `.git`. Git itself is now asked whether any
+  config it reads makes the repository a partial clone; if it cannot say, the repository is refused.
+- **A `.mailmap` that is a FIFO, or a `mailmap.file` naming one, hung every command.** Git's own
+  mailmap is now switched off (Reveille reads `.mailmap` itself).
+- **`validate` and `generate` printed the repository path with terminal control sequences in it.**
+  Both lines are now escaped, and C1 controls are removed from names as C0 controls already were.
 - **The command `state` suggests quoted the tag as it was.** A tag name may hold `;` and `$(...)`;
   the "Next: reveille brief --from <tag>" line, which an assistant may run, now quotes it for
   the shell.
@@ -137,6 +153,17 @@ before 0.8.0 predate the convention and are left as they were released.
   every frame as text. It now animates only when stderr is a terminal.
 
 ### Fixed
+
+- **`--exclude-author` by name missed a person who appears only as a co-author** under another
+  name. The name now reaches the addresses it carries in `Co-authored-by` trailers too (ADR 0020).
+- **A commit with a date no calendar holds (year 10000) was dropped without a word.** It is now
+  counted as unreadable and stated.
+- **A repeated four-field `.mailmap` line updated the earlier one field by field**; Git replaces it.
+  Now as Git does.
+- **A tag named like a commit hash was read as that commit** by `state` and `brief`. Tags from the
+  tag list are now resolved as tags.
+- **`--branch` accepted a range** (`HEAD~1..main`, `main^!`), and the report still said "branch".
+  It must now name one branch, tag or commit.
 
 - **`.mailmap` lines Git honours were skipped.** A name holding `#`, text after the last address,
   a third address, or no space before `<` made Reveille drop a line that `git check-mailmap`

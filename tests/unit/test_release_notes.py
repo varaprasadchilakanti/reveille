@@ -113,3 +113,20 @@ class TestItFailsLoudlyRatherThanQuietly:
         changelog.write_text("## [1.0.0] — Some Theme\n\nbody\n", encoding="utf-8")
         code, _ = _run("v1.0.0", "--title", changelog)
         assert code != 0
+
+
+@pytest.mark.unit
+def test_a_heading_without_a_theme_does_not_take_the_next_line(tmp_path: Path) -> None:
+    """`\\s*` crossed the newline, so the first bullet became the title and left the body."""
+    changelog = tmp_path / "CHANGELOG.md"
+    changelog.write_text(
+        "## [0.7.0] — 2026-01-01\n\n- First bullet\n- Second bullet\n\n## [0.6.0] — 2025-12-01\n",
+        encoding="utf-8",
+    )
+
+    code, title = _run("v0.7.0", "--title", changelog)
+    _, body = _run("v0.7.0", "--body", changelog)
+
+    assert code == 0
+    assert title.strip() == "v0.7.0"
+    assert "- First bullet" in body
