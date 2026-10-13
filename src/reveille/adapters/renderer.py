@@ -2071,7 +2071,8 @@ def _state_document(
         "last_commit_date": state.last_commit.isoformat() if state.last_commit else None,
         "upstream": upstream,
         "operation_in_progress": state.operation,
-        "clean": state.clean,
+        # Null when no file was compared: an unread tree is not known to be clean.
+        "clean": None if state.bare or state.working_tree_unread else state.clean,
         "conflicted": bounded(state.conflicted),
         "staged": bounded(state.staged),
         "modified": bounded(state.modified),

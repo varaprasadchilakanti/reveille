@@ -205,6 +205,7 @@ class TestContentFilters:
 
         assert state["working_tree_read"] is False
         assert state["untracked"]["total"] == 0
+        assert state["clean"] is None, "an uncompared tree is not known to be clean"
         assert state["branch"] == "main"
         assert "Working tree: not compared." in _text(repo)
 
@@ -383,6 +384,7 @@ class TestUnusualRepositories:
         state = _state(bare)
 
         assert state["repository"]["bare"] is True
+        assert state["clean"] is None
         assert state["branch"] == "main"
         assert "Bare repository" in _text(bare)
 
