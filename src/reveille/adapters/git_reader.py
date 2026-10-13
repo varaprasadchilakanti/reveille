@@ -23,7 +23,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
-from git import InvalidGitRepositoryError, NoSuchPathError, Repo
+from git import Git, InvalidGitRepositoryError, NoSuchPathError, Repo
 from git.exc import GitCommandError
 
 from reveille.domain.areas import ROOT_AREA, area_of
@@ -592,7 +592,7 @@ class GitReader:
                 ) from exc
             raise RepositoryError(
                 f"'{repo_path}' is not a valid Git repository. "
-                "Give the root of a working tree or a bare repository."
+                "Give a directory inside a working tree, or a bare repository."
             ) from exc
         except NoSuchPathError as exc:
             raise RepositoryError(f"'{repo_path}' does not exist.") from exc
@@ -1675,6 +1675,27 @@ def _state_wide_exclusions(reached: dict[str, set[str]]) -> None:
 
 #: The largest `.mailmap` read, in bytes; a real one is kilobytes.
 _MAX_MAILMAP_BYTES = 1_048_576
+
+
+def repository_root(path: Path) -> Path:
+    """Return the top of the working tree `path` lies in, as Git finds it.
+
+    Git searches upwards, stopping at `GIT_CEILING_DIRECTORIES` and refusing a
+    repository another user owns. A bare repository, a path Git finds no
+    working tree for, or one it cannot search is returned unchanged, so the
+    reader reports it.
+
+    Args:
+        path: A directory given as `--repo`, or the working directory.
+
+    Returns:
+        The working tree's top directory, or `path` resolved.
+    """
+    try:
+        top = str(Git(str(path)).rev_parse("--show-toplevel")).strip()
+    except (GitCommandError, OSError):
+        return path.resolve()
+    return Path(top).resolve() if top else path.resolve()
 
 
 def _is_partial_clone(repo: Repo) -> bool:

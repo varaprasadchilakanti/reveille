@@ -79,7 +79,7 @@ author, carries no notice, and a newline in a name is shown as `\n`.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--repo`, `-r` | `.` | A working tree's root, or a bare repository (which needs `--output`: its root is Git's own directory, where Reveille does not write). |
+| `--repo`, `-r` | `.` | A working tree or any directory inside it (the search stops at `GIT_CEILING_DIRECTORIES`, as Git's does), or a bare repository (which needs `--output`: its root is Git's own directory, where Reveille does not write). |
 | `--output`, `-o` | `reveille-report.html` in the repository root | See [Output path](#output-path). |
 | `--since`, `--until` | first commit; today (UTC) | Inclusive dates, `YYYY-MM-DD`. See [The window](#the-window). |
 | `--branch`, `-b` | the checked-out branch | Commits reachable from this branch. The checked-out branch is not necessarily the default branch. |
@@ -271,7 +271,8 @@ its oldest tag (8,928 commits), it took about 2 seconds and printed 672 bytes (m
 reveille who-changed src/parser/lexer.c --since 2026-01-01
 ```
 
-Takes a path (literal, inside the repository, relative to its root) and the options of `summary`,
+Takes a path (literal, inside the repository; relative to the current directory when you run it
+inside the repository, else to the repository's root) and the options of `summary`,
 plus `--limit` (default 20). The answer lists the path's authors alphabetically, the five who
 changed it most recently (the people to ask first), automated accounts and co-authors apart, and
 when the path was last changed. It gives no count or date per person: who changed a file is a

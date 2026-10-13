@@ -52,6 +52,11 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Added
 
+- **Any directory inside a working tree** can be given as `--repo`, or be the current
+  directory: every command reads the repository it belongs to, found as Git finds it (stopping
+  at `GIT_CEILING_DIRECTORIES`). Inside the repository, `who-changed` takes a path relative to
+  the current directory. `init` still runs only at the root, since it writes files there.
+
 - **`reveille state`** says where a repository stands now: branch or detached commit, upstream
   ahead/behind as of the last fetch, a merge, rebase, `git am`, cherry-pick, revert or bisect in
   progress, conflicted paths, staged, modified, deleted, renamed and untracked files (bounded by

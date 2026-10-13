@@ -14,6 +14,7 @@ import enum
 import itertools
 import json
 import logging
+import os
 import sys
 import threading
 import time
@@ -435,6 +436,13 @@ def main(
     """Offline reports of a Git repository's history."""
 
 
+def _root(repo: Path) -> Path:
+    """Return the repository `repo` lies in, searching upwards as Git does."""
+    from reveille.adapters.git_reader import repository_root
+
+    return repository_root(repo)
+
+
 def _resolve_output_path(output: Path, repo_path: Path) -> Path:
     """Return the resolved output path; the default is relative to the repository.
 
@@ -624,7 +632,7 @@ def _merge_cli_flags(
         A merged ReportConfigKwargs ready for ReportConfig construction.
     """
     merged: dict[str, Any] = dict(config_kwargs)
-    resolved_repo = repo.resolve()
+    resolved_repo = _root(repo)
     merged["repo_path"] = resolved_repo
     if deterministic:
         merged["deterministic"] = True
@@ -713,7 +721,7 @@ def _apply_area_flags(
 def generate(
     repo: Annotated[
         Path,
-        typer.Option("--repo", "-r", help="Path to the Git repository root."),
+        typer.Option("--repo", "-r", help="The Git repository, or any directory inside it."),
     ] = Path("."),
     output: Annotated[
         Path,
@@ -892,7 +900,7 @@ def generate(
     if not to_stdout:
         _validate_output_path(
             Path(merged.get("output_path", output)),
-            repo.resolve(),
+            merged["repo_path"],
             from_config=_output_from_config,
         )
 
@@ -934,7 +942,7 @@ def _query_config(
     Raises:
         typer.Exit: CANNOT_RUN if an option is invalid.
     """
-    kwargs: dict[str, Any] = {"repo_path": repo.resolve(), "deterministic": deterministic}
+    kwargs: dict[str, Any] = {"repo_path": _root(repo), "deterministic": deterministic}
     if since is not None:
         kwargs["since"] = _parse_date(since, "--since")
     if until is not None:
@@ -983,7 +991,9 @@ def _check_query_format(output_format: str, allowed: tuple[str, ...] = ("text", 
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
 
-_RepoOption = Annotated[Path, typer.Option("--repo", "-r", help="Path to the Git repository root.")]
+_RepoOption = Annotated[
+    Path, typer.Option("--repo", "-r", help="The Git repository, or any directory inside it.")
+]
 _SinceOption = Annotated[
     str | None, typer.Option("--since", help="Include commits on or after this date (YYYY-MM-DD).")
 ]
@@ -1093,15 +1103,16 @@ def state(
 
     _configure_logging(verbose)
     _check_query_format(output_format, ("text", "json", "markdown", "line"))
-    _run_query(lambda _notice: state_text(repo.resolve(), output_format, limit))
+    _run_query(lambda _notice: state_text(_root(repo), output_format, limit))
 
 
 def _repository_path(path: str, repo: Path) -> str:
     """Turn the path given to who-changed into a repository-relative one.
 
     Args:
-        path: As typed: relative to the repository, or absolute inside it.
-        repo: The repository root.
+        path: As typed: absolute, or relative to the working directory when that
+            is inside the repository, else to the repository root.
+        repo: The repository root, resolved.
 
     Returns:
         A repository-relative path with forward slashes ("." for the root).
@@ -1113,12 +1124,16 @@ def _repository_path(path: str, repo: Path) -> str:
         _err("Error: give a path inside the repository; use '.' for all of it.")
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
     candidate = Path(path)
+    here = Path.cwd().resolve()
+    if not candidate.is_absolute() and here.is_relative_to(repo) and here != repo:
+        # Inside the repository, a relative path is relative to where it runs, as in Git.
+        candidate = Path(os.path.normpath(here / candidate))
     if candidate.is_absolute():
         try:
             # Resolve the directory, not the final name: a symlink has its own history.
-            candidate = (candidate.parent.resolve() / candidate.name).relative_to(repo.resolve())
+            candidate = (candidate.parent.resolve() / candidate.name).relative_to(repo)
         except ValueError as exc:
-            _err(f"Error: '{path}' is outside the repository '{repo.resolve()}'.")
+            _err(f"Error: '{path}' is outside the repository '{repo}'.")
             raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
     if ".." in candidate.parts:
         _err(f"Error: '{path}' climbs out of the repository; give a path inside it.")
@@ -1129,7 +1144,11 @@ def _repository_path(path: str, repo: Path) -> str:
 @app.command(name="who-changed")
 def who_changed(
     path: Annotated[
-        str, typer.Argument(help="A file or directory, relative to the repository root.")
+        str,
+        typer.Argument(
+            help="A file or directory: relative to the current directory inside the "
+            "repository, else to its root."
+        ),
     ],
     repo: _RepoOption = Path("."),
     since: _SinceOption = None,
@@ -1148,7 +1167,7 @@ def who_changed(
 
     _configure_logging(verbose)
     _check_query_format(output_format)
-    relative = _repository_path(path, repo)
+    relative = _repository_path(path, _root(repo))
     config = _query_config(repo, since, until, branch, exclude_author, deterministic)
     _run_query(
         lambda notice: who_changed_text(config, relative, output_format, limit, on_notice=notice)
@@ -1159,7 +1178,7 @@ def who_changed(
 def validate(
     repo: Annotated[
         Path,
-        typer.Option("--repo", "-r", help="Path to the Git repository root."),
+        typer.Option("--repo", "-r", help="The Git repository, or any directory inside it."),
     ] = Path("."),
     verbose: Annotated[
         bool,
@@ -1173,7 +1192,7 @@ def validate(
     from reveille.adapters.git_reader import GitReader
 
     _configure_logging(verbose)
-    resolved = repo.resolve()
+    resolved = _root(repo)
     try:
         reader = GitReader(resolved)
     except ReveilleError as exc:
