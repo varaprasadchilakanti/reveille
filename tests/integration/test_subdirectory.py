@@ -96,3 +96,14 @@ def test_a_ceiling_directory_stops_the_search(repo: Path, monkeypatch: pytest.Mo
     result = CliRunner().invoke(app, ["summary", "--repo", str(repo / "src")])
 
     assert result.exit_code == ExitCode.CANNOT_RUN
+
+
+def test_a_missing_directory_is_not_searched_from_elsewhere(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GitPython runs Git in the current directory when the one given is missing."""
+    monkeypatch.chdir(repo)
+
+    result = CliRunner().invoke(app, ["summary", "--repo", str(tmp_path / "missing")])
+
+    assert result.exit_code == ExitCode.CANNOT_RUN

@@ -1691,8 +1691,12 @@ def repository_root(path: Path) -> Path:
     Returns:
         The working tree's top directory, or `path` resolved.
     """
+    if not path.is_dir():
+        return path.resolve()
     try:
-        top = str(Git(str(path)).rev_parse("--show-toplevel")).strip()
+        # `-C`, not a working directory: GitPython runs Git in the process's own
+        # directory when the one it is given cannot be entered.
+        top = str(Git().execute(["git", "-C", str(path), "rev-parse", "--show-toplevel"])).strip()
     except (GitCommandError, OSError):
         return path.resolve()
     return Path(top).resolve() if top else path.resolve()
