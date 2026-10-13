@@ -65,3 +65,19 @@ def test_a_sha256_repository_cannot_run_yet(tmp_path: Path) -> None:
     assert result.exit_code == ExitCode.CANNOT_RUN, result.stdout
     assert "SHA-256" in result.stderr
     assert "no commits" not in result.stderr
+
+
+def test_a_git_older_than_the_floor_cannot_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every read passes `--end-of-options` (Git 2.24); older Git would fail each one obscurely."""
+    from reveille.adapters.git_reader import GitReader
+
+    repo = _repo(tmp_path / "r")
+    monkeypatch.setattr(GitReader, "_git_version", lambda self: (2, 20))
+
+    result = CliRunner().invoke(app, ["summary", "--repo", str(repo)])
+
+    assert result.exit_code == ExitCode.CANNOT_RUN
+    assert "Git 2.24 or newer" in result.stderr
+    assert "2.20" in result.stderr

@@ -111,7 +111,7 @@ Its figures do not support judging people; see [Contributor Ranking](#contributo
 
 ## Installation
 
-Reveille needs Python 3.11 or later and Git.
+Reveille needs Python 3.11 or later and Git 2.24 or later (older Git is refused with exit 2).
 
 ```bash
 pipx install reveille      # or: uv tool install reveille, or pip install reveille

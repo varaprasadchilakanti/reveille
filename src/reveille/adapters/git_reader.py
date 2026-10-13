@@ -51,6 +51,9 @@ _LOG_FORMAT = f"--format={_RECORD_SEP}%H{_FIELD_SEP}%an{_FIELD_SEP}%ae{_FIELD_SE
 # A well-formed record opens with a 40-character object name.
 _SHA_RE = re.compile(r"[0-9a-f]{40}")
 
+#: The oldest Git every read works with: `--end-of-options` arrived in 2.24.
+_MIN_GIT = (2, 24)
+
 # C0 controls and DEL, tab and newlines included: they break downstream formats.
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 
@@ -351,19 +354,24 @@ def _status_change(entry: str, status: _Status) -> None:
         status.deleted.append(path)
 
 
-def _parse_worktrees(output: str) -> list[Worktree]:
-    """Parse `git worktree list --porcelain`: blank-line separated records.
+def _parse_worktrees(output: str, *, nul: bool = True) -> list[Worktree]:
+    """Parse `git worktree list --porcelain`, NUL-terminated (`-z`) or not.
+
+    With `-z` each field ends in NUL and a record in an empty field, so a path
+    holding a newline is read whole; without it, records are blank-line separated.
 
     Args:
         output: Git's output.
+        nul: Whether it was produced with `-z`.
 
     Returns:
         The worktrees, the main one first.
     """
     found: list[Worktree] = []
-    for record in output.strip().split("\n\n"):
+    records = output.strip("\0").split("\0\0") if nul else output.strip().split("\n\n")
+    for record in records:
         values: dict[str, str] = {}
-        for line in record.splitlines():
+        for line in record.split("\0") if nul else record.splitlines():
             key, _, value = line.partition(" ")
             values[key] = value
         if "worktree" not in values:
@@ -607,8 +615,14 @@ class GitReader:
             GIT_GRAFT_FILE=os.devnull,
             GIT_OPTIONAL_LOCKS="0",
         )
+        version = self._git_version()
+        if version is not None and version < _MIN_GIT:
+            raise RepositoryError(
+                f"Reveille needs Git {_MIN_GIT[0]}.{_MIN_GIT[1]} or newer, which every read "
+                f"relies on (--end-of-options); this is Git {version[0]}.{version[1]}."
+            )
         try:
-            self._repo.git.rev_parse("--git-dir")
+            self._git().rev_parse("--git-dir")
         except GitCommandError as exc:
             # Git refuses a repository another user owns, and GitPython then reads
             # its HEAD as unborn: "no commits" would be a wrong answer.
@@ -621,7 +635,7 @@ class GitReader:
             raise RepositoryError(f"Git cannot read '{repo_path}': {exc.stderr.strip()}") from exc
         # GitPython cannot parse SHA-256 refs and reads HEAD as unborn: refuse
         # rather than answer "no commits". Git before 2.29 echoes the option.
-        if str(self._repo.git.rev_parse("--show-object-format")).strip() == "sha256":
+        if str(self._git().rev_parse("--show-object-format")).strip() == "sha256":
             raise RepositoryError(
                 f"'{repo_path}' uses SHA-256 object names, which Reveille cannot read yet."
             )
@@ -1170,7 +1184,12 @@ class GitReader:
     def _worktrees(self) -> list[Worktree]:
         """List the working trees attached to this repository."""
         try:
-            return _parse_worktrees(str(self._git().worktree("list", "--porcelain")))
+            return _parse_worktrees(str(self._git().worktree("list", "--porcelain", "-z")))
+        except GitCommandError:
+            pass
+        try:
+            # `-z` needs Git 2.36; older Git gives newline-separated records.
+            return _parse_worktrees(str(self._git().worktree("list", "--porcelain")), nul=False)
         except GitCommandError:
             return []
 
@@ -1422,7 +1441,7 @@ class GitReader:
             True when Git reports a shallow repository; False otherwise or on error.
         """
         try:
-            return str(self._repo.git.rev_parse("--is-shallow-repository")).strip() == "true"
+            return str(self._git().rev_parse("--is-shallow-repository")).strip() == "true"
         except Exception:
             return False
 
@@ -1443,6 +1462,15 @@ class GitReader:
         """
         return self._mailmap_applied
 
+    def _git_version(self) -> tuple[int, int] | None:
+        """Return the installed Git's major and minor version, or None if unreadable."""
+        try:
+            raw = str(self._git().version())
+        except Exception:  # a missing or broken git binary is reported by the first read
+            return None
+        match = re.search(r"(\d+)\.(\d+)", raw)
+        return (int(match.group(1)), int(match.group(2))) if match else None
+
     def _supports_since_as_filter(self) -> bool:
         """Whether the installed git (2.37 or newer) understands `--since-as-filter`.
 
@@ -1451,14 +1479,8 @@ class GitReader:
         Returns:
             True when git is 2.37 or newer.
         """
-        try:
-            raw = str(self._repo.git.version())
-        except Exception:
-            return False
-        match = re.search(r"(\d+)\.(\d+)", raw)
-        if not match:
-            return False
-        return (int(match.group(1)), int(match.group(2))) >= (2, 37)
+        version = self._git_version()
+        return version is not None and version >= (2, 37)
 
     def _resolve_remote_url(self) -> str | None:
         """Return the origin (or first) remote's URL, credentials removed.

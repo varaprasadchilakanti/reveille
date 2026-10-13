@@ -113,6 +113,12 @@ before 0.8.0 predate the convention and are left as they were released.
   every frame as text. It now animates only when stderr is a terminal.
 
 ### Fixed
+
+- **A worktree path holding a newline was misread** by `state`: the path was cut short and the
+  rest could be read as a field, such as "locked". Worktrees are now listed with `-z` (Git 2.36
+  or later), falling back to the old format on older Git.
+- **Git older than 2.24 failed every read with an unclear error.** Every read passes
+  `--end-of-options`, added in 2.24; older Git is now refused with exit 2, naming both versions.
 - **Two GitHub accounts that used the same username were counted as one person, and a renamed
   account as two.** Noreply addresses were folded on the username, which GitHub lets change and
   be reused. They now fold on the account number; a legacy address without a number joins an

@@ -301,6 +301,20 @@ class TestWorkInProgress:
 
 
 class TestBranchesAndWorktrees:
+    def test_a_worktree_path_with_a_newline_is_read_whole(self, repo: Path, tmp_path: Path) -> None:
+        odd = tmp_path / "wt\nlocked x"
+        _git(repo, "worktree", "add", "-q", "-b", "side", str(odd))
+
+        state = _state(repo)
+
+        assert state["worktrees_total"] == 2
+        assert state["worktrees"][1] == {
+            "path": str(odd),
+            "branch": "side",
+            "locked": False,
+            "prunable": False,
+        }
+
     def test_another_worktree_is_listed(self, repo: Path, tmp_path: Path) -> None:
         _git(repo, "worktree", "add", "-q", "-b", "side", str(tmp_path / "wt"))
 
