@@ -15,6 +15,13 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Security
 
+- **Dependency floors allowed releases with published advisories.** GitPython was declared
+  `^3.1.40`, which OSV lists 61 advisory records against, one of them repository content posing
+  as the Git directory and leading to code execution (GHSA-239g-whfq-7xj9, fixed in 3.1.60);
+  Jinja2 `^3.1.0` and Pydantic `^2.0` allowed releases with advisories too. pip keeps an older
+  release already installed if the floor allows it. The floors are now GitPython 3.1.62,
+  Jinja2 3.1.6 and Pydantic 2.4, releases no published advisory affected on
+  2026-10-13, and a test fails if one is lowered. The locked versions are unchanged.
 - **A `.mailmap` could stall a run for minutes.** Its four line patterns backtracked
   quadratically: one 200 KB line took about 44 seconds, inside the 1 MiB bound on a committed
   `.mailmap`, and the working-tree file had no bound at all (a 66 MB file took 30 seconds and
@@ -32,7 +39,8 @@ before 0.8.0 predate the convention and are left as they were released.
   `f.<a href="https:...">Click` put a clickable link into the report. And a path, extension or
   name holding `<!--<script` blanked every chart: the chart data escaped only `</`, and the HTML
   parser read the rest as an unfinished comment. Extension labels are now sanitised like every
-  other label, and every `<` in the embedded chart data is escaped. No script ran in either case.
+  other label, and every `<` in the embedded chart data is escaped. In our tests, no script ran
+  in either case.
 - **`summary` and `who-changed` printed control characters a repository chose.** Escaping in
   0.9.0 covered stderr only, so a directory name could put a terminal hyperlink, a bell or a
   carriage return on stdout, the output an assistant reads, and a `.mailmap` name could carry a
@@ -85,6 +93,8 @@ before 0.8.0 predate the convention and are left as they were released.
 ### Changed
 
 - **`schema_version` is 1.2.** The brief is a new JSON document; every 1.1 field is unchanged.
+- **SECURITY.md no longer promises a response time.** Reveille has one maintainer; reports are
+  normally acknowledged within a few days.
 
 - **Progress off a terminal is one plain line per stage.** The animation redraws its line with
   carriage returns, which only a terminal interprets; a CI log, a pipe or an assistant received
@@ -98,6 +108,17 @@ before 0.8.0 predate the convention and are left as they were released.
   now carry their number.
 - **`summary` said "1 commits"** for a single commit. It now says "1 commit".
 
+- **An error nobody anticipated exited 1**, the code for a negative answer, so a script or an
+  assistant could take a crash for an answer. It now exits 2 with one line on stderr; the
+  traceback is written with `--verbose`.
+- **A repository another user owns was reported as having no commits** (exit 1). Git refuses
+  such a repository unless its `safe.directory` setting trusts it, and the library Reveille
+  reads with then saw no `HEAD`. It is now refused with exit 2, and the message names
+  `safe.directory`.
+- **A SHA-256 repository was reported as having no commits** (exit 1): the library cannot
+  parse its references. It is now refused with exit 2 until it can be read.
+- **A directory or file name that is not UTF-8 stopped text output** with exit 1. Such bytes
+  are now shown as `\xNN`.
 - **A `.mailmap` line with three or more spaces before the second address did nothing.** It
   was misread as a four-field line whose commit name was a space, so the two addresses stayed
   two people where Git counts one. A name holding an address, such as `<a@x> Old <b@x>`, is now

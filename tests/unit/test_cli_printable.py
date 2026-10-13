@@ -41,3 +41,9 @@ def test_newline_tab_and_text_pass_through() -> None:
 @pytest.mark.unit
 def test_an_escape_sequence_is_shown_not_obeyed() -> None:
     assert _printable("\x1b[2J‮evil") == "\\x1b[2J\\u202eevil"
+
+
+@pytest.mark.unit
+def test_an_undecodable_byte_is_shown_not_raised() -> None:
+    """Git output read with surrogateescape holds lone surrogates; printing one raised."""
+    assert _printable("a\udcffb") == "a\\xffb"

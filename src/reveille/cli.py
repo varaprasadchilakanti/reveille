@@ -83,6 +83,9 @@ def _printable(text: str) -> str:
     Returns:
         The message with each unsafe character written as a hexadecimal escape.
     """
+    if any("\udc80" <= ch <= "\udcff" for ch in text):
+        # A byte Git output held that is not UTF-8 (read with surrogateescape).
+        text = text.encode("utf-8", "surrogateescape").decode("utf-8", "backslashreplace")
     return text.translate(_TERMINAL_UNSAFE)
 
 
@@ -214,7 +217,26 @@ def _configure_logging(verbose: bool) -> None:
     package_logger.setLevel(level)
 
 
-app = typer.Typer(
+class _App(typer.Typer):
+    """The Typer application, with an exit code for errors nobody anticipated."""
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        """Run the CLI; an uncaught exception exits 2 (cannot run), never 1.
+
+        Python exits 1 on an uncaught exception, which the contract reserves for
+        a negative answer. The traceback goes to the debug log (`--verbose`).
+        """
+        try:
+            return super().__call__(*args, **kwargs)
+        except Exception as exc:
+            _logger.debug("Unexpected error", exc_info=True)
+            _err(
+                f"Error: {type(exc).__name__}: {exc}. This is a defect in Reveille; please report it."
+            )
+            sys.exit(ExitCode.CANNOT_RUN)
+
+
+app = _App(
     name="reveille",
     help="Report a local Git repository's commit activity as self-contained HTML, JSON, or CSV.",
     add_completion=False,

@@ -82,16 +82,20 @@ typer = ">=0.18,<0.28"
 click = ">=8.0.0"
 
 # Git Data Layer
-gitpython = "^3.1.40"
+# Floor: no published advisory affects 3.1.62 (OSV,
+# 2026-10-13); 3.1.60 fixed repository content posing as the Git directory.
+gitpython = "^3.1.62"
 
 # Templating
-jinja2 = "^3.1.0"
+# Floor: no published advisory affects 3.1.6 (OSV, 2026-10-13).
+jinja2 = "^3.1.6"
 
 # Charts -- self-contained JS bundle embedded in output HTML
 plotly = ">=5.20,<8.0"
 
 # Data Validation & Settings
-pydantic = "^2.0"
+# Floor: no published advisory affects 2.4.0 (OSV, 2026-10-13).
+pydantic = "^2.4"
 pydantic-settings = "^2.0"
 
 # Date & Time Utilities

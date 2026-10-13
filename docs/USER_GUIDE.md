@@ -307,7 +307,7 @@ change without a major version bump.
 |---|---|---|
 | `0` | Success | The command ran and its answer is affirmative. |
 | `1` | Negative answer | Reveille ran correctly and the state does not satisfy the request: the analysis window has no commits, or the repository has none. |
-| `2` | Could not run | An invalid flag value, malformed configuration, a path that is not a readable Git repository, or an output location that cannot be written. |
+| `2` | Could not run | An invalid flag value, malformed configuration, a path that is not a readable Git repository (including one Git refuses because another user owns it, and a SHA-256 repository), an output location that cannot be written, or an error Reveille did not anticipate. |
 
 The distinction between `1` and `2` is the one to script against. A negative answer may be an
 acceptable state to record (a new repository legitimately has nothing to report); an inability to

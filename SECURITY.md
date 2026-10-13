@@ -19,8 +19,8 @@ Use GitHub's private vulnerability reporting:
 Include a description of the vulnerability and its potential impact,
 steps to reproduce it, and the version of Reveille and Python in use.
 
-The maintainer aims to acknowledge a report within 48 hours. Confirmed
-vulnerabilities will receive a resolution timeline within 7 days.
+Reveille has one maintainer and no on-call rota. Reports are normally
+acknowledged within a few days; no response time is guaranteed.
 
 ## Release Integrity
 
@@ -188,8 +188,8 @@ with a test observed failing before the fix:
   are written to a new file and moved into place, and a worktree's common Git
   directory is refused.
 - A file extension could put a clickable link into a chart, and `<!--<script`
-  in a path, extension or name blanked every chart. No script ran in either
-  case.
+  in a path, extension or name blanked every chart. In our tests, no script
+  ran in either case.
 - `summary` and `who-changed` printed control characters from a directory name
   or a `.mailmap` name on stdout.
 - A token in a transport-prefixed remote (`https::https://TOKEN@host/...`) was

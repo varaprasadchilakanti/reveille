@@ -607,6 +607,24 @@ class GitReader:
             GIT_GRAFT_FILE=os.devnull,
             GIT_OPTIONAL_LOCKS="0",
         )
+        try:
+            self._repo.git.rev_parse("--git-dir")
+        except GitCommandError as exc:
+            # Git refuses a repository another user owns, and GitPython then reads
+            # its HEAD as unborn: "no commits" would be a wrong answer.
+            if "dubious ownership" in str(exc.stderr):
+                raise RepositoryError(
+                    f"Git refuses to read '{repo_path}': another user owns it. If you "
+                    "trust it, add it to Git's safe.directory setting "
+                    "(git config --global --add safe.directory <path>)."
+                ) from exc
+            raise RepositoryError(f"Git cannot read '{repo_path}': {exc.stderr.strip()}") from exc
+        # GitPython cannot parse SHA-256 refs and reads HEAD as unborn: refuse
+        # rather than answer "no commits". Git before 2.29 echoes the option.
+        if str(self._repo.git.rev_parse("--show-object-format")).strip() == "sha256":
+            raise RepositoryError(
+                f"'{repo_path}' uses SHA-256 object names, which Reveille cannot read yet."
+            )
         if _is_partial_clone(self._repo):
             raise RepositoryError(
                 f"'{repo_path}' is a partial clone (made with --filter): some of its "
