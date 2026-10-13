@@ -39,7 +39,7 @@ repos:
 # blocks. Different failure domains, so both earn their place.
 # ------------------------------------------------------------------
   - repo: https://github.com/rhysd/actionlint
-    rev: 03d0035246f3e81f36aed592ffb4bebf33a03106  # v1.7.7
+    rev: 914e7df21a07ef503a81201c76d2b11c789d3fca  # v1.7.12
     hooks:
       - id: actionlint
 
