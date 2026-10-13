@@ -103,7 +103,10 @@ flag, not a command: `reveille version` exits 2.
 ### Output path
 
 The parent directory must exist. A path inside the Git directory, a path containing `..`, and a
-directory are refused (exit 2). A path outside the repository given with `--output` is written,
+directory are refused (exit 2). The default path is inside the working tree, untracked, so
+`git add -A` would commit it; add it to `.gitignore` or choose another path. On POSIX systems a new
+report is readable and writable by its owner only, because it names people; a report written over
+an existing file keeps that file's permissions. A path outside the repository given with `--output` is written,
 with a warning on stderr; the same path set in `reveille.toml` is refused, because a configuration
 file is found automatically and may come from a repository you do not control. A bare repository
 needs an explicit path.

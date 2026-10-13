@@ -134,7 +134,8 @@ reveille generate
 ```
 
 This writes `reveille-report.html` in the repository root. Open it in any browser; it needs no
-network. The header, summary cards, findings, repository profile and contributor table are plain
+network. The file is untracked, so `git add -A` would commit it, names and addresses included: add
+it to `.gitignore`, or write it elsewhere with `--output`. The header, summary cards, findings, repository profile and contributor table are plain
 HTML; the other charts need JavaScript.
 
 ```bash
