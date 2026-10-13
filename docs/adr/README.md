@@ -51,7 +51,7 @@ Deprecated.
 
 ## Notes from the review of 2026-10-09
 
-An accepted record is not edited (CLAUDE.md). Where one has drifted from the program without its
+An accepted record is not edited. Where one has drifted from the program without its
 decision changing, the drift is noted here instead; where its decision changed, a later record
 supersedes it, and the table says so. The review itself is kept outside the repository.
 

@@ -1,4 +1,4 @@
-# Reveille — User Guide
+# Reveille: User Guide
 
 Every option, every report section, and what a report contains about people.
 Install and first run: [README](../README.md).
@@ -47,7 +47,7 @@ supported with Git's own precedence: name and email, then email alone, then name
 is case-insensitive and malformed lines are skipped silently, as Git does, so a `.mailmap` that
 works with `git shortlog` works here. `reveille init --mailmap` writes an annotated template.
 
-GitHub noreply addresses are folded on the account number, which GitHub never changes or reuses:
+GitHub noreply addresses are folded on the account number, which stays with the account when its username changes:
 `12345678+old@...` and `12345678+new@...` are one contributor, shown under the newer username. A
 legacy `username@users.noreply.github.com` joins that account only when one account in the
 history used the username; when two did, it stays apart rather than merge two people
@@ -66,12 +66,12 @@ chart data embedded; it opens offline in any modern browser.
 Every command can also be run as `reile` (a shorter name for the same program) or as
 `python -m reveille`.
 
-`state`, `brief` and `summary` also take `--format markdown`, to paste into an issue, a pull
-request or a CI job summary. Paths, branch and tag names are put in code spans, with newlines
+`state`, `brief` and `summary` also take `--format markdown`, to paste into an issue, a pull request
+or a CI job summary. Paths, branch and tag names are put in code spans, with newlines
 shown as `\n`, so a name cannot add a heading, a link or HTML.
 
 `state` and `brief` also take `--format line`: one line of counts, for a shell prompt or a status
-bar, such as `r: main 1a2b3c4; 1 staged, 2 untracked; 1 stash; v1.0 +3`. It lists no path and no
+bar, such as `reveille: main 1a2b3c4; 1 staged, 2 untracked; 1 stash; v1.0 +3`. It lists no path and no
 author, carries no notice, and a newline in a name is shown as `\n`.
 
 `reveille generate` takes the options below. `summary`, `who-changed`, `init`, `validate` and
@@ -95,8 +95,8 @@ author, carries no notice, and a newline in a name is shown as `\n`.
 | `--verbose` | off | DEBUG diagnostics on stderr; the report is unchanged. |
 | `--quiet`, `-q` | off | No progress lines on stderr. Notes, warnings and errors are still written. |
 
-`--help` (`-h`) works on every command. `reveille --version` (or `-v`) prints the version. It is a flag, not a command: `reveille version`
-exits 2.
+`--help` (`-h`) works on every command. `reveille --version` (or `-v`) prints the version. It is a
+flag, not a command: `reveille version` exits 2.
 
 ### Output path
 
@@ -114,8 +114,8 @@ reveille generate --format json --output - | jq .derived
 ```
 
 JSON and CSV are written at the `--output` stem with a `.json` or `.csv` extension. A new report
-file is readable only by you (mode 600 on Linux and macOS); regenerating it keeps any permissions
-you set.
+file is readable only by you (mode 600, on POSIX systems; tested on Linux); regenerating it keeps any
+permissions you set.
 
 ### The window
 
@@ -161,11 +161,11 @@ assistants and scripts and removes nobody from the figures. `who-changed` accept
 ### `--ranking` and `--no-ranking`
 
 Ranking is **off by default**; `--ranking` turns it on. If both flags are given, `--no-ranking`
-wins, because the instruction that produces less is the safer reading. With ranking off the report
+wins. With ranking off the report
 omits the scored table, and the JSON omits `tier`, `tier_designation`, `composite_score` and
 `percentile` entirely rather than emitting placeholders: a key reading `"tier": 0` is a number a
-consumer can mistake for data, and an absent key cannot be. Check `provenance.ranking.enabled` to
-know which shape you have. Everything else stays.
+consumer can mistake for data. Check `provenance.ranking.enabled` to know which shape you have.
+Everything else stays, including `rank` in JSON and CSV, which is table order (by commits; by score with `--ranking`).
 
 It is off because it scores and tiers named individuals on the volume and regularity of commits
 and nothing else ([ADR 0010](adr/0010-ranking-is-opt-in.md); [The Ranking
@@ -212,8 +212,8 @@ reveille summary --format json
 
 It is the starting point for an assistant: under 1 KB as text and about 2 KB as JSON. It carries
 no contributor name or address, but it does carry the repository and branch names, which can name
-someone, and with one or two people its figures describe identifiable individuals. Check it before
-sending it to a hosted model.
+someone, and with one or two people its counts can identify someone. Check it before sending it to a
+hosted model.
 
 ### `reveille state`
 
@@ -231,14 +231,15 @@ stashes; worktrees; local branches as counts (total, merged into the current com
 `reveille brief --from <tag>`. Options: `--repo`, `--limit`, `--verbose`,
 `--format text|json|markdown|line`.
 
-It changes nothing and runs nothing it was not asked to. A plain `git status` rewrites
-`.git/index` when file stat data is stale, and runs the programs a repository's own config names
-as `core.fsmonitor` or as a content filter; Reveille switches all three off, and tests check
-each. A filter from your own global config runs as you set it; one the repository defines does
-not, so files it covers may show as modified, and the answer says so. It names no author and
-lists no branch other than the current one and the worktrees'. It does show your own paths:
-changed files and worktree directories, which can include your home directory's name.
+It makes no outbound call. It runs Git with signature checking, fsmonitor and repository-defined
+content filters switched off. A plain `git status` rewrites `.git/index` when file stat data is
+stale, and runs the programs a repository's own config names as `core.fsmonitor` or as a content
+filter; Reveille switches all three off, and tests check each. A filter from your own global config
+runs as you set it; one the repository defines does not, so files it covers may show as modified,
+and the answer says so. It names no author. It lists local paths (changed files and worktree
+directories, which can contain your login name), the current branch, its upstream and the branches checked out in worktrees; no other branch is named.
 
+### `reveille brief`
 
 ```bash
 reveille brief --from v0.9.0
@@ -259,7 +260,8 @@ revision that is not an ancestor of the branch is allowed and stated. Between tw
 answer depends on nothing else, so it is reproducible without `--deterministic`.
 
 Area paths and tag names come from the repository and can name people (`users/jsmith/`). With one
-or two people, "1 person" identifies someone to a team that knows who it was. On llama.cpp, from
+or two people, the counts can identify someone: "1 person" identifies them to a team that knows who
+it was. On llama.cpp, from
 its oldest tag (8,928 commits), it took about 2 seconds and printed 672 bytes (measured
 2026-10-12, Git 2.55, warm cache, one 20-core machine).
 
@@ -300,8 +302,8 @@ only. A trailer is written by whoever wrote the commit and is not verified
 
 ## Exit Codes
 
-Every command returns one of three codes. They are a supported contract: the numbers will not
-change without a major version bump.
+Every command returns one of three codes. The numbers will not change without a major version
+bump.
 
 | Code | Meaning | When |
 |---|---|---|
@@ -309,9 +311,8 @@ change without a major version bump.
 | `1` | Negative answer | Reveille ran correctly and the state does not satisfy the request: the analysis window has no commits, or the repository has none. |
 | `2` | Could not run | An invalid flag value, malformed configuration, a path that is not a readable Git repository (including one Git refuses because another user owns it, and a SHA-256 repository), an output location that cannot be written, or an error Reveille did not anticipate. |
 
-The distinction between `1` and `2` is the one to script against. A negative answer may be an
-acceptable state to record (a new repository legitimately has nothing to report); an inability to
-run is a broken pipeline step.
+Script against the difference between `1` and `2`. A negative answer may be an acceptable state to
+record (a new repository has nothing to report); an inability to run is a broken pipeline step.
 
 ```bash
 reveille validate --repo ./service
@@ -322,8 +323,8 @@ case $? in
 esac
 ```
 
-Further detail goes to stderr, not into more exit codes: every new code would break scripts
-branching on the old numbering.
+Further detail goes to stderr, not into more exit codes, which would break scripts that branch on
+the existing ones.
 
 ### Diagnostics
 
@@ -346,16 +347,15 @@ Describes what Reveille can and cannot do, for a person or a program. Its one op
 reveille capabilities --format json
 ```
 
-The JSON carries `capabilities_version`, the tool and output-schema versions, the guarantees that
-hold on every run, a `can` list, a `cannot` list where each entry says what to use instead, the
+The JSON carries `capabilities_version`, the tool and output-schema versions, a `guarantees` list
+(properties designed and tested; not a warranty), a `can` list, a `cannot` list where each entry says what to use instead, the
 caveats that change how a number should be read, every command with its options, and the exit-code
 contract. The command surface and exit codes are read from the running program, so they cannot
 drift from it.
 
-The `cannot` list is the half worth reading. It states that Reveille does not measure
-productivity or contribution value, is not fit for performance review or hiring decisions, does
-not compute a bus factor, and does not aggregate a person across repositories. It also states
-what Reveille reads: commit metadata, `Co-authored-by` trailers, and per file the path and the
+The `cannot` list states that Reveille does not measure productivity or contribution value, is not
+fit for performance review or hiring decisions, does not compute a bus factor, and does not
+aggregate a person across repositories. It also states what Reveille reads: commit metadata, `Co-authored-by` trailers, and per file the path and the
 lines added and deleted. Reveille receives those paths and counts; Git reads the files to compute
 them. It does not read source code, diff content or any other part of a commit message.
 
@@ -400,18 +400,16 @@ whether it can parse the rest before trying.
 ```
 
 - **`schema_version`** changes when the shape changes, not when the tool does. A major bump means
-  a removal or a rename; a minor bump means an additive field. v0.7.0 renamed a key with no way
-  for a consumer to detect it except a `KeyError`, which is why the field exists.
+  a removal or a rename; a minor bump means an additive field.
 - **`provenance`** records what produced the numbers, so two reports that disagree can be
   reconciled. `metadata.analysis_since` is where the window began; `provenance.filters.requested_since`
-  is whether anybody asked for it. Without both, "the full history, which starts in March" and
-  "filtered to start in March" are the same document. `exclude_authors_count` is a count, not the
-  values: `--exclude-author` keeps somebody out of the report, and recording their address would
-  put it back.
+  is whether anybody asked for it, which tells "the full history, which starts in March" from
+  "filtered to start in March". `exclude_authors_count` is a count, not the values: recording an
+  excluded address would put it back in the report.
 - **`notice`** is the sentence printed under the HTML header and with every `summary`, so a
   document passed on without the page around it still says what it cannot carry.
-- The scoring fields are present only with `--ranking`; `rank` (table order) is always present.
-  The raw commit list is not included.
+- The scoring fields are present only with `--ranking`; `rank` (table order: by commits, or by score with `--ranking`) is
+  always present. The raw commit list is not included.
 
 **CSV** is the contributor table alone, UTF-8 with a byte-order mark so Excel reads it correctly.
 Columns: `rank`, `name`, `email`, `commits`, `lines_added`, `lines_deleted`, `net_lines`,
@@ -426,8 +424,8 @@ order only.
 
 ## The `reveille init` Command
 
-`reveille init` writes an annotated `reveille.toml` with every key present, commented out, and
-described, so you edit a starting point instead of writing the file from scratch. The current
+`reveille init` writes an annotated `reveille.toml` with every key present, commented out and
+described. The current
 directory must be a repository root; anywhere else it stops with exit 2, even with `--output`.
 
 ```bash
@@ -439,8 +437,7 @@ The file has no effect until you uncomment keys. Its structure is the
 
 - **`--output`, `-o`** (default `./reveille.toml`) writes the file elsewhere. The parent directory
   must exist.
-- **`--force`** overwrites an existing file without prompting. Without it, an existing file is an
-  error.
+- **`--force`** replaces an existing file. Without it, an existing file is an error.
 - **`--mailmap`** also writes an annotated `.mailmap` template at the repository root, covering
   all four `gitmailmap(5)` forms with examples and the matching precedence. An
   existing `.mailmap` is left alone with a message; with `--force`, both files are overwritten.
@@ -453,7 +450,7 @@ reveille init --mailmap --force
 
 ## TOML Configuration Reference
 
-Useful when you run Reveille regularly with the same parameters. Pass the path with `--config`, or
+For regular runs with the same parameters. Pass the path with `--config`, or
 name the file `reveille.toml` in the directory you run from, where it is loaded without being
 asked for. That is announced on stderr with every setting applied, because the directory may
 belong to someone else. An output path inside the Git directory is refused (exit 2), whether it
@@ -524,7 +521,7 @@ Total Commits, Contributors, Hold(s) Half the Commits, Longest Quiet Run (days) 
   had one. The silence since the last commit is stated by a finding instead.
 - `--min-commits` changes none of these.
 
-**Hold Half the Commits is not a bus factor.** Bus factor asks how much of the code still in the
+Hold Half the Commits is not a bus factor. Bus factor asks how much of the code still in the
 repository only one person understands, which needs `git blame` across every file, not commit
 counts. Treat a low value as a prompt to look at who owns which files, not as a measurement of that
 risk.
@@ -540,7 +537,7 @@ weekend-working pattern, is left out.
 
 A Lorenz curve of how evenly commits are spread across the people in the window, with the Gini
 coefficient as one number. The dotted diagonal is perfect equality; the further the solid line
-bows beneath it, the more concentrated the commits. **Read it as a description, not a score.**
+bows beneath it, the more concentrated the commits. Read it as a description, not a score.
 
 - One person has a Gini of 0 by definition, and the curve is not drawn.
 - One maintainer with many occasional contributors scores high for ordinary reasons.
@@ -660,7 +657,7 @@ credential removed), and name the identities credited only by a `Co-authored-by`
 gives their addresses and the hash of the analysed commit. The CSV is the contributor table
 alone, with no file paths. The JSON carries directory paths only with `--area-authors`.
 
-`--exclude-author` values are recorded only as a count. `reveille summary` names nobody.
+`--exclude-author` values are recorded only as a count. `reveille summary` names nobody (with one or two people, its counts can identify someone).
 `reveille who-changed` names the authors of one path; its JSON adds their addresses.
 
 Reveille sends none of this anywhere. The file goes where you write it, and anyone who receives it
@@ -678,7 +675,7 @@ provider.
 3. **Leave `--ranking` and `--area-authors` off** unless the question needs them.
 4. **For an assistant or a script, prefer `reveille summary`**, which names no contributor, or
    bound the JSON with `--limit`.
-5. **Naming nobody is not anonymity.** With few people, a figure traces to one person; the
+5. **Naming nobody does not hide anyone.** With few people, a figure traces to one person; the
    repository name, branch, remote URL (an SSH login included), title and file paths can identify
    someone too. A report already sent is not changed by a later `--exclude-author`.
 6. **Whether you may use a report about the people who work with you** is a question for the law
@@ -711,8 +708,8 @@ the least distorted by file type, generated code, or how a change is split. Line
 because a vendored dependency, a lockfile or a reformatting pass can dwarf months of considered
 work. Recency is lowest because it is a property of the window rather than the person: weight it
 higher and a contributor's tier swings on the choice of end date. The weights are configurable
-precisely because they are a judgement. They must sum to 1.0, and Reveille exits with an error at
-startup if they do not.
+because they are a judgement. They must sum to 1.0, and Reveille exits with an error at startup if
+they do not.
 
 The composite is converted to a percentile within the listed contributors, and the percentile
 sets the tier:
@@ -737,7 +734,7 @@ The ranking measures the volume and regularity of commits, because that is what 
 does not measure contribution, productivity, or value, and it should not be used to assess an
 individual.
 
-This is the stated position of the research, not a disclaimer. The SPACE framework (Forsgren et
+The SPACE framework (Forsgren et
 al., 2021) holds that "developer productivity is about more than an individual's activity levels".
 DORA's metrics are defined for applications and services, not people. Activity metrics are easy to
 game and systematically misread review-heavy, mentoring, part-time and on-call work as low
@@ -745,7 +742,8 @@ output. A contributor who spends a quarter unblocking colleagues and deleting a 
 rank below one who committed generated files.
 
 Read a tier as a description of the shape of participation in one window. It is not a statement
-about a person, and the military designations are a visual device, not a rank.
+about a person. The military designations are labels on a score of commit volume and regularity,
+not an evaluation of anyone.
 
 ---
 
@@ -799,7 +797,7 @@ fetch --unshallow` fetches the rest.
 only commits are merges does not appear, and a change made only in a merge is not counted.
 
 **The header says some commits were not read.** A commit whose author field holds the characters
-Reveille separates records with cannot be read safely, so it is left out and counted instead of
+Reveille separates records with cannot be read reliably, so it is left out and counted instead of
 guessed at. Ordinary histories have none; one that does was most likely written on purpose
 ([ADR 0019](adr/0019-how-history-is-read.md)).
 
@@ -817,8 +815,8 @@ root joins them (see [How Reveille Works](#how-reveille-works)). `reveille init 
 template beside a new `reveille.toml`; if `reveille.toml` already exists it stops (exit 2), and
 `--force` replaces both files.
 
-**Is it safe to run on a repository someone sent me?** Git obeys a repository's own `.git/config`,
-which can name a program for Git to run. Reveille switches off the ones its reads start
-(signature checking, fsmonitor, and content filters during `state`), but Git has many settings.
-`git clone` does not copy that file; a copied directory or an archive does. Run Reveille on a fresh clone of anything you do not
-trust. See [SECURITY.md](../SECURITY.md).
+**Can I run it on a repository someone sent me?** Git obeys a repository's own `.git/config`,
+which can name a program for Git to run. Reveille switches off the ones its reads start (signature
+checking, fsmonitor, and content filters during `state`), but Git has many settings. `git clone`
+does not copy that file; a copied directory or an archive does. Run Reveille on a fresh clone of
+anything you do not trust. See [SECURITY.md](../SECURITY.md).

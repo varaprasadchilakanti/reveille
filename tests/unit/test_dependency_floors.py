@@ -6,7 +6,8 @@
 Dependabot refreshes `poetry.lock` but never raises a floor, and `pip install
 reveille` keeps an older release already in the environment if the floor allows
 it. Each floor below is a release no published advisory affected when it
-was set (OSV, 2026-10-13); raise it when a new advisory is fixed.
+was set (checked against OSV on 2026-10-13); raise it when a new advisory is
+fixed.
 """
 
 from __future__ import annotations

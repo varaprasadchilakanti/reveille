@@ -622,10 +622,10 @@ class TestSecondPassFindings:
         assert victim.read_text(encoding="utf-8") == "IMPORTANT"
 
     def test_a_config_file_cannot_write_into_the_git_directory(self, tmp_path: Path) -> None:
-        """A reveille.toml naming `.git/HEAD` once overwrote it and broke the clone.
+        """A reveille.toml naming `.git/HEAD` as the output path is refused.
 
-        The path stayed inside the repository, so the outside-the-repository
-        check passed it. `git status` then exited 128 on the victim's clone.
+        The path is inside the repository, so the outside-the-repository
+        check does not catch it; overwriting HEAD breaks the clone.
         """
         repo = _init_repo(tmp_path / "hostile")
         head_before = (repo / ".git" / "HEAD").read_bytes()
@@ -692,9 +692,8 @@ class TestSecondPassFindings:
     def test_a_hard_link_to_head_is_not_written_through(self, tmp_path: Path, fmt: str) -> None:
         """A hard link is not a symbolic link, and its path is not inside `.git`.
 
-        A working tree delivered with `reveille-report.html` hard-linked to
-        `.git/HEAD` had the report written over HEAD by a plain `generate`,
-        and `git status` then failed (red team, 2026-10-12).
+        A `reveille-report.html` hard-linked to `.git/HEAD` must not have
+        the report written through it, which would corrupt HEAD.
         """
         repo = _init_repo(tmp_path / "hostile")
         head = repo / ".git" / "HEAD"
@@ -733,8 +732,10 @@ class TestSecondPassFindings:
         assert head.read_bytes() == head_before
 
     def test_a_new_report_is_readable_by_its_owner_only(self, tmp_path: Path) -> None:
-        """A report names people; on a shared machine 0o666 under the usual
-        umask made it readable by every user (CodeQL, 2026-10-12)."""
+        """A report names people, so it is created with owner-only permissions.
+
+        Under the usual umask a default 0o666 would be readable by every user
+        of a shared machine. POSIX only; tested on Linux."""
         repo = _init_repo(tmp_path / "repo")
         output = tmp_path / "r.html"
 
@@ -1101,10 +1102,10 @@ class TestAnalysisNeverModifiesTheRepository:
     """`reveille capabilities` publishes this, so it is asserted here.
 
     The claim, verbatim: "Analysis never changes the repository's Git data:
-    its history, refs, index, objects or configuration." It once read "never
-    modifies the repository", which a reveille.toml naming `.git/HEAD`
-    disproved; that path is now refused. The refusal beside it is stronger
-    still: Reveille will not "alter the contents, history, index or refs
+    its history, refs, index, objects or configuration." The narrower wording
+    is deliberate: a reveille.toml naming `.git/HEAD` is refused, but the
+    claim does not cover the working tree. The refusal beside it is stronger:
+    Reveille will not "alter the contents, history, index or refs
     of a repository".
 
     Asserted at runtime, over the whole repository including `.git`,

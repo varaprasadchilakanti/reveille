@@ -62,11 +62,9 @@ jobs:
 
   # Workflow correctness
   #
-  # actionlint was configured as a pre-commit hook and cited as the
-  # workflow-correctness guard, but nothing on the server ran it: `make
-  # precommit` was referenced by no workflow, so the check only happened
-  # for developers who had installed the git hooks locally. A guard that
-  # depends on each contributor's local setup is not a gate.
+  # actionlint is a pre-commit hook, but a hook runs only for developers
+  # who installed the git hooks locally. This job runs it on the server, so
+  # the check does not depend on each contributor's setup.
   #
   # It runs through pre-commit rather than a separately downloaded binary
   # so the version stays pinned in one place, `.pre-commit-config.yaml`.

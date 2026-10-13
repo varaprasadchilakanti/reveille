@@ -259,9 +259,8 @@
 
         /* A single figure carried on the section heading, for a number that
            belongs to the whole section rather than to one series. The Lorenz
-           curve's Gini used to be the chart's own title, anchored top-left,
-           which is where Plotly also anchors the legend -- the two overlapped
-           in every export. */
+           curve's Gini is not the chart's own title because Plotly anchors the
+           title and the legend top-left, and they overlap. */
         .section-metric {
             margin-left: auto;
             font-size: 12px;
@@ -1241,11 +1240,10 @@
          Repository profile
          ============================================================ -->
     {#
-       A flower beside a table (above it below 901 px). It was a Plotly radar until 0.9.0: area is read
-       far less accurately than length (Cleveland & McGill, JASA 1984) and the
-       shape depended on an axis order carrying no meaning (ADR 0012). The
-       shape came back as separate petals of length (ADR 0016); the table
-       stays as the authoritative text.
+       A flower beside a table (above it below 901 px). Not a Plotly radar: area is read
+       far less accurately than length (Cleveland & McGill, JASA 1984) and a radar's
+       shape depends on an axis order that carries no meaning (ADR 0012). The
+       petals are separate lengths (ADR 0016); the table is the authoritative text.
 
        Both render with JavaScript off and print. The flower is an image with
        an aria-label listing every value; the table needs no label, because
@@ -2208,8 +2206,7 @@
         // colour ramp is theme-specific -- see HEATMAP_SCALES -- and a
         // colorscale lives on the trace, which Plotly.relayout does not touch.
         // Relayout alone would swap the background and leave a ramp built for
-        // the other surface, which is the inverted-reading bug the two ramps
-        // exist to prevent.
+        // the other surface, which would read inverted.
         var heatmapEl = document.getElementById('chart-heatmap');
         if (heatmapEl && heatmapEl._fullLayout && heatmapData) {
             renderHeatmap(currentYear, currentContributor, theme);

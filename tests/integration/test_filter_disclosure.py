@@ -274,10 +274,8 @@ class TestTheReportSaysWhichPopulationItDescribes:
         two-person repository claims there is no distribution to measure,
         having just computed one.
 
-        This case was missing when the guards above were first written. It
-        was found by breaking the property and watching nothing fail:
-        every other test here uses a repository whose listed count and
-        population happen to agree.
+        Every other test here uses a repository whose listed count and
+        population happen to agree, so this case is the one that tells them apart.
         """
         repo = _repo_with_two_contributors(tmp_path / "repo", major=9, minor=3)
         out = tmp_path / "report.html"

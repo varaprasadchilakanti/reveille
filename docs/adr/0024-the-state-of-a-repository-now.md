@@ -11,7 +11,7 @@ upstream, and what has happened since the last release. Today that is six or sev
 (`status`, `branch -vv`, `log`, `worktree list`, `stash list`, a look inside `.git` for a rebase,
 `describe`), each with unbounded output.
 
-Two of them are not passive. Measured on 2026-10-12 (Git 2.55) in a scratch repository:
+Two of them are not passive. Measured with Git 2.55 in a scratch repository:
 
 - **`git status` rewrites `.git/index`** when it finds stale file stat data (index hash changed
   after `touch` and a plain `git status`); `git --no-optional-locks status` left it identical.
@@ -28,7 +28,7 @@ So running Git by hand changes Git data and can run code the repository chose.
 ## Decision
 
 **A new command, `reveille state`, that reports the repository's present state in one bounded
-answer, changing nothing and running nothing.**
+answer. It changes no Git data and starts none of the programs named below.**
 
 - **What it says:** the current branch or a detached commit; its upstream and ahead/behind as of
   the last fetch (stated as such; Reveille never fetches); an operation in progress (merge,
@@ -38,17 +38,18 @@ answer, changing nothing and running nothing.**
   (total, merged into the current branch, no commit in 90 days); the latest tag reachable and the
   commits since it, so the next call can be `reveille brief --from <tag>`; the last commit's hash
   and date; shallow-clone and replaced-history flags.
-- **Names nobody.** No author, and no branch names other than the current one and the
-  worktrees' (branch names can name people; ADR 0022, `05-` research). Paths are listed because
-  they are what the reader acts on; they are bounded by `--limit` (default 10).
-- **Changes nothing, runs nothing:** every Git call runs with `GIT_OPTIONAL_LOCKS=0` and
+- **Names no author.** No branch names other than the current one and the
+  worktrees' (branch names can name people; ADR 0022). Paths are listed because
+  they are what the reader acts on; they are bounded by `--limit` (default 10). Paths and the
+  branch names (current, upstream, worktrees) are local to the user's machine and can contain a login name.
+- **No Git writes, no repository programs:** every Git call runs with `GIT_OPTIONAL_LOCKS=0` and
   `core.fsmonitor=false`, submodule summaries off. Content filters the repository's own config
   defines (local or worktree scope, found with `git config --show-scope`) are overridden for the
   status call and named in the answer; a filter in the user's global or system config runs as
   they set it. If Git cannot report scopes, or a filter's name holds `=` (which `git -c` cannot
   name), no file is compared. Tests assert the index is
   byte-identical, and that neither an fsmonitor program nor a repository's filter runs; each
-  fails with its pin removed.
+  fails with its pin removed. It makes no outbound call.
 - **Output:** text under 2 KB and `--format json` (`"document": "state"`). Exit 0 when it ran,
   2 when it could not; there is no negative answer. Reads no `reveille.toml`, like `summary`.
 
@@ -73,5 +74,5 @@ answer, changing nothing and running nothing.**
 - **Paths on the user's machine appear** (worktree paths, changed files). The answer describes
   the user's own checkout; the docs say so before anyone pastes it elsewhere.
 - **The pins apply to every read**, not only this command: no behaviour change for history reads,
-  and the "never changes Git data" claim no longer depends on which command ran.
+  and the "never changes Git data" property no longer depends on which command ran.
 - **Schema 1.2** gains a document type, as `brief` did; no existing field changes.

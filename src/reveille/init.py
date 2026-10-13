@@ -62,10 +62,11 @@ _DEFAULT_CONFIG_TEMPLATE: str = """\
 
 # Produce byte-reproducible output. Pins the report's timestamp to the analysed
 # commit rather than to the clock, and closes the analysis window on the last
-# commit rather than on today. Two runs over an unchanged repository then
-# produce identical bytes, which is what makes a report re-checkable.
+# commit rather than on today. Two runs over an unchanged repository, on the
+# same version, dependencies and Git settings, then produce identical bytes, so
+# a report can be re-checked.
 #
-# Note this changes the numbers, not only the bytes: the ranking's recency
+# This changes the numbers, not only the bytes: the ranking's recency
 # component is measured against the window, so pinning the window pins the
 # scores too. That is why it is opt-in.
 # deterministic = false

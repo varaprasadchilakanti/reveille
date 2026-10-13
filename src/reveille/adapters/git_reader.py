@@ -404,7 +404,7 @@ _PATH_ESCAPES = {"a": 7, "b": 8, "t": 9, "n": 10, "v": 11, "f": 12, "r": 13, '"'
 def _unquote_path(path: str) -> str:
     r"""Decode a path Git printed in quoted form (`"src/na\303\257ve.py"`).
 
-    Undecoded, a non-ASCII path became a spurious hotspot and area.
+    Left quoted, a non-ASCII path would show as a separate hotspot and area.
 
     Args:
         path: One numstat path field.
@@ -1657,7 +1657,7 @@ def _well_formed_shas(records: list[str], authentic_shas: set[str]) -> set[str]:
 def _state_wide_exclusions(reached: dict[str, set[str]]) -> None:
     """Warn when a name reached more than one address (ADR 0020).
 
-    A shared name removes both people: safe for privacy, but not silent.
+    A shared name removes both people; the warning makes that visible.
 
     Args:
         reached: Each exclusion value and the addresses it matched.

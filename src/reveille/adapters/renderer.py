@@ -905,11 +905,17 @@ def _ceiling_text(population: int) -> str:
     return f"{math.floor(ceiling * 1000) / 1000:.3f}"
 
 
-#: Stated in every output that carries figures; one copy, so they cannot drift.
+#: Stated in every output that carries history figures; one copy, so they cannot drift.
 _NOTICE = (
     "Computed from Git history by fixed rules, offline. History can be incomplete or "
     "wrong (rewritten, shallow, misdated, split identities); check before "
     "relying on it for a decision."
+)
+
+#: The same caveat for `state`, which reads the working tree and refs as well as history.
+_STATE_NOTICE = (
+    "Read from the repository by fixed rules, offline. History can be incomplete or "
+    "wrong (rewritten, shallow, misdated); check before relying on it for a decision."
 )
 
 
@@ -1794,9 +1800,9 @@ _CSV_FORMULA_PREFIXES: tuple[str, ...] = ("=", "+", "-", "@", "\t", "\r")
 def _write_replacing(path: Path, text: str, *, encoding: str) -> None:
     """Write `text` to a new file and move it over `path`.
 
-    Replacing the name, not writing in place, leaves other hard links (such as
-    one to `.git/HEAD`) untouched. A new report is 0o600, since it names people;
-    an existing one keeps its mode. The temporary file is removed on failure.
+    Replacing the name, not writing in place, leaves other hard links to the
+    old file untouched. A new report is 0o600 on POSIX systems
+    (tested on Linux), since it names people; an existing one keeps its mode. The temporary file is removed on failure.
 
     Args:
         path: The resolved output path.
@@ -2096,7 +2102,7 @@ def _state_document(
         "history_replaced_not_followed": history_replaced,
         "filters_not_run": list(state.filters_not_run),
         "working_tree_read": not (state.bare or state.working_tree_unread),
-        "notice": _NOTICE,
+        "notice": _STATE_NOTICE,
     }
 
 
@@ -2144,7 +2150,7 @@ def _state_lines(
             f"Not run: the content filters this repository's own config names "
             f"({_listed(state.filters_not_run, limit)}); files they cover may show as modified."
         )
-    lines.append(_NOTICE)
+    lines.append(_STATE_NOTICE)
     return lines
 
 
@@ -2302,7 +2308,7 @@ def _state_markdown(state: RepositoryState, name: str, history_replaced: bool, l
             f"- **Latest tag:** {_md(state.latest_tag)}, {state.commits_since_tag or 0:,} commits "
             f"since; next: {_md(f'reveille brief --from {state.latest_tag}')}"
         )
-    lines += [*_state_markdown_notes(state, history_replaced, limit), "", f"> {_NOTICE}"]
+    lines += [*_state_markdown_notes(state, history_replaced, limit), "", f"> {_STATE_NOTICE}"]
     return "\n".join(lines) + "\n"
 
 

@@ -58,18 +58,18 @@ def _md(repo: Path, *args: str) -> str:
 
 
 @pytest.mark.parametrize(
-    ("args", "heading"),
+    ("args", "heading", "notice"),
     [
-        (["state"], "### State: `r`"),
-        (["brief", "--from", "v1"], "### Brief: `r`"),
-        (["summary"], "### Summary: `r`"),
+        (["state"], "### State: `r`", "Read from the repository"),
+        (["brief", "--from", "v1"], "### Brief: `r`", "Computed from Git history"),
+        (["summary"], "### Summary: `r`", "Computed from Git history"),
     ],
 )
-def test_each_command_renders(repo: Path, args: list[str], heading: str) -> None:
+def test_each_command_renders(repo: Path, args: list[str], heading: str, notice: str) -> None:
     out = _md(repo, *args)
 
     assert out.startswith(heading)
-    assert "\n> Computed from Git history" in out
+    assert f"\n> {notice}" in out
     assert len(out.encode()) < 2048
     assert "Ana" not in out and "ana@" not in out
 

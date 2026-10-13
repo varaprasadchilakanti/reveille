@@ -45,7 +45,7 @@ class ExitCode(enum.IntEnum):
     """The command ran correctly and its answer is negative.
 
     Reveille worked as intended and the repository state does not satisfy
-    the request — currently, an analysis window containing no commits.
+    the request: currently, an analysis window containing no commits.
     """
 
     CANNOT_RUN = 2
@@ -58,8 +58,8 @@ class ExitCode(enum.IntEnum):
 
 
 # Terminal control characters, escaped because an untrusted reveille.toml value
-# could otherwise erase the warning about it. A named table, not a regex range
-# (CodeQL py/overly-large-range).
+# could otherwise erase the warning about it. A table rather than a regex range,
+# which CodeQL flags (py/overly-large-range).
 _TERMINAL_UNSAFE: dict[int, str] = {
     code: f"\\x{code:02x}" if code < 0x100 else f"\\u{code:04x}"
     for block in (
@@ -238,7 +238,10 @@ class _App(typer.Typer):
 
 app = _App(
     name="reveille",
-    help="Report a local Git repository's commit activity as self-contained HTML, JSON, or CSV.",
+    help=(
+        "Offline reports and summaries of a local Git repository: HTML, JSON, CSV "
+        "and text for scripts, CI and coding agents."
+    ),
     add_completion=False,
     no_args_is_help=True,
     context_settings={"help_option_names": ["-h", "--help"]},
@@ -429,7 +432,7 @@ def main(
         ),
     ] = None,
 ) -> None:
-    """Reveille -- Git Repository Intelligence."""
+    """Offline reports of a Git repository's history."""
 
 
 def _resolve_output_path(output: Path, repo_path: Path) -> Path:
@@ -563,7 +566,7 @@ def _apply_ranking_flags(
     """Resolve the two ranking flags against the configuration file.
 
     Flags win over the file; if both are given, `--no-ranking` wins, as the
-    safer reading.
+    more conservative reading.
 
     Args:
         merged: The configuration mapping being assembled, modified in place.
@@ -779,9 +782,9 @@ def generate(
         typer.Option(
             "--deterministic",
             help=(
-                "Produce byte-reproducible output. Pins the timestamp to the "
-                "analysed commit and closes the window on the last commit "
-                "rather than today."
+                "Produce byte-identical output on the same version, dependencies "
+                "and Git settings. Pins the timestamp to the analysed commit "
+                "and closes the window on the last commit rather than today."
             ),
         ),
     ] = False,
@@ -1021,7 +1024,10 @@ def summary(
     output_format: _ShareFormatOption = "text",
     verbose: _VerboseOption = False,
 ) -> None:
-    """Summarise the repository in a few lines, naming no contributor."""
+    """Summarise the repository in a few lines, naming no contributor.
+
+    Small counts can identify someone.
+    """
     from reveille.services.report import summary_text
 
     _configure_logging(verbose)
@@ -1051,7 +1057,10 @@ def brief(
     ] = 5,
     verbose: _VerboseOption = False,
 ) -> None:
-    """Say what changed since a tag, a commit or a date, in counts, naming nobody."""
+    """Say what changed since a tag, a commit or a date, in counts naming no one.
+
+    Small counts can identify someone.
+    """
     from reveille.services.report import brief_text
 
     _configure_logging(verbose)
@@ -1074,7 +1083,12 @@ def state(
     ] = 10,
     verbose: _VerboseOption = False,
 ) -> None:
-    """Say where the repository stands now: branch, work in progress, changes, worktrees."""
+    """Say where the repository stands now: branch, work in progress, changes, worktrees.
+
+    Names no author, but lists local paths (changed files and worktree
+    directories, which can contain your login name), the current branch, its
+    upstream and the branches checked out in worktrees.
+    """
     from reveille.services.report import state_text
 
     _configure_logging(verbose)
@@ -1102,7 +1116,6 @@ def _repository_path(path: str, repo: Path) -> str:
     if candidate.is_absolute():
         try:
             # Resolve the directory, not the final name: a symlink has its own history.
-
             candidate = (candidate.parent.resolve() / candidate.name).relative_to(repo.resolve())
         except ValueError as exc:
             _err(f"Error: '{path}' is outside the repository '{repo.resolve()}'.")
@@ -1193,7 +1206,7 @@ def init(
         bool,
         typer.Option(
             "--force",
-            help="Overwrite an existing configuration file without prompting.",
+            help="Replace an existing file.",
         ),
     ] = False,
     mailmap: Annotated[
@@ -1206,10 +1219,10 @@ def init(
 ) -> None:
     """Scaffold an annotated reveille.toml configuration file.
 
-    Writes a fully commented configuration file to the current directory
-    (or the path specified by --output) with all keys present and set to
-    their defaults. Uncomment and edit only the keys you want to override.
-    Pass --mailmap to also generate an annotated .mailmap template at the
+    Writes a configuration file to the current directory (or the path given
+    by --output) with every key present and commented out, showing its
+    default. Uncomment and edit only the keys you want to override. Pass
+    --mailmap to also generate an annotated .mailmap template at the
     repository root.
     """
     cwd = Path(".").resolve()
@@ -1240,7 +1253,7 @@ def init(
         if mailmap_result is not None:
             typer.echo(f".mailmap template written to: {mailmap_result}")
         else:
-            typer.echo(".mailmap already exists — skipped.")
+            typer.echo(".mailmap already exists; skipped.")
 
 
 @app.command()

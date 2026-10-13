@@ -3,12 +3,10 @@
 
 """What `summary` and `who-changed` print cannot drive the terminal.
 
-Their stdout is what an assistant or a person reads, and it carries text the
-repository chose: its directory name, author names from a `.mailmap`. The
-escaping added in 0.9.0 covered stderr only, so the red team (2026-10-12) got
-an OSC 8 hyperlink, a bell and a carriage return onto stdout from a
-directory name, and a C1 control sequence introducer and an Arabic letter
-mark from a `.mailmap` name.
+Their stdout is read by a person or an agent, and it carries text the
+repository chose: its directory name and author names from a `.mailmap`.
+Control sequences in either (OSC 8 hyperlinks, bell, carriage return, C1
+introducers, bidirectional marks) must be escaped on stdout as on stderr.
 """
 
 from __future__ import annotations

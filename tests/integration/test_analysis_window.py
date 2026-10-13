@@ -1,8 +1,7 @@
 """Integration tests for the analysis window and the figures measured over it.
 
-Every defect here was found by running the installed tool on real
-repositories, and every one was invisible to the earlier tests because
-their windows started and ended exactly on a commit day:
+Each case below needs a window that does not start and end exactly on a
+commit day, which is why simpler fixtures miss them:
 
 * a `--since` earlier than the first commit was counted as quiet time --
   "Longest quiet run 8,469 days" for a repository three years old;

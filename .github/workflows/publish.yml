@@ -45,9 +45,9 @@ jobs:
   # set can be stopped from reaching PyPI, and it is the one thing
   # Dependabot's asynchronous alerting structurally cannot do.
   #
-  # Pinned to a SHA like every other action here. An earlier draft of
-  # this gate installed the scanner with an unpinned `curl | chmod`,
-  # which would have added a supply-chain hole to a supply-chain check.
+  # Pinned to a SHA like every other action here; an unpinned
+  # `curl | chmod` install would add a supply-chain hole to a supply-chain
+  # check.
   # ----------------------------------------------------------------
   vulnerabilities:
     name: Known vulnerabilities (osv-scanner)
@@ -199,9 +199,9 @@ jobs:
         with:
           # Both are the resolved filename, not a glob. `subject-path`
           # expands globs and `predicate-path` does not, so one pattern
-          # served one input and failed the other with "predicate file not
-          # found" -- after the distributions had already reached PyPI,
-          # which is the half that cannot be retried.
+          # would serve one input and fail the other with "predicate file not
+          # found", after the distributions had already reached PyPI, which
+          # is the half that cannot be retried.
           subject-path: ${{ steps.release.outputs.file }}
           predicate-type: https://cyclonedx.org/bom
           predicate-path: ${{ steps.release.outputs.file }}

@@ -102,8 +102,8 @@ def test_a_graft_file_is_not_followed(tmp_path: Path) -> None:
     document = json.loads(result.stdout)
 
     assert document["totals"]["commits"] == 3
-    # And it is stated. Detection once asked Git where the graft file is,
-    # while every read points Git at the null device for it: never found.
+    # The notice must appear. Detection cannot ask Git where the graft file is,
+    # because every read points Git at the null device for it.
     assert document["repository"]["graft_file_not_followed"] is True
     assert "a .git/info/grafts file, which `git log` follows" in result.stderr
 

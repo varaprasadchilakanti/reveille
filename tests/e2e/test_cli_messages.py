@@ -1,12 +1,11 @@
 """What the command prints when it cannot run.
 
-Found by running the installed tool on bad input. An inverted date range
-printed "1 validation error for ReportConfig", a dump of the whole
-configuration and a pydantic.dev link, with the actual reason buried
-between them; an output path naming a directory printed `[Errno 21]`;
-`validate` still asked for a `.git` directory that bare repositories do
-not have; and values from a `reveille.toml` reached the terminal with
-their control sequences intact, so a file could erase its own warning.
+Messages name the actual reason, not a library's error text. An inverted date
+range must not print pydantic's validation dump; an output path naming a
+directory must not print `[Errno 21]`; `validate` must accept bare repositories,
+which have no `.git` directory; and values from a `reveille.toml` must reach
+the terminal with control sequences escaped, so a file cannot erase its own
+warning.
 """
 
 from __future__ import annotations

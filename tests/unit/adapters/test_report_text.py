@@ -1,13 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti
 # SPDX-License-Identifier: Apache-2.0
 
-"""Small things the report said wrongly, each found by reading a rendered page.
+"""Small wording rules for the rendered report.
 
-"1 Hold Half the Commits"; backticks printed around `git log`, Markdown
-leaking into HTML; "Gini runs 0 (even) to 1.00 ... the maximum is (n-1)/n,
-not 1", where rounding produced the very number the sentence denies; a
-period written "to" in the header and "—" in the footer; and "Branch: HEAD"
-for a detached checkout, which names no branch at all.
+Pluralisation ("1 Hold Half the Commits"), no Markdown backticks leaking into
+HTML, the Gini caption not rounding to the number it says is unreachable,
+one form of period in header and footer, and no "Branch: HEAD" for a
+detached checkout, which names no branch.
 """
 
 from __future__ import annotations
@@ -130,7 +129,7 @@ class TestTheReportStatesItsLimits:
     def test_every_output_states_the_same_notice(
         self, tmp_path_factory: pytest.TempPathFactory
     ) -> None:
-        """One copy: the HTML once carried its own wording, and drifted."""
+        """One copy of the notice: the HTML must not carry its own wording."""
         import json
 
         from reveille.adapters.renderer import _NOTICE
@@ -182,8 +181,8 @@ def test_no_caption_runs_past_forty_words() -> None:
     """Captions were written to argue; a reader scanning a chart reads two lines.
 
     Read from the template, not a rendered report: a fixture renders only
-    the captions its data reaches, and the hotspot, file-type and area
-    captions once went unchecked that way.
+    the captions its data reaches, which would leave the hotspot, file-type
+    and area captions unchecked.
     """
     from reveille.adapters import renderer
 
@@ -206,7 +205,7 @@ def test_the_word_bound_takes_the_longest_branch() -> None:
 
 @pytest.mark.unit
 def test_a_profile_failure_is_a_render_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The docstring promises RenderError; the profile was once outside the wrapper."""
+    """A failure while rendering the profile is a RenderError, as documented."""
     from reveille.adapters import renderer
     from reveille.exceptions import RenderError
 

@@ -1,8 +1,9 @@
 # Reveille
 
-**Offline Git history reports for any repository: GitHub, GitLab, Bitbucket or self-hosted.**
-Reveille reads the history on your machine and writes one HTML report: a commit calendar heatmap,
-weekly activity and how commits are spread across contributors. It sends nothing anywhere.
+**Offline Git history reports, and repository state and change summaries as JSON for scripts, CI and coding agents.**
+Reveille reads a local clone (GitHub, GitLab, Bitbucket or self-hosted) and writes one HTML report: a commit calendar
+heatmap, weekly activity and how commits are spread across contributors. It never changes Git data and makes no network call.
+SHA-256 repositories and partial clones are refused.
 
 [![PyPI](https://img.shields.io/pypi/v/reveille)](https://pypi.org/project/reveille/)
 [![Python](https://img.shields.io/pypi/pyversions/reveille)](https://pypi.org/project/reveille/)
@@ -19,9 +20,9 @@ weekly activity and how commits are spread across contributors. It sends nothing
 [`docs/images/make_sample_repository.py`](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/images/make_sample_repository.py)
 and rendered with `reveille generate --deterministic`.*
 
-Besides the calendar and the weekly timeline, the report shows how evenly commits are spread
-across contributors, where change concentrates, and a per-contributor table. The same figures
-are available as JSON or CSV for scripts and AI assistants.
+The report also shows where change concentrates and a per-contributor table. The same figures are
+available as JSON or CSV, and `state`, `brief`, `summary` and `who-changed` answer single questions
+as text, JSON, Markdown or (for `state` and `brief`) one line.
 
 ```bash
 pipx install reveille
@@ -29,42 +30,41 @@ cd /path/to/repository
 reveille generate
 ```
 
-**What it is designed and tested to do.** The test suite checks each of these on every change.
-[SECURITY.md](https://github.com/varaprasadchilakanti/reveille/blob/main/SECURITY.md) covers the threat model and how to verify a release.
+**Properties.** These are designed and tested, not a warranty. The test suite checks each of them on
+every change. [SECURITY.md](https://github.com/varaprasadchilakanti/reveille/blob/main/SECURITY.md)
+covers the threat model and how to verify a release.
 
-- **No network calls.** The report loads no remote resource and opens with no internet connection.
-- **No changes to Git data.** History, refs, index, objects and configuration are never changed,
-  and an output path inside the repository's Git directory is refused.
-- **It is called; it calls nothing.** An assistant or script runs it; it makes no outbound call,
-  and it switches off the programs a repository's own config can make its Git reads start:
-  signature checking, fsmonitor, and content filters during `state`. A plain `git status` runs
-  the last two.
-- **Same input, same output.** With `--deterministic`, an unchanged repository produces a
-  byte-identical report on the same Reveille version, installed dependencies and Git settings.
+- No network call. The report loads no remote resource and opens with no internet connection.
+- No change to Git data. History, refs, index, objects and configuration are left as they are, and
+  an output path inside the repository's Git directory is refused.
+- Git runs with signature checking, fsmonitor and (for `state`) repository-defined content
+  filters switched off. A plain `git status` runs the last two.
+- With `--deterministic`, an unchanged repository produces a byte-identical report on the same
+  Reveille version, installed dependencies and Git settings.
 
-One limit: Git has many settings, and Reveille switches off only those its reads were found to
-use, so a repository whose `.git` came from someone else may still run one. `git clone` does not
-copy `.git/config`; a copied directory or an archive does. A partial clone (`git clone --filter`)
-is refused, because reading it would make Git fetch. A SHA-256 repository is refused too, for
-now: the library Reveille reads it with cannot parse its references.
+Limits: Git has many settings, and Reveille switches off only those its reads were found to use, so a
+repository whose `.git` came from someone else may still run one. `git clone` does not copy
+`.git/config`; a copied directory or an archive does. A partial clone (`git clone --filter`) is
+refused, because reading it would make Git fetch. A SHA-256 repository is refused for now: the
+library Reveille reads it with cannot parse its references.
 
-Reveille is provided under the Apache Licence 2.0 "AS IS", without warranties or conditions of
-any kind; sections 7 and 8 of the [LICENSE](https://github.com/varaprasadchilakanti/reveille/blob/main/LICENSE)
-set out the disclaimer of warranty and the limitation of liability. The properties above describe
-what the software is designed and tested to do; they are not a warranty.
+Reveille is provided under the Apache Licence 2.0 "AS IS"; sections 7 and 8 of the
+[LICENSE](https://github.com/varaprasadchilakanti/reveille/blob/main/LICENSE) disclaim warranty and
+limit liability as far as applicable law allows.
 
-**What it is not.**
+**What it is not**
 
-- **Not a measure of performance.** It counts commits and changed lines. It does not measure
-  anyone's contribution, productivity or value.
-- **Not a ranking, unless you ask.** Ranking people needs `--ranking`, and the report then states
-  what the score measures and what it does not.
-- **Not anonymous.** Every report names the people in the history and carries their email
-  addresses and activity. [What the report contains about people](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md#what-the-report-contains-about-people)
+- Not an evaluation of people. It counts commits and changed lines, which does not measure anyone's
+  contribution, productivity or value.
+- Not a ranking unless you ask: ranking people needs `--ranking`, and the report then states what the
+  score measures and what it does not. JSON and CSV still carry a `rank` column, in table order
+  (by commits; by score with `--ranking`).
+- Not anonymised. Every report names the people in the history and carries their email addresses and
+  activity. [What the report contains about people](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md#what-the-report-contains-about-people)
   lists it field by field, and [Before you share a report](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md#before-you-share-a-report)
   says what to check.
-- **Not a bus factor.** Commit concentration says who committed, not who understands the code.
-- **Not every commit.** Merge commits are excluded, so counts are lower than `git log` shows.
+- Not a bus factor. Commit concentration says who committed, not who understands the code.
+- Not every commit. Merge commits are excluded, so counts are lower than `git log` shows.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/varaprasadchilakanti/reveille/main/docs/images/how-it-fits-dark.svg">
@@ -91,18 +91,19 @@ what the software is designed and tested to do; they are not a warranty.
 
 ## Who It Is For
 
-- **An engineer or lead with a question about a repository's history** (when work happened, how
+- An engineer or lead with a question about a repository's history (when work happened, how
   concentrated it is, who changed a file) who wants the answer without sending the history to a
-  service. Any local Git repository works.
-- **Someone who needs a figure they can recompute.** `--deterministic` gives the same bytes for the
-  same repository, and the JSON records the analysed commit and the options used. The
+  service.
+- Someone who needs a figure they can recompute. `--deterministic` gives the same bytes for the same
+  repository, and the JSON records the analysed commit and the options used. The
   [Playbook](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/PLAYBOOK.md#for-an-audit-or-due-diligence)
   says what history is and is not evidence of.
-- **An AI assistant or a script**, through `state`, `brief`, `summary`, `who-changed`, JSON on stdout, a declared
-  schema version and exit codes that separate "no" from "could not run". `summary --format json`
-  names no contributor but carries the repository and branch names; with one or two people its
-  figures describe identifiable individuals. `generate --format json --output -` prints names and
-  email addresses, which leave your machine if given to a hosted model.
+- An AI assistant or a script, through `state`, `brief`, `summary` and `who-changed`, JSON on stdout,
+  a declared schema version and exit codes that separate "no" from "could not run".
+  `summary --format json` and `brief` name no contributor, but `summary` carries the repository and
+  branch names, and with one or two people the counts can identify someone.
+  `generate --format json --output -` prints names and email addresses, which leave your machine if
+  given to a hosted model.
 
 Its figures do not support judging people; see [Contributor Ranking](#contributor-ranking).
 
@@ -117,11 +118,10 @@ pipx install reveille      # or: uv tool install reveille, or pip install reveil
 reveille --version
 ```
 
-It installs two names for one command, `reveille` and the shorter `reile`; where another tool
-owns either, `python -m reveille` always works. To run it once without installing:
-`uvx reveille summary`. To remove it, use the tool that
-installed it (`pipx uninstall reveille`, `pip uninstall reveille` or `uv tool uninstall reveille`).
-Reveille keeps no cache or settings; it leaves only the files you asked it to write.
+It installs two names for one command, `reveille` and the shorter `reile`; if another tool owns
+either, use `python -m reveille`. To run it once without installing: `uvx reveille summary`. To
+remove it, use the tool that installed it (`pipx uninstall reveille`, `pip uninstall reveille` or
+`uv tool uninstall reveille`). Reveille keeps no cache or settings.
 
 ---
 
@@ -182,8 +182,8 @@ jobs:
           retention-days: 7
 ```
 
-`fetch-depth: 0` matters: with the checkout's default of one commit, the report covers one
-commit, and says so. The report lists contributors' names and email addresses, and anyone who
+Set `fetch-depth: 0`: with the checkout's default of one commit, the report covers one commit, and
+says so. The report lists contributors' names and email addresses, and anyone who
 can read the repository's Actions runs can download the artifact; on a public repository that
 is everyone. GitLab CI needs `GIT_DEPTH: 0` for the same reason.
 
@@ -191,12 +191,12 @@ is everyone. GitLab CI needs `GIT_DEPTH: 0` for the same reason.
 
 ## Reading the Report
 
-The report reads top to bottom, findings first and evidence after: header and summary cards
-(window, commits, people, how many hold half the commits, longest quiet run, Gini coefficient);
-written findings that name nobody; a Lorenz curve of how evenly commits are spread; the
-commit-activity heatmap and weekly timeline; the repository profile; change size, hotspots and
-file types; then per-contributor figures. Automated accounts (`[bot]` in the name or address) are
-counted in commit totals and stated apart, not counted as people.
+The report runs findings first, evidence after: header and summary cards (window, commits, people,
+how many hold half the commits, longest quiet run, Gini coefficient); written findings that name
+nobody; a Lorenz curve of how evenly commits are spread; the commit-activity heatmap and weekly
+timeline; the repository profile; change size, hotspots and file types; then per-contributor
+figures. Automated accounts (`[bot]` in the name or address) are counted in commit totals and
+stated apart, not counted as people.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/varaprasadchilakanti/reveille/main/docs/images/profile-dark.png">
@@ -216,7 +216,7 @@ says what each figure supports and what it does not.
 
 Every flag, default and output format is in the
 [User Guide](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md#commands-and-outputs).
-`reveille --version` prints the version; `reveille version` is not a command. `-h` works on every
+`reveille --version` prints the version (`reveille version` is not a command). `-h` works on every
 command.
 
 ### `reveille generate`
@@ -246,8 +246,8 @@ reveille validate --repo /path/to/repository
 
 ### `reveille summary`
 
-The repository in a few lines, naming no contributor. It reads no line counts, so on a large
-history it is several times faster than `generate`.
+The repository in a few lines, naming no contributor (with one or two people, counts can identify
+someone). It reads no line counts, so on a large history it is several times faster than `generate`.
 
 ```bash
 reveille summary --format json
@@ -255,9 +255,10 @@ reveille summary --format json
 
 ### `reveille brief`
 
-What changed since a tag, a commit or a date, in counts, naming nobody: commits, people, the most
-changed areas and file types, files added, areas active again and tags in the range. It prints
-the commit it reached, so the next brief can start there.
+What changed since a tag, a commit or a date, in counts, naming nobody (with one or two people,
+counts can identify someone): commits, people, the most changed areas and file types, files added,
+areas active again and tags in the range. It prints the commit it reached, so the next brief can
+start there.
 
 ```bash
 reveille brief --from v0.9.0
@@ -267,8 +268,10 @@ reveille brief --from v0.9.0
 
 Where the repository stands now: branch, upstream, a merge or rebase in progress, conflicts, what
 is staged, modified or untracked, stashes, worktrees, branch counts and the latest tag. Unlike
-running `git status` yourself, it neither rewrites `.git/index` nor runs a program the
-repository's own config names.
+`git status`, it neither rewrites `.git/index` nor runs a program the repository's own config names.
+It names no author, but it lists local paths (changed files and worktree directories, which can
+contain your login name), the current branch, its upstream and the branches checked out in
+worktrees.
 
 ```bash
 reveille state --format json
@@ -285,8 +288,8 @@ reveille who-changed src/parser/lexer.c --since 2026-01-01
 
 ### `reveille capabilities`
 
-States what Reveille can and cannot do, including what it refuses to claim, read from the
-installed program. `--format json` adds the command surface and exit codes.
+States what Reveille can and cannot do, including what it declines to claim, read from the installed
+program. `--format json` adds the command surface and exit codes.
 
 ```bash
 reveille capabilities --format json
@@ -301,14 +304,16 @@ Same as `reveille --help`.
 ## Contributor Ranking
 
 `--ranking` adds a rank, one of seven tiers and a composite score to each listed contributor.
-It is off by default.
+It is off by default. JSON and CSV carry a `rank` column either way: table order by commits, or by score
+with `--ranking`.
 
 **What this measures is the volume and regularity of commits, not contribution, productivity,
 or value.** The weights are a documented judgement, not a derived model. The SPACE framework
 (Forsgren et al., 2021) holds that "developer productivity is about more than an individual's
 activity levels". A contributor who spends a quarter reviewing others' work and deleting a
-subsystem will rank below one who committed generated files. The military tier names are a
-visual device, not a rank. The formula and the tier table are in the
+subsystem will rank below one who committed generated files. The military tier names are labels on
+a score of commit volume and regularity, not an evaluation of anyone. The formula and the tier table
+are in the
 [User Guide](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md#the-ranking-algorithm).
 
 ---
@@ -340,12 +345,12 @@ the [Code of Conduct](https://github.com/varaprasadchilakanti/reveille/blob/main
 
 ## Legal and Privacy
 
-Reveille runs entirely on your machine and sends nothing anywhere. The report it writes contains
-contributor names and email addresses, so whoever runs it and circulates it is handling personal
-data. [docs/COMPLIANCE.md](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/COMPLIANCE.md)
-records why the maintainer is neither controller nor processor under the GDPR (which plainly
-engages, since commit author names and addresses are personal data) and who is responsible for
-what. It is research, not legal advice.
+Reveille runs on your machine and makes no network call. The report it writes contains contributor
+names and email addresses, so whoever runs it and circulates it is handling personal data.
+[docs/COMPLIANCE.md](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/COMPLIANCE.md)
+records why the maintainer is neither controller nor processor under the GDPR (which engages,
+since commit author names and addresses are personal data) and who is responsible for what. It is
+research, not legal advice.
 [PRIVACY.md](https://github.com/varaprasadchilakanti/reveille/blob/main/PRIVACY.md) is a notice
 for *contributors to this project*, not for users of the tool.
 

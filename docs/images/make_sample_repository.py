@@ -97,7 +97,9 @@ def build(target: Path) -> int:
                 with (area / f"part{rng.randint(1, 9)}{suffix}").open("a", encoding="utf-8") as f:
                     f.write("line\n" * rng.randint(1, 160))
             made += 1
-            stamp = (day + datetime.timedelta(hours=rng.randint(0, 8), minutes=made % 60)).isoformat()
+            stamp = (
+                day + datetime.timedelta(hours=rng.randint(0, 8), minutes=made % 60)
+            ).isoformat()
             message = f"change {made}"
             if not name.endswith("[bot]") and rng.random() < 0.07:
                 message += "\n\nCo-authored-by: Farah Haddad <farah.haddad@example.com>"

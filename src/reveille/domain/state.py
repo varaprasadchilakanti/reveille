@@ -3,8 +3,9 @@
 
 """A repository's present state: branch, work in progress, working tree (ADR 0024).
 
-Names nobody: no author, and no branch names beyond the current one and the
-worktrees'. Branches are counted, never listed.
+Names no author, and no branch beyond the current one and the worktrees'.
+Branches are counted, not listed. Paths are listed: changed files and worktree
+directories can contain a login name.
 """
 
 from __future__ import annotations

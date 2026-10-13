@@ -23,8 +23,8 @@ class TestWithoutCredentials:
             ("ssh://git:SECRET@example.test/r.git", "ssh://git@example.test/r.git"),
             ("file:///srv/git/r.git", "file:///srv/git/r.git"),
             ("git@example.test:team/r.git", "git@example.test:team/r.git"),
-            # A transport prefix, `<transport>::<address>`, hid the scheme
-            # and the token was printed (red team, 2026-10-12).
+            # A transport prefix, `<transport>::<address>`, must not hide the
+            # scheme from the credential stripping.
             ("https::https://SECRET@example.test/r.git", "https::https://example.test/r.git"),
             ("HTTPS::https://u:SECRET@example.test/r.git", "HTTPS::https://example.test/r.git"),
             ("remote-x::http://SECRET@example.test/r.git", "remote-x::http://example.test/r.git"),

@@ -3,11 +3,10 @@
 
 """A `.mailmap` is untrusted input, and reading it is bounded.
 
-Two defects, found by the 2026-10-12 red team. The four line patterns
-backtracked quadratically, so one 200 KB line of `a <b a <b ...` took about
-44 seconds, inside the 1 MiB bound on a committed `.mailmap`. And only the
-committed file was bounded: a 66 MB working-tree `.mailmap` was read whole,
-30 seconds and 517 MB.
+Two properties. The line patterns must not backtrack quadratically: one
+200 KB line of repeated `a <b` stays well inside the 1 MiB bound on a
+committed `.mailmap`, so the pattern cost must be linear. And the working-tree
+`.mailmap` is bounded like the committed one, not read whole.
 """
 
 from __future__ import annotations

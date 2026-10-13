@@ -47,33 +47,33 @@ Reveille supports **every non-EOL CPython release at or above 3.11**: **3.11, 3.
 3.11 floor is technical: `config.py` imports `tomllib` and `git_reader.py` uses `datetime.UTC`,
 both added in 3.11.
 
-1. **A version is added to the classifiers only after CI proves it**, in the same pull request
+1. A version is added to the classifiers only after CI passes on it, in the same pull request
    that adds it to the matrix. If it fails, fix the incompatibility or state the exclusion and its
    reason; never quietly drop the version.
-2. **Versions are dropped on their upstream EOL date** (SPEC 0, successor to NEP 29), not on
+2. Versions are dropped on their upstream EOL date (SPEC 0, successor to NEP 29), not on
    convenience. Dropping one is a breaking change and belongs in a release note.
-3. **The `python` constraint carries no upper cap below 4.0.** `python = "^3.11"` resolves to
+3. The `python` constraint carries no upper cap below 4.0. `python = "^3.11"` resolves to
    `>=3.11,<4.0`. A tighter cap asserts that Reveille *breaks* on a version, a much stronger claim
    than "untested", and every project depending on Reveille inherits it. If a genuine
    incompatibility is found, express it as a narrow, documented exclusion.
 
 ## Architecture
 
-**Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) before your first change**: the layering
+Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) before your first change: the layering
 contract, the domain model, the pipeline and the invariants the tests protect. Decisions and their
 reasoning live in [docs/adr/](docs/adr/). Dependencies point inward, and outer layers never
 appear in inner ones.
 
-- `src/reveille/domain/` — frozen dataclasses and the ranking engine.
+- `src/reveille/domain/`: frozen dataclasses and the ranking engine.
   Performs no I/O and no rendering. It does import `RankingWeights` from
   `config.py`, which is a Pydantic model; that is a deliberate,
-  documented exception rather than a leak.
-- `src/reveille/adapters/` — `GitReader` (the only module that imports
+  documented exception.
+- `src/reveille/adapters/`: `GitReader` (the only module that imports
   GitPython) and `Renderer` (the only module that imports Jinja2 and
   Plotly).
-- `src/reveille/services/` — the `generate_report` orchestrator. Emits
+- `src/reveille/services/`: the `generate_report` orchestrator. Emits
   `ProgressEvent`; knows nothing about terminals.
-- `src/reveille/cli.py` — the only module that imports Typer. Argument
+- `src/reveille/cli.py`: the only module that imports Typer. Argument
   parsing, exit codes, and progress display. No business logic.
 
 New behaviour belongs in the layer that owns it; `tests/unit/test_layering.py` fails on a domain
@@ -97,8 +97,8 @@ conflict prints `warning: Cannot merge binary files: poetry.lock` and leaves you
 place. The file is generated, and "keep both sides" silently duplicates TOML keys. Resolve it by
 regenerating: `poetry lock --no-update`.
 
-The output contract is non-negotiable: the generated file is always a single self-contained
-`.html` file with no external dependencies, no CDN calls, no cookies and no tracking.
+The HTML report is always a single self-contained file with no external dependencies, no CDN
+calls, no cookies and no tracking. A change that breaks that will not be merged.
 
 New public functions need Google-style docstrings. New behaviour needs tests in the layer that
 fits (unit, integration or end-to-end).
@@ -151,11 +151,11 @@ and `tests/unit/test_licence.py` that every source file names the same licence.
 Pull requests to this repository require a contributor licence agreement.
 Filing an issue, reporting a bug, or joining a design discussion does not.
 
-**Read [CLA.md](CLA.md).** Its first section explains it in plain English.
+Read [CLA.md](CLA.md). Its first section summarises it in plain English.
 
 ### What it covers
 
-You keep the copyright in everything you write: the agreement is a **licence**,
+You keep the copyright in everything you write: the agreement is a licence,
 not an assignment. It lets the project distribute your contribution under its
 current licence and, if the project changes licence, under a different one.
 [CLA.md](CLA.md) §2.3(b) sets a floor: your contribution stays available under the
@@ -168,9 +168,9 @@ and it will be discussed on its merits rather than refused automatically.
 
 ### How to accept it
 
-Two steps, both of which you are probably close to doing already.
+Two steps.
 
-**1. Sign off your commits.** Every commit in the pull request needs a
+1. Sign off your commits. Every commit in the pull request needs a
 `Signed-off-by` trailer:
 
 ```bash
@@ -192,18 +192,18 @@ git config --local alias.ci "commit --signoff"
 ```
 
 The trailer means you certify the
-[Developer Certificate of Origin 1.1](https://developercertificate.org/) — that
-you actually wrote the code, or have the right to submit it. The verbatim text
+[Developer Certificate of Origin 1.1](https://developercertificate.org/): that
+you wrote the code, or have the right to submit it. The verbatim text
 is in [docs/cla/DCO.txt](docs/cla/DCO.txt).
 
-**Commits made in the GitHub web interface.** Applying a review suggestion, accepting a CodeQL
+Commits made in the GitHub web interface: applying a review suggestion, accepting a CodeQL
 autofix, or editing in the browser creates a commit with no way to add a trailer, and rewriting
 pushed history to insert one is worse than recording the certification separately. Either:
 
-- **Turn the setting on.** *Settings → Commits → "Require contributors to sign
-  off on web-based commits"* makes GitHub add the trailer to commits created
+- Turn the setting on: Settings → Commits → "Require contributors to sign
+  off on web-based commits" makes GitHub add the trailer to commits created
   through the web interface.
-- **Add a remediation commit** for anything already made without one. This is
+- Add a remediation commit for anything already made without one. This is
   the mechanism the DCO project documents for exactly this case:
 
   ```
@@ -218,7 +218,7 @@ pushed history to insert one is worse than recording the certification separatel
 
 Bot commits need no exemption: Dependabot signs off already.
 
-**2. Tick the box in the pull request description.** The pull request template
+2. Tick the box in the pull request description. The pull request template
 carries this line:
 
 ```
@@ -256,11 +256,11 @@ it cannot realistically be removed from every copy (DCO clause (d) says the same
 anything in a commit that you would not want published permanently.
 
 [PRIVACY.md](PRIVACY.md) sets out exactly what is held, why, for how long, and
-what can and cannot be undone — including a straight answer about erasure from
+what can and cannot be undone, including erasure from
 Git history. Questions or requests about personal data go to the address given
 there.
 
-> **This project's maintainer is not a lawyer, and none of the above is legal
-> advice.** [CLA.md](CLA.md) is adapted from published agreements whose authors
+> The maintainer is not a lawyer, and none of the above is legal
+> advice. [CLA.md](CLA.md) is adapted from published agreements whose authors
 > permit adaptation; the adaptation has not been reviewed by counsel. If the
 > agreement matters to your employer, have them read it.

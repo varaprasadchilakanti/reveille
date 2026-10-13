@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti
 # SPDX-License-Identifier: Apache-2.0
 
-"""Reveille -- Git Repository Intelligence.
+"""Reveille: offline reports of a Git repository's history.
 
 A CLI tool that reports a local Git repository's commit activity.
 

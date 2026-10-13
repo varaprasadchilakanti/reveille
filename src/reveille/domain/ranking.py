@@ -5,8 +5,8 @@
 
 Measures volume and regularity of commits, not contribution; never assess
 individuals with it (SPACE, Forsgren et al., 2021). Opt-in (ADR 0010).
-Min-max within one window; lower-bound percentile (ADR 0003). Tier names are a
-visual device, not a rank:
+Min-max within one window; lower-bound percentile (ADR 0003). Tier names are
+labels on a score of commit volume and regularity, not an evaluation of anyone:
 
     I Private 0-20   II Corporal 21-40   III Sergeant 41-60   IV Lieutenant 61-75
     V Captain 76-88  VI Major 89-95      VII Commander 96-100

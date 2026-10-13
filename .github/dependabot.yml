@@ -5,11 +5,9 @@
 # GitHub Actions.
 #
 # Updates are grouped into one PR per ecosystem. Ungrouped, this opened up
-# to five PRs per ecosystem per week: 26 were merged between v0.7.0 and
-# 2026-09-02. Each merge is a chance to hand-resolve a conflict in
-# poetry.lock, and doing exactly that -- keeping both sides of a conflicted
-# `[package.extras]` table -- produced an invalid lock that broke `main`
-# for six consecutive builds. Fewer merges is fewer opportunities.
+# to five PRs per ecosystem per week. Each merge is a chance to hand-resolve
+# a conflict in poetry.lock, and a hand-resolved conflict that keeps both
+# sides can leave an invalid lock. Fewer merges means fewer such chances.
 #
 # Majors are grouped too rather than split out. The lock guards
 # (.gitattributes `-merge`, `make check-lock`, the `lockfile` CI job) now

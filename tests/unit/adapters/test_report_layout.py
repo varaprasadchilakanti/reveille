@@ -3,11 +3,9 @@
 
 """Layout rules the report needs in order to be read at all.
 
-Each was found by rendering the installed tool's output in a browser, at
-desktop width, at phone width and printed to PDF, and each broke the page
-for a reader rather than merely looking untidy. There is no browser in the
-test suite, so these assert the CSS rule that fixes each one; every test was
-seen to fail with its rule removed.
+Each rule matters at desktop width, phone width or when printed to PDF, and
+its absence breaks the page for a reader rather than merely looking untidy.
+There is no browser in the test suite, so these assert the CSS rule itself.
 """
 
 from __future__ import annotations

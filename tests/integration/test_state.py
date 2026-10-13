@@ -100,7 +100,7 @@ class TestItChangesNothingAndRunsNothing:
 
 class TestContentFilters:
     """`git status` runs a clean or process filter to compare a file; a repository's own
-    config can name any program as one (measured 2026-10-12, Git 2.55)."""
+    config can name any program as one (measured with Git 2.55)."""
 
     def _filtered(self, repo: Path, tmp_path: Path, key: str) -> Path:
         marker = tmp_path / "ran"
@@ -362,6 +362,15 @@ class TestBranchesAndWorktrees:
 
         assert list(repo.glob("pwned*")) == []
         assert (state["latest_tag"], state["commits_since_tag"]) == ("--output=pwned", 1)
+
+
+class TestTheNotice:
+    def test_state_says_it_read_the_repository_not_history(self, repo: Path) -> None:
+        """`state` reads refs and the working tree, so its notice says so."""
+        notice = _state(repo)["notice"]
+
+        assert notice.startswith("Read from the repository by fixed rules, offline.")
+        assert _text(repo).splitlines()[-1] == notice
 
 
 class TestUnusualRepositories:

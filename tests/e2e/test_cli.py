@@ -322,12 +322,10 @@ class TestVersionCommand:
         assert __version__ in result.stdout
 
     def test_version_is_not_a_subcommand(self) -> None:
-        """`reveille version` must fail, because the README once said it worked.
+        """`reveille version` must fail: the version is a global flag, not a subcommand.
 
-        The version string is exposed as a global flag. The README
-        documented a `reveille version` subcommand through v0.6.x; it
-        never existed, and anyone who copied it from the CLI reference
-        got 'No such command'.
+        The README documented a subcommand that never existed, so this
+        pins the real interface.
         """
         result = runner.invoke(app, ["version"])
         assert result.exit_code != 0
@@ -1323,8 +1321,7 @@ class TestReportAccessibility:
 class TestOfflineGuarantee:
     """The report fetches nothing. That is the product, not a detail.
 
-    CLAUDE.md states it as product behaviour and names the failure mode:
-    a single remote `<script>` in the report forfeits it.
+    A single remote `<script>` in the report would forfeit it.
 
     Every guard here has been observed to fail: the property was broken,
     the test was watched failing, and the property was restored. The two

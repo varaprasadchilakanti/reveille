@@ -12,19 +12,19 @@ To use Reveille, see [USER_GUIDE.md](USER_GUIDE.md). For individual decisions, s
 
 A command-line tool that reads a local Git repository and writes a single self-contained HTML file
 describing its commit history. Three properties constrain nearly every decision; a change that
-breaks one is a change to what the product is, and needs to be argued as such.
+breaks one changes what the product is, and needs to be argued as such.
 
-**It does not change Git data** (history, refs, index, objects or configuration). Reveille opens a
+It does not change Git data (history, refs, index, objects or configuration). Reveille opens a
 repository, reads history, and writes one output file. It refuses any output path inside `.git`
 and never runs a mutating Git command. The report goes where you point it, by default
 `reveille-report.html` in the repository root, which for a working tree is inside the working
 tree.
 
-**It is offline.** Nothing is transmitted. The report loads no CDN, no web font and no remote
+It is offline. Nothing is transmitted, and a partial clone is refused because Git would fetch the missing objects. The report loads no CDN, no web font and no remote
 image; the ~4.8 MB Plotly bundle is embedded in the file. A test asserts that no `<link>`,
 `<script>` or `<img>` in the template references a remote host.
 
-**It is a single file.** One HTML document with no sidecar assets, openable from a download folder
+It is a single file: one HTML document with no sidecar assets, openable from a download folder
 on a machine with no network.
 
 ---
@@ -53,18 +53,18 @@ one that imports Typer. Reading history from another source, or rendering anothe
 means writing one adapter. `tests/unit/test_layering.py` enforces this by importing each layer in a
 clean interpreter and asserting which frameworks appear in `sys.modules`.
 
-### One honest exception
+### One exception
 
 `domain/ranking.py` imports `RankingWeights` from `config.py`, which is a Pydantic model. So the
 domain is not literally free of third-party imports: it transitively imports Pydantic.
 
-This is a deliberate trade, not an oversight. `RankingWeights` is a value object whose only
+This is deliberate. `RankingWeights` is a value object whose only
 behaviour is validating that four weights sum to 1.0, and Pydantic is the project's validation
 library. A plain-dataclass copy would be two definitions of one concept that can drift apart.
 
-What the rule protects is stated precisely: **the domain imports no I/O and no presentation
-framework.** It reads nothing, writes nothing and draws nothing, which is what makes the ranking
-engine testable without a repository on disk, and it holds.
+The rule is that the domain imports no I/O and no presentation framework. It reads nothing,
+writes nothing and draws nothing, which is what makes the ranking engine testable without a
+repository on disk.
 
 ---
 
@@ -73,6 +73,7 @@ engine testable without a repository on disk, and it holds.
 ```
 src/reveille/
     __init__.py       __version__; installs a logging NullHandler
+    __main__.py       python -m reveille
     cli.py            Typer app, exit codes, progress display
     config.py         Pydantic config models and TOML loading
     init.py           reveille.toml and .mailmap scaffold generation
@@ -82,12 +83,14 @@ src/reveille/
     domain/
         models.py     frozen dataclasses; no behaviour beyond derived properties
         ranking.py    scoring and tiering (opt-in)
-        concentration.py  Lorenz curve and Gini coefficient; names nobody
+        concentration.py  Lorenz curve and Gini coefficient; names no author
         summary.py    the written findings, by fixed rules over the numbers
         files.py      churn per path, hotspots, change by file type
         profile.py    the six-axis repository profile
         areas.py      who changed each area (opt-in, ADR 0013)
         coauthors.py  Co-authored-by credits, kept apart from authorship
+        brief.py      what changed since a point, in counts (ADR 0022)
+        state.py      the repository's present state (ADR 0024)
     adapters/
         git_reader.py GitPython in; domain models out
         renderer.py   domain models in; HTML, JSON or CSV out
@@ -173,9 +176,10 @@ With `ranking_enabled=False`, stage 3 still produces `RankedContributor` objects
 designation `"--"` and zeroed score and percentile, so the pipeline needs no branch. Every
 renderer does branch, on `provenance.ranking_enabled` rather than on the list being non-empty.
 The placeholders must never reach a reader: HTML drops the rank, designation and score columns
-and retitles the section, and CSV omits those columns as JSON omits the keys. Gating on
-`ranked_contributors` instead shipped a "Contributor Rankings" table full of zeroes into the
-default report.
+and retitles the section, and CSV omits the designation and score columns as JSON omits those
+keys. The `rank` field itself, the position in table order by commits, is still written to JSON
+and CSV. Gating on `ranked_contributors` instead shipped a "Contributor Rankings" table full
+of zeroes into the default report.
 
 ### Reading history
 
@@ -204,8 +208,9 @@ exception. It ships a compact daily-count payload and client-side JavaScript bui
 grid over the window's weeks, because a per-day Plotly spec for a multi-year repository is far
 larger than the counts it encodes.
 
-Everything written into a `<script>` block has `</` escaped to `<\/`; otherwise a contributor
-whose name contains `</script>` closes the block and the remainder runs as markup.
+JSON written into a `<script>` block has every `<` escaped to `\u003c` (`_script_safe`).
+Without it, a name containing `</script>` would close the block and run as markup, and an
+unfinished HTML comment would blank every chart.
 `_sanitise_chart_label` strips HTML tags from labels. Jinja autoescaping is on but does not apply
 inside a JSON script block, which is why the escaping is explicit.
 
@@ -256,10 +261,10 @@ The `-1.0` entry is an exhaustive fallback. `assign_tier` raises `AssertionError
 matches, which is unreachable in production and a loud signal that `_TIER_BOUNDARIES` was
 misconfigured; it replaced a silent default that would have hidden exactly that.
 
-> **On interpreting these numbers.** Ranking measures commit and line volume. It does not measure
-> contribution. The SPACE framework holds that "developer productivity is about more than an
+> On interpreting these numbers: the ranking measures commit and line volume. It does not measure
+> contribution, and the tier names are labels on that score, not an evaluation of anyone. The SPACE framework holds that "developer productivity is about more than an
 > individual's activity levels"; DORA's metrics describe applications and services, not people.
-> The rankings show *shape of participation*, not a grade. See the User Guide for the caveat that
+> The ranking shows the shape of participation, not a grade. See the User Guide for the caveat that
 > ships to users.
 
 ---
@@ -275,7 +280,7 @@ misconfigured; it replaced a silent default that would have hidden exactly that.
 The suite runs under `pytest-xdist` (`-n auto`). Repository fixtures are module-scoped and use
 `tmp_path_factory`, which is worker-safe where `tmp_path` is not. The coverage gate is 90%.
 
-Several tests stop a guarantee eroding; know them before changing what they cover:
+Several tests protect properties that could erode unnoticed; know them before changing what they cover:
 
 - **Offline moat**: no `<link>`, `<script>` or `<img>` in the output references a remote host.
 - **Layering**: no framework import crosses the boundaries above.
@@ -305,8 +310,7 @@ before opening a pull request.
 
 ## Lineage
 
-Almost nothing here is novel. Naming the established technique behind each choice makes it
-checkable against a literature rather than the author's judgement.
+Almost nothing here is novel. Each choice below names the established technique behind it, so it can be checked against the literature.
 
 | In this codebase | Established as |
 |---|---|
@@ -325,8 +329,8 @@ checkable against a literature rather than the author's judgement.
 | `CHANGELOG.md`, version numbers | **Keep a Changelog**, **Semantic Versioning**. Under `0.y.z` a minor bump may break. |
 | Trusted Publishing, PEP 740, a CycloneDX SBOM, SHA-pinned actions | **Software supply chain integrity** (SLSA-adjacent; OpenSSF Scorecard): did this artefact come from this repository's release workflow? |
 
-Two things are local judgements rather than techniques. The first is the refusal to rank people
-by default ([ADR 0010](adr/0010-ranking-is-opt-in.md)) and the statement of that refusal in
-machine-readable form, so a program reading `reveille capabilities` is told what the tool is not
-for. The second is the rule that a guard is not trusted until it has been observed failing: every
-check was verified by reintroducing the defect it protects against.
+Two things are local judgements rather than techniques. The first is that scores, tiers and
+designations are off by default ([ADR 0010](adr/0010-ranking-is-opt-in.md)), with that stated in
+machine-readable form so a program reading `reveille capabilities` is told what the tool is not
+for. The second is that a guard counts only once it has been seen to fail: each check was tried
+by reintroducing the defect it covers.

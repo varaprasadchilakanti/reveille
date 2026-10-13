@@ -113,7 +113,7 @@ class TestItWithholdsWhatItCannotSupport:
 
 @pytest.mark.unit
 class TestTheDistributionSentenceMatchesTheNumbers:
-    """The wording once contradicted its own evidence."""
+    """The wording must agree with the numbers it summarises."""
 
     def test_an_even_split_is_not_called_a_majority(self) -> None:
         """Exactly even is not "one contributor authored"."""
@@ -132,8 +132,8 @@ class TestTheDistributionSentenceMatchesTheNumbers:
         """The Gini is bounded by (n-1)/n, so a raw threshold misreads small n.
 
         With two contributors the coefficient cannot exceed 0.50 however
-        lopsided the split, which once produced "spread fairly evenly...
-        the busiest holding 73%" in a single sentence.
+        lopsided the split, so a raw threshold would say "spread fairly evenly"
+        beside "the busiest holding 73%".
         """
         findings = summarise(_commits(40), _stats([202, 78]))
         headline = next(f.headline for f in findings if "contributor" in f.headline)

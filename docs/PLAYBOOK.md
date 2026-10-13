@@ -31,13 +31,14 @@ answers your question. What each section contains is in
 | Commit count | How much recorded activity there was | How much work was done |
 | Contributors, Gini, Hold Half | How activity is spread across people; automated accounts with `[bot]` are stated apart | How many people work on the code: review, pairing and unmerged work leave no commit |
 | Gini / Lorenz | Whether activity is concentrated | Whether that is a problem |
-| Commit concentration | How few people hold most commits | A bus factor — it says nothing about who *knows* the code |
+| Commit concentration | How few people hold most commits | A bus factor; it says nothing about who *knows* the code |
 | Active days | Regularity of committing | Hours worked |
 | Lines added/deleted | Size of recorded change | Quality, difficulty, or value |
 | Weekend share | When commits were timestamped | Overwork — time zones and rebases move commits across the boundary |
 | Ranking (`--ranking`) | Volume and regularity, nothing else | Any assessment of a person |
 
-The ranking is off by default and should usually stay off. The SPACE framework (Forsgren et al.,
+The ranking is off by default and should usually stay off. JSON and CSV still carry a `rank` column,
+in table order (by commits; by score with `--ranking`). The SPACE framework (Forsgren et al.,
 2021) holds that "developer productivity is about more than an individual's activity levels";
 [ADR 0010](adr/0010-ranking-is-opt-in.md) records why this project does not rank people by default.
 
@@ -86,20 +87,24 @@ json` so a diff is readable.
 
 ## For agents and scripts
 
-Read [llms.txt](../llms.txt) first — it is the short index. Then:
+Read [llms.txt](../llms.txt) first; it is the short index. Then:
 
 1. **Ask, do not guess:** `reveille capabilities --format json` reports
-   the command surface, the guarantees, and the exit codes, read from
-   the running program so they cannot drift from it.
+   the command surface, its `guarantees` field (properties designed and
+   tested; not a warranty) and the exit codes, read from the running
+   program.
 2. **Branch on the exit code, not on stdout.** `0` affirmative, `1` ran
    correctly with a negative answer, `2` could not run.
 3. **Check `schema_version` before parsing**, and carry `provenance`
-   into whatever you produce — two reports that disagree are reconciled
+   into whatever you produce; two reports that disagree are reconciled
    from it.
 4. **Pass `--deterministic`** for anything cached, diffed, or compared.
 5. **Never present a ranking as an assessment**, and never name an
    individual in a summary the default report does not name. The
-   generated findings hold to this; anything built on top should too.
+   generated findings follow this; anything built on top should too.
+6. **Count small numbers as identifying.** `summary` and `brief` name
+   nobody, but with one or two people their counts can identify someone.
+   `state` names no author but lists local paths and the branch name.
 
 ## Where the measures come from
 

@@ -174,8 +174,6 @@ class TestTheAttestationBundleIsCheckedBeforeItIsAttached:
         without it, `cp` first writes a zero-byte
         `<sbom>.sigstore.json`, which is precisely the file that looks like a
         signature and verifies nothing.
-
-        Found by deleting `test -s` and watching this test pass anyway.
         """
         result = self._copy_bundle(tmp_path, "")
         assert result.returncode != 0

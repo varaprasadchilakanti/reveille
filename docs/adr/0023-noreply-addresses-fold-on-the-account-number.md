@@ -7,8 +7,7 @@
 ADR 0002 folds GitHub's two noreply forms, legacy `username@users.noreply.github.com` and
 `12345678+username@users.noreply.github.com`, by stripping the number, so the username is the key.
 GitHub lets a user change their username, and a released username can be taken by another
-account; the number never changes and is never reused. Keyed on the username, a review on
-2026-10-12 reproduced both failures: one account renamed from `alice` to `alice2` became two
+account; the number never changes and is never reused. Keyed on the username, both failures can be reproduced: one account renamed from `alice` to `alice2` became two
 people, and two accounts that each used `alice` became one. Merging two people is the worse of
 the two: one person's commits are shown, counted and excluded under another's name.
 

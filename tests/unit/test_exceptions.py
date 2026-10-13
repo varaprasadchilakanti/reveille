@@ -36,7 +36,7 @@ class TestExceptionHierarchy:
 
     @pytest.mark.parametrize("subclass", _SUBCLASSES)
     def test_every_error_is_a_reveille_error(self, subclass: type[Exception]) -> None:
-        """The single-catch guarantee the public docs make."""
+        """The single-catch property the public docs state."""
         assert issubclass(subclass, ReveilleError)
 
     def test_empty_repository_error_is_a_repository_error(self) -> None:

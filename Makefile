@@ -1,5 +1,5 @@
 # ==================================================================
-# Reveille -- Git Repository Intelligence
+# Reveille -- Offline Git history reports
 # ==================================================================
 
 .DEFAULT_GOAL := help
@@ -41,8 +41,8 @@ check-lock:  ## Assert poetry.lock is valid TOML before anything tries to instal
 
 # Distinct from check-lock, and deliberately so. check-lock asks whether the
 # file can be parsed at all, using only the standard library, so it can run
-# before anything installs. This asks the different question closed by audit
-# finding #20: whether the lock still agrees with pyproject.toml. A lock can be
+# before anything installs. This asks whether the lock still agrees with
+# pyproject.toml. A lock can be
 # perfectly valid TOML and still describe a dependency set nobody asked for.
 #
 # `poetry check --lock` is the modern spelling; `poetry lock --check` was
@@ -50,8 +50,7 @@ check-lock:  ## Assert poetry.lock is valid TOML before anything tries to instal
 # to 1.8.2, whose bundled trove-classifiers predates
 # `Programming Language :: Python :: 3.14` and so failed the full check for a
 # reason that had nothing to do with the lock. Poetry 2.4 carries a current
-# list, so the full check now passes and audit finding #20 is closed rather
-# than half-closed.
+# list, so the full check passes.
 check-lock-sync:  ## Assert poetry.lock still agrees with pyproject.toml
 	@poetry check --lock
 
