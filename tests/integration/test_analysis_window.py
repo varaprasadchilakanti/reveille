@@ -30,7 +30,8 @@ import pytest
 from reveille.config import ReportConfig
 from reveille.services.report import generate_report
 
-_TODAY = datetime.date.today()
+# The service's default window ends on today's UTC date, not the local one.
+_TODAY = datetime.datetime.now(datetime.UTC).date()
 
 # Days before today on which a commit lands. Twenty-one in a run, a gap of
 # eight days (seven with no commit), then two more: enough commits for the
@@ -216,7 +217,10 @@ def test_a_commit_made_today_is_counted_west_of_utc(
     repo.mkdir()
     subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
     _commit(repo, 0, today_utc - datetime.timedelta(days=3))
-    early_today = f"{today_utc.isoformat()}T00:00:30+00:00"
+    # Early today in UTC, but never after now (a fixed 00:00:30 is in the future
+    # for the first half-minute of the day).
+    start = datetime.datetime.combine(today_utc, datetime.time.min, tzinfo=datetime.UTC)
+    early_today = max(start, now - datetime.timedelta(seconds=1)).isoformat()
     env = {
         **os.environ,
         "GIT_AUTHOR_NAME": "Alice",

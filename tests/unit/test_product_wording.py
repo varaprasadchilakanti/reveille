@@ -3,28 +3,11 @@
 
 """What the project calls its own output, asserted.
 
-Reveille does not produce a "performance report". It reports the volume
-and regularity of commits, and `reveille capabilities` refuses to support
-performance review, compensation, promotion, redundancy or hiring. For as
-long as the promotional material said "performance report", the project
-was advertising the thing its own machine-readable refusals disclaim.
-
-The phrase also matters outside the project's own consistency. It is the
-vocabulary of Annex III point 4(b) of Regulation (EU) 2024/1689 -- "to
-monitor and evaluate the performance and behaviour of persons" -- and
-Art. 3(12) makes the provider's own promotional and instructional
-material evidence of a system's intended purpose. Reveille is not an AI
-system, so Annex III is never reached; but a tagline is a poor place to
-rest that on, and the phrase had nothing to recommend it beyond search
-traffic.
-
-Removed at 0.9.0 from eleven places: the PyPI description, the README
-tagline and CLI reference, the `--help` text of the application and of
-`generate`, the package docstring, the service docstring, the scaffolded
-`reveille.toml`, and the sample configuration in both the README and the
-User Guide. CHANGELOG 0.8.0 had already removed it from the report's own
-subtitle, for the same reason, and this guard exists to keep a
-removed phrase out.
+Reveille reports the volume and regularity of commits; `reveille capabilities`
+declines to support performance review, compensation, promotion, redundancy or
+hiring. "Performance report" says the opposite, so the phrase is kept out of
+every place the project describes itself: the PyPI description, the README,
+the `--help` texts, docstrings and the scaffolded `reveille.toml`.
 """
 
 from __future__ import annotations

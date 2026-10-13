@@ -190,24 +190,24 @@ class TestResolveIdentityFourFieldForm:
     def test_four_field_entry_matches_when_name_and_email_agree(self) -> None:
         mailmap = _Mailmap(
             by_name_and_email={
-                ("daniel brown", "daniel@oldcorp.com"): ("Dan Brown", "dan@newcorp.com")
+                ("daniel brown", "daniel@oldcorp.test"): ("Dan Brown", "dan@newcorp.test")
             }
         )
-        assert _resolve_identity("Daniel Brown", "daniel@oldcorp.com", mailmap) == (
+        assert _resolve_identity("Daniel Brown", "daniel@oldcorp.test", mailmap) == (
             "Dan Brown",
-            "dan@newcorp.com",
+            "dan@newcorp.test",
         )
 
     def test_four_field_entry_ignored_when_the_name_differs(self) -> None:
         """The whole point of the form: a shared address, distinguished by name."""
         mailmap = _Mailmap(
             by_name_and_email={
-                ("daniel brown", "shared@corp.com"): ("Dan Brown", "dan@newcorp.com")
+                ("daniel brown", "shared@corp.test"): ("Dan Brown", "dan@newcorp.test")
             }
         )
-        assert _resolve_identity("Erica Stone", "shared@corp.com", mailmap) == (
+        assert _resolve_identity("Erica Stone", "shared@corp.test", mailmap) == (
             "Erica Stone",
-            "shared@corp.com",
+            "shared@corp.test",
         )
 
     def test_four_field_matching_is_case_insensitive_on_both_fields(self) -> None:
@@ -224,19 +224,19 @@ class TestResolveIdentityFourFieldForm:
     def test_four_field_entry_wins_over_an_email_only_entry(self) -> None:
         """Git prefers the most specific match; name plus email is more specific."""
         mailmap = _Mailmap(
-            by_email={"shared@corp.com": ("Generic", "generic@corp.com")},
+            by_email={"shared@corp.test": ("Generic", "generic@corp.test")},
             by_name_and_email={
-                ("daniel brown", "shared@corp.com"): ("Dan Brown", "dan@newcorp.com")
+                ("daniel brown", "shared@corp.test"): ("Dan Brown", "dan@newcorp.test")
             },
         )
-        assert _resolve_identity("Daniel Brown", "shared@corp.com", mailmap) == (
+        assert _resolve_identity("Daniel Brown", "shared@corp.test", mailmap) == (
             "Dan Brown",
-            "dan@newcorp.com",
+            "dan@newcorp.test",
         )
         # A different contributor on the same address still falls back.
-        assert _resolve_identity("Erica Stone", "shared@corp.com", mailmap) == (
+        assert _resolve_identity("Erica Stone", "shared@corp.test", mailmap) == (
             "Generic",
-            "generic@corp.com",
+            "generic@corp.test",
         )
 
 

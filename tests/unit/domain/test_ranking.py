@@ -293,15 +293,15 @@ class TestComputeRecencyScore:
 
     def test_recent_commit_scores_higher_than_older_commit(self) -> None:
         anchor = datetime.date(2024, 3, 31)
-        recent = [_make_commit("a@x.com", datetime.date(2024, 3, 25))]
-        older = [_make_commit("a@x.com", datetime.date(2024, 1, 5))]
+        recent = [_make_commit("a@x.test", datetime.date(2024, 3, 25))]
+        older = [_make_commit("a@x.test", datetime.date(2024, 1, 5))]
         assert _compute_recency_score(recent, anchor) > _compute_recency_score(older, anchor)
 
     def test_score_is_non_negative(self) -> None:
         anchor = datetime.date(2024, 3, 31)
         commits = [
-            _make_commit("a@x.com", datetime.date(2024, 2, 10)),
-            _make_commit("a@x.com", datetime.date(2024, 3, 1)),
+            _make_commit("a@x.test", datetime.date(2024, 2, 10)),
+            _make_commit("a@x.test", datetime.date(2024, 3, 1)),
         ]
         assert _compute_recency_score(commits, anchor) >= 0.0
 
@@ -317,13 +317,13 @@ class TestNormaliseScores:
 
     def test_all_values_identical_normalises_to_one(self) -> None:
         raw = {
-            "a@x.com": {
+            "a@x.test": {
                 "commits": 10.0,
                 "lines": 100.0,
                 "consistency": 0.5,
                 "recency": 5.0,
             },
-            "b@x.com": {
+            "b@x.test": {
                 "commits": 10.0,
                 "lines": 100.0,
                 "consistency": 0.3,
@@ -331,18 +331,18 @@ class TestNormaliseScores:
             },
         }
         result = _normalise_scores(raw)
-        assert result["a@x.com"]["commits"] == 1.0
-        assert result["b@x.com"]["commits"] == 1.0
+        assert result["a@x.test"]["commits"] == 1.0
+        assert result["b@x.test"]["commits"] == 1.0
 
     def test_max_contributor_normalises_commits_to_one(self) -> None:
         raw = {
-            "a@x.com": {
+            "a@x.test": {
                 "commits": 50.0,
                 "lines": 500.0,
                 "consistency": 0.8,
                 "recency": 10.0,
             },
-            "b@x.com": {
+            "b@x.test": {
                 "commits": 10.0,
                 "lines": 100.0,
                 "consistency": 0.2,
@@ -350,12 +350,12 @@ class TestNormaliseScores:
             },
         }
         result = _normalise_scores(raw)
-        assert result["a@x.com"]["commits"] == 1.0
-        assert result["b@x.com"]["commits"] == 0.0
+        assert result["a@x.test"]["commits"] == 1.0
+        assert result["b@x.test"]["commits"] == 0.0
 
     def test_consistency_passes_through_unchanged(self) -> None:
         raw = {
-            "a@x.com": {
+            "a@x.test": {
                 "commits": 20.0,
                 "lines": 200.0,
                 "consistency": 0.65,
@@ -363,7 +363,7 @@ class TestNormaliseScores:
             },
         }
         result = _normalise_scores(raw)
-        assert result["a@x.com"]["consistency"] == pytest.approx(0.65)
+        assert result["a@x.test"]["consistency"] == pytest.approx(0.65)
 
 
 # ------------------------------------------------------------------
@@ -376,31 +376,31 @@ class TestComputePercentiles:
     """Tests for the percentile computation helper."""
 
     def test_single_contributor_receives_one_hundred(self) -> None:
-        result = _compute_percentiles({"a@x.com": 0.75})
-        assert result["a@x.com"] == 100.0
+        result = _compute_percentiles({"a@x.test": 0.75})
+        assert result["a@x.test"] == 100.0
 
     def test_lowest_score_receives_zero_percentile(self) -> None:
         result = _compute_percentiles(
             {
-                "a@x.com": 0.9,
-                "b@x.com": 0.5,
-                "c@x.com": 0.1,
+                "a@x.test": 0.9,
+                "b@x.test": 0.5,
+                "c@x.test": 0.1,
             }
         )
-        assert result["c@x.com"] == 0.0
+        assert result["c@x.test"] == 0.0
 
     def test_highest_score_receives_one_hundred_percentile(self) -> None:
         result = _compute_percentiles(
             {
-                "a@x.com": 0.9,
-                "b@x.com": 0.5,
-                "c@x.com": 0.1,
+                "a@x.test": 0.9,
+                "b@x.test": 0.5,
+                "c@x.test": 0.1,
             }
         )
-        assert result["a@x.com"] == 100.0
+        assert result["a@x.test"] == 100.0
 
     def test_all_percentiles_are_bounded(self) -> None:
-        scores = {f"user{i}@x.com": float(i) for i in range(10)}
+        scores = {f"user{i}@x.test": float(i) for i in range(10)}
         result = _compute_percentiles(scores)
         for p in result.values():
             assert 0.0 <= p <= 100.0
@@ -415,9 +415,9 @@ class TestComputePercentiles:
         """
         result = _compute_percentiles(
             {
-                "a@x.com": 0.5,
-                "b@x.com": 0.5,
+                "a@x.test": 0.5,
+                "b@x.test": 0.5,
             }
         )
-        assert result["a@x.com"] == 0.0
-        assert result["b@x.com"] == 0.0
+        assert result["a@x.test"] == 0.0
+        assert result["b@x.test"] == 0.0
