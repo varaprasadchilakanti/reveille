@@ -93,3 +93,16 @@ def test_a_rev_parse_failure_other_than_ownership_cannot_run(
 
     with pytest.raises(RepositoryError, match="Git cannot read"):
         GitReader(repo)
+
+
+@pytest.mark.parametrize("failing", ["status", "for_each_ref"])
+def test_a_git_failure_in_state_is_reported_as_git_s(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, failing: str
+) -> None:
+    """Not as "a defect in Reveille": a corrupt index or a lock is the repository's."""
+    reader = GitReader(repo)
+    real = reader._git()
+    monkeypatch.setattr(reader, "_git", lambda extra=(): _Runner(real, {failing: 128}))
+
+    with pytest.raises(RepositoryError, match="Git could not read"):
+        reader.read_state()

@@ -451,3 +451,17 @@ class TestItNamesNobodyAndStaysSmall:
             (repo / f"a-rather-long-directory-name-{i:02d}.txt").write_text("x\n", encoding="utf-8")
 
         assert len(_text(repo).encode()) < 2048
+
+
+class TestTheSuggestedCommand:
+    def test_a_tag_with_shell_syntax_is_quoted(self, repo: Path) -> None:
+        """A legal tag name can hold `;` and `$(...)`; the line an agent may run quotes it."""
+        _git(repo, "tag", "v1;$(id)", "HEAD~1")
+
+        text = _text(repo)
+        markdown = (
+            CliRunner().invoke(app, ["state", "--repo", str(repo), "--format", "markdown"]).stdout
+        )
+
+        assert "Next: reveille brief --from 'v1;$(id)'" in text
+        assert "reveille brief --from 'v1;$(id)'" in markdown

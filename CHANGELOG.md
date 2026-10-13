@@ -22,11 +22,20 @@ before 0.8.0 predate the convention and are left as they were released.
   release already installed if the floor allows it. The floors are now GitPython 3.1.62,
   Jinja2 3.1.6 and Pydantic 2.4, releases no published advisory affected on
   2026-10-13, and a test fails if one is lowered. The locked versions are unchanged.
-- **A `.mailmap` could stall a run for minutes.** Its four line patterns backtracked
-  quadratically: one 200 KB line took about 44 seconds, inside the 1 MiB bound on a committed
-  `.mailmap`, and the working-tree file had no bound at all (a 66 MB file took 30 seconds and
-  517 MB). Lines are now parsed in one pass, as Git does, and the working-tree file is bounded
-  at 1 MiB like the committed one, with a warning when it is not read.
+- **A `.mailmap` could stall a run for minutes.** Its line patterns could backtrack on a long
+  hostile line, and the working-tree file had no size bound. Lines are now parsed in one pass,
+  and the working-tree file is bounded at 1 MiB like the committed one, with a warning when it
+  is not read.
+- **A password containing `#` or `?` was partly printed.** The query and fragment were removed
+  before the credential, so such a character ended the credential early and the rest of it
+  stayed in the remote URL the report shows. The credential is now removed first.
+- **A file or directory name could add a line to text output.** A newline in a path, directory or
+  repository name was printed as it was, so a name could make `state` show a line such as
+  "Working tree: clean." that Reveille did not write. Text output now shows CR and LF inside a
+  value as `\r` and `\n`, as markdown and the one-line form already did.
+- **The command `state` suggests quoted the tag as it was.** A tag name may hold `;` and `$(...)`;
+  the "Next: reveille brief --from <tag>" line, which an assistant may run, now quotes it for
+  the shell.
 - **A report could still be written over Git's own files.** A report path that was a hard link
   to a Git file, which a working tree delivered by someone else can carry, was written through
   by a plain `generate`, and `--output` could name a file in the Git directory of the repository
@@ -89,10 +98,8 @@ before 0.8.0 predate the convention and are left as they were released.
   backticks, with newlines shown as `\n`, so a name cannot add a heading, a link or HTML.
 - **`--format line`** for `state` and `brief`: one line of counts for a shell prompt or a
   status bar. No path, no author; a CR or LF in a name is shown as an escape.
-- **`reile`**, a shorter name for the same command, installed beside `reveille`. Two other
-  projects install a `reveille` command; `reile` was free on PyPI, npm, crates.io, Homebrew and
-  Debian on 2026-10-12.
-
+- **`reile`**, a shorter name for the same command, installed beside `reveille`, for systems where
+  another package owns `reveille`.
 - **`reveille brief`** says what changed since a tag, a commit or a date (`--from <revision>` or
   `--since <date>`), in counts, naming no author (with one or two people, counts can identify someone): commits, people and automated accounts, the most
   changed areas and file types, files added, areas active again after 90 quiet days, and tags in
@@ -130,6 +137,16 @@ before 0.8.0 predate the convention and are left as they were released.
   every frame as text. It now animates only when stderr is a terminal.
 
 ### Fixed
+
+- **`.mailmap` lines Git honours were skipped.** A name holding `#`, text after the last address,
+  a third address, or no space before `<` made Reveille drop a line that `git check-mailmap`
+  applies, so people were split or merged differently from `git shortlog`, and
+  `--exclude-author` could miss commits. Lines are now read exactly as Git reads them, including
+  a later line updating one field of an earlier one; a test compares each case with Git.
+- **`--branch` named a branch with commits, and the answer was "no commits"**, when the checkout
+  itself had none (an orphan branch). The named branch is now read.
+- **A Git failure during `state` or a tag listing was reported as a defect in Reveille.** It now
+  names Git's own error, such as a corrupt index or a lock, still with exit 2.
 
 - **A repository's own Git settings could change the figures.** Set in `.git/config` (or the
   user's config), `diff.renames=false` counted a renamed file as deleted and added,

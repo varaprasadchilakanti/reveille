@@ -84,44 +84,54 @@ _GITHUB_LEGACY_NOREPLY_RE = re.compile(
 )
 
 
-def _parse_mailmap_line(line: str) -> tuple[str, ...] | None:
-    """Parse one `.mailmap` line in a single linear pass, as Git does.
+def _name_and_email(text: str, *, allow_empty: bool) -> tuple[str | None, str, str] | None:
+    """Read `name <email>` from the start of `text`, as Git's `parse_name_and_email` does.
 
-    Returns the fields of one of gitmailmap(5)'s four forms. A name ends at the
-    first `<` and must be followed by whitespace before it. Not a regex: lazy
-    patterns backtracked quadratically on hostile lines.
+    The address runs from the first `<` to the next `>`; the name is what comes
+    before, trimmed, or None if empty.
 
     Args:
-        line: The line, comment removed and stripped.
+        text: What is left of the line.
+        allow_empty: Whether `<>` is accepted (Git allows it for the commit address).
 
     Returns:
-        The fields, or None for a malformed line.
+        The name, the address and the text after it, or None if there is no address.
     """
-    fields: list[tuple[str, str]] = []
-    position = 0
-    while (left := line.find("<", position)) >= 0:
-        right = line.find(">", left + 1)
-        if right <= left + 1 or len(fields) == 2:
-            return None
-        before = line[position:left]
-        if fields and not before[:1].isspace():
-            return None
-        if before.strip() and not before[-1].isspace():
-            return None
-        fields.append((before.strip(), line[left + 1 : right]))
-        position = right + 1
-    if line[position:].strip():
+    left = text.find("<")
+    right = text.find(">", left + 1) if left >= 0 else -1
+    if right < 0 or (right == left + 1 and not allow_empty):
         return None
-    match fields:
-        case [(name, email)] if name:
-            return (name, email)
-        case [("", proper), ("", commit)]:
-            return (proper, commit)
-        case [(name, proper), ("", commit)] if name:
-            return (name, proper, commit)
-        case [(name, proper), (commit_name, commit)] if name and commit_name:
-            return (name, proper, commit_name, commit)
-    return None
+    name = text[:left].strip(" \t\r\n\v\f")
+    return (name or None), text[left + 1 : right], text[right + 1 :]
+
+
+def _parse_mailmap_line(line: str) -> tuple[str | None, str | None, str | None, str] | None:
+    """Parse one `.mailmap` line as Git's `read_mailmap_line` does.
+
+    A line starting with `#` is a comment. The first `<...>` is the proper
+    address (with any name before it), an optional second one is the commit
+    address (with any name before it), and anything after is ignored. A single
+    address names both: the proper name applies to that address. Linear: no
+    pattern can backtrack on a hostile line.
+
+    Args:
+        line: One line of the file, without its newline.
+
+    Returns:
+        `(proper_name, proper_email, commit_name, commit_email)`; a None proper
+        field keeps the commit's own. None when the line maps nothing.
+    """
+    if line.startswith("#"):
+        return None
+    first = _name_and_email(line, allow_empty=False)
+    if first is None:
+        return None
+    name, email, rest = first
+    second = _name_and_email(rest, allow_empty=True) if rest else None
+    if second is None:
+        return (name, None, None, email)
+    commit_name, commit_email, _ = second
+    return (name, email, commit_name, commit_email)
 
 
 def _normalise_github_noreply(email: str, mailmap: _Mailmap) -> str:
@@ -551,9 +561,13 @@ def _without_credentials(url: str) -> str:
     scheme, separator, rest = url.partition("://")
     if not separator:
         return url
-    rest = rest.split("#", 1)[0].split("?", 1)[0]
     authority, slash, path = rest.partition("/")
+    # The user part ends at the last `@` before the path, so a raw `#` or `?`
+    # inside a password is stripped with it; query and fragment go after.
     userinfo, at, host = authority.rpartition("@")
+    host = host.split("#", 1)[0].split("?", 1)[0]
+    path = path.split("#", 1)[0].split("?", 1)[0]
+    authority = f"{userinfo}{at}{host}"
     if at:
         if scheme.rpartition("::")[2].lower() in ("http", "https"):
             authority = host
@@ -727,8 +741,9 @@ class GitReader:
 
         exclude_set = _expand_exclusions(exclude_authors, mailmap)
 
-        # An unborn HEAD is a negative answer, not a read failure.
-        if not self._repo.head.is_valid():
+        # An unborn HEAD is a negative answer, not a read failure; a named branch
+        # is read even then, and a missing one fails below.
+        if branch is None and not self._repo.head.is_valid():
             raise EmptyRepositoryError(
                 f"Repository at '{self._repo_path}' contains no commits. "
                 "Make at least one commit before generating a report."
@@ -1058,6 +1073,22 @@ class GitReader:
         return accounts, usernames
 
     def read_state(self) -> RepositoryState:
+        """Read the repository's present state (ADR 0024); see `_read_state`.
+
+        Returns:
+            The state.
+
+        Raises:
+            RepositoryError: If Git fails, as with a corrupt index or a lock.
+        """
+        try:
+            return self._read_state()
+        except GitCommandError as exc:
+            raise RepositoryError(
+                f"Git could not read the repository's state: {_git_error(exc)}"
+            ) from exc
+
+    def _read_state(self) -> RepositoryState:
         """Read the repository's present state, changing nothing (ADR 0024).
 
         Every call runs with optional locks off and fsmonitor pinned off (`_git`), so
@@ -1322,7 +1353,23 @@ class GitReader:
 
         Returns:
             Tag names, as repository text.
+
+        Raises:
+            RepositoryError: If Git fails to list them.
         """
+        try:
+            return self._tags_in_range(branch, from_commit, since, until)
+        except GitCommandError as exc:
+            raise RepositoryError(f"Git could not list the tags: {_git_error(exc)}") from exc
+
+    def _tags_in_range(
+        self,
+        branch: str | None,
+        from_commit: str | None,
+        since: datetime.date | None,
+        until: datetime.date | None,
+    ) -> list[str]:
+        """Do the work of `tags_in_range`, letting Git's errors through."""
         rev = branch or self._resolve_active_branch()
         walk = f"{from_commit}..{rev}" if from_commit is not None else rev
         _, rev_list_args = _build_log_args(walk, since, until, self._supports_since_as_filter())
@@ -1575,27 +1622,22 @@ class GitReader:
 
         mailmap = _Mailmap()
         for line in lines:
-            # A comment runs to end of line.
-            stripped = line.split("#", 1)[0].strip()
-            if not stripped:
-                continue
-
-            fields = _parse_mailmap_line(stripped)
+            fields = _parse_mailmap_line(line)
             if fields is None:
                 continue
-            if len(fields) == 4:
-                mailmap.by_name_and_email[(fields[2].strip().lower(), fields[3].lower())] = (
-                    fields[0],
-                    fields[1].lower(),
-                )
-            elif len(fields) == 3:
-                mailmap.by_email[fields[2].lower()] = (fields[0], fields[1].lower())
-            elif stripped.startswith("<"):
-                # Email-only form: None keeps the commit's name.
-                mailmap.by_email[fields[1].lower()] = (None, fields[0].lower())
+            proper_name, proper_email, commit_name, commit_email = fields
+            if commit_name is not None:
+                table: dict[Any, tuple[str | None, str]] = mailmap.by_name_and_email
+                key: Any = (commit_name.lower(), commit_email.lower())
             else:
-                email = fields[1].lower()
-                mailmap.by_email[email] = (fields[0], email)
+                table, key = mailmap.by_email, commit_email.lower()
+            # A later line for the same commit identity replaces only the fields it
+            # gives, as Git's add_mapping does.
+            earlier_name, earlier_email = table.get(key, (None, commit_email.lower()))
+            table[key] = (
+                proper_name if proper_name is not None else earlier_name,
+                proper_email.lower() if proper_email is not None else earlier_email,
+            )
 
         return mailmap
 
@@ -1757,6 +1799,12 @@ def repository_root(path: Path) -> Path:
     except (GitCommandError, OSError):
         return path.resolve()
     return Path(top).resolve() if top else path.resolve()
+
+
+def _git_error(exc: GitCommandError) -> str:
+    """Return the first line Git wrote to stderr, or its exit status."""
+    lines = str(exc.stderr or "").strip().splitlines()
+    return lines[0].strip().removeprefix("stderr: ").strip("'") if lines else f"exit {exc.status}"
 
 
 def _is_partial_clone(repo: Repo) -> bool:

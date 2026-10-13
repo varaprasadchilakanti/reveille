@@ -22,6 +22,7 @@ import math
 import os
 import re
 import secrets
+import shlex
 import stat
 from collections import defaultdict
 from collections.abc import Sequence
@@ -503,7 +504,7 @@ class Renderer:
                 else f"{merges:,} merge commits are not counted."
             )
         lines.append(document["notice"])
-        return "\n".join(lines) + "\n"
+        return _joined(lines)
 
     @staticmethod
     def who_changed_text(
@@ -581,7 +582,7 @@ class Renderer:
             "appear in commit history."
         )
         lines.append(_NOTICE)
-        return "\n".join(lines) + "\n"
+        return _joined(lines)
 
     @staticmethod
     def brief_text(
@@ -676,7 +677,7 @@ class Renderer:
             lines.append(f"Tags in the range: {listed(tags)}.")
         lines.append(f"Next: reveille brief --from {tip[:12]}")
         lines.append(_NOTICE)
-        return "\n".join(lines) + "\n"
+        return _joined(lines)
 
     @staticmethod
     def state_text(
@@ -705,7 +706,7 @@ class Renderer:
             return _state_markdown(state, name, history_replaced, limit)
         if output_format == "line":
             return _state_line(state, name)
-        return "\n".join(_state_lines(state, name, history_replaced, limit)) + "\n"
+        return _joined(_state_lines(state, name, history_replaced, limit))
 
     def render_csv(self, data: ReportData, output_path: Path) -> Path:
         """Serialise the ranked contributor table to a UTF-8 CSV file with a BOM.
@@ -2148,7 +2149,7 @@ def _state_lines(
     if state.latest_tag:
         lines.append(
             f"Latest tag: {state.latest_tag}, {state.commits_since_tag or 0:,} commits since. "
-            f"Next: reveille brief --from {state.latest_tag}"
+            f"Next: reveille brief --from {shlex.quote(state.latest_tag)}"
         )
     if state.shallow:
         lines.append("Shallow clone: only part of the history is present.")
@@ -2238,7 +2239,7 @@ def _summary_markdown(document: dict[str, Any]) -> str:
         "",
         f"> {document['notice']}",
     ]
-    return "\n".join(lines) + "\n"
+    return _joined(lines)
 
 
 def _brief_markdown(
@@ -2274,7 +2275,7 @@ def _brief_markdown(
     if tags:
         lines.append(f"- **Tags in the range:** {_md_listed(tags, limit)}")
     lines += ["", f"Next: {_md(f'reveille brief --from {tip[:12]}')}", "", f"> {_NOTICE}"]
-    return "\n".join(lines) + "\n"
+    return _joined(lines)
 
 
 def _state_markdown(state: RepositoryState, name: str, history_replaced: bool, limit: int) -> str:
@@ -2315,10 +2316,10 @@ def _state_markdown(state: RepositoryState, name: str, history_replaced: bool, l
     if state.latest_tag:
         lines.append(
             f"- **Latest tag:** {_md(state.latest_tag)}, {state.commits_since_tag or 0:,} commits "
-            f"since; next: {_md(f'reveille brief --from {state.latest_tag}')}"
+            f"since; next: {_md(f'reveille brief --from {shlex.quote(state.latest_tag)}')}"
         )
     lines += [*_state_markdown_notes(state, history_replaced, limit), "", f"> {_STATE_NOTICE}"]
-    return "\n".join(lines) + "\n"
+    return _joined(lines)
 
 
 def _state_markdown_notes(state: RepositoryState, history_replaced: bool, limit: int) -> list[str]:
@@ -2334,6 +2335,15 @@ def _state_markdown_notes(state: RepositoryState, history_replaced: bool, limit:
     if history_replaced:
         notes.append("- Replace refs or a graft file are present and not followed.")
     return notes
+
+
+def _joined(lines: Sequence[str]) -> str:
+    """Join output lines; a CR or LF inside one, from a repository name, is shown as an escape.
+
+    Each element is one line of output, so a newline inside it can only have come
+    from a path, branch or directory name, and would let that name add a line.
+    """
+    return "".join(line.replace("\r", "\\r").replace("\n", "\\n") + "\n" for line in lines)
 
 
 def _one_line(text: str) -> str:

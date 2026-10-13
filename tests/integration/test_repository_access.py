@@ -81,3 +81,14 @@ def test_a_git_older_than_the_floor_cannot_run(
     assert result.exit_code == ExitCode.CANNOT_RUN
     assert "Git 2.24 or newer" in result.stderr
     assert "2.20" in result.stderr
+
+
+def test_a_named_branch_is_read_when_head_has_no_commits(tmp_path: Path) -> None:
+    """An orphan checkout leaves HEAD unborn; `--branch main` still names commits."""
+    repo = _repo(tmp_path / "r")
+    subprocess.run(["git", "switch", "-q", "--orphan", "fresh"], cwd=repo, check=True)
+
+    result = CliRunner().invoke(app, ["summary", "--repo", str(repo), "--branch", "main"])
+
+    assert result.exit_code == ExitCode.SUCCESS, result.stderr
+    assert "2 commits" in result.stdout
