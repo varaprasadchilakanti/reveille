@@ -90,12 +90,29 @@ def _printable(text: str) -> str:
     return text.translate(_TERMINAL_UNSAFE)
 
 
+#: Whether stderr carries JSON: set when the command was asked for `--format json`,
+#: and reset by the root callback for every invocation.
+_stderr_json = {"on": False}
+
+_LEVELS = {"Error: ": "error", "Warning: ": "warning", "Note: ": "note"}
+
+
 def _err(message: str) -> None:
     """Write one message to stderr, with terminal control characters escaped.
 
+    Under `--format json` the message is one JSON object on its own line,
+    `{"level": "error" | "warning" | "note" | "message", "message": ...}`.
+
     Args:
-        message: The message to print.
+        message: The message to print, starting "Error: ", "Warning: " or "Note: ".
     """
+    if _stderr_json["on"]:
+        level, text = "message", message
+        for prefix, name in _LEVELS.items():
+            if message.startswith(prefix):
+                level, text = name, message.removeprefix(prefix)
+        typer.echo(json.dumps({"level": level, "message": text}), err=True)
+        return
     typer.echo(_printable(message), err=True)
 
 
@@ -434,6 +451,7 @@ def main(
     ] = None,
 ) -> None:
     """Offline reports of a Git repository's history."""
+    _stderr_json["on"] = False
 
 
 def _root(repo: Path) -> Path:
@@ -984,7 +1002,8 @@ def _run_query(produce: Callable[[Callable[[str], None]], str]) -> None:
 
 
 def _check_query_format(output_format: str, allowed: tuple[str, ...] = ("text", "json")) -> None:
-    """Refuse a --format the command does not offer."""
+    """Refuse a --format the command does not offer; under json, stderr is JSON too."""
+    _stderr_json["on"] = output_format == "json"
     if output_format not in allowed:
         choices = ", ".join(allowed[:-1]) + f" or {allowed[-1]}"
         _err(f"Error: --format must be {choices}, not {output_format!r}.")
@@ -1288,6 +1307,7 @@ def capabilities(
     """Describe what Reveille can and cannot do, for a person or a program."""
     from reveille.capabilities import build_capabilities, render_text
 
+    _stderr_json["on"] = output_format == "json"
     if output_format not in {"text", "json"}:
         _err(f"Error: unsupported format '{output_format}'. Accepted values: text, json.")
         raise typer.Exit(code=ExitCode.CANNOT_RUN)

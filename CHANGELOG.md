@@ -52,6 +52,10 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Added
 
+- **Errors as JSON.** With `--format json`, `summary`, `brief`, `state`, `who-changed` and
+  `capabilities` write each stderr message as a JSON line, `{"level": ..., "message": ...}`.
+  Exit codes are unchanged. Command-line usage errors are still text.
+
 - **Any directory inside a working tree** can be given as `--repo`, or be the current
   directory: every command reads the repository it belongs to, found as Git finds it (stopping
   at `GIT_CEILING_DIRECTORIES`). Inside the repository, `who-changed` takes a path relative to
