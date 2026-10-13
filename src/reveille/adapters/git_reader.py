@@ -582,6 +582,8 @@ class GitReader:
         self.commits_dated_after: int = 0
         #: Commits whose log record could not be read; counted nowhere, stated (ADR 0019).
         self.commits_unreadable: int = 0
+        #: Merge commits in the last `read_commits` selection, left out of every figure.
+        self.merges_excluded: int = 0
         #: Who changed each directory, when `read_commits` got an `area_depth`.
         self.area_activity: tuple[AreaActivity, ...] = ()
         #: Files added in the last `read_commits` with `name_status`.
@@ -739,6 +741,9 @@ class GitReader:
                 if line.strip()
             ]
             authentic_shas = set(authentic_order)
+            # The same selection's merges: left out of every figure (ADR 0001), and counted.
+            merges = ["--merges" if a == "--no-merges" else a for a in rev_list_args]
+            self.merges_excluded = int(str(self._git().rev_list("--count", *merges)).strip() or 0)
         except GitCommandError as exc:
             raise RepositoryError(
                 f"Failed to enumerate commits on branch '{rev}'. "

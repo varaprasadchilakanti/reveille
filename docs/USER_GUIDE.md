@@ -34,7 +34,9 @@ skips the line counts, 1.02 s; on git.git (61,112 commits), 22.6 s and 2.58 s.
 
 **Merge commits are excluded.** A merge repeats work already counted in the commits it joins, and
 counting it would credit whoever merged. A change made only in a merge, such as a conflict
-resolution, is not counted either. Counts are therefore lower than raw `git log`.
+resolution, is not counted either. Counts are therefore lower than raw `git log`, by the number the
+full JSON's `provenance.merge_commits_excluded` and the summary's `repository.merge_commits_excluded`
+give; the summary text says it when it is not zero.
 
 **Writing.** Reveille never changes the repository's Git data (history, refs, index, objects or
 configuration), and any output path inside `.git` is refused. It writes one file: the report.

@@ -64,7 +64,8 @@ limit liability as far as applicable law allows.
   lists it field by field, and [Before you share a report](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md#before-you-share-a-report)
   says what to check.
 - Not a bus factor. Commit concentration says who committed, not who understands the code.
-- Not every commit. Merge commits are excluded, so counts are lower than `git log` shows.
+- Not every commit. Merge commits are excluded, so counts are lower than `git log` shows; the JSON
+  says how many were left out (`merge_commits_excluded`).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/varaprasadchilakanti/reveille/main/docs/images/how-it-fits-dark.svg">

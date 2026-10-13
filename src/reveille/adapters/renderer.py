@@ -291,6 +291,7 @@ class Renderer:
                 # Counted in no figure; stated so the omission is not silent.
                 "commits_dated_after_window": data.provenance.commits_dated_after_window,
                 "commits_unreadable": data.provenance.commits_unreadable,
+                "merge_commits_excluded": data.provenance.merge_commits_excluded,
                 "shallow_clone": data.provenance.shallow_clone,
                 "replace_refs_not_followed": data.provenance.replace_refs_not_followed,
                 "graft_file_not_followed": data.provenance.graft_file_not_followed,
@@ -439,6 +440,7 @@ class Renderer:
                 "shallow_clone": data.provenance.shallow_clone,
                 "commits_dated_after_window": data.provenance.commits_dated_after_window,
                 "commits_unreadable": data.provenance.commits_unreadable,
+                "merge_commits_excluded": data.provenance.merge_commits_excluded,
                 "replace_refs_not_followed": data.provenance.replace_refs_not_followed,
                 "graft_file_not_followed": data.provenance.graft_file_not_followed,
             },
@@ -492,8 +494,15 @@ class Renderer:
             f"Gini {measures['gini_coefficient']:.2f}, "
             f"longest quiet run {_counted(measures['longest_quiet_run_days'], 'day')}.",
             *(f"- {f['headline']}" for f in document["findings"]),
-            document["notice"],
         ]
+        merges = repo["merge_commits_excluded"]
+        if merges:
+            lines.append(
+                "1 merge commit is not counted."
+                if merges == 1
+                else f"{merges:,} merge commits are not counted."
+            )
+        lines.append(document["notice"])
         return "\n".join(lines) + "\n"
 
     @staticmethod

@@ -141,6 +141,8 @@ class AnalysisProvenance:
     commits_dated_after_window: int = 0
     # Unreadable commit records (ADR 0019); counted in no figure.
     commits_unreadable: int = 0
+    # Merge commits in the selection (ADR 0001); counted in no figure.
+    merge_commits_excluded: int = 0
     # Figures then describe the clone, not the project.
     shallow_clone: bool = False
     # Replace refs and grafts not followed (ADR 0018); `git log` would follow them.

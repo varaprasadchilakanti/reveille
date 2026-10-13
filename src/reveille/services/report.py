@@ -445,6 +445,7 @@ def build_report_data(
         _build_provenance(config, head_sha, reader.mailmap_applied),
         commits_dated_after_window=after_window,
         commits_unreadable=reader.commits_unreadable,
+        merge_commits_excluded=reader.merges_excluded,
         shallow_clone=shallow,
         replace_refs_not_followed=replace_refs,
         graft_file_not_followed=graft_file,

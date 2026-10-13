@@ -236,7 +236,8 @@ _CAVEATS: tuple[dict[str, str], ...] = (
         "id": "merge-commits-excluded",
         "description": (
             "Merge commits are excluded unconditionally, so commit counts are "
-            "lower than `git log` reports for the same range."
+            "lower than `git log` reports for the same range, by the number "
+            "`merge_commits_excluded` gives in the JSON."
         ),
     },
     {
