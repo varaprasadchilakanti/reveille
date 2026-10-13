@@ -194,6 +194,25 @@ class TestTags:
         assert "\x1b" not in out and "\x07" not in out
 
 
+class TestTheDefaultPoint:
+    def test_without_a_point_it_starts_at_the_latest_tag(self, released: _Repo) -> None:
+        released.commit("src/core/c.py", "2026-03-04T10:00:00+00:00")
+        released.tag("v1.1")
+        released.commit("src/core/d.py", "2026-03-05T10:00:00+00:00")
+
+        assert _json(released.path) == _json(released.path, "--from", "v1.1")
+
+    def test_with_no_tag_it_cannot_run(self, tmp_path: Path) -> None:
+        repo = _Repo(tmp_path / "untagged")
+        repo.commit("a.txt", "2026-01-01T10:00:00+00:00")
+
+        exit_code, out, err = _brief(repo.path)
+
+        assert exit_code == ExitCode.CANNOT_RUN
+        assert out == ""
+        assert "no tag" in err and "--from" in err
+
+
 class TestThePoint:
     def test_a_date_point(self, released: _Repo) -> None:
         brief = _json(released.path, "--since", "2026-03-02", "--deterministic")
@@ -223,8 +242,7 @@ class TestThePoint:
         [
             (["--from", "--output=x"], ExitCode.CANNOT_RUN, "beginning with '-'"),
             (["--from", "no-such-tag"], ExitCode.CANNOT_RUN, "does not name a commit"),
-            ([], ExitCode.CANNOT_RUN, "exactly one of"),
-            (["--from", "v1.0", "--since", "2026-01-01"], ExitCode.CANNOT_RUN, "exactly one of"),
+            (["--from", "v1.0", "--since", "2026-01-01"], ExitCode.CANNOT_RUN, "not both"),
             (["--since", "2027-01-01"], ExitCode.NEGATIVE, "No commits since"),
         ],
     )

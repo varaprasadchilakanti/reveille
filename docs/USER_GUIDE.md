@@ -246,8 +246,9 @@ reveille brief --from v0.9.0
 reveille brief --since 2026-10-01 --format json
 ```
 
-What changed since a point you name, in counts. Exactly one of `--from <revision>` (a tag, branch
-or commit, read by ancestry as `git log <revision>..<branch>` is) or `--since <date>`. Other
+What changed since a point, in counts. Give `--from <revision>` (a tag, branch or commit, read by
+ancestry as `git log <revision>..<branch>` is) or `--since <date>`; with neither, it starts at the
+latest tag reachable on the branch and names it, and with no tag it stops with exit 2. Other
 options: `--repo`, `--branch`, `--until`, `--exclude-author`, `--deterministic`, `--limit`
 (default 5), `--verbose` and `--format text|json|markdown|line`.
 

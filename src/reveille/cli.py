@@ -1094,8 +1094,8 @@ def brief(
 
     _configure_logging(verbose)
     _check_query_format(output_format, ("text", "json", "markdown", "line"))
-    if (from_revision is None) == (since is None):
-        _err("Error: give exactly one of --from <revision> or --since <date>.")
+    if from_revision is not None and since is not None:
+        _err("Error: give --from <revision> or --since <date>, not both.")
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
     config = _query_config(repo, since, until, branch, exclude_author, deterministic)
     _run_query(

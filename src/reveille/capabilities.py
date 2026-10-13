@@ -77,7 +77,8 @@ _CAPABILITIES: tuple[dict[str, str], ...] = (
         "id": "brief",
         "description": (
             "Say what changed since a tag, a commit or a date with `reveille brief "
-            "--from <revision>` or `--since <date>`: commits, people and automated "
+            "--from <revision>` or `--since <date>` (with neither, since the latest "
+            "tag): commits, people and automated "
             "accounts as counts, the most changed areas and file types, files "
             "added, areas active again after 90 quiet days and tags in the range. "
             "It names nobody, but with one or two people, counts can identify "

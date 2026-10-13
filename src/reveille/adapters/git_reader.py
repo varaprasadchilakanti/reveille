@@ -1193,14 +1193,28 @@ class GitReader:
         out = str(self._git().for_each_ref(f"--merged={head}", "--format=%(refname)", "refs/heads"))
         return len(out.split())
 
+    def latest_tag(self, rev: str) -> str | None:
+        """Return the nearest tag reachable from a revision, or None if there is none.
+
+        Args:
+            rev: A commit or branch.
+
+        Returns:
+            The tag name, as repository text.
+        """
+        try:
+            return str(
+                self._git().describe("--tags", "--abbrev=0", "--end-of-options", rev)
+            ).strip()
+        except GitCommandError:
+            return None
+
     def _latest_tag(self, head: str | None) -> tuple[str | None, int | None]:
         """Return the nearest reachable tag and the non-merge commits after it."""
-        if head is None:
+        tag = self.latest_tag(head) if head is not None else None
+        if head is None or tag is None:
             return None, None
         try:
-            tag = str(
-                self._git().describe("--tags", "--abbrev=0", "--end-of-options", head)
-            ).strip()
             count = str(
                 self._git().rev_list(
                     "--no-merges", "--count", "--end-of-options", f"{tag}..{head}", "--"

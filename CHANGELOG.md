@@ -52,6 +52,10 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Added
 
+- **`brief` with no point starts at the latest tag** reachable on the branch and names it, so one
+  call answers "what changed since the last release" (ADR 0025, proposed). With no tag it stops
+  with exit 2.
+
 - **Errors as JSON.** With `--format json`, `summary`, `brief`, `state`, `who-changed` and
   `capabilities` write each stderr message as a JSON line, `{"level": ..., "message": ...}`.
   Exit codes are unchanged. Command-line usage errors are still text.

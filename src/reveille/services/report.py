@@ -34,7 +34,7 @@ from reveille.domain.models import (
     ReportData,
 )
 from reveille.domain.ranking import rank_contributors
-from reveille.exceptions import EmptyRepositoryError
+from reveille.exceptions import EmptyRepositoryError, RepositoryError
 
 _logger = logging.getLogger(__name__)
 
@@ -212,7 +212,8 @@ def brief_text(
 
     Args:
         config: Validated configuration; output settings are unused.
-        from_revision: A tag, branch or commit; None when `config.since` is the point.
+        from_revision: A tag, branch or commit; None for `config.since`, or, with
+            neither, the latest tag reachable on the branch.
         output_format: "json", "text", "markdown" or "line".
         limit: The most entries any list carries.
         on_notice: As for generate_report.
@@ -224,6 +225,12 @@ def brief_text(
         EmptyRepositoryError: If nothing changed after the point.
     """
     reader = GitReader(config.repo_path)
+    if from_revision is None and config.since is None:
+        from_revision = reader.latest_tag(config.branch or "HEAD")
+        if from_revision is None:
+            raise RepositoryError(
+                "The branch has no tag to start from: give --from <revision> or --since <date>."
+            )
     from_commit = reader.resolve_commit(from_revision) if from_revision is not None else None
     # Between two commits no clock enters; a date point ends the window today, as summary does.
     cutoff = (
