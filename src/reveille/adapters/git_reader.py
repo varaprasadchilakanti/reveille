@@ -51,6 +51,11 @@ _LOG_FORMAT = f"--format={_RECORD_SEP}%H{_FIELD_SEP}%an{_FIELD_SEP}%ae{_FIELD_SE
 # A well-formed record opens with a 40-character object name.
 _SHA_RE = re.compile(r"[0-9a-f]{40}")
 
+#: Environment variables that make Git read a repository other than the one named.
+_REPOSITORY_VARIABLES = frozenset(
+    {"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY"}
+)
+
 #: The oldest Git every read works with: `--end-of-options` arrived in 2.24.
 _MIN_GIT = (2, 24)
 
@@ -1739,6 +1744,11 @@ def repository_root(path: Path) -> Path:
         The working tree's top directory, or `path` resolved.
     """
     if not path.is_dir():
+        return path.resolve()
+    # A variable that points Git at another repository (a hook sets GIT_DIR)
+    # would redirect the search, and GitPython cannot unset one: search only
+    # without them, so `--repo` alone names the repository.
+    if _REPOSITORY_VARIABLES & os.environ.keys():
         return path.resolve()
     try:
         # `-C`, not a working directory: GitPython runs Git in the process's own

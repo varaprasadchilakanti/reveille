@@ -211,6 +211,10 @@ class _StderrHandler(logging.StreamHandler):  # type: ignore[type-arg]
         if _StageSpinner.line_open:
             _StageSpinner.line_open = False
             self.stream.write("\n")
+        if _stderr_json["on"]:
+            entry = {"level": record.levelname.lower(), "message": record.getMessage()}
+            self.stream.write(json.dumps(entry) + "\n")
+            return
         super().emit(record)
 
 

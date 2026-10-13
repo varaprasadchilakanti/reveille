@@ -226,6 +226,11 @@ def brief_text(
     """
     reader = GitReader(config.repo_path)
     if from_revision is None and config.since is None:
+        # Settle the branch first, so "no tag" is never said for another reason.
+        if config.branch is not None:
+            reader.resolve_commit(config.branch)
+        elif reader.resolve_head_sha() is None:
+            raise EmptyRepositoryError(f"Repository at '{config.repo_path}' contains no commits.")
         from_revision = reader.latest_tag(config.branch or "HEAD")
         if from_revision is None:
             raise RepositoryError(

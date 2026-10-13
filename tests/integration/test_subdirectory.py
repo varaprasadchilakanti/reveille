@@ -107,3 +107,27 @@ def test_a_missing_directory_is_not_searched_from_elsewhere(
     result = CliRunner().invoke(app, ["summary", "--repo", str(tmp_path / "missing")])
 
     assert result.exit_code == ExitCode.CANNOT_RUN
+
+
+@pytest.mark.parametrize("variable", ["GIT_WORK_TREE", "GIT_DIR"])
+def test_a_git_environment_variable_never_redirects_the_read(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, variable: str
+) -> None:
+    """Git hooks set GIT_DIR. With one set, `--repo` is used as given: its root is
+    read, and a subdirectory is refused rather than searched from elsewhere."""
+    other = tmp_path / "other"
+    other.mkdir()
+    _git(other, "init", "-q", "-b", "main")
+    (other / "x.txt").write_text("x", encoding="utf-8")
+    _git(other, "add", "-A")
+    _git(other, "commit", "-qm", "x")
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True
+    ).stdout.strip()
+    monkeypatch.setenv(variable, str(other / ".git" if variable == "GIT_DIR" else other))
+
+    state = _json("state", "--repo", str(repo))
+    sub = CliRunner().invoke(app, ["state", "--repo", str(repo / "src"), "--format", "json"])
+
+    assert (state["repository"]["name"], state["head"]) == ("r", head)
+    assert sub.exit_code == ExitCode.CANNOT_RUN

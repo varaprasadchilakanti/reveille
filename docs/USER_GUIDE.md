@@ -36,7 +36,8 @@ skips the line counts, 1.02 s; on git.git (61,112 commits), 22.6 s and 2.58 s.
 counting it would credit whoever merged. A change made only in a merge, such as a conflict
 resolution, is not counted either. Counts are therefore lower than raw `git log`, by the number the
 full JSON's `provenance.merge_commits_excluded` and the summary's `repository.merge_commits_excluded`
-give; the summary text says it when it is not zero.
+give: the merges in the branch and window, whoever made them (`--exclude-author` does not change
+it). The summary text says it when it is not zero.
 
 **Writing.** Reveille never changes the repository's Git data (history, refs, index, objects or
 configuration), and any output path inside `.git` is refused. It writes one file: the report.
@@ -81,7 +82,7 @@ author, carries no notice, and a newline in a name is shown as `\n`.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--repo`, `-r` | `.` | A working tree or any directory inside it (the search stops at `GIT_CEILING_DIRECTORIES`, as Git's does), or a bare repository (which needs `--output`: its root is Git's own directory, where Reveille does not write). |
+| `--repo`, `-r` | `.` | A working tree or any directory inside it (the search stops at `GIT_CEILING_DIRECTORIES`, as Git's does; with `GIT_DIR` or `GIT_WORK_TREE` set, as in a Git hook, give the root), or a bare repository (which needs `--output`: its root is Git's own directory, where Reveille does not write). |
 | `--output`, `-o` | `reveille-report.html` in the repository root | See [Output path](#output-path). |
 | `--since`, `--until` | first commit; today (UTC) | Inclusive dates, `YYYY-MM-DD`. See [The window](#the-window). |
 | `--branch`, `-b` | the checked-out branch | Commits reachable from this branch. The checked-out branch is not necessarily the default branch. |

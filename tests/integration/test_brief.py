@@ -213,6 +213,29 @@ class TestTheDefaultPoint:
         assert "no tag" in err and "--from" in err
 
 
+class TestTheDefaultPointFailsForTheRightReason:
+    def test_a_repository_with_no_commits_is_a_negative_answer(self, tmp_path: Path) -> None:
+        repo = _Repo(tmp_path / "empty")
+
+        exit_code, out, err = _brief(repo.path)
+
+        assert exit_code == ExitCode.NEGATIVE
+        assert out == ""
+        assert "no commits" in err
+        assert "no tag" not in err
+
+    @pytest.mark.parametrize(
+        ("branch", "says"), [("nosuch", "does not name"), ("-x", "beginning with '-'")]
+    )
+    def test_a_bad_branch_is_named_as_such(self, released: _Repo, branch: str, says: str) -> None:
+        exit_code, out, err = _brief(released.path, f"--branch={branch}")
+
+        assert exit_code == ExitCode.CANNOT_RUN
+        assert out == ""
+        assert says in err
+        assert "no tag" not in err
+
+
 class TestThePoint:
     def test_a_date_point(self, released: _Repo) -> None:
         brief = _json(released.path, "--since", "2026-03-02", "--deterministic")

@@ -82,3 +82,19 @@ def test_the_mode_does_not_leak_into_the_next_run(tmp_path: Path) -> None:
     result = CliRunner().invoke(app, ["validate", "--repo", str(tmp_path / "none")])
 
     assert result.stderr.startswith("Error: ")
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ["summary", "--exclude-author", "nobody@e.test"],
+        ["brief", "--since", "2000-01-01", "--verbose"],
+    ],
+)
+def test_warnings_and_diagnostics_are_json_too(repo: Path, extra: list[str]) -> None:
+    result = CliRunner().invoke(app, [*extra, "--repo", str(repo), "--format", "json"])
+
+    assert result.exit_code == ExitCode.SUCCESS, result.stderr
+    lines = _lines(result.stderr)
+    assert lines, "the run should have written something to stderr"
+    assert {line["level"] for line in lines} <= {"warning", "note", "debug", "info", "error"}

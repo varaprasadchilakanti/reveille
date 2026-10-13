@@ -60,3 +60,11 @@ def test_an_unknown_command_lists_the_known_ones() -> None:
     assert code == ExitCode.CANNOT_RUN
     assert out == ""
     assert "state" in json.loads(err)["message"]
+
+
+def test_generate_is_described_as_the_report_not_one_chart() -> None:
+    _, out, _ = _run("--command", "generate", "--format", "json")
+    command = json.loads(out)["command"]
+
+    assert command["description"] == command["summary"]
+    assert "calendar" not in command["description"].lower()

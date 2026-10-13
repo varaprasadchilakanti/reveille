@@ -56,8 +56,9 @@ before 0.8.0 predate the convention and are left as they were released.
   2.3 KB for `state` as JSON, against about 24 KB for everything.
 
 - **The merge commits left out are counted.** `provenance.merge_commits_excluded` in the full
-  JSON and `repository.merge_commits_excluded` in the summary give how many merges the selection
-  held; the summary text says it when it is not zero. Additive to schema 1.2.
+  JSON and `repository.merge_commits_excluded` in the summary give how many merges the branch and
+  window held, whoever made them (`--exclude-author` does not change it); the summary text says it
+  when it is not zero. Additive to schema 1.2.
 
 - **`brief` with no point starts at the latest tag** reachable on the branch and names it, so one
   call answers "what changed since the last release" (ADR 0025, proposed). With no tag it stops

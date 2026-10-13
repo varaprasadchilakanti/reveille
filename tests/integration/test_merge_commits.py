@@ -158,3 +158,11 @@ class TestTheExclusionIsStated:
         result = CliRunner().invoke(app, ["summary", "--repo", str(repo)])
 
         assert "1 merge commit is not counted" in result.stdout
+
+
+@pytest.mark.integration
+def test_the_merge_count_ignores_exclude_author(repo: Path) -> None:
+    """Documented: merges in the range, whoever made them."""
+    payload = _run("summary", "--repo", str(repo), "--exclude-author", "mo@e.test")
+
+    assert payload["repository"]["merge_commits_excluded"] == 1

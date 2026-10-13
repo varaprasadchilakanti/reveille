@@ -457,7 +457,7 @@ def _output_formats() -> list[str]:
 
 
 #: The `can` entry that describes each command, where its id differs from the name.
-_DESCRIBED_BY = {"summary": "repository-summary", "generate": "activity-calendar"}
+_DESCRIBED_BY = {"summary": "repository-summary"}
 
 
 def command_capabilities(document: dict[str, Any], name: str) -> dict[str, Any] | None:
