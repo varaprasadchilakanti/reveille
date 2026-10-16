@@ -2159,9 +2159,11 @@ def _state_lines(
     if history_replaced:
         lines.append("Replace refs or a graft file are present and not followed.")
     if state.filters_not_run:
+        # `filter=` names a driver with no name; show it, not an empty list.
+        named = tuple(name or '""' for name in state.filters_not_run)
         lines.append(
             f"Not run: the content filters this repository's own config names "
-            f"({_listed(state.filters_not_run, limit)}); files they cover may show as modified."
+            f"({_listed(named, limit)}); files they cover may show as modified."
         )
     lines.append(_STATE_NOTICE)
     return lines

@@ -15,6 +15,11 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Security
 
+- **`reveille state` ran a content filter with an empty name.** An attributes line such as
+  `*.txt filter=` selects the driver Git calls `""`, which `[filter ""]` in the repository's
+  config can point at any program. The list of filters to switch off needed at least one
+  character in the name, so this one ran when `git status` compared a file. It is now switched
+  off like the others. `state` is not in 0.9.0.
 - **An author address could make the report load a remote URL when opened.** Two contributors
   sharing a name are told apart by address, which was drawn in angle brackets. Plotly renders
   `<a>`, `<b>` and `<span style>` in chart labels, so an address such as

@@ -148,6 +148,26 @@ class TestContentFilters:
         _git(repo, "status", "--porcelain", check=False)
         assert marker.exists(), "positive control: plain git status runs it"
 
+    def test_a_filter_with_an_empty_name_does_not_run(self, repo: Path, tmp_path: Path) -> None:
+        """`filter=` in an attributes file selects the driver named "", `[filter ""]`."""
+        marker = tmp_path / "ran"
+        program = tmp_path / "filter.sh"
+        program.write_text(f"#!/bin/sh\necho ran >> '{marker}'\ncat\n", encoding="utf-8")
+        program.chmod(0o755)
+        (repo / ".gitattributes").write_text("*.txt filter=\n", encoding="utf-8")
+        with (repo / ".git" / "config").open("a", encoding="utf-8") as config:
+            config.write(f'[filter ""]\n\tclean = {program}\n')
+        time.sleep(1.1)
+        os.utime(repo / "a.txt")
+
+        state = _state(repo)
+
+        assert not marker.exists()
+        assert state["filters_not_run"] == [""]
+        assert 'config names (""); files' in _text(repo)
+        _git(repo, "status", "--porcelain", check=False)
+        assert marker.exists(), "positive control: plain git status runs it"
+
     def test_a_filter_name_with_a_space_is_read_whole(self, repo: Path) -> None:
         from reveille.adapters.git_reader import GitReader
 

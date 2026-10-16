@@ -1238,7 +1238,8 @@ class GitReader:
                     "--show-scope",
                     "-z",
                     "--get-regexp",
-                    r"^filter\..+\.(clean|smudge|process)$",
+                    # `.*`, not `.+`: `filter=` selects the driver named "".
+                    r"^filter\..*\.(clean|smudge|process)$",
                 )
             )
         except GitCommandError as exc:
