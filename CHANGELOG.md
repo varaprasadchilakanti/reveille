@@ -154,6 +154,10 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Fixed
 
+- **`--exclude-author` missed a person when the value had a trailing or doubled space, or a
+  decomposed accent** (as a paste can carry). Values and identities are now compared
+  Unicode-normalised, spaces collapsed, case ignored.
+
 - **`--exclude-author` by name missed a person who appears only as a co-author** under another
   name. The name now reaches the addresses it carries in `Co-authored-by` trailers too (ADR 0020).
 - **A commit with a date no calendar holds (year 10000) was dropped without a word.** It is now

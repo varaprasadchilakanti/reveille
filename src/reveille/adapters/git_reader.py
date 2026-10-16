@@ -17,6 +17,7 @@ import datetime
 import logging
 import os
 import re
+import unicodedata
 from collections import defaultdict
 from collections.abc import Iterator, Sequence
 from collections.abc import Set as AbstractSet
@@ -1791,7 +1792,7 @@ def _co_author_identities(
         name, email = _resolve_identity(raw_name, raw_email, mailmap)
         name = _truncate(_strip_invisible(_strip_control_chars(name)), _MAX_NAME_LENGTH)
         email = _truncate(_strip_control_chars(email), _MAX_EMAIL_LENGTH).lower()
-        hits = exclude_set & {name.lower(), email, raw_name.lower(), raw_email.lower()}
+        hits = exclude_set & {_match_key(v) for v in (name, email, raw_name, raw_email)}
         if hits:
             matched.update(hits)
             continue
@@ -2036,10 +2037,10 @@ def _identity(
     # Resolved and raw identity both match, so a value copied from `git log`
     # (which shows pre-mailmap names) still excludes the person.
     hits = exclude_set & {
-        author_name.lower(),
-        author_email.lower(),
-        raw_name.lower(),
-        raw_email.lower(),
+        _match_key(author_name),
+        _match_key(author_email),
+        _match_key(raw_name),
+        _match_key(raw_email),
     }
     return author_name, author_email, hits
 
@@ -2166,6 +2167,16 @@ def _build_log_args(
     return log_args, rev_list_args
 
 
+def _match_key(value: str) -> str:
+    """Return the form an exclusion is compared in: NFC, spaces collapsed, lower case.
+
+    A trailing or doubled space, or a decomposed accent a paste can carry, must not
+    let an excluded person back in: for a privacy flag, matching too little is the
+    wrong way round.
+    """
+    return " ".join(unicodedata.normalize("NFC", value).split()).lower()
+
+
 def _expand_exclusions(exclude_authors: list[str], mailmap: _Mailmap) -> set[str]:
     """Expand each exclusion to every identity the `.mailmap` ties it to.
 
@@ -2179,7 +2190,7 @@ def _expand_exclusions(exclude_authors: list[str], mailmap: _Mailmap) -> set[str
     Returns:
         A lowercased set of the values plus any canonical names and addresses.
     """
-    expanded = {entry.lower() for entry in exclude_authors}
+    expanded = {_match_key(entry) for entry in exclude_authors}
 
     for entry in list(expanded):
         canonical = mailmap.by_email.get(entry)
@@ -2191,7 +2202,7 @@ def _expand_exclusions(exclude_authors: list[str], mailmap: _Mailmap) -> set[str
 
         # Four-field form: a value naming either half expands to the entry.
         for (commit_name, commit_email), (name, email) in mailmap.by_name_and_email.items():
-            if entry in (commit_name, commit_email):
+            if entry in (_match_key(commit_name), _match_key(commit_email)):
                 if name:
                     expanded.add(name.lower())
                 expanded.add(email.lower())
