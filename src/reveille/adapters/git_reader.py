@@ -1048,7 +1048,9 @@ class GitReader:
         for line in out.splitlines():
             key, _, value = line.partition(" ")
             if key.endswith(".promisor"):
-                if value.strip().lower() in ("", "true", "yes", "on", "1"):
+                # Git reads any non-zero number as true (`2`, `1k`); only what it
+                # reads as false is false, so an unknown spelling refuses.
+                if value.strip().lower() not in ("false", "no", "off", "0"):
                     return True
             elif value.strip():
                 return True

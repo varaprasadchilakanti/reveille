@@ -15,6 +15,10 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Security
 
+- **`remote.<name>.promisor = 2` in worktree config skipped the partial-clone refusal.** Git reads
+  any non-zero number as true; Reveille read only `true`, `yes`, `on` and `1`. Below Git 2.44,
+  where nothing else stops Git fetching missing objects, a run could then reach the network and
+  write into `.git`. A value now counts as false only when Git reads it as false.
 - **A repository could choose how `git log` encoded names.** With `i18n.logOutputEncoding` set
   to `ISO-8859-1` in its config, accented names arrived garbled, so `--exclude-author` by name
   missed the person; with `UTF-7`, no commit could be read. Reveille now pins it to UTF-8. 0.9.0
