@@ -124,3 +124,40 @@ def test_a_promisor_set_outside_git_config_is_refused_too(tmp_path: Path, scope:
 
     assert result.exit_code == ExitCode.CANNOT_RUN, result.stdout
     assert "partial clone" in result.stderr
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    ("key", "value", "refused"),
+    [
+        ("extensions.partialClone", "origin", True),
+        ("extensions.partialClone", "", False),
+        ("remote.origin.promisor", "false", False),
+    ],
+)
+def test_worktree_config_is_read_for_what_it_says(
+    tmp_path: Path, key: str, value: str, refused: bool
+) -> None:
+    """Worktree config is out of GitPython's sight, so Git's own answer decides:
+    `extensions.partialClone` names a promisor remote, an empty one names none, and
+    `promisor = false` is none."""
+    repo = tmp_path / "r"
+    repo.mkdir()
+    run = {"cwd": repo, "check": True, "capture_output": True}
+    subprocess.run(["git", "init", "-q", "-b", "main"], **run)  # type: ignore[call-overload]
+    (repo / "a.txt").write_text("a", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], **run)  # type: ignore[call-overload]
+    subprocess.run(
+        ["git", "-c", "user.name=A", "-c", "user.email=a@e.test", "commit", "-qm", "a"], **run
+    )  # type: ignore[call-overload]
+    subprocess.run(["git", "remote", "add", "origin", "https://example.test/r.git"], **run)  # type: ignore[call-overload]
+    subprocess.run(["git", "config", "extensions.worktreeConfig", "true"], **run)  # type: ignore[call-overload]
+    subprocess.run(["git", "config", "--worktree", key, value], **run)  # type: ignore[call-overload]
+
+    result = CliRunner().invoke(app, ["summary", "--repo", str(repo)])
+
+    if refused:
+        assert result.exit_code == ExitCode.CANNOT_RUN, result.stdout
+        assert "partial clone" in result.stderr
+    else:
+        assert result.exit_code == ExitCode.SUCCESS, result.stderr

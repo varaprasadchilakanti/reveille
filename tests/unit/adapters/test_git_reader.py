@@ -10,8 +10,11 @@ from __future__ import annotations
 import pytest
 
 from reveille.adapters.git_reader import (
+    _co_author_value,
+    _expand_exclusions,
     _Mailmap,
     _normalise_github_noreply,
+    _parse_log_record,
     _resolve_identity,
     _sum_numstat,
 )
@@ -263,3 +266,33 @@ def test_c1_controls_are_removed_from_names() -> None:
     from reveille.adapters.git_reader import _strip_control_chars
 
     assert _strip_control_chars("Ana\x9b31m Silva\x85") == "Ana31m Silva"
+
+
+@pytest.mark.unit
+class TestCoAuthorValue:
+    """Tests for _co_author_value, which reads one `Co-authored-by` value."""
+
+    def test_a_name_and_address_are_split(self) -> None:
+        assert _co_author_value("Ana Lima <ana@e.test>") == ("Ana Lima", "ana@e.test")
+
+    @pytest.mark.parametrize("value", ["Ana <>", "Ana <a>b>", "Ana a@e.test>"])
+    def test_an_empty_or_unbracketed_address_is_malformed(self, value: str) -> None:
+        assert _co_author_value(value) is None
+
+
+@pytest.mark.unit
+def test_an_undatable_record_is_dropped_when_nobody_counts_it() -> None:
+    """The count is optional; without it the record is still skipped, not raised."""
+    sha = "a" * 40
+    record = "\x1f".join([sha, "A", "a@e.test", "99999999999999999999", sha])
+
+    assert _parse_log_record(record, _Mailmap(), set(), {sha}, set()) is None
+
+
+@pytest.mark.unit
+def test_a_four_field_entry_naming_someone_else_adds_nothing() -> None:
+    mailmap = _Mailmap(
+        by_name_and_email={("daniel brown", "daniel@old.test"): ("Dan Brown", "dan@new.test")}
+    )
+
+    assert _expand_exclusions(["Erica Stone"], mailmap) == {"erica stone"}
