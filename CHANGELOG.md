@@ -15,6 +15,15 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Security
 
+- **An author address could make the report load a remote URL when opened.** Two contributors
+  sharing a name are told apart by address, which was drawn in angle brackets. Plotly renders
+  `<a>`, `<b>` and `<span style>` in chart labels, so an address such as
+  `span style='background-image:url(https://...)' x` became a tag: in headless Chromium the
+  report requested the URL as soon as it rendered, with no click, telling a third party when and
+  from where it was read; an `a href='...'` address made a link. 0.9.0 does the same. The address
+  is now drawn in parentheses, chart labels lose any stray `<` or `>`, and the report carries a
+  Content-Security-Policy that allows no network source. With only that policy added, the 0.9.0
+  report requested nothing.
 - **Dependency floors allowed releases with published advisories.** GitPython was declared
   `^3.1.40`, which OSV lists 61 advisory records against, one of them repository content posing
   as the Git directory and leading to code execution (GHSA-239g-whfq-7xj9, fixed in 3.1.60);

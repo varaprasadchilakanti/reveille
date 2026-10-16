@@ -282,7 +282,8 @@ The suite runs under `pytest-xdist` (`-n auto`). Repository fixtures are module-
 
 Several tests protect properties that could erode unnoticed; know them before changing what they cover:
 
-- **Offline moat**: no `<link>`, `<script>` or `<img>` in the output references a remote host.
+- **Offline moat**: no `<link>`, `<script>` or `<img>` in the output references a remote host, no
+  chart label carries markup, and the report's Content-Security-Policy allows no network source.
 - **Layering**: no framework import crosses the boundaries above.
 - **Contrast**: WCAG AA ratios computed from the template's own CSS custom properties.
 - **Packaging**: the `py.typed` marker is present in both wheel and sdist.

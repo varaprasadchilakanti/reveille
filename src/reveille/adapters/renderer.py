@@ -1060,7 +1060,9 @@ def _contributor_labels(ranked: list[RankedContributor]) -> dict[str, str]:
     """Map each contributor's email to a label unique within the report.
 
     Names are not unique (ADR 0002), and Plotly merges repeated category labels.
-    A repeated name carries its address; a unique one is used as it is.
+    A repeated name carries its address in parentheses, not angle brackets: Plotly
+    renders `<a>`, `<b>` and `<span style>` in labels, and a Git address cannot hold
+    `>`, so `<span style='...' x>` built from one was a tag the browser obeyed.
 
     Args:
         ranked: Every contributor in the report.
@@ -1074,7 +1076,7 @@ def _contributor_labels(ranked: list[RankedContributor]) -> dict[str, str]:
         occurrences[label] += 1
 
     return {
-        email: (label if occurrences[label] == 1 else f"{label} <{_sanitise_chart_label(email)}>")
+        email: (label if occurrences[label] == 1 else f"{label} ({_sanitise_chart_label(email)})")
         for email, label in sanitised.items()
     }
 
@@ -1892,9 +1894,10 @@ def _script_safe(text: str) -> str:
 
 
 def _sanitise_chart_label(value: str) -> str:
-    """Strip HTML tags, null bytes, and surrounding whitespace from a chart label.
+    """Strip HTML tags, stray angle brackets, null bytes and surrounding whitespace.
 
-    Labels come from commit metadata, and Plotly renders some HTML in them.
+    Labels come from commit metadata, and Plotly renders some HTML in them. A lone
+    `<` or `>` is dropped too, so a label joined to other text cannot form a tag.
 
     Args:
         value: The raw string to sanitise.
@@ -1904,7 +1907,7 @@ def _sanitise_chart_label(value: str) -> str:
     """
     value = _SCRIPT_BLOCK_RE.sub("", value)
     value = _HTML_TAG_RE.sub("", value)
-    value = value.replace("\x00", "")
+    value = value.replace("<", "").replace(">", "").replace("\x00", "")
     return value.strip()
 
 

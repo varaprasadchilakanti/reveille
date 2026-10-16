@@ -49,3 +49,18 @@ def test_sharing_to_plotly_cloud_is_switched_off() -> None:
     assert "showSendToCloud: false" in config
     assert "plotlyServerURL: ''" in config
     assert "'sendChartToCloud'" in config
+
+
+def test_the_report_refuses_every_network_fetch() -> None:
+    """Defence in depth for the offline guarantee: if markup ever reaches a chart again,
+    the browser still fetches nothing. The policy comes before anything it governs."""
+    text = _TEMPLATE.read_text(encoding="utf-8")
+    match = re.search(r'<meta http-equiv="Content-Security-Policy" content="([^"]+)">', text)
+
+    assert match, "no Content-Security-Policy"
+    directives = dict(d.strip().split(" ", 1) for d in match.group(1).split(";") if d.strip())
+    assert directives["default-src"] == "'none'"
+    assert directives["connect-src"] == "'none'"
+    for name, value in directives.items():
+        assert "http" not in value and "*" not in value, f"{name} allows a remote source"
+    assert match.start() < text.index("<style>") < text.index("<script>")
