@@ -15,6 +15,10 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Security
 
+- **A repository could choose how `git log` encoded names.** With `i18n.logOutputEncoding` set
+  to `ISO-8859-1` in its config, accented names arrived garbled, so `--exclude-author` by name
+  missed the person; with `UTF-7`, no commit could be read. Reveille now pins it to UTF-8. 0.9.0
+  does not pin it.
 - **`reveille state` ran a content filter with an empty name.** An attributes line such as
   `*.txt filter=` selects the driver Git calls `""`, which `[filter ""]` in the repository's
   config can point at any program. The list of filters to switch off needed at least one

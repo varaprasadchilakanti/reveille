@@ -118,3 +118,19 @@ def test_an_invisible_format_character_does_not_hide_a_name(tmp_path: Path, invi
     out = _report(repo, "Ana Silva")
 
     assert "ana2@y.test" not in out
+
+
+@pytest.mark.parametrize("encoding", ["ISO-8859-1", "UTF-7"])
+def test_the_repository_cannot_choose_how_names_are_encoded(tmp_path: Path, encoding: str) -> None:
+    """`i18n.logOutputEncoding` in a repository's config re-encodes what `git log` prints:
+    names arrived garbled, so a name exclusion missed, or no commit could be read."""
+    name = "Jos\u00e9 \u00d1and\u00fa"
+    repo = _repo(
+        tmp_path / "r", [(name, "jose@x.test"), (name, "jose@x.test"), ("Ben", "b@e.test")]
+    )
+    subprocess.run(["git", "config", "i18n.logOutputEncoding", encoding], cwd=repo, check=True)
+
+    out = _report(repo, name)
+
+    assert "jose@x.test" not in out
+    assert "b@e.test" in out

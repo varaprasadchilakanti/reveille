@@ -1080,6 +1080,8 @@ class GitReader:
                 "diff.algorithm=myers",
                 "core.bigFileThreshold=512m",
                 "trailer.separators=:",
+                # Reveille decodes Git's output as UTF-8; a repository must not re-encode it.
+                "i18n.logOutputEncoding=UTF-8",
                 # Reveille reads `.mailmap` itself; Git's own would open whatever the
                 # repository names, and block on a FIFO.
                 "log.mailmap=false",
