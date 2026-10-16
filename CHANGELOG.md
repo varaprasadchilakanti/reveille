@@ -135,6 +135,8 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Changed
 
+- **Release checks.** A tag is published only if its commit is on `main`.
+
 - **Repository tooling.** Codecov now checks each pull request's changed lines against a 90% target
   (`.github/codecov.yml`). Dependabot also proposes updates to the pre-commit hooks. Issue forms ask
   for the Reveille and Git versions and the command, and send security reports to the private form.
