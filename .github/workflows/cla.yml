@@ -84,13 +84,23 @@ jobs:
           #
           # tests/unit/test_cla_gate.py runs this script against the shipped
           # template, so the gate and the template cannot drift apart again.
-          body = re.sub(r"<!--.*?-->", "", body, flags=re.DOTALL)
+          # Hidden or quoted text is not acceptance: comments and code fences go,
+          # and an unterminated one runs to the end, as it does when rendered.
+          body = re.sub(r"<!--.*?-->", "", body, flags=re.DOTALL).split("<!--")[0]
+          body = re.sub(r"^```.*?^```[^\n]*$", "", body, flags=re.DOTALL | re.MULTILINE)
+          body = re.split(r"^```", body, flags=re.MULTILINE)[0]
           item = re.compile(
               r"^[ \t]*[-*][ \t]+\[[xX]\][^\n]*(?:\n[ \t]+[^\n]*)*",
               re.MULTILINE,
           )
-          token = "Reveille-CLA-" + version
-          if any(token in m.group(0) for m in item.finditer(body)):
+          # "I accept" (not "I do not accept"), and this version exactly (not 1.01 for 1.0).
+          token = re.compile(re.escape("Reveille-CLA-" + version) + r"(?![\w.])")
+          accepted = (
+              " ".join(m.group(0).split())
+              for m in item.finditer(body)
+              if token.search(m.group(0))
+          )
+          if any("I accept" in text for text in accepted):
               print(f"Contributor Licence Agreement {version} accepted in the pull request body.")
               sys.exit(0)
           print(
@@ -132,8 +142,14 @@ jobs:
 
           shas = git("rev-list", "--no-merges", f"{base}..{head}").split()
           messages = {sha: git("log", "-1", "--format=%B", sha) for sha in shas}
+          # Git's own trailer parser decides what is a sign-off: a matching line in
+          # the middle of the body is prose, not a trailer.
+          trailers = {
+              sha: git("log", "-1", "--format=%(trailers:key=Signed-off-by,valueonly)", sha)
+              for sha in shas
+          }
 
-          signed = re.compile(r"^Signed-off-by: .+ <.+@.+>$", re.MULTILINE | re.IGNORECASE)
+          signed = re.compile(r"^.+ <.+@.+>$", re.MULTILINE)
 
           # A remediation commit signs off on behalf of an earlier commit that
           # cannot carry a trailer of its own. This is the mechanism the DCO
@@ -158,15 +174,15 @@ jobs:
           )
           remediated = {
               match.group(1).lower()
-              for message in messages.values()
-              if signed.search(message)
+              for declaring, message in messages.items()
+              if signed.search(trailers[declaring])
               for match in remediation.finditer(message)
           }
 
           missing = [
               sha
               for sha in shas
-              if not signed.search(messages[sha]) and sha.lower() not in remediated
+              if not signed.search(trailers[sha]) and sha.lower() not in remediated
           ]
 
           for sha in missing:
@@ -183,7 +199,9 @@ jobs:
               print()
               print("    I, Your Name <you@example.com>, hereby add my")
               print(f"    Signed-off-by to this commit: {missing[0]}")
-              print()
+              # Indented too, so the blank line that makes the sign-off a trailer
+              # is part of what is copied.
+              print("    ")
               print("    Signed-off-by: Your Name <you@example.com>")
               print()
               print("Turning on Settings > Commits > 'Require contributors to sign")

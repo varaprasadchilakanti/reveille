@@ -253,3 +253,21 @@ class TestTheFailureMessageIsActionable:
             "Signed-off-by: Your Name <you@example.com>",
         ):
             assert fragment in output, f"the remediation template omits {fragment!r}"
+
+
+@pytest.mark.unit
+class TestOnlyATrailerIsASignOff:
+    """A `Signed-off-by` line Git does not read as a trailer is not a sign-off."""
+
+    def test_a_sign_off_in_the_middle_of_the_body_is_not_one(self, tmp_path: Path) -> None:
+        code, _ = _run(
+            tmp_path,
+            ["change\n\nsigned-off-by: Test Person <test@example.com>\nmore prose follows here"],
+        )
+
+        assert code == 1
+
+    def test_the_closing_trailer_still_counts(self, tmp_path: Path) -> None:
+        code, output = _run(tmp_path, [f"change\n\nbody{_SIGN_OFF}"])
+
+        assert code == 0, output

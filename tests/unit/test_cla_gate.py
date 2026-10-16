@@ -96,3 +96,25 @@ class TestClaGateRejectsNonAcceptance:
     def test_single_line_acceptance_still_passes(self) -> None:
         """The form the previous pattern allowed must keep working."""
         assert _run_gate("- [x] I accept `Reveille-CLA-1.0`.\n") == 0
+
+
+@pytest.mark.unit
+class TestFalseAcceptances:
+    """Bodies that do not show acceptance must not pass."""
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            "```\n- [x] I accept the Reveille Contributor Licence Agreement (`Reveille-CLA-1.0`).\n```\n",
+            "<!--\n- [x] I accept the Reveille Contributor Licence Agreement (`Reveille-CLA-1.0`).\n",
+            "- [x] I do NOT accept the Reveille Contributor Licence Agreement (`Reveille-CLA-1.0`).\n",
+            "- [x] I accept the Reveille Contributor Licence Agreement (`Reveille-CLA-1.01`).\n",
+            "- [x] I accept the Reveille Contributor Licence Agreement (`Reveille-CLA-1.0x`).\n",
+        ],
+    )
+    def test_it_is_refused(self, body: str) -> None:
+        assert _run_gate(body) == 1
+
+    def test_the_plain_acceptance_still_passes(self) -> None:
+        body = "- [x] I accept the Reveille Contributor Licence Agreement (`Reveille-CLA-1.0`).\n"
+        assert _run_gate(body) == 0
