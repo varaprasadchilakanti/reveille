@@ -9,8 +9,8 @@ contributors; what the tool's report contains about people is in the
 
 ## Who is responsible
 
-Vara Prasad Chilakanti, an individual, based in India. He maintains Reveille
-personally; there is no company or organisation behind it.
+Vara Prasad Chilakanti, an individual, based in India, who maintains Reveille personally; there
+is no company or organisation behind it.
 
 **Contact:** open a [GitHub issue](https://github.com/varaprasadchilakanti/reveille/issues) for
 anything you are content to discuss in public, or use

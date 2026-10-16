@@ -723,8 +723,8 @@ def four_field_repo(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Create a repository exercising all four gitmailmap(5) forms.
 
     Commit history (chronological):
-        Daniel Brown <daniel@oldcorp.com>   four-field target
-        Erica Stone  <daniel@oldcorp.com>   same address, different name
+        Daniel Brown <daniel@oldcorp.test>   four-field target
+        Erica Stone  <daniel@oldcorp.test>   same address, different name
         Frank Lee    <frank-old@example.com>  email-only target
         Grace Kim    <grace@example.com>    name-only target
 
@@ -750,8 +750,8 @@ def four_field_repo(tmp_path_factory: pytest.TempPathFactory) -> Path:
     run(["git", "config", "user.name", "Seed"])
 
     authors = [
-        ("Daniel Brown", "daniel@oldcorp.com"),
-        ("Erica Stone", "daniel@oldcorp.com"),
+        ("Daniel Brown", "daniel@oldcorp.test"),
+        ("Erica Stone", "daniel@oldcorp.test"),
         ("Frank Lee", "frank-old@example.com"),
         ("Grace Kim", "grace@example.com"),
     ]
@@ -763,7 +763,7 @@ def four_field_repo(tmp_path_factory: pytest.TempPathFactory) -> Path:
     (repo_path / ".mailmap").write_text(
         "# Canonical identities for this repository\n"
         "\n"
-        "Dan Brown <dan@newcorp.com> Daniel Brown <daniel@oldcorp.com>\n"
+        "Dan Brown <dan@newcorp.test> Daniel Brown <daniel@oldcorp.test>\n"
         "<frank@example.com> <frank-old@example.com>\n"
         "Grace Kim-Watanabe <grace@example.com>  # married name\n"
     )
@@ -780,7 +780,7 @@ class TestMailmapFourFieldForm:
     ) -> None:
         reader = GitReader(four_field_repo)
         commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
-        daniel = next(c for c in commits if c.author_email == "dan@newcorp.com")
+        daniel = next(c for c in commits if c.author_email == "dan@newcorp.test")
         assert daniel.author_name == "Dan Brown"
 
     def test_four_field_form_leaves_a_different_name_on_the_same_address(
@@ -790,7 +790,7 @@ class TestMailmapFourFieldForm:
         reader = GitReader(four_field_repo)
         commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
         erica = next(c for c in commits if c.author_name == "Erica Stone")
-        assert erica.author_email == "daniel@oldcorp.com"
+        assert erica.author_email == "daniel@oldcorp.test"
 
     def test_four_field_and_three_field_coexist_in_same_mailmap(
         self, four_field_repo: Path
@@ -800,8 +800,8 @@ class TestMailmapFourFieldForm:
         commits = reader.read_commits(branch=None, since=None, until=None, exclude_authors=[])
         identities = {(c.author_name, c.author_email) for c in commits}
         assert identities == {
-            ("Dan Brown", "dan@newcorp.com"),
-            ("Erica Stone", "daniel@oldcorp.com"),
+            ("Dan Brown", "dan@newcorp.test"),
+            ("Erica Stone", "daniel@oldcorp.test"),
             ("Frank Lee", "frank@example.com"),
             ("Grace Kim-Watanabe", "grace@example.com"),
         }

@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 from git.exc import GitCommandError
 
-from reveille.adapters.git_reader import GitReader
+from reveille.adapters.git_reader import GitReader, _Mailmap
 from reveille.exceptions import RepositoryError
 
 pytestmark = pytest.mark.unit
@@ -93,3 +93,48 @@ def test_a_rev_parse_failure_other_than_ownership_cannot_run(
 
     with pytest.raises(RepositoryError, match="Git cannot read"):
         GitReader(repo)
+
+
+@pytest.mark.parametrize("failing", ["status", "for_each_ref"])
+def test_a_git_failure_in_state_is_reported_as_git_s(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, failing: str
+) -> None:
+    """Not as "a defect in Reveille": a corrupt index or a lock is the repository's."""
+    reader = GitReader(repo)
+    real = reader._git()
+    monkeypatch.setattr(reader, "_git", lambda extra=(): _Runner(real, {failing: 128}))
+
+    with pytest.raises(RepositoryError, match="Git could not read"):
+        reader.read_state()
+
+
+def test_a_tag_listing_failure_is_reported_as_git_s(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reader = GitReader(repo)
+    real = reader._git()
+    monkeypatch.setattr(reader, "_git", lambda extra=(): _Runner(real, {"rev_list": 128}))
+
+    with pytest.raises(RepositoryError, match="Git could not list the tags"):
+        reader.tags_in_range(None, None, None, None)
+
+
+def test_unreadable_co_author_trailers_keep_the_authors_already_reached(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The trailer query can fail on its own; the author query's answer stands."""
+    reader = GitReader(repo)
+    real = reader._git()
+
+    class _TrailersFail:
+        def __getattr__(self, command: str) -> Any:
+            def call(*args: str) -> Any:
+                if command == "log" and any("trailers:" in arg for arg in args):
+                    raise GitCommandError(command, 128)
+                return getattr(real, command)(*args)
+
+            return call
+
+    monkeypatch.setattr(reader, "_git", lambda extra=(): _TrailersFail())
+
+    assert reader._addresses_in_history("HEAD", _Mailmap(), {"a"}) == {"a": {"a@e.test"}}

@@ -29,6 +29,11 @@ class TestWithoutCredentials:
             ("HTTPS::https://u:SECRET@example.test/r.git", "HTTPS::https://example.test/r.git"),
             ("remote-x::http://SECRET@example.test/r.git", "remote-x::http://example.test/r.git"),
             ("ext::ssh://git:SECRET@example.test/r.git", "ext::ssh://git@example.test/r.git"),
+            # A raw `#` or `?` inside the credential must not end the stripping early.
+            ("https://user:SE#CRET@example.test/r.git", "https://example.test/r.git"),
+            ("https://SE?CRET@example.test", "https://example.test"),
+            ("ssh://git:SE#CRET@example.test/r.git", "ssh://git@example.test/r.git"),
+            ("https://example.test?private_token=SECRET", "https://example.test"),
         ],
     )
     def test_the_secret_goes_and_the_address_stays(self, raw: str, expected: str) -> None:

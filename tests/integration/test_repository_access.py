@@ -81,3 +81,26 @@ def test_a_git_older_than_the_floor_cannot_run(
     assert result.exit_code == ExitCode.CANNOT_RUN
     assert "Git 2.24 or newer" in result.stderr
     assert "2.20" in result.stderr
+
+
+def test_a_named_branch_is_read_when_head_has_no_commits(tmp_path: Path) -> None:
+    """An orphan checkout leaves HEAD unborn; `--branch main` still names commits."""
+    repo = _repo(tmp_path / "r")
+    subprocess.run(["git", "switch", "-q", "--orphan", "fresh"], cwd=repo, check=True)
+
+    result = CliRunner().invoke(app, ["summary", "--repo", str(repo), "--branch", "main"])
+
+    assert result.exit_code == ExitCode.SUCCESS, result.stderr
+    assert "2 commits" in result.stdout
+
+
+@pytest.mark.parametrize("value", ["HEAD~1..main", "main^!", "main^@", "HEAD...main"])
+def test_branch_names_one_commit_not_a_range(tmp_path: Path, value: str) -> None:
+    """A range given as a branch narrowed the history while the report said "branch";
+    an auto-discovered reveille.toml could set it."""
+    repo = _repo(tmp_path / "r")
+
+    result = CliRunner().invoke(app, ["summary", "--repo", str(repo), "--branch", value])
+
+    assert result.exit_code == ExitCode.CANNOT_RUN, result.stdout
+    assert "does not name a commit" in result.stderr

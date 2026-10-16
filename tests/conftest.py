@@ -8,26 +8,37 @@ locally in that module.
 from __future__ import annotations
 
 import datetime
+import os
+import tempfile
+from pathlib import Path
 
 import pytest
 
 from reveille.domain.models import Commit, ContributorStats
 
 
-@pytest.fixture(autouse=True)
-def _only_the_repositorys_own_git_config(
-    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Run every test with no global or system Git config, as CI has none of its own.
+def pytest_configure(config: pytest.Config) -> None:
+    """Run the whole session with no global or system Git config, as CI has none.
 
-    A developer's config (an identity, `safe.directory = *`, signing) otherwise
-    lets a test pass locally that fails in CI. A test that needs a global
-    setting sets `GIT_CONFIG_GLOBAL` itself.
+    A hook, not a fixture: module-scoped fixtures that build repositories run
+    before any function-scoped fixture, and they must not see a developer's
+    config either (an identity, `safe.directory = *`, signing turned on). Runs
+    in every xdist worker. A test that needs a global setting sets
+    `GIT_CONFIG_GLOBAL` itself with `monkeypatch`.
     """
-    empty = tmp_path_factory.getbasetemp() / "empty.gitconfig"
+    empty = Path(tempfile.mkdtemp(prefix="reveille-tests-")) / "empty.gitconfig"
     empty.touch()
-    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(empty))
-    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    os.environ["GIT_CONFIG_GLOBAL"] = str(empty)
+    os.environ["GIT_CONFIG_NOSYSTEM"] = "1"
+
+
+@pytest.fixture(autouse=True)
+def _cli_state_reset() -> None:
+    """Reset the CLI's per-process state, which one in-process run can leave set."""
+    from reveille import cli
+
+    cli._stderr_json["on"] = False
+    cli._StageSpinner.line_open = False
 
 
 @pytest.fixture()

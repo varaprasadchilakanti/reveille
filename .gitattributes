@@ -60,7 +60,7 @@ Makefile    text
 # marker to delete and no way to hand-merge. The only way forward is to
 # regenerate the file with the tool that owns it:
 #
-#     poetry lock --no-update
+#     poetry lock
 #
 # See gitattributes(5), "Performing a three-way merge", `merge` unset.
 # This is a guard against a human editing action, not against Git.

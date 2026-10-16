@@ -10,8 +10,11 @@ from __future__ import annotations
 import pytest
 
 from reveille.adapters.git_reader import (
+    _co_author_value,
+    _expand_exclusions,
     _Mailmap,
     _normalise_github_noreply,
+    _parse_log_record,
     _resolve_identity,
     _sum_numstat,
 )
@@ -190,24 +193,24 @@ class TestResolveIdentityFourFieldForm:
     def test_four_field_entry_matches_when_name_and_email_agree(self) -> None:
         mailmap = _Mailmap(
             by_name_and_email={
-                ("daniel brown", "daniel@oldcorp.com"): ("Dan Brown", "dan@newcorp.com")
+                ("daniel brown", "daniel@oldcorp.test"): ("Dan Brown", "dan@newcorp.test")
             }
         )
-        assert _resolve_identity("Daniel Brown", "daniel@oldcorp.com", mailmap) == (
+        assert _resolve_identity("Daniel Brown", "daniel@oldcorp.test", mailmap) == (
             "Dan Brown",
-            "dan@newcorp.com",
+            "dan@newcorp.test",
         )
 
     def test_four_field_entry_ignored_when_the_name_differs(self) -> None:
         """The whole point of the form: a shared address, distinguished by name."""
         mailmap = _Mailmap(
             by_name_and_email={
-                ("daniel brown", "shared@corp.com"): ("Dan Brown", "dan@newcorp.com")
+                ("daniel brown", "shared@corp.test"): ("Dan Brown", "dan@newcorp.test")
             }
         )
-        assert _resolve_identity("Erica Stone", "shared@corp.com", mailmap) == (
+        assert _resolve_identity("Erica Stone", "shared@corp.test", mailmap) == (
             "Erica Stone",
-            "shared@corp.com",
+            "shared@corp.test",
         )
 
     def test_four_field_matching_is_case_insensitive_on_both_fields(self) -> None:
@@ -224,19 +227,19 @@ class TestResolveIdentityFourFieldForm:
     def test_four_field_entry_wins_over_an_email_only_entry(self) -> None:
         """Git prefers the most specific match; name plus email is more specific."""
         mailmap = _Mailmap(
-            by_email={"shared@corp.com": ("Generic", "generic@corp.com")},
+            by_email={"shared@corp.test": ("Generic", "generic@corp.test")},
             by_name_and_email={
-                ("daniel brown", "shared@corp.com"): ("Dan Brown", "dan@newcorp.com")
+                ("daniel brown", "shared@corp.test"): ("Dan Brown", "dan@newcorp.test")
             },
         )
-        assert _resolve_identity("Daniel Brown", "shared@corp.com", mailmap) == (
+        assert _resolve_identity("Daniel Brown", "shared@corp.test", mailmap) == (
             "Dan Brown",
-            "dan@newcorp.com",
+            "dan@newcorp.test",
         )
         # A different contributor on the same address still falls back.
-        assert _resolve_identity("Erica Stone", "shared@corp.com", mailmap) == (
+        assert _resolve_identity("Erica Stone", "shared@corp.test", mailmap) == (
             "Generic",
-            "generic@corp.com",
+            "generic@corp.test",
         )
 
 
@@ -255,3 +258,41 @@ class TestResolveIdentityEmailOnlyForm:
         mailmap = _Mailmap(by_email={"shared@example.com": (None, "proper@example.com")})
         assert _resolve_identity("Alice", "shared@example.com", mailmap)[0] == "Alice"
         assert _resolve_identity("Bob", "shared@example.com", mailmap)[0] == "Bob"
+
+
+@pytest.mark.unit
+def test_c1_controls_are_removed_from_names() -> None:
+    """U+009B is CSI: some terminals obey it, given as UTF-8, like ESC [."""
+    from reveille.adapters.git_reader import _strip_control_chars
+
+    assert _strip_control_chars("Ana\x9b31m Silva\x85") == "Ana31m Silva"
+
+
+@pytest.mark.unit
+class TestCoAuthorValue:
+    """Tests for _co_author_value, which reads one `Co-authored-by` value."""
+
+    def test_a_name_and_address_are_split(self) -> None:
+        assert _co_author_value("Ana Lima <ana@e.test>") == ("Ana Lima", "ana@e.test")
+
+    @pytest.mark.parametrize("value", ["Ana <>", "Ana <a>b>", "Ana a@e.test>"])
+    def test_an_empty_or_unbracketed_address_is_malformed(self, value: str) -> None:
+        assert _co_author_value(value) is None
+
+
+@pytest.mark.unit
+def test_an_undatable_record_is_dropped_when_nobody_counts_it() -> None:
+    """The count is optional; without it the record is still skipped, not raised."""
+    sha = "a" * 40
+    record = "\x1f".join([sha, "A", "a@e.test", "99999999999999999999", sha])
+
+    assert _parse_log_record(record, _Mailmap(), set(), {sha}, set()) is None
+
+
+@pytest.mark.unit
+def test_a_four_field_entry_naming_someone_else_adds_nothing() -> None:
+    mailmap = _Mailmap(
+        by_name_and_email={("daniel brown", "daniel@old.test"): ("Dan Brown", "dan@new.test")}
+    )
+
+    assert _expand_exclusions(["Erica Stone"], mailmap) == {"erica stone"}

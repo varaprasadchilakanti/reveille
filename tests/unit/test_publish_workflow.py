@@ -343,3 +343,47 @@ def test_the_job_holding_the_upload_token_does_not_build() -> None:
     assert "poetry build" not in publish
     assert "actions/checkout" not in publish
     assert "needs: [vulnerabilities, build]" in publish
+
+
+@pytest.mark.unit
+class TestOnlyACommitOnMainIsBuilt:
+    """A pushed tag on an unreviewed side branch must not publish."""
+
+    @staticmethod
+    def _repo(tmp_path: Path) -> tuple[Path, str, str]:
+        repo = tmp_path / "r"
+        repo.mkdir()
+
+        def git(*args: str) -> str:
+            return subprocess.run(
+                ["git", "-c", "user.name=A", "-c", "user.email=a@e.test", *args],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+
+        git("init", "-q", "-b", "main")
+        git("commit", "-q", "--allow-empty", "-m", "on main")
+        on_main = git("rev-parse", "HEAD")
+        git("update-ref", "refs/remotes/origin/main", on_main)
+        git("switch", "-q", "-c", "side")
+        git("commit", "-q", "--allow-empty", "-m", "unreviewed")
+        return repo, on_main, git("rev-parse", "HEAD")
+
+    def test_a_commit_on_main_passes(self, tmp_path: Path) -> None:
+        repo, on_main, _ = self._repo(tmp_path)
+        result = _run(
+            _step_script("Check the tagged commit is on main"), repo, {"GITHUB_SHA": on_main}
+        )
+
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    def test_a_commit_off_main_stops_the_build(self, tmp_path: Path) -> None:
+        repo, _, side = self._repo(tmp_path)
+        result = _run(
+            _step_script("Check the tagged commit is on main"), repo, {"GITHUB_SHA": side}
+        )
+
+        assert result.returncode != 0
+        assert "not on main" in result.stdout + result.stderr

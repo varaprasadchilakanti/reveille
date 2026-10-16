@@ -12,7 +12,6 @@ committed `.mailmap`, so the pattern cost must be linear. And the working-tree
 from __future__ import annotations
 
 import json
-import re
 import subprocess
 import time
 from pathlib import Path
@@ -22,20 +21,6 @@ from typer.testing import CliRunner
 
 from reveille.adapters.git_reader import _parse_mailmap_line
 from reveille.cli import ExitCode, app
-
-# The patterns the parser replaced, kept here as the reference it must agree with.
-_OLD_FOUR = re.compile(r"^(.+?)\s+<([^>]+)>\s+(.+?)\s+<([^>]+)>$")
-_OLD_THREE = re.compile(r"^(.+?)\s+<([^>]+)>\s+<([^>]+)>$")
-_OLD_EMAIL = re.compile(r"^<([^>]+)>\s+<([^>]+)>$")
-_OLD_NAME = re.compile(r"^(.+?)\s+<([^>]+)>$")
-
-
-def _old(line: str) -> tuple[str, ...] | None:
-    for pattern in (_OLD_FOUR, _OLD_THREE, _OLD_EMAIL, _OLD_NAME):
-        found = pattern.match(line)
-        if found:
-            return found.groups()
-    return None
 
 
 def _repo(path: Path, mailmap: str | bytes) -> Path:
@@ -96,60 +81,13 @@ class TestReadingIsBounded:
         assert payload["totals"]["authors"] == 1
 
 
-_LINES = [
-    "Ana Silva <ana@e.test>",
-    "Ana Silva <ana@e.test> <old@e.test>",
-    "<ana@e.test> <old@e.test>",
-    "Ana Silva <ana@e.test> Old Name <old@e.test>",
-    "Ana   Silva   <ana@e.test>    Old   Name    <old@e.test>",
-    "Ana\t<ana@e.test>\t<old@e.test>",
-    "Ana<ana@e.test>",
-    "Ana <ana@e.test><old@e.test>",
-    "<ana@e.test>",
-    "Ana <>",
-    "Ana <ana@e.test",
-    "Ana <ana@e.test> trailing",
-    "Ana <a <b@e.test>",
-    "A>na <ana@e.test>",
-    "Ana <ana@e.test> Old <old@e.test> x",
-    "no address at all",
-    "Ana  <ANA@E.TEST> <Old@E.Test>",
-]
-
-
-@pytest.mark.parametrize("line", _LINES)
-def test_the_parser_agrees_with_the_patterns_it_replaced(line: str) -> None:
-    assert _parse_mailmap_line(line) == _old(line)
-
-
-@pytest.mark.parametrize(
-    "line",
-    [
-        "<ana@e.test> Old <old@e.test>",
-        "Ana <ana@e.test> <old@e.test> <third@e.test>",
-        "a<b <c@e.test>",
-        "Ana <ana@e.test>Old <old@e.test>",
-    ],
-)
-def test_a_name_holding_an_address_is_malformed(line: str) -> None:
-    """The old patterns read these with a "name" such as `<ana@e.test> Old`.
-
-    Git takes a name to end at the first `<`, so no name holds one; the
-    line is skipped, as every other malformed line is.
-    """
-    assert _old(line) is not None, "positive control: the old patterns accepted it"
-    assert _parse_mailmap_line(line) is None
-
-
 @pytest.mark.integration
 def test_spaces_before_the_commit_address_still_map(tmp_path: Path) -> None:
-    """With three spaces before the second `<`, the old four-field pattern
-    matched first, took one space as the commit name, and keyed the rule on
-    a name no commit has: the line silently did nothing.
+    """Three spaces before the commit address once made the line do nothing.
+    Each line is now read as Git reads it (test_mailmap_git_parity.py).
     """
     line = "Ana <new@e.test>   <old@e.test>"
-    assert _old(line) == ("Ana", "new@e.test", " ", "old@e.test"), "the old misreading"
-    assert _parse_mailmap_line(line) == ("Ana", "new@e.test", "old@e.test")
+    assert _parse_mailmap_line(line) == ("Ana", "new@e.test", None, "old@e.test")
 
     code, payload, _ = _summary(_repo(tmp_path / "r", line + "\n"))
 

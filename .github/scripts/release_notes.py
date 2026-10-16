@@ -26,9 +26,11 @@ import re
 import sys
 from pathlib import Path
 
+# `[ \t]`, not `\s`: `\s` matches a newline, which let a heading without a
+# theme take the next line as its title.
 _HEADING = (
-    r"^## \[{version}\]\s*[—-]\s*\d{{4}}-\d{{2}}-\d{{2}}"
-    r"(?:\s*[—-]\s*(?P<theme>.+?))?\s*$"
+    r"^## \[{version}\][ \t]*[—-][ \t]*\d{{4}}-\d{{2}}-\d{{2}}"
+    r"(?:[ \t]*[—-][ \t]*(?P<theme>.+?))?[ \t]*$"
 )
 
 

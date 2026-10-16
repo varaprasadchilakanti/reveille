@@ -203,3 +203,57 @@ class TestProgressOffATerminal:
         spinner.complete(elapsed_seconds=0.0, items_processed=3)
 
         assert capsys.readouterr().err == "  Reading commit history ...   done (0.0s, 3 commits)\n"
+
+
+@pytest.mark.e2e
+def test_verbose_counts_exclusions_without_naming_them(tmp_path: Path) -> None:
+    """The diagnostic log is pasted into CI logs and issues; it gives how many
+    exclusions were asked for, as provenance does (ADR 0021), not who."""
+    repo = tmp_path / "r"
+    repo.mkdir()
+    run = {"cwd": repo, "check": True, "capture_output": True}
+    subprocess.run(["git", "init", "-q", "-b", "main"], **run)  # type: ignore[call-overload]
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=A",
+            "-c",
+            "user.email=a@e.test",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "a",
+        ],
+        **run,
+    )  # type: ignore[call-overload]
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "generate",
+            "--repo",
+            str(repo),
+            "--verbose",
+            "-o",
+            str(tmp_path / "r.html"),
+            "--exclude-author",
+            "Secret Person",
+        ],
+    )
+
+    assert result.exit_code == ExitCode.SUCCESS, result.stderr
+    assert "exclude_authors_count=1" in result.stderr
+    assert "Secret Person" not in result.stderr.replace("'secret person'", "")
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize("flag", ["--until", "--since"])
+def test_the_last_representable_date_is_refused_cleanly(tmp_path: Path, flag: str) -> None:
+    """9999-12-31 plus one day overflowed; it is refused as a bad value (exit 2)."""
+    result = CliRunner().invoke(app, ["summary", "--repo", str(tmp_path), flag, "9999-12-31"])
+
+    assert result.exit_code == ExitCode.CANNOT_RUN
+    assert "Error:" in result.stderr and "9999-12-31" in result.stderr
+    assert "defect" not in result.stderr

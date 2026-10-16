@@ -915,9 +915,9 @@ class TestExclusionCoversEveryAlias:
         one flag whose stated purpose is privacy, that is the wrong direction
         to be approximate in.
         """
-        repo = _init_repo(tmp_path / "repo", author="Alice New", email="alice@new.com")
+        repo = _init_repo(tmp_path / "repo", author="Alice New", email="alice@new.test")
         (repo / ".mailmap").write_text(
-            "Alice New <alice@new.com> <alice.old@old.com>\n", encoding="utf-8"
+            "Alice New <alice@new.test> <alice.old@old.test>\n", encoding="utf-8"
         )
         _run(["git", "add", "-A"], repo)
         _run(
@@ -925,9 +925,9 @@ class TestExclusionCoversEveryAlias:
             repo,
             {
                 "GIT_AUTHOR_NAME": "Alice Old",
-                "GIT_AUTHOR_EMAIL": "alice.old@old.com",
+                "GIT_AUTHOR_EMAIL": "alice.old@old.test",
                 "GIT_COMMITTER_NAME": "Alice Old",
-                "GIT_COMMITTER_EMAIL": "alice.old@old.com",
+                "GIT_COMMITTER_EMAIL": "alice.old@old.test",
             },
         )
 
@@ -948,13 +948,13 @@ class TestExclusionCoversEveryAlias:
             },
         )
 
-        for value in ("alice.old@old.com", "alice@new.com", "Alice New"):
+        for value in ("alice.old@old.test", "alice@new.test", "Alice New"):
             commits = GitReader(repo).read_commits(
                 branch="main", since=None, until=None, exclude_authors=[value]
             )
             remaining = {c.author_email.lower() for c in commits}
 
-            assert "alice@new.com" not in remaining, f"{value!r} left the person present"
+            assert "alice@new.test" not in remaining, f"{value!r} left the person present"
             assert remaining == {"bob@example.com"}, f"{value!r} removed the wrong people"
 
 

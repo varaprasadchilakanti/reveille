@@ -1717,7 +1717,11 @@
         // of paper cannot operate.
         displayModeBar: 'hover',
         displaylogo: false,
-        modeBarButtonsToRemove: ['sendDataToCloud', 'editInChartStudio']
+        // The report is offline: no "Share chart..." button posting the data,
+        // names included, to Plotly's cloud, and no server for it to use.
+        showSendToCloud: false,
+        plotlyServerURL: '',
+        modeBarButtonsToRemove: ['sendChartToCloud']
     };
 
     // Heatmap colour ramps, one per theme.

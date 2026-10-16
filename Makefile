@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install lint format fix typecheck precommit check-lock check-lock-sync check-licence check-version \
+.PHONY: help install lint format format-check fix typecheck precommit check-lock check-lock-sync check-licence check-version \
 	    check-packaging test test-unit \
 	    test-integration test-e2e coverage ci build sbom clean
 
@@ -33,7 +33,7 @@ check-lock:  ## Assert poetry.lock is valid TOML before anything tries to instal
 		echo ""; \
 		echo "A generated lock file must never be hand-merged: 'keep both sides'"; \
 		echo "silently duplicates keys. Regenerate it with the tool that owns it:"; \
-		echo "    poetry lock --no-update"; \
+		echo "    poetry lock"; \
 		exit 1; \
 	fi
 	@echo "poetry.lock is valid TOML"
@@ -115,6 +115,9 @@ lint:  ## Run ruff lint checks
 format:  ## Format code with ruff formatter
 	poetry run ruff format src tests
 
+format-check:  ## Check formatting without changing files, as CI does
+	poetry run ruff format --check src tests
+
 fix:  ## Auto-fix lint issues with ruff
 	poetry run ruff check src tests --fix
 
@@ -148,15 +151,16 @@ coverage:  ## Generate HTML and terminal coverage report
 # CI
 # ------------------------------------------------------------------
 
-ci:  ## Full CI workflow: lint, typecheck, test
+ci:  ## The local checks CI runs: lock, version, licence, packaging, lint, format, types, tests with the coverage floor
 	$(MAKE) check-lock
 	$(MAKE) check-lock-sync
 	$(MAKE) check-version
 	$(MAKE) check-licence
 	$(MAKE) check-packaging
 	$(MAKE) lint
+	$(MAKE) format-check
 	$(MAKE) typecheck
-	$(MAKE) test
+	poetry run pytest -n auto --cov=reveille --cov-report=term
 
 # ------------------------------------------------------------------
 # Build

@@ -184,6 +184,16 @@ v0.9.0 closed eleven more, each with a test that fails without the fix:
 
 Fixed since 0.9.0, not yet released, each with a test that fails without the fix:
 
+- An author name holding the separators the history is read with could add commits and
+  people to every figure. Records are now framed by the commit hash at both ends, and a
+  hash with more than one record is counted as unreadable.
+- One `Co-authored-by` line could stall a run for minutes. It is read in one pass, bounded.
+- The HTML report's charts offered Plotly's "Share chart..." upload. It is switched off.
+- On Git older than 2.44, a promisor remote in worktree config was not refused, and a read
+  could fetch. Git is now asked whether any config it reads makes a partial clone.
+- A FIFO as `.mailmap`, or named by `mailmap.file`, hung every command. Git's own mailmap
+  is switched off.
+- `validate` and `generate` printed terminal control sequences from the repository path.
 - A `.mailmap` could stall a run for minutes, because its line patterns backtracked
   quadratically and the working-tree file had no size bound. Lines are now parsed in
   one pass and the file is bounded at 1 MiB.

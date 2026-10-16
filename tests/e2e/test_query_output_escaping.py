@@ -72,3 +72,27 @@ def test_json_output_still_parses(tmp_path: Path) -> None:
     assert result.exit_code == ExitCode.SUCCESS
     names = [p["name"] for p in json.loads(result.stdout)["authors"]["list"]]
     assert names and names[0].startswith("Mal")
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize("command", [["validate"], ["generate", "-q"]])
+def test_the_confirmation_line_escapes_the_directory_name(
+    tmp_path: Path, command: list[str]
+) -> None:
+    """`validate` and `generate` print the repository path; a name holding an
+    OSC sequence (set the terminal title, write the clipboard) is shown escaped."""
+    repo = tmp_path / "r\x1b]0;PWNED\x07"
+    repo.mkdir()
+    run = {"cwd": repo, "check": True, "capture_output": True}
+    subprocess.run(["git", "init", "-q", "-b", "main"], **run)  # type: ignore[call-overload]
+    (repo / "a.txt").write_text("a", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], **run)  # type: ignore[call-overload]
+    subprocess.run(
+        ["git", "-c", "user.name=A", "-c", "user.email=a@e.test", "commit", "-qm", "a"], **run
+    )  # type: ignore[call-overload]
+
+    result = CliRunner().invoke(app, [*command, "--repo", str(repo)])
+
+    assert result.exit_code == ExitCode.SUCCESS, result.stderr
+    assert "\x1b" not in result.stdout and "\x07" not in result.stdout
+    assert "\\x1b]0;PWNED\\x07" in result.stdout

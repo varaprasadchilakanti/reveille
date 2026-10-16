@@ -165,3 +165,98 @@ def test_a_name_used_only_before_the_window_still_removes_the_person(tmp_path: P
     code, out, err = _run("who-changed", "f.txt", "--repo", str(path), "--exclude-author", "Ana")
     assert code == ExitCode.SUCCESS, err
     assert "Ana" not in out
+
+
+@pytest.mark.integration
+def test_a_name_reaches_an_address_seen_only_in_co_author_trailers(tmp_path: Path) -> None:
+    """Ana is only ever a co-author, under two names; excluding one name removes
+    her address, so the other name goes too (ADR 0020)."""
+    repo = tmp_path / "r"
+    repo.mkdir()
+    run = {"cwd": repo, "check": True, "capture_output": True}
+    subprocess.run(["git", "init", "-q", "-b", "main"], **run)  # type: ignore[call-overload]
+    for index, trailer in enumerate(["Ana Silva <ana@e.test>", "Ana <ana@e.test>"]):
+        (repo / f"f{index}.txt").write_text("x", encoding="utf-8")
+        subprocess.run(["git", "add", "-A"], **run)  # type: ignore[call-overload]
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=Bo",
+                "-c",
+                "user.email=bo@e.test",
+                "commit",
+                "-q",
+                "-m",
+                f"c{index}\n\nCo-authored-by: {trailer}",
+            ],
+            **run,
+        )  # type: ignore[call-overload]
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "generate",
+            "--repo",
+            str(repo),
+            "--format",
+            "json",
+            "--output",
+            "-",
+            "--exclude-author",
+            "Ana Silva",
+        ],
+    )
+
+    assert result.exit_code == ExitCode.SUCCESS, result.stderr
+    assert "ana@e.test" not in result.stdout
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "value",
+    ["José Núñez ", "José  Núñez", "Jose\u0301 Nu\u0301n\u0303ez"],
+)
+def test_spacing_and_unicode_form_do_not_let_a_person_back_in(tmp_path: Path, value: str) -> None:
+    """A trailing or doubled space, or the decomposed (NFD) form a paste can carry,
+    matched nobody, and the person stayed in every output."""
+    repo = tmp_path / "r"
+    repo.mkdir()
+    run = {"cwd": repo, "check": True, "capture_output": True}
+    subprocess.run(["git", "init", "-q", "-b", "main"], **run)  # type: ignore[call-overload]
+    (repo / "a.txt").write_text("a", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], **run)  # type: ignore[call-overload]
+    for name, email in (("José Núñez", "jose@e.test"), ("Bo", "bo@e.test")):
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                f"user.name={name}",
+                "-c",
+                f"user.email={email}",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                name,
+            ],
+            **run,
+        )  # type: ignore[call-overload]
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "generate",
+            "--repo",
+            str(repo),
+            "--format",
+            "json",
+            "--output",
+            "-",
+            "--exclude-author",
+            value,
+        ],
+    )
+
+    assert result.exit_code == ExitCode.SUCCESS, result.stderr
+    assert "jose@e.test" not in result.stdout
