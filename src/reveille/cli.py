@@ -934,14 +934,15 @@ def generate(
 
     _logger.debug(
         "resolved configuration: repo=%s output=%s branch=%s since=%s until=%s "
-        "min_commits=%s exclude_authors=%s ranking_enabled=%s format=%s",
+        "min_commits=%s exclude_authors_count=%s ranking_enabled=%s format=%s",
         report_config.repo_path,
         report_config.output_path,
         report_config.branch,
         report_config.since,
         report_config.until,
         report_config.min_commits,
-        report_config.exclude_authors,
+        # How many, not who: the log is pasted into CI output (ADR 0021).
+        len(report_config.exclude_authors),
         report_config.ranking_enabled,
         report_config.output_format,
     )
@@ -1367,7 +1368,12 @@ def _parse_date(value: str, flag_name: str) -> datetime.date:
         typer.Exit: ExitCode.CANNOT_RUN if the format is invalid.
     """
     try:
-        return datetime.date.fromisoformat(value)
+        parsed = datetime.date.fromisoformat(value)
     except ValueError as exc:
         _err(f"Error: {flag_name} must be in YYYY-MM-DD format, got '{value}'.")
         raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
+    if parsed == datetime.date.max:
+        # An inclusive end is read up to the next day, which does not exist.
+        _err(f"Error: {flag_name} must be before {value}.")
+        raise typer.Exit(code=ExitCode.CANNOT_RUN)
+    return parsed

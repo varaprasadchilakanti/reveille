@@ -157,6 +157,9 @@ before 0.8.0 predate the convention and are left as they were released.
 - **`--exclude-author` missed a person when the value had a trailing or doubled space, or a
   decomposed accent** (as a paste can carry). Values and identities are now compared
   Unicode-normalised, spaces collapsed, case ignored.
+- **`--verbose` printed the excluded names** in its configuration line; it now gives their number.
+- **`--until 9999-12-31` stopped with an internal `OverflowError`.** The last representable date is
+  now refused as a bad value by `--until` and `--since` (exit 2).
 
 - **`--exclude-author` by name missed a person who appears only as a co-author** under another
   name. The name now reaches the addresses it carries in `Co-authored-by` trailers too (ADR 0020).
