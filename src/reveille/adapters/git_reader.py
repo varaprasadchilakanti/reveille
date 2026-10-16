@@ -76,6 +76,9 @@ _INVISIBLE_IN_NAMES_RE = re.compile("[\u202a-\u202e\u2066-\u2069\u200b\ufeff]")
 _MAX_NAME_LENGTH = 256
 _MAX_EMAIL_LENGTH = 320
 _TRUNCATION_MARKER = "\u2026"
+# Exclusions match on more than is shown, but not on everything: both sides are
+# cut alike, so two names sharing this much are one name to an exclusion.
+_MAX_MATCH_LENGTH = 4096
 
 # GitHub's noreply addresses: `ID+username@` (an account number never reused) and the
 # legacy `username@` (a name that can change hands). ADR 0023 folds on the number.
@@ -735,7 +738,8 @@ class GitReader:
         accounts, usernames = self._noreply_accounts(rev)
         mailmap = replace(mailmap, noreply_accounts=accounts, noreply_usernames=usernames)
 
-        exclude_set = _expand_exclusions(exclude_authors, mailmap)
+        requests = _exclusion_requests(exclude_authors, mailmap)
+        exclude_set = set().union(*requests.values())
 
         # An unborn HEAD is a negative answer, not a read failure; a named branch
         # is read even then, and a missing one fails below.
@@ -780,7 +784,6 @@ class GitReader:
         records = raw_log.split(_RECORD_SEP)
         trusted = _well_formed_shas(records, authentic_shas)
         undatable: set[str] = set()
-        requested = set(exclude_set)
         reached = self._addresses_in_history(rev, mailmap, exclude_set)
         exclude_set |= {address for addresses in reached.values() for address in addresses}
         _state_wide_exclusions(reached)
@@ -828,9 +831,11 @@ class GitReader:
             log_args, authentic_order, commits, mailmap, exclude_set, matched
         )
 
-        # A filter that matched nothing is almost always a typo; say so.
+        # A filter that matched nothing is almost always a typo; say so. A value
+        # matched when any form it expanded to did, and only values given are named.
         # Assigned unconditionally so a reused reader never reports stale values.
-        unmatched = sorted(requested - matched - set(reached))
+        found = matched | set(reached)
+        unmatched = sorted(value for value, forms in requests.items() if not forms & found)
         self.unmatched_exclusions = tuple(unmatched)
         if unmatched:
             _logger.warning("--exclude-author matched no commits for: %s", ", ".join(unmatched))
@@ -1787,15 +1792,16 @@ def _co_author_identities(
         parsed = _co_author_value(_strip_control_chars(value[: _MAX_TRAILER_VALUE + 1]))
         if parsed is None:
             continue
-        raw_name = _truncate(parsed[0], _MAX_NAME_LENGTH)
-        raw_email = _truncate(parsed[1].strip(), _MAX_EMAIL_LENGTH)
+        raw_name, raw_email = parsed[0], parsed[1].strip()
         name, email = _resolve_identity(raw_name, raw_email, mailmap)
-        name = _truncate(_strip_invisible(_strip_control_chars(name)), _MAX_NAME_LENGTH)
-        email = _truncate(_strip_control_chars(email), _MAX_EMAIL_LENGTH).lower()
+        name = _strip_invisible(_strip_control_chars(name))
+        email = _strip_control_chars(email).lower()
         hits = exclude_set & {_match_key(v) for v in (name, email, raw_name, raw_email)}
         if hits:
             matched.update(hits)
             continue
+        name = _truncate(name, _MAX_NAME_LENGTH)
+        email = _truncate(email, _MAX_EMAIL_LENGTH)
         if email == author or email in found:
             continue
         if len(found) == _MAX_CO_AUTHORS:
@@ -2024,24 +2030,27 @@ def _identity(
         The resolved name and address, and the exclusion values they match.
     """
     # Scrub before trusting: separators in a field can fabricate contributors.
-    raw_name = _truncate(_strip_control_chars(raw_name), _MAX_NAME_LENGTH)
-    raw_email = _truncate(_strip_control_chars(raw_email), _MAX_EMAIL_LENGTH)
+    raw_name = _strip_control_chars(raw_name)
+    raw_email = _strip_control_chars(raw_email)
 
     author_name, author_email = _resolve_identity(raw_name, raw_email, mailmap)
-    # A `.mailmap` is as untrusted as an author field: same scrub and bounds.
-    author_name = _truncate(_strip_invisible(_strip_control_chars(author_name)), _MAX_NAME_LENGTH)
-    author_email = _truncate(_strip_control_chars(author_email), _MAX_EMAIL_LENGTH)
-    # A name of only invisible characters is empty once cleaned; use the address.
-    author_name = author_name or author_email
+    # A `.mailmap` is as untrusted as an author field: same scrub.
+    author_name = _strip_invisible(_strip_control_chars(author_name))
+    author_email = _strip_control_chars(author_email)
 
     # Resolved and raw identity both match, so a value copied from `git log`
-    # (which shows pre-mailmap names) still excludes the person.
+    # (which shows pre-mailmap names) still excludes the person. Matched before
+    # the bounds below: a cut name is no longer the name an exclusion gives.
     hits = exclude_set & {
         _match_key(author_name),
         _match_key(author_email),
         _match_key(raw_name),
         _match_key(raw_email),
     }
+    author_name = _truncate(author_name, _MAX_NAME_LENGTH)
+    author_email = _truncate(author_email, _MAX_EMAIL_LENGTH)
+    # A name of only invisible characters is empty once cleaned; use the address.
+    author_name = author_name or author_email
     return author_name, author_email, hits
 
 
@@ -2168,43 +2177,67 @@ def _build_log_args(
 
 
 def _match_key(value: str) -> str:
-    """Return the form an exclusion is compared in: NFC, spaces collapsed, lower case.
+    """Return the form an exclusion is compared in.
 
-    A trailing or doubled space, or a decomposed accent a paste can carry, must not
-    let an excluded person back in: for a privacy flag, matching too little is the
-    wrong way round.
+    NFC, invisible format characters (Unicode category Cf) removed, spaces
+    collapsed, lower case. A trailing or doubled space, a decomposed accent, or a
+    word joiner a crafted name carries must not let an excluded person back in:
+    for a privacy flag, matching too little is the wrong way round. Only the
+    comparison changes; names are shown and counted as before.
     """
-    return " ".join(unicodedata.normalize("NFC", value).split()).lower()
+    visible = "".join(
+        c
+        for c in unicodedata.normalize("NFC", value[:_MAX_MATCH_LENGTH])
+        if unicodedata.category(c) != "Cf"
+    )
+    return " ".join(visible.split()).lower()
 
 
 def _expand_exclusions(exclude_authors: list[str], mailmap: _Mailmap) -> set[str]:
     """Expand each exclusion to every identity the `.mailmap` ties it to.
-
-    `--exclude-author` removes a person, who may have several identities; for a
-    privacy flag, erring towards removing too little is the wrong way round.
 
     Args:
         exclude_authors: Raw values as supplied, by name or by address.
         mailmap: The parsed `.mailmap` for this repository.
 
     Returns:
-        A lowercased set of the values plus any canonical names and addresses.
+        The match keys of the values plus any canonical names and addresses.
     """
-    expanded = {_match_key(entry) for entry in exclude_authors}
+    return set().union(*_exclusion_requests(exclude_authors, mailmap).values())
 
-    for entry in list(expanded):
-        canonical = mailmap.by_email.get(entry)
-        if canonical is not None:
-            canonical_name, canonical_email = canonical
-            if canonical_name:
-                expanded.add(canonical_name.lower())
-            expanded.add(canonical_email.lower())
 
-        # Four-field form: a value naming either half expands to the entry.
-        for (commit_name, commit_email), (name, email) in mailmap.by_name_and_email.items():
-            if entry in (_match_key(commit_name), _match_key(commit_email)):
-                if name:
-                    expanded.add(name.lower())
-                expanded.add(email.lower())
+def _exclusion_requests(exclude_authors: list[str], mailmap: _Mailmap) -> dict[str, set[str]]:
+    """Map each exclusion value to every form it reaches.
 
-    return expanded
+    `--exclude-author` removes a person, who may have several identities; for a
+    privacy flag, erring towards removing too little is the wrong way round. A
+    GitHub noreply address reaches its account in either form (ADR 0023), and a
+    `.mailmap` entry reaches its canonical name and address.
+
+    Args:
+        exclude_authors: Raw values as supplied, by name or by address.
+        mailmap: The parsed `.mailmap` for this repository.
+
+    Returns:
+        Each value's match key, mapped to that key and every form it expands to.
+    """
+    requests: dict[str, set[str]] = {}
+    for value in exclude_authors:
+        key = _match_key(value)
+        forms = requests.setdefault(key, set())
+        forms |= {key, _match_key(_normalise_github_noreply(key, mailmap))}
+        for entry in list(forms):
+            canonical = mailmap.by_email.get(entry)
+            if canonical is not None:
+                canonical_name, canonical_email = canonical
+                if canonical_name:
+                    forms.add(_match_key(canonical_name))
+                forms.add(_match_key(canonical_email))
+
+            # Four-field form: a value naming either half expands to the entry.
+            for (commit_name, commit_email), (name, email) in mailmap.by_name_and_email.items():
+                if entry in (_match_key(commit_name), _match_key(commit_email)):
+                    if name:
+                        forms.add(_match_key(name))
+                    forms.add(_match_key(email))
+    return requests

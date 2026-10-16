@@ -137,11 +137,14 @@ analysed, and the header and stderr say so. `git fetch --unshallow` fetches the 
 
 ### `--exclude-author`
 
-Excludes a person by name or email, case-insensitively. An identity is its address, so every
-commit made under an address that the value matched anywhere in the branch's history (not only in
-the window) is removed, whatever name it carries, as is every address a `.mailmap` ties to it. A
-name that reaches several addresses removes them all, and stderr names the addresses so you can
-give one instead. A value that matches nothing is reported on stderr. See
+Excludes a person by name or email. Case, runs of spaces, Unicode normalisation form and invisible
+format characters (such as a zero-width joiner) are ignored in the comparison, and a GitHub noreply
+address in either form (`123+name@` or `name@`) names the account, the legacy form only when one
+account in the history used that name. An identity is its address, so every commit made under an
+address that the value matched anywhere in the branch's history (not only in the window) is
+removed, whatever name it carries, as is every address a `.mailmap` ties to it. A name that reaches
+several addresses removes them all, and stderr names the addresses so you can give one instead. A
+value that matches nothing is reported on stderr. See
 [ADR 0020](adr/0020-exclude-author-removes-a-person-by-address.md).
 
 ```bash

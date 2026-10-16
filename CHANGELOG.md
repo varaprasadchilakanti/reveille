@@ -165,6 +165,13 @@ before 0.8.0 predate the convention and are left as they were released.
 - **`--verbose` printed the excluded names** in its configuration line; it now gives their number.
 - **`--until 9999-12-31` stopped with an internal `OverflowError`.** The last representable date is
   now refused as a bad value by `--until` and `--since` (exit 2).
+- **`--exclude-author` still missed a person in four cases**, each shown with a crafted
+  repository: a GitHub noreply address given in the legacy `name@` form while the commits use
+  `123+name@`; a `.mailmap` name with a doubled space; a name longer than the 256 characters
+  shown; and a name carrying an invisible format character such as a word joiner. Values are now
+  compared before the display cut (up to 4,096 characters), noreply addresses fold onto their
+  account (ADR 0023), and format characters are ignored in the comparison. Names are shown as
+  before.
 
 - **`--exclude-author` by name missed a person who appears only as a co-author** under another
   name. The name now reaches the addresses it carries in `Co-authored-by` trailers too (ADR 0020).

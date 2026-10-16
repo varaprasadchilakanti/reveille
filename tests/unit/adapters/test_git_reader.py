@@ -13,6 +13,7 @@ from reveille.adapters.git_reader import (
     _co_author_value,
     _expand_exclusions,
     _Mailmap,
+    _match_key,
     _normalise_github_noreply,
     _parse_log_record,
     _resolve_identity,
@@ -296,3 +297,32 @@ def test_a_four_field_entry_naming_someone_else_adds_nothing() -> None:
     )
 
     assert _expand_exclusions(["Erica Stone"], mailmap) == {"erica stone"}
+
+
+@pytest.mark.unit
+class TestMatchKey:
+    """Tests for _match_key, the form an exclusion is compared in."""
+
+    def test_format_characters_spacing_form_and_case_are_ignored(self) -> None:
+        assert _match_key(" ANA\u2060  Silva\u00ad ") == _match_key("Ana Silva")
+        assert _match_key("Jose\u0301") == _match_key("Jos\u00e9")
+
+    def test_the_comparison_is_bounded(self) -> None:
+        """A crafted multi-megabyte name costs a bounded comparison, cut alike on both sides."""
+        assert len(_match_key("a" * 5_000_000)) == 4096
+        assert _match_key("a" * 4096 + "b") == _match_key("a" * 4096 + "c")
+
+
+@pytest.mark.unit
+def test_a_mailmap_entry_without_a_name_adds_only_its_address() -> None:
+    mailmap = _Mailmap(
+        by_email={"old@e.test": (None, "new@e.test")},
+        by_name_and_email={("ana", "ana@old.test"): (None, "ana@new.test")},
+    )
+
+    assert _expand_exclusions(["OLD@e.test", "Ana"], mailmap) == {
+        "old@e.test",
+        "new@e.test",
+        "ana",
+        "ana@new.test",
+    }
