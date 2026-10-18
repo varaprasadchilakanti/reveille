@@ -194,13 +194,16 @@ database, no third-party service is kept. See [PRIVACY.md](../PRIVACY.md).
 
 **In the report.** Every HTML report embeds the plotly.js cartesian bundle (4.1.1), which Reveille
 ships in `src/reveille/vendor/` with a pin record of what it carries
-([ADR 0027](adr/0027-the-report-embeds-a-pinned-cartesian-bundle.md)). That is code from 84
-packages under the MIT, ISC, BSD-3-Clause, Zlib and BlueOak-1.0.0 licences. MIT requires "the
+([ADR 0027](adr/0027-the-report-embeds-a-pinned-cartesian-bundle.md)). That is code from 71
+packages under the MIT, ISC, BSD-3-Clause and Zlib licences. The report carries notices for 84
+package versions, traced from the plotly.js source: every package in the bundle, and 13 versions
+the trace reached that esbuild left out. MIT requires "the
 above copyright notice and this permission notice" in "all copies or substantial portions of the
 Software", and BSD-3-Clause that "Redistributions in binary form must reproduce the above
 copyright notice, this list of conditions and the following disclaimer". A report is a copy, so
 it carries every one of those notices in a collapsed "Third-party licences" section after its
-footer, and a test fails if one is missing. Anyone who shares a report shares that code with its
+footer. A test fails if a package in the pin record has no section, or a section lacks its
+licence's own wording or a copyright line. Anyone who shares a report shares that code with its
 notices. Reports made by 0.9.0 and earlier embed the bundle without these texts.
 
 The wheel and sdist carry the same files. The package's licence metadata, Apache-2.0, describes

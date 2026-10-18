@@ -19,7 +19,9 @@ before 0.8.0 predate the convention and are left as they were released.
   plotly.js bundle, which kept only the line "Licensed under the MIT license" and none of the
   licence texts that MIT and BSD-3-Clause require in every copy. Reports now carry the notice of
   every package the bundle holds, in a "Third-party licences" section after the footer, and a test
-  fails if one is missing. 0.9.0's reports are affected.
+  fails if a package's section is missing or lacks its licence text. Those notices name some of
+  the library's authors with their email addresses, and `--hide-emails` leaves them as published.
+  0.9.0's reports are affected.
 - **A repository could point Reveille at another repository with `core.worktree`.** Set in its
   own `.git/config`, which an archive or a copied directory carries (a clone does not), it made
   Reveille, run inside it, read the other repository's history and write the report into that

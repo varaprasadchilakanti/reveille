@@ -193,6 +193,11 @@ File paths are not changed: the extension and generated-file figures are read fr
 file or directory named after an address (`users/jane@example.com/`) stays in the report as it
 is. Check the file sections before sharing a report of such a repository.
 
+The "Third-party licences" section at the end of every HTML report is not changed either. It
+carries the copyright notices of the chart library and the packages it bundles as their authors
+published them, and those include the names and email addresses of some of those authors. They
+are about the library, not about your repository, and their licences require them in every copy.
+
 A token is a number, not derived from the address, so it cannot be reversed by trying addresses,
 and `.invalid` is a domain that can never receive mail. Tokens mean nothing across reports: the
 same person can have a different number in another report. An automated account keeps its `[bot]`
@@ -817,6 +822,10 @@ unless you pass `--hide-emails`, and a token written into the path is not recogn
 written, in the report header and in `provenance.filters.exclude_paths`, so a path that names a
 client or a person names them in the report, with or without `--hide-emails`. `reveille summary` names nobody (with one or two people, its counts can identify someone).
 `reveille who-changed` names the authors of one path; its JSON adds their addresses.
+
+Every HTML report also ends with the licence notices of the chart library it embeds. They name
+that library's authors, some with an email address, and are the same in every report; the
+option `--hide-emails` leaves them as they are.
 
 Reveille sends none of this anywhere. The file goes where you write it, and anyone who receives it
 receives all of the above. Given to a hosted AI assistant, the JSON goes to that assistant's

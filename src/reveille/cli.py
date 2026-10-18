@@ -834,7 +834,8 @@ def generate(
             "--hide-emails",
             help=(
                 "Replace people's email addresses with per-report tokens, for a report "
-                "you share. Names and file paths stay; every figure is unchanged."
+                "you share. Names, file paths and the licence notices of the bundled chart "
+                "library stay; every figure is unchanged."
             ),
         ),
     ] = False,

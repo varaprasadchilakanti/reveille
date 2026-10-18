@@ -37,7 +37,10 @@ every HTML report embeds that bundle and the licence of every package it carries
   dependencies and every bare `require` in its code, resolved through plotly.js's lockfile at the
   same tag: esbuild bundles the npm package for a Node built-in such as `buffer` or `assert` when
   one is installed. A package reached only for a stylesheet (maplibre-gl) contributes that file
-  alone. For 4.1.1 that is 84 packages under MIT, ISC, BSD-3-Clause, Zlib and BlueOak-1.0.0.
+  alone. For 4.1.1 the trace lists 84 package versions under MIT, ISC, BSD-3-Clause, Zlib and
+  BlueOak-1.0.0. The unminified `plotly.js-cartesian-dist` 4.1.1 names 71 packages in esbuild's
+  module comments, all of them in the trace; the other 13 versions, `sax` (the only BlueOak-1.0.0
+  one) among them, are listed but not bundled.
 - The report carries the notices in a collapsed "Third-party licences" section after the footer.
 - plotly Python stays a dependency: it builds the figure specifications. Its own bundle is no
   longer read.
@@ -49,7 +52,7 @@ every HTML report embeds that bundle and the licence of every package it carries
 ## Consequences
 
 - The report is 1.7 MB instead of 4.9 MB (1,688,634 bytes for a one-commit repository, measured
-  2026-10-18; 118,439 bytes of it the notices), and does not change with the installed plotly version.
+  2026-10-18; 118,473 bytes of it the notices), and does not change with the installed plotly version.
 - 24 of 24 charts render with the same SVG as with the full bundle in headless Chromium, light and
   dark, apart from Plotly's random element ids.
 - A plotly.js security fix reaches reports only when the maintainer reruns the script; it no
