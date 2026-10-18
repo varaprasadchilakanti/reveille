@@ -287,7 +287,7 @@ def test_an_undatable_record_is_dropped_when_nobody_counts_it() -> None:
     sha = "a" * 40
     record = "\x1f".join([sha, "A", "a@e.test", "99999999999999999999", sha])
 
-    assert _parse_log_record(record, _Mailmap(), set(), {sha}, set()) is None
+    assert _parse_log_record(record, _Mailmap(), set(), {sha: sha}, set()) is None
 
 
 @pytest.mark.unit

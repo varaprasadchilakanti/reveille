@@ -251,6 +251,12 @@ before 0.8.0 predate the convention and are left as they were released.
   waiting for Git. Over 201 small repositories it went from 20.6 s to 8.3 s with the same peak
   memory (52 MB), and the rows, in every format, are as before and in the same order. So are
   the warnings each row gives, which name no repository and are placed only by their order.
+- **Each commit's hash is held once.** The list of commits Git computes, the check that each
+  record is genuine, the commits themselves and the co-author read each held their own copy of
+  every hash, and the co-author read kept a record for every commit, though almost none has a
+  trailer. On 100,000 commits Reveille's own peak memory went from 133 MB to 119 MB for JSON and
+  CSV and from 129 MB to 110 MB for `summary` and `who-changed`; HTML stayed level (134 MB to
+  132 MB). Every output is the same, and so is the time.
 - **Git writes its output in blocks, not one commit at a time.** Writing to a pipe, Git flushed
   after every commit: on 100,000 commits, 100,000 writes, and as many wake-ups for Reveille, against
   1,001 now. `summary` there spends about 3.3 s of processor time instead of 4.3 s (system time

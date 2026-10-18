@@ -295,3 +295,45 @@ def test_git_writes_its_log_in_blocks(tmp_path: Path) -> None:
     subprocess.run(["git", "init", "-q", "-b", "main"], cwd=path, check=True)
 
     assert GitReader(path)._repo.git.environment().get("GIT_FLUSH") == "0"
+
+
+def test_one_string_per_hash_is_shared(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Four copies of each hash were 30 MB on 100,000 commits: one is kept."""
+    path = tmp_path / "r"
+    path.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=path, check=True)
+    for n in range(3):
+        (path / "a.txt").write_text(str(n), encoding="utf-8")
+        subprocess.run(["git", "add", "-A"], cwd=path, check=True)
+        subprocess.run(
+            ["git", "-c", "user.name=A", "-c", "user.email=a@e.test", "commit", "-qm", f"c{n}"],
+            cwd=path,
+            check=True,
+        )
+    order: list[str] = []
+    real = git_reader._shared_trailer_records
+
+    def keep(records: Any, canonical: Any) -> Any:
+        order.extend(canonical)
+        shared = real(records, canonical)
+        kept = [r for r in shared if r.strip()]
+        assert all(r is canonical[r] for r in kept), "a trailer-less record kept its own copy"
+        return shared
+
+    monkeypatch.setattr(git_reader, "_shared_trailer_records", keep)
+    commits = GitReader(path).read_commits(None, None, None, [])
+
+    by_value = {sha: sha for sha in order}
+    assert len(commits) == 3
+    assert all(c.sha is by_value[c.sha] for c in commits), "a commit holds its own copy"
+
+
+def test_a_trailer_record_for_an_unlisted_hash_is_kept_whole() -> None:
+    """So it still fails the check that the records line up with `rev-list`."""
+    sha, forged = "a" * 40, "b" * 40
+    records = [f"{sha}\x1f\n", f"{forged}\x1f\n", f"{sha}\x1fCo-authored-by: X <x@e.test>"]
+
+    shared = git_reader._shared_trailer_records(records, {sha: sha})
+
+    assert isinstance(shared, list)
+    assert shared[0] == sha and shared[1] == f"{forged}\x1f\n" and shared[2].endswith("x@e.test>")

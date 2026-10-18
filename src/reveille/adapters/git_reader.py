@@ -23,7 +23,7 @@ import stat
 import threading
 import unicodedata
 from collections import defaultdict
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -899,10 +899,14 @@ class GitReader:
             stream.close()
             if trailers is not None:
                 trailers.close()
-        authentic_shas = set(authentic_order)
+        # One string per hash, shared by every structure that names it: four
+        # copies of 100,000 hashes were 30 MB.
+        canonical = {sha: sha for sha in authentic_order}
+        authentic_shas = canonical.keys()
+        co_author_records = _shared_trailer_records(co_author_records, canonical)
         exclude_set = set().union(*requests.values())
 
-        trusted = _well_formed_shas(records, authentic_shas)
+        trusted = _well_formed_shas(records, canonical)
         undatable: set[str] = set()
         # An identity is its address (ADR 0002): excluding one name drops every
         # commit under the addresses it reaches.
@@ -918,6 +922,8 @@ class GitReader:
         area_totals: dict[str, _AreaTotal] = {}
         added_paths: set[str] = set()
         dated_after = 0
+        # Not freed one by one: on 100,000 commits that saved 8 MB for JSON but
+        # left the heap 3.5 MB higher once the HTML report was rendered.
         for raw in records:
             # Decoded one at a time: the read holds Git's bytes, not a copy as text.
             record = safe_decode(raw)
@@ -942,7 +948,7 @@ class GitReader:
         )
         self.commits_dated_after = dated_after
         self.files_added = len(added_paths)
-        self.commits_unreadable = _unreadable(trusted, authentic_shas, undatable)
+        self.commits_unreadable = _unreadable(trusted.keys(), authentic_shas, undatable)
         # Not needed past here: freed before the co-authors are credited.
         record_count = len(records)
         del records
@@ -2148,7 +2154,7 @@ def _count_commits(n: int) -> str:
 
 def _unreadable(
     well_formed: AbstractSet[str],
-    authentic_shas: set[str],
+    authentic_shas: AbstractSet[str],
     undatable: AbstractSet[str] = frozenset(),
 ) -> int:
     """Count the commits whose record could not be read, and say so (ADR 0019).
@@ -2286,7 +2292,9 @@ class _LogStream:
             thread.join()
 
 
-def _well_formed_shas(records: Sequence[bytes], authentic_shas: set[str]) -> set[str]:
+def _well_formed_shas(
+    records: Sequence[bytes], authentic_shas: Mapping[str, str]
+) -> dict[str, str]:
     """Return the object names whose log record has the expected shape.
 
     A record split by injected separators fails this check, so its commit is
@@ -2308,7 +2316,33 @@ def _well_formed_shas(records: Sequence[bytes], authentic_shas: set[str]) -> set
             seen[fields[0]] = seen.get(fields[0], 0) + 1
     # A hash with two well-formed records has one forged copy, and nothing says
     # which: neither is trusted, and the commit is counted as unreadable.
-    return {sha for sha, count in seen.items() if count == 1}
+    return {sha: authentic_shas[sha] for sha, count in seen.items() if count == 1}
+
+
+def _shared_trailer_records(
+    records: list[str] | GitCommandError, canonical: Mapping[str, str]
+) -> list[str] | GitCommandError:
+    """Keep a co-author record that credits nobody as its hash alone, the shared string.
+
+    Almost every commit has no trailer; its record was a second copy of its hash
+    held through the whole read. The order, which `_credit_co_authors` checks
+    against `rev-list`, is kept, and a record whose hash Git did not list is kept
+    whole, so it still fails that check.
+
+    Args:
+        records: The co-author log's records, or Git's failure to give them.
+        canonical: Each hash `rev-list` listed, to the string the read shares.
+
+    Returns:
+        The records, the same in number and order.
+    """
+    if isinstance(records, GitCommandError):
+        return records
+    for index, record in enumerate(records):
+        sha, separator, values = record.partition(_FIELD_SEP)
+        if separator and not values.strip():
+            records[index] = canonical.get(sha.strip(), record)
+    return records
 
 
 def _state_wide_exclusions(reached: dict[str, set[str]]) -> None:
@@ -2819,7 +2853,7 @@ def _parse_log_record(
     record: str,
     mailmap: _Mailmap,
     exclude_set: set[str],
-    authentic_shas: set[str],
+    authentic_shas: Mapping[str, str],
     matched: set[str],
     undatable: set[str] | None = None,
     identities: dict[tuple[str, str], tuple[str, str, set[str]]] | None = None,
@@ -2858,6 +2892,7 @@ def _parse_log_record(
     # Shape alone can be forged; membership in the set git computed cannot.
     if not _SHA_RE.fullmatch(sha) or sha not in authentic_shas:
         return None
+    sha = authentic_shas[sha]  # the string the rest of the read shares
 
     resolved = None if identities is None else identities.get((raw_name, raw_email))
     if resolved is None:
