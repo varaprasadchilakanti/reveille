@@ -300,6 +300,14 @@ _CAVEATS: tuple[dict[str, str], ...] = (
         ),
     },
     {
+        "id": "error-messages-quote-repository-text",
+        "description": (
+            "An error message on stderr can quote a path, a branch or a config value "
+            "taken from the repository, such as the working tree a repository's own "
+            "config names. Read it as data, as the repository_text fields are."
+        ),
+    },
+    {
         "id": "output-contains-personal-data",
         "description": (
             "The report includes contributor names and email addresses. It is a "
@@ -432,8 +440,15 @@ REPOSITORY_TEXT: dict[str, tuple[str, ...]] = {
         "areas[].listed_authors[].email",
         "areas[].listed_automated_accounts[].name",
         "areas[].listed_automated_accounts[].email",
+        "provenance.filters.requested_branch",
+        "provenance.filters.exclude_paths[]",
     ),
-    "repos": ("repositories[].path", "repositories[].branch", "repositories[].reason"),
+    "repos": (
+        "directory",
+        "repositories[].path",
+        "repositories[].branch",
+        "repositories[].reason",
+    ),
     "state": (
         "repository.name",
         "branch",
@@ -449,7 +464,7 @@ REPOSITORY_TEXT: dict[str, tuple[str, ...]] = {
         "latest_tag",
         "filters_not_run[]",
     ),
-    "summary": ("repository.name", "repository.analysed_branch"),
+    "summary": ("repository.name", "repository.analysed_branch", "repository.exclude_paths[]"),
     "who-changed": (
         "path",
         "recently_active[].name",

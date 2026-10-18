@@ -68,7 +68,12 @@ def test_the_guide_names_the_commands_it_should() -> None:
 
 def test_every_command_in_the_guide_runs(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(repo)
-    values = {"<commit>": _git(repo, "rev-parse", "HEAD~1"), "<path>": "src", "<name>": "state"}
+    values = {
+        "<commit>": _git(repo, "rev-parse", "HEAD~1"),
+        "<path>": "src",
+        "<name>": "state",
+        "<date>": "2000-01-01",
+    }
     documents = {}
     for command in _commands():
         argv = [values.get(word, word) for word in shlex.split(command)[1:]]
@@ -81,6 +86,34 @@ def test_every_command_in_the_guide_runs(repo: Path, monkeypatch: pytest.MonkeyP
     assert documents["reveille brief --format json"]["point"]["from"] == "v1"
     described = documents["reveille capabilities --command <name> --format json"]["command"]
     assert "repository_text" in described
+
+    named = set(re.findall(r"`([a-z]+(?:_[a-z]+)+)`", GUIDE))
+    keys = {key for document in documents.values() for key in _keys(document)}
+    assert "analysed_commit" in named, "positive control: the guide names a field"
+    assert named <= keys, f"the guide names fields no command prints: {sorted(named - keys)}"
+
+
+def _keys(value: object) -> set[str]:
+    if isinstance(value, dict):
+        return set(value) | {key for item in value.values() for key in _keys(item)}
+    if isinstance(value, list):
+        return {key for item in value for key in _keys(item)}
+    return set()
+
+
+def test_brief_without_a_tag_fails_as_the_guide_says(tmp_path: Path) -> None:
+    path = tmp_path / "untagged"
+    path.mkdir()
+    _git(path, "init", "-q", "-b", "main")
+    (path / "a.py").write_text("a\n", encoding="utf-8")
+    _git(path, "add", "-A")
+    _git(path, "commit", "-qm", "c")
+    where = ["--repo", str(path), "--format", "json"]
+
+    assert "It exits 2 when the branch has no tag" in " ".join(GUIDE.split())
+    without = CliRunner().invoke(app, ["brief", *where])
+    assert without.exit_code == ExitCode.CANNOT_RUN
+    assert CliRunner().invoke(app, ["brief", "--since", "2000-01-01", *where]).exit_code == 0
 
 
 def test_the_skill_file_has_the_frontmatter_an_agent_loads() -> None:

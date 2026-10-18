@@ -186,8 +186,9 @@ before 0.8.0 predate the convention and are left as they were released.
 - **`capabilities` lists the fields that carry repository text.** Each command that writes JSON
   has `repository_text`: the fields whose strings anyone who can commit chooses (names, addresses,
   paths, branch and tag names), for a program or model to read as data, never as instructions. A
-  test marks every such input in a repository and fails on a marked string in an unlisted field.
-  `capabilities_version` is 1.1.
+  test marks every such input in a repository and fails on a marked string in an unlisted field,
+  and removing any listed field fails it. A caveat says an error message on stderr can quote such
+  text too. `capabilities_version` is 1.1.
 - **Each agent document says which Reveille wrote it.** `summary`, `state`, `brief`,
   `who-changed` and `repos` JSON carry `reveille_version`, and `who-changed` the
   `analysed_commit`, as `brief` does, so an answer can be cited and checked against a rerun.
