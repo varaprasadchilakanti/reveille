@@ -22,7 +22,7 @@ import math
 import re
 import shlex
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, cast
 
@@ -124,6 +124,35 @@ _HTML_TAG_RE: re.Pattern[str] = re.compile(r"<[^>]+>")
 _PLOTLY_JS_BUNDLE: str = plotly.offline.get_plotlyjs()
 
 
+class _DedentingLoader(PackageLoader):
+    """Load templates without their leading indentation.
+
+    Indentation is a quarter of the markup, styles and scripts the report
+    carries, and the template has nothing it changes the meaning of: no `<pre>`,
+    no `<textarea>`, no multi-line JavaScript string. Stripped from the template
+    source, so the Plotly bundle and the chart data rendered into it are
+    untouched.
+    """
+
+    def get_source(
+        self, environment: Environment, template: str
+    ) -> tuple[str, str, Callable[[], bool] | None]:
+        """Return the template's source with each line's leading spaces and tabs removed.
+
+        Args:
+            environment: The Jinja environment.
+            template: The template's name.
+
+        Returns:
+            The source, its file name and an up-to-date check, as `PackageLoader` gives.
+        """
+        source, filename, uptodate = super().get_source(environment, template)
+        return _LEADING_INDENT.sub("", source), filename, uptodate
+
+
+_LEADING_INDENT = re.compile(r"^[ \t]+", re.MULTILINE)
+
+
 class Renderer:
     """Renders a ReportData instance into a self-contained HTML file."""
 
@@ -135,7 +164,7 @@ class Renderer:
         """
         try:
             self._env = Environment(
-                loader=PackageLoader("reveille", "templates"),
+                loader=_DedentingLoader("reveille", "templates"),
                 autoescape=select_autoescape(["html", "j2"]),
                 undefined=StrictUndefined,
             )

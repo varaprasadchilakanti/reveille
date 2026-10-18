@@ -164,6 +164,9 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Changed
 
+- **The part of the HTML report Reveille writes is a quarter smaller**: the template's indentation
+  is no longer copied into every report (107,656 to 80,464 bytes on Reveille's own history). The
+  4.8 MB Plotly bundle is untouched, so the whole file shrinks by about 0.6%.
 - **Release and contribution checks.** A tag is published only if its commit is on `main`. The
   sign-off check reads `Signed-off-by` as Git's trailers, not any matching line in the body, and
   the contributor-agreement check ignores code fences and unterminated comments, needs "I accept",
