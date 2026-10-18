@@ -245,6 +245,9 @@ before 0.8.0 predate the convention and are left as they were released.
   compared before the display cut (up to 4,096 characters), noreply addresses fold onto their
   account (ADR 0023), and format characters are ignored in the comparison. Names are shown as
   before.
+- **The heatmap opened on an empty year** when the history stopped before the window's end (which
+  is today by default): a dormant repository showed a blank grid first. It now opens on the latest
+  year with a commit.
 - **A dark-mode reader saw the HTML report light first, then watched it fade to dark.** The theme
   was applied by the script at the end of the page, after the 4.8 MB chart library was parsed. It
   is now set in the page's head, before the first paint.

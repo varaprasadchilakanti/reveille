@@ -1627,6 +1627,9 @@ def _build_heatmap_data(
 
     payload: dict[str, object] = {
         "years": years,
+        # The year shown first: the latest with a commit. The window runs to today,
+        # so a history that stopped earlier opened on an empty grid.
+        "default_year": max((int(day[:4]) for day in agg_counts), default=years[-1]),
         # The grid draws these bounds, so days outside the window are not zeros.
         "since": analysis_since.isoformat(),
         "until": analysis_until.isoformat(),

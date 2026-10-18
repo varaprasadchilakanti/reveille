@@ -2238,8 +2238,8 @@
         var years        = heatmapData.years        || [];
         var contributors = heatmapData.contributors || [];
 
-        // Default: most recent year, aggregated view.
-        currentYear        = years[years.length - 1];
+        // Default: the latest year with a commit, aggregated view.
+        currentYear        = heatmapData.default_year || years[years.length - 1];
         currentContributor = '__aggregated__';
 
         // Build year tab buttons.
