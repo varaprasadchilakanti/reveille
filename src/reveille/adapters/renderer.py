@@ -53,6 +53,12 @@ from reveille.domain.models import (
 )
 from reveille.domain.profile import ProfileAxis, repository_profile
 from reveille.domain.pseudonyms import HIDDEN_DOMAIN
+from reveille.domain.repositories import (
+    QUIET_UNTIL_DAYS,
+    STATUSES,
+    RepositoryActivity,
+    status_counts,
+)
 from reveille.domain.state import QUIET_BRANCH_DAYS, RepositoryState
 from reveille.domain.summary import Finding, longest_quiet_run, summarise
 from reveille.exceptions import OutputPathError, RenderError
@@ -714,6 +720,82 @@ class Renderer:
         return _joined(lines)
 
     @staticmethod
+    def repositories_text(
+        rows: list[RepositoryActivity],
+        directory: str,
+        window: tuple[datetime.date, datetime.date],
+        days: int,
+        depth: int,
+        output_format: str,
+    ) -> str:
+        """Render one row per repository, as text, JSON, Markdown or CSV (ADR 0026).
+
+        Args:
+            rows: The repositories, in path order.
+            directory: The searched directory's name, not its full path.
+            window: The activity window's first and last days.
+            days: The window's length.
+            depth: How deep the search went.
+            output_format: "text", "json", "markdown" or "csv".
+
+        Returns:
+            The answer.
+        """
+        counts = status_counts(rows)
+        rule = (
+            f"Status by days since the last commit: active within {days}, quiet within "
+            f"{max(days, QUIET_UNTIL_DAYS)}, dormant beyond; empty has no commit, or none left "
+            "after --exclude-author. People are counted per repository, so the column does "
+            "not add up to a number of people."
+        )
+        if output_format == "json":
+            return json.dumps(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "document": "repos",
+                    "directory": directory,
+                    "search_depth": depth,
+                    "window": {
+                        "since": window[0].isoformat(),
+                        "until": window[1].isoformat(),
+                        "days": days,
+                    },
+                    "rules": {
+                        "active_within_days": days,
+                        "quiet_within_days": max(days, QUIET_UNTIL_DAYS),
+                    },
+                    "totals": {"repositories": len(rows), **counts},
+                    "repositories": [_repository_json(row) for row in rows],
+                    "notice": f"{_NOTICE} {rule}",
+                },
+                indent=2,
+            )
+        if output_format == "csv":
+            return _repositories_csv(rows)
+        tally = ", ".join(f"{counts[s]:,} {s}" for s in STATUSES if counts[s] or s != "not read")
+        head = (
+            f"{len(rows):,} {'repository' if len(rows) == 1 else 'repositories'} in "
+            f"{directory}, {window[0].isoformat()} to {window[1].isoformat()} ({days} days): "
+            f"{tally}."
+        )
+        if output_format == "markdown":
+            lines = [
+                f"### Repositories: {_md(directory)}",
+                "",
+                head,
+                "",
+                "| Repository | Status | Last commit | Days since | Commits | People | Automated |",
+                "|---|---|---|---:|---:|---:|---:|",
+                *(_repository_markdown_row(row) for row in rows),
+                "",
+                f"> {rule}",
+                ">",
+                f"> {_NOTICE}",
+            ]
+            return _joined(lines)
+        return _joined([head, *(_repository_line(row) for row in rows), rule, _NOTICE])
+
+    @staticmethod
     def state_text(
         state: RepositoryState,
         *,
@@ -1069,6 +1151,99 @@ def _population(data: ReportData) -> list[ContributorStats]:
     return [ranked.stats for ranked in data.ranked_contributors] + list(
         data.suppressed_contributors
     )
+
+
+def _repository_json(row: RepositoryActivity) -> dict[str, Any]:
+    """One repository's row as JSON; counts only, no identity."""
+    return {
+        "path": row.path,
+        "status": row.status,
+        "branch": row.branch,
+        "last_commit": row.last_commit.isoformat() if row.last_commit else None,
+        "days_since_last_commit": row.days_since_last_commit,
+        "commits": row.commits,
+        "people": row.people,
+        "automated_accounts": row.automated_accounts,
+        "shallow_clone": row.shallow,
+        "reason": row.reason,
+    }
+
+
+def _repository_line(row: RepositoryActivity) -> str:
+    """One repository's row as a plain line."""
+    if row.status == "not read":
+        return f"- {row.path}: not read ({row.reason})"
+    if row.last_commit is None:
+        return f"- {row.path}: empty"
+    automated = (
+        f" and {_counted(row.automated_accounts, 'automated account')}"
+        if row.automated_accounts
+        else ""
+    )
+    activity = (
+        f"; {_counted(row.commits, 'commit')} by "
+        f"{row.people:,} {'person' if row.people == 1 else 'people'}{automated} in the window"
+        if row.commits
+        else ""
+    )
+    shallow = "; shallow clone" if row.shallow else ""
+    return (
+        f"- {row.path}: {row.status}, last commit {row.last_commit.isoformat()} "
+        f"({_counted(row.days_since_last_commit or 0, 'day')} ago){activity}{shallow}"
+    )
+
+
+def _repository_markdown_row(row: RepositoryActivity) -> str:
+    """One repository's row in a Markdown table."""
+    status = f"not read: {row.reason}" if row.status == "not read" else row.status
+    last = row.last_commit.isoformat() if row.last_commit else ""
+    days = "" if row.days_since_last_commit is None else f"{row.days_since_last_commit:,}"
+    cells = [
+        _md(row.path),
+        _md(status) if row.status == "not read" else status,
+        last,
+        days,
+        f"{row.commits:,}",
+        f"{row.people:,}",
+        f"{row.automated_accounts:,}",
+    ]
+    return "| " + " | ".join(cell.replace("|", "\\|") for cell in cells) + " |"
+
+
+def _repositories_csv(rows: list[RepositoryActivity]) -> str:
+    """The rows as CSV; repository text cannot become a spreadsheet formula."""
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\n")
+    writer.writerow(
+        [
+            "path",
+            "status",
+            "branch",
+            "last_commit",
+            "days_since_last_commit",
+            "commits",
+            "people",
+            "automated_accounts",
+            "shallow_clone",
+            "reason",
+        ]
+    )
+    for row in rows:
+        writer.writerow(
+            [
+                _neutralise_csv_cell(row.path),
+                row.status,
+                _neutralise_csv_cell(row.branch or ""),
+                row.last_commit.isoformat() if row.last_commit else "",
+                "" if row.days_since_last_commit is None else row.days_since_last_commit,
+                row.commits,
+                row.people,
+                row.automated_accounts,
+                "true" if row.shallow else "false",
+                _neutralise_csv_cell(row.reason or ""),
+            ]
+        )
+    return buffer.getvalue()
 
 
 def _counted(n: int, singular: str) -> str:

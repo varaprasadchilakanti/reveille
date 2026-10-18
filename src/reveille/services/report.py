@@ -19,7 +19,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from reveille import __version__
-from reveille.adapters.git_reader import GitReader
+from reveille.adapters.git_reader import GitReader, find_repositories
 from reveille.adapters.renderer import Renderer
 from reveille.config import ReportConfig
 from reveille.domain.areas import who_changed
@@ -35,7 +35,8 @@ from reveille.domain.models import (
 )
 from reveille.domain.pseudonyms import hide_emails
 from reveille.domain.ranking import rank_contributors
-from reveille.exceptions import EmptyRepositoryError, RepositoryError
+from reveille.domain.repositories import RepositoryActivity, describe_repository
+from reveille.exceptions import EmptyRepositoryError, RepositoryError, ReveilleError
 
 _logger = logging.getLogger(__name__)
 
@@ -194,6 +195,128 @@ def state_text(repo_path: Path, output_format: str, limit: int) -> str:
         output_format=output_format,
         limit=limit,
     )
+
+
+def repositories_text(
+    directory: Path,
+    *,
+    depth: int,
+    days: int,
+    until: datetime.date | None,
+    exclude_authors: list[str],
+    output_format: str,
+    on_notice: Callable[[str], None] | None = None,
+) -> str:
+    """Give one row per repository under a directory, naming no one (ADR 0026).
+
+    Args:
+        directory: Where to search.
+        depth: How many levels below it to search.
+        days: The activity window's length, ending on `until`.
+        until: The window's last day; today (UTC) if None.
+        exclude_authors: Applied in every repository, as `summary` applies them.
+        output_format: "text", "json", "markdown" or "csv".
+        on_notice: As for generate_report.
+
+    Returns:
+        The answer.
+
+    Raises:
+        EmptyRepositoryError: If no repository is found.
+    """
+    end = until if until is not None else _today()
+    start = end - datetime.timedelta(days=days - 1)
+    found, unreadable = find_repositories(directory, depth)
+    if unreadable:
+        _notify(
+            on_notice,
+            f"{len(unreadable):,} {'directory' if len(unreadable) == 1 else 'directories'} "
+            "could not be listed and were not searched.",
+        )
+    if not found:
+        raise EmptyRepositoryError(
+            f"No Git repository found in '{directory}' within {depth} "
+            f"{'level' if depth == 1 else 'levels'}. A larger --depth searches deeper."
+        )
+    rows: list[RepositoryActivity] = []
+    matched: set[str] = set()
+    for path in found:
+        row, matched_here = _repository_row(
+            path, path.relative_to(directory).as_posix(), start, end, days, exclude_authors
+        )
+        rows.append(row)
+        matched |= matched_here
+    unmatched = [value for value in exclude_authors if value not in matched]
+    if unmatched:
+        _notify(
+            on_notice,
+            f"--exclude-author matched no commits in any repository for: {', '.join(unmatched)}",
+        )
+    return Renderer.repositories_text(
+        rows, directory.name, (start, end), days, depth, output_format
+    )
+
+
+def _repository_row(
+    path: Path,
+    relative: str,
+    start: datetime.date,
+    end: datetime.date,
+    days: int,
+    exclude_authors: list[str],
+) -> tuple[RepositoryActivity, set[str]]:
+    """Read one repository's row, or say why it could not be read.
+
+    Args:
+        path: The repository.
+        relative: Its path relative to the directory searched.
+        start: The window's first day.
+        end: The window's last day.
+        days: The window's length.
+        exclude_authors: The exclusion values.
+
+    Returns:
+        The row, and the exclusion values that matched something in it.
+    """
+    try:
+        reader = GitReader(path)
+        branch = reader.read_metadata(0, 0, start, end).analysed_branch
+        has_commits = reader.resolve_head_sha() is not None
+        in_window = _read_or_empty(reader, start, end, exclude_authors)
+        # The last commit outside the window needs the history before it.
+        history = in_window or _read_or_empty(reader, None, end, exclude_authors)
+        matched = set(exclude_authors) - set(reader.unmatched_exclusions) if has_commits else set()
+        return (
+            describe_repository(
+                relative,
+                None if branch == "HEAD" else branch,
+                max((c.timestamp.date() for c in history), default=None),
+                in_window,
+                end,
+                days,
+                shallow=reader.is_shallow(),
+            ),
+            matched,
+        )
+    except ReveilleError as exc:
+        # The first sentence, with the local path (which can hold a login name) made relative.
+        reason = str(exc).replace(str(path), relative).split(". ")[0].rstrip(".")
+        return RepositoryActivity(relative, "not read", reason=reason), set()
+
+
+def _read_or_empty(
+    reader: GitReader,
+    since: datetime.date | None,
+    until: datetime.date,
+    exclude_authors: list[str],
+) -> list[Commit]:
+    """Read a window's commits without line counts, or none if it holds none."""
+    try:
+        return reader.read_commits(
+            None, since, until, exclude_authors, line_counts=False, report_unmatched=False
+        )
+    except EmptyRepositoryError:
+        return []
 
 
 #: Areas whose earlier history is looked up for "active again": one `git log -1` each.

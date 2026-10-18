@@ -707,6 +707,7 @@ class GitReader:
         from_commit: str | None = None,
         name_status: bool = False,
         exclude_paths: Sequence[str] = (),
+        report_unmatched: bool = True,
     ) -> list[Commit]:
         """Read all non-merge commits in the analysis window, in one `git log`.
 
@@ -728,6 +729,8 @@ class GitReader:
                 count the files added in `files_added`; overrides `line_counts`.
             exclude_paths: Literal repository paths left out of every figure. A
                 commit that changed only these is not read.
+            report_unmatched: Log a warning for a value or path that matched
+                nothing. A caller reading many repositories reports it once instead.
 
         Returns:
             Commits sorted most recent first.
@@ -860,11 +863,11 @@ class GitReader:
         found = matched | set(reached)
         unmatched = sorted(value for value, forms in requests.items() if not forms & found)
         self.unmatched_exclusions = tuple(unmatched)
-        if unmatched:
+        if unmatched and report_unmatched:
             _logger.warning("--exclude-author matched no commits for: %s", ", ".join(unmatched))
 
         self.unmatched_path_exclusions = self._paths_never_changed(rev, exclude_paths)
-        if self.unmatched_path_exclusions:
+        if self.unmatched_path_exclusions and report_unmatched:
             _logger.warning(
                 "--exclude-path matched no file in the history of %s: %s",
                 rev,
@@ -1971,6 +1974,60 @@ def _state_wide_exclusions(reached: dict[str, set[str]]) -> None:
 
 #: The largest `.mailmap` read, in bytes; a real one is kilobytes.
 _MAX_MAILMAP_BYTES = 1_048_576
+
+
+#: The deepest `reveille repos --depth` searches (ADR 0026).
+MAX_SEARCH_DEPTH = 3
+
+
+def find_repositories(directory: Path, depth: int) -> tuple[list[Path], list[Path]]:
+    """Find the Git repositories under `directory`, to `depth` levels (ADR 0026).
+
+    A working tree holds `.git` (a directory, or the file a linked worktree or
+    submodule has); a bare repository holds `HEAD`, `objects` and `refs`. A
+    repository found is not searched further, and a symbolic link is not
+    followed, so the search stays inside `directory`. No Git command runs.
+
+    Args:
+        directory: Where to search; not itself a candidate.
+        depth: How many levels below it, 1 to `MAX_SEARCH_DEPTH`.
+
+    Returns:
+        The repositories, and the directories that could not be listed, each sorted.
+    """
+    found: list[Path] = []
+    unreadable: list[Path] = []
+    level = [directory]
+    for _ in range(min(max(depth, 1), MAX_SEARCH_DEPTH)):
+        below: list[Path] = []
+        for parent in level:
+            try:
+                entries = sorted(os.scandir(parent), key=lambda e: e.name)
+            except OSError:
+                unreadable.append(parent)
+                continue
+            for entry in entries:
+                if entry.name == ".git" or entry.is_symlink() or not entry.is_dir():
+                    continue
+                candidate = Path(entry.path)
+                if _is_repository(candidate):
+                    found.append(candidate)
+                else:
+                    below.append(candidate)
+        level = below
+    return sorted(found), sorted(unreadable)
+
+
+def _is_repository(path: Path) -> bool:
+    """Return whether `path` is a working tree or a bare repository, by its files alone."""
+    try:
+        if (path / ".git").exists() and not (path / ".git").is_symlink():
+            return True
+        return (
+            (path / "HEAD").is_file() and (path / "objects").is_dir() and (path / "refs").is_dir()
+        )
+    except OSError:
+        return False
 
 
 def repository_root(path: Path) -> Path:

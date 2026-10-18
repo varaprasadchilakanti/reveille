@@ -77,8 +77,8 @@ shown as `\n`, so a name cannot add a heading, a link or HTML.
 bar, such as `reveille: main 1a2b3c4; 1 staged, 2 untracked; 1 stash; v1.0 +3`. It lists no path and no
 author, carries no notice, and a newline in a name is shown as `\n`.
 
-`reveille generate` takes the options below. `summary`, `who-changed`, `init`, `validate` and
-`capabilities` are described after the table; each of their options is listed with its command.
+`reveille generate` takes the options below. `summary`, `brief`, `state`, `who-changed`, `repos`,
+`init`, `validate` and `capabilities` are described after the table; each of their options is listed with its command.
 
 | Option | Default | Meaning |
 |---|---|---|
@@ -335,6 +335,36 @@ fact the history records, and "who did the most" is not what this is for. It say
 code, not who knows or owns it. It reads only the commits that changed the path, and no line
 counts. A path that no commit in the window changed is a negative answer (exit 1). Renames are
 not followed: history from before a rename belongs to the old path.
+
+### `reveille repos`
+
+```bash
+reveille repos ~/src
+reveille repos /srv/mirrors --depth 2 --format csv > repositories.csv
+```
+
+Finds the Git repositories in a directory and gives one row per repository: its path, branch, the
+date of the last non-merge commit and the days since, and the commits, people and automated
+accounts in the window (the last 90 days to today, UTC; `--days` and `--until` change it), with a
+status by fixed rules: **active** with a commit in the window, **quiet** with one in the last 365
+days, **dormant** beyond that, **empty** with no commit (or none left after `--exclude-author`).
+The rules are stated in every format ([ADR 0026](adr/0026-many-repositories-one-row-each.md)).
+
+- **What counts as a repository:** a directory holding `.git`, or a bare repository (`HEAD`,
+  `objects` and `refs`), so a folder of server-side mirrors works. The search goes one level down
+  by default and at most three (`--depth`); a repository found is not searched inside, so a
+  submodule or a nested clone is not a row; a symbolic link is not followed.
+- **Each repository is read as `summary` reads one**, with its `.mailmap`, `--exclude-author`
+  applied in every repository, and no line counts. A value that matched nothing in any repository
+  is reported once on stderr.
+- **A repository that cannot be read** (a partial clone, a SHA-256 repository, a corrupt one) is a
+  row with status `not read` and the reason; the others are still read, and the exit code is 0.
+  No repository found is a negative answer (exit 1).
+- **It names nobody and counts nobody across repositories.** The people column describes one
+  repository each; adding it up does not give a number of people.
+- **Formats:** `text` (default), `json`, `markdown` and `csv`. CSV cells that a spreadsheet would
+  read as a formula are prefixed with `'`. Paths are relative to the directory given; the JSON
+  carries the directory's name, not its full path, but a path can still hold a login name.
 
 ### `reveille validate`
 

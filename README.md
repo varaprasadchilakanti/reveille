@@ -288,6 +288,16 @@ not who knows or owns it. A path no commit in the window changed exits 1.
 reveille who-changed src/parser/lexer.c --since 2026-01-01
 ```
 
+### `reveille repos`
+
+Which repositories in a directory are active, quiet or dormant: one row per repository, with its
+last commit and the commits, people and automated accounts in the last 90 days as counts. It names
+nobody and counts nobody across repositories. A folder of clones or of bare mirrors both work.
+
+```bash
+reveille repos ~/src --format markdown
+```
+
 ### `reveille capabilities`
 
 States what Reveille can and cannot do, including what it declines to claim, read from the installed

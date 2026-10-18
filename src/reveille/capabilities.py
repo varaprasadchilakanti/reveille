@@ -111,6 +111,16 @@ _CAPABILITIES: tuple[dict[str, str], ...] = (
         ),
     },
     {
+        "id": "repos",
+        "description": (
+            "Say which repositories in a directory are active, quiet or dormant with "
+            "`reveille repos <directory>`: one row per repository, with its last "
+            "commit, and the commits, people and automated accounts in a recent window "
+            "as counts. It names nobody and counts nobody across repositories; a "
+            "repository that cannot be read is a row saying why."
+        ),
+    },
+    {
         "id": "co-authors",
         "description": (
             "Report identities credited by Co-authored-by trailers beside, not "

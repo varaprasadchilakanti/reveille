@@ -106,6 +106,13 @@ before 0.8.0 predate the convention and are left as they were released.
   path that matched nothing is reported, and the paths are stated in the report, the summary and
   `provenance.filters.exclude_paths`. Additive to schema 1.2.
 
+- **`reveille repos <directory>`**: which repositories in a directory are active, quiet or
+  dormant, one row per repository with its last commit and the commits, people and automated
+  accounts in a window (90 days by default) as counts. It finds working trees and bare mirrors to
+  `--depth` levels without following links, reads each as `summary` does, gives a repository it
+  cannot read a row saying why, and names nobody and counts nobody across repositories (ADR 0026,
+  proposed). Text, JSON, Markdown and CSV.
+
 - **`generate --hide-emails`** replaces every email address in the report with a per-report token
   (`contributor-N@hidden.invalid`, numbered in table order, never derived from the address), for a
   report that is shared. It covers authors, co-authors, people below `--min-commits`, area authors,

@@ -1171,6 +1171,62 @@ def state(
     _run_query(lambda _notice: state_text(_root(repo), output_format, limit))
 
 
+@app.command()
+def repos(
+    directory: Annotated[
+        Path,
+        typer.Argument(help="The directory holding the repositories."),
+    ] = Path("."),
+    depth: Annotated[
+        int,
+        typer.Option(
+            "--depth",
+            min=1,
+            max=3,
+            help="How many directory levels below it to search for repositories.",
+        ),
+    ] = 1,
+    days: Annotated[
+        int,
+        typer.Option(
+            "--days",
+            min=1,
+            max=3650,
+            help="The activity window, in days, ending on --until.",
+        ),
+    ] = 90,
+    until: _UntilOption = None,
+    exclude_author: _ExcludeOption = None,
+    output_format: Annotated[
+        str, typer.Option("--format", help="Output format: text, json, markdown or csv.")
+    ] = "text",
+    verbose: _VerboseOption = False,
+) -> None:
+    """Say which repositories in a directory are active, quiet or dormant, naming no one.
+
+    One row per repository, in counts. Nobody is counted across repositories.
+    """
+    from reveille.services.report import repositories_text
+
+    _configure_logging(verbose)
+    _check_query_format(output_format, ("text", "json", "markdown", "csv"))
+    if not directory.is_dir():
+        _err(f"Error: '{directory}' is not a directory.")
+        raise typer.Exit(code=ExitCode.CANNOT_RUN)
+    end = _parse_date(until, "--until") if until is not None else None
+    _run_query(
+        lambda notice: repositories_text(
+            directory.resolve(),
+            depth=depth,
+            days=days,
+            until=end,
+            exclude_authors=list(exclude_author or []),
+            output_format=output_format,
+            on_notice=notice,
+        )
+    )
+
+
 def _repository_path(path: str, repo: Path) -> str:
     """Turn the path given to who-changed into a repository-relative one.
 

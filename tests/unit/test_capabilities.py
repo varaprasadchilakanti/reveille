@@ -65,6 +65,7 @@ class TestDerivedFactsCannotDrift:
             "generate",
             "summary",
             "who-changed",
+            "repos",
             "validate",
             "init",
             "capabilities",

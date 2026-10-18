@@ -49,6 +49,7 @@ Deprecated.
 | [0023](0023-noreply-addresses-fold-on-the-account-number.md) | GitHub noreply addresses fold on the account number | Proposed |
 | [0024](0024-the-state-of-a-repository-now.md) | The state of a repository now: `reveille state` | Proposed |
 | [0025](0025-brief-starts-at-the-latest-tag.md) | `brief` starts at the latest tag when no point is given | Proposed |
+| [0026](0026-many-repositories-one-row-each.md) | Many repositories, one row each: `reveille repos` | Proposed |
 
 ## Notes from the review of 2026-10-09
 
