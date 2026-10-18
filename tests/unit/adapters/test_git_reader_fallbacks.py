@@ -150,16 +150,23 @@ def test_a_tag_listing_failure_is_reported_as_git_s(
 
 
 class _LogFails:
-    """Stands in for `GitReader._git()`; a `git log` whose format matches raises."""
+    """Stands in for `GitReader._git()`; a `git log` whose format matches raises.
+
+    Only a call that waits for Git: a started process fails when it is read.
+    """
 
     def __init__(self, real: Any, marker: str) -> None:
         self._real, self._marker = real, marker
 
     def __getattr__(self, command: str) -> Any:
-        def call(*args: str) -> Any:
-            if command == "log" and any(self._marker in arg for arg in args):
+        def call(*args: str, **kwargs: Any) -> Any:
+            if (
+                command == "log"
+                and not kwargs.get("as_process")
+                and any(self._marker in arg for arg in args)
+            ):
                 raise GitCommandError(command, 128)
-            return getattr(self._real, command)(*args)
+            return getattr(self._real, command)(*args, **kwargs)
 
         return call
 

@@ -13,6 +13,7 @@ import os
 import re
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 from typer.testing import CliRunner
@@ -241,12 +242,14 @@ def test_trailers_out_of_order_credit_nobody(
     _commit(repo, "A", "a@e.test", "one\n\nCo-authored-by: H <h@e.test>\n", 1)
     _commit(repo, "B", "b@e.test", "two\n", 2)
     reader = GitReader(repo)
-    honest = reader._trailer_log
+    honest = reader._trailer_records
 
-    def reordered(selection: list[str]) -> str:
-        return "\0".join(reversed([r for r in honest(selection).split("\0") if r.strip()]))
+    def reordered(trailers: Any) -> list[str]:
+        records = honest(trailers)
+        assert isinstance(records, list)
+        return list(reversed([r for r in records if r.strip()]))
 
-    monkeypatch.setattr(reader, "_trailer_log", reordered)
+    monkeypatch.setattr(reader, "_trailer_records", reordered)
     commits = reader.read_commits(branch="main", since=None, until=None, exclude_authors=[])
 
     assert all(c.co_authors == () for c in commits)

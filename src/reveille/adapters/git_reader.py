@@ -19,6 +19,7 @@ import logging
 import os
 import re
 import stat
+import threading
 import unicodedata
 from collections import defaultdict
 from collections.abc import Iterator, Sequence
@@ -28,6 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from git import Git, InvalidGitRepositoryError, NoSuchPathError, Repo
+from git.compat import safe_decode
 from git.exc import GitCommandError
 
 from reveille.domain.areas import ROOT_AREA, area_of
@@ -48,6 +50,7 @@ from reveille.exceptions import EmptyRepositoryError, RepositoryError
 _logger = logging.getLogger(__name__)
 
 _RECORD_SEP = "\x1e"
+_RECORD_SEP_BYTES = _RECORD_SEP.encode()
 _FIELD_SEP = "\x1f"
 
 # The hash closes the record as well as opening it: a commit cannot carry its
@@ -863,49 +866,28 @@ class GitReader:
                 "Make at least one commit before generating a report."
             )
 
-        # A crafted author name can inject a whole record, so authentic SHAs
-        # come from `rev-list`, which computes them; a record whose SHA is not
-        # in this set did not come from a commit.
-        _logger.debug("git rev-list %s", " ".join(rev_list_args))
-        try:
-            # Ordered too: the co-author pass must line up one for one (ADR 0014).
-            authentic_order = [
-                line.strip()
-                for line in str(self._git().rev_list(*rev_list_args)).splitlines()
-                if line.strip()
-            ]
-            authentic_shas = set(authentic_order)
-            # The same selection's merges: left out of every figure (ADR 0001), and counted.
-            merges = ["--merges" if a == "--no-merges" else a for a in rev_list_args]
-            self.merges_excluded = int(str(self._git().rev_list("--count", *merges)).strip() or 0)
-        except GitCommandError as exc:
-            raise RepositoryError(
-                f"Failed to enumerate commits on branch '{rev}'. "
-                "Verify the branch exists in this repository."
-            ) from exc
-
-        # Once the branch is known to exist: an exclusion names a person, through the mailmap.
-        mailmap = self._read_mailmap()
-        self._mailmap_applied = bool(mailmap.by_email or mailmap.by_name_and_email)
-        accounts, usernames = self._noreply_accounts(rev)
-        mailmap = replace(mailmap, noreply_accounts=accounts, noreply_usernames=usernames)
-
-        requests = _exclusion_requests(exclude_authors, mailmap)
-        exclude_set = set().union(*requests.values())
-
         self._refuse_attribute_files_that_block(counts_lines=line_counts and not name_status)
         _logger.debug("git log %s", " ".join(log_args))
+        # Started first: Git writes both logs while the queries below run. The
+        # co-author read covers the same selection (ADR 0014).
+        stream = _LogStream(self._git().log(*log_args, as_process=True))
+        trailers = _LogStream(
+            self._git().log("-z", _TRAILER_FORMAT, *_selection(log_args), as_process=True),
+            separator=b"\0",
+        )
         try:
-            raw_log = self._git().log(*log_args)
-        except GitCommandError as exc:
-            raise RepositoryError(
-                f"Failed to read commits from branch '{rev}'. "
-                f"Verify the branch name is correct. Detail: {exc}"
-            ) from exc
+            records, authentic_order, mailmap, requests = self._read_alongside(
+                stream, rev, rev_list_args, exclude_authors
+            )
+            co_author_records = self._trailer_records(trailers)
+        finally:
+            stream.close()
+            trailers.close()
+        authentic_shas = set(authentic_order)
+        exclude_set = set().union(*requests.values())
 
         # An identity is its address (ADR 0002): excluding one name drops every
         # commit under the addresses it reaches.
-        records = raw_log.split(_RECORD_SEP)
         trusted = _well_formed_shas(records, authentic_shas)
         undatable: set[str] = set()
         reached = self._addresses_in_history(rev, mailmap, exclude_set)
@@ -943,7 +925,10 @@ class GitReader:
         )
         self.commits_dated_after = dated_after
         self.files_added = len(added_paths)
-        self.commits_unreadable = _unreadable(records, authentic_shas, undatable)
+        self.commits_unreadable = _unreadable(trusted, authentic_shas, undatable)
+        # Not needed past here: freed before the co-authors are credited.
+        record_count = len(records)
+        del records
         self.area_activity = tuple(
             AreaActivity(
                 area=area,
@@ -956,7 +941,7 @@ class GitReader:
         )
 
         commits = self._credit_co_authors(
-            log_args, authentic_order, commits, mailmap, exclude_set, matched
+            co_author_records, authentic_order, commits, mailmap, exclude_set, matched
         )
 
         # A filter that matched nothing is almost always a typo; say so. A value
@@ -983,10 +968,7 @@ class GitReader:
             raise _empty_window(dated_after, dated_until)
 
         _logger.debug(
-            "read %d commits from %s (%d bytes of git log output)",
-            len(commits),
-            rev,
-            len(raw_log),
+            "read %d commits from %s (%d git log records)", len(commits), rev, record_count
         )
         return sorted(commits, key=lambda c: c.timestamp, reverse=True)
 
@@ -1111,9 +1093,67 @@ class GitReader:
         except TypeError:
             return "HEAD"
 
+    def _read_alongside(
+        self,
+        stream: _LogStream,
+        rev: str,
+        rev_list_args: list[str],
+        exclude_authors: list[str],
+    ) -> tuple[list[str], list[str], _Mailmap, dict[str, set[str]]]:
+        """Run the queries the main read needs while Git writes the log, then take it.
+
+        Args:
+            stream: The main `git log`, already started.
+            rev: The analysed revision.
+            rev_list_args: The `rev-list` arguments matching the log's selection.
+            exclude_authors: The `--exclude-author` values.
+
+        Returns:
+            The log's records, the authentic hashes in log order, the mailmap with
+            the noreply accounts folded in, and each exclusion's forms.
+
+        Raises:
+            RepositoryError: If the branch cannot be enumerated or the log not read.
+        """
+        # A crafted author name can inject a whole record, so authentic SHAs
+        # come from `rev-list`, which computes them; a record whose SHA is not
+        # in this set did not come from a commit.
+        _logger.debug("git rev-list %s", " ".join(rev_list_args))
+        try:
+            # Ordered too: the co-author pass must line up one for one (ADR 0014).
+            authentic_order = [
+                line.strip()
+                for line in str(self._git().rev_list(*rev_list_args)).splitlines()
+                if line.strip()
+            ]
+            # The same selection's merges: left out of every figure (ADR 0001), and counted.
+            merges = ["--merges" if a == "--no-merges" else a for a in rev_list_args]
+            self.merges_excluded = int(str(self._git().rev_list("--count", *merges)).strip() or 0)
+        except GitCommandError as exc:
+            raise RepositoryError(
+                f"Failed to enumerate commits on branch '{rev}'. "
+                "Verify the branch exists in this repository."
+            ) from exc
+
+        # Once the branch is known to exist: an exclusion names a person, through the mailmap.
+        mailmap = self._read_mailmap()
+        self._mailmap_applied = bool(mailmap.by_email or mailmap.by_name_and_email)
+        accounts, usernames = self._noreply_accounts(rev)
+        mailmap = replace(mailmap, noreply_accounts=accounts, noreply_usernames=usernames)
+        requests = _exclusion_requests(exclude_authors, mailmap)
+
+        try:
+            records = stream.records()
+        except GitCommandError as exc:
+            raise RepositoryError(
+                f"Failed to read commits from branch '{rev}'. "
+                f"Verify the branch name is correct. Detail: {exc}"
+            ) from exc
+        return records, authentic_order, mailmap, requests
+
     def _credit_co_authors(
         self,
-        log_args: list[str],
+        co_author_records: list[str] | GitCommandError,
         authentic_order: list[str],
         commits: list[Commit],
         mailmap: _Mailmap,
@@ -1122,12 +1162,12 @@ class GitReader:
     ) -> list[Commit]:
         """Attach the identities each commit's `Co-authored-by` trailers credit.
 
-        A second NUL-separated `git log` over the same selection (ADR 0014).
+        From a second NUL-separated `git log` over the same selection (ADR 0014).
         Records must line up one for one with `rev-list`, or a crafted trailer
         could forge another commit's record; otherwise nobody is credited.
 
         Args:
-            log_args: The main read's arguments, whose selection is reused.
+            co_author_records: That log's records, or Git's failure to give them.
             authentic_order: Hashes from `rev-list`, in log order.
             commits: The commits being counted.
             mailmap: Parsed `.mailmap`, applied as for authors.
@@ -1139,13 +1179,10 @@ class GitReader:
         """
         if not commits:
             return commits
-        selection = [a for a in log_args if a not in ("--numstat", "--name-status", _LOG_FORMAT)]
-        try:
-            raw = self._trailer_log(selection)
-        except GitCommandError as exc:
-            _logger.warning("co-author trailers could not be read: %s", exc)
+        if isinstance(co_author_records, GitCommandError):
+            _logger.warning("co-author trailers could not be read: %s", co_author_records)
             return commits
-        records = [r for r in raw.split("\0") if r.strip()]
+        records = [r for r in co_author_records if r.strip()]
         hashes = [r.split(_FIELD_SEP, 1)[0].strip() for r in records]
         if hashes != authentic_order:
             _logger.warning(
@@ -1232,16 +1269,19 @@ class GitReader:
             ]
         )
 
-    def _trailer_log(self, selection: list[str]) -> str:
-        """Run the co-author read: NUL-separated hashes and trailer values.
+    def _trailer_records(self, trailers: _LogStream) -> list[str] | GitCommandError:
+        """Take the co-author read: one record per commit, its hash and trailer values.
 
         Args:
-            selection: The main read's arguments without format and line counts.
+            trailers: The NUL-separated `git log`, already started.
 
         Returns:
-            Git's output.
+            The records, or Git's failure, which leaves co-authors uncredited.
         """
-        return str(self._git().log("-z", _TRAILER_FORMAT, *selection))
+        try:
+            return trailers.records()
+        except GitCommandError as exc:
+            return exc
 
     def _paths_never_changed(self, rev: str, paths: Sequence[str]) -> tuple[str, ...]:
         """Return the excluded paths no commit on `rev` ever changed: almost always a typo.
@@ -2045,19 +2085,21 @@ def _count_commits(n: int) -> str:
 
 
 def _unreadable(
-    records: list[str], authentic_shas: set[str], undatable: AbstractSet[str] = frozenset()
+    well_formed: AbstractSet[str],
+    authentic_shas: set[str],
+    undatable: AbstractSet[str] = frozenset(),
 ) -> int:
     """Count the commits whose record could not be read, and say so (ADR 0019).
 
     Args:
-        records: The main read's records.
+        well_formed: The names `_well_formed_shas` gave for the main read's records.
         authentic_shas: Object names git reported for this revision.
         undatable: Commits whose timestamp no date can hold.
 
     Returns:
         How many authentic commits had no well-formed record or no usable date.
     """
-    unreadable = len((authentic_shas - _well_formed_shas(records, authentic_shas)) | undatable)
+    unreadable = len((authentic_shas - well_formed) | undatable)
     if unreadable:
         _logger.warning(
             "%s could not be read and %s not counted: an author field held "
@@ -2066,6 +2108,86 @@ def _unreadable(
             "is" if unreadable == 1 else "are",
         )
     return unreadable
+
+
+class _LogStream:
+    """One `git log` read in the background, split into records as it arrives.
+
+    Git writes the log while the reader runs its other queries, and the output is
+    never held whole: the records are kept as bytes until they are taken, so one
+    non-ASCII name cannot double the size of every other record in memory.
+
+    The threads only read pipes. GitPython's runner keeps the pinned `-c`
+    settings on one shared object between calls, so a Git call from a second
+    thread could run without them.
+    """
+
+    def __init__(self, process: Any, separator: bytes = _RECORD_SEP_BYTES) -> None:
+        """Start reading the process's output.
+
+        Args:
+            process: GitPython's handle on a running `git log`.
+            separator: The byte between records.
+        """
+        self._process = process
+        self._separator = separator
+        self._records: list[bytes] = []
+        self._stderr: list[bytes] = []
+        self._threads = [
+            threading.Thread(target=self._split, daemon=True),
+            # Read too, so warnings Git writes cannot fill the pipe and stop it.
+            threading.Thread(target=self._drain_stderr, daemon=True),
+        ]
+        for thread in self._threads:
+            thread.start()
+
+    def _split(self) -> None:
+        """Read the output to its end, one record per separator."""
+        pieces: list[bytes] = []
+        try:
+            for chunk in iter(lambda: self._process.proc.stdout.read(1 << 16), b""):
+                parts = chunk.split(self._separator)
+                pieces.append(parts[0])
+                if len(parts) > 1:
+                    self._records.append(b"".join(pieces))
+                    self._records.extend(parts[1:-1])
+                    pieces = [parts[-1]]
+        except (OSError, ValueError):  # the process was stopped; close() says so
+            return
+        self._records.append(b"".join(pieces))
+
+    def _drain_stderr(self) -> None:
+        """Read Git's error output to its end."""
+        try:
+            self._stderr.append(self._process.proc.stderr.read())
+        except (OSError, ValueError):  # the process was stopped
+            return
+
+    def records(self) -> list[str]:
+        """Wait for Git and return the records, decoded as GitPython decodes output.
+
+        Returns:
+            The records, the text before the first separator first.
+
+        Raises:
+            GitCommandError: If Git exits with an error.
+        """
+        for thread in self._threads:
+            thread.join()
+        status = self._process.proc.wait()
+        if status != 0:
+            raise GitCommandError(self._process.args, status, b"".join(self._stderr))
+        records = [safe_decode(record) for record in self._records]
+        self._records = []
+        return records
+
+    def close(self) -> None:
+        """Stop Git if it is still running, and wait for the readers."""
+        if self._process.proc.poll() is None:
+            self._process.proc.kill()
+        self._process.proc.wait()
+        for thread in self._threads:
+            thread.join()
 
 
 def _well_formed_shas(records: list[str], authentic_shas: set[str]) -> set[str]:
@@ -2445,6 +2567,19 @@ def _parse_log_record(
         lines_added=lines_added,
         lines_deleted=lines_deleted,
     )
+
+
+def _selection(log_args: list[str]) -> list[str]:
+    """Return the main read's arguments without its format and per-file output.
+
+    Args:
+        log_args: As `_build_log_args` gives them.
+
+    Returns:
+        The revision, window and path arguments alone, for a second read of the
+        same commits.
+    """
+    return [a for a in log_args if a not in ("--numstat", "--name-status", _LOG_FORMAT)]
 
 
 def _build_log_args(

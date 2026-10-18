@@ -208,6 +208,12 @@ before 0.8.0 predate the convention and are left as they were released.
   scrubbing and the exclusion match ran for every commit, and every commit held its own copy of
   its author's name and address. On a 100,000-commit history with 500 authors, `generate` went
   from 7.3 s to 6.8 s and its peak memory from 240 to 221 MB.
+- **The history is read while Git writes it.** The main `git log` and the co-author `git log`
+  start first and run alongside the other queries, and the output is split into records as it
+  arrives instead of being held whole as one string (which one non-ASCII name made twice the
+  size). On the same 100,000-commit history, `generate` went from 6.8 s to 5.3 s and 221 to
+  205 MB, `summary` from 3.1 s to 2.4 s and 196 to 146 MB, and `who-changed` from 6.9 s to
+  4.1 s. Every report, in every format, is byte-identical to before.
 - **Git's version is asked once per run**, not again by every repository read: `repos` over 200
   small repositories went from 18.7 s to 16.7 s.
 - **The part of the HTML report Reveille writes is a quarter smaller**: the template's indentation
