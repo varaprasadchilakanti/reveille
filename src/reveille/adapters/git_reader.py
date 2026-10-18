@@ -1287,6 +1287,9 @@ class GitReader:
                 "log.mailmap=false",
                 "mailmap.file=",
                 "mailmap.blob=",
+                # Read by every diff Git prints, numstat included: a FIFO named here
+                # blocked the read for ever. An empty value is refused, so the null file.
+                f"diff.orderFile={os.devnull}",
                 *extra,
             ]
         )

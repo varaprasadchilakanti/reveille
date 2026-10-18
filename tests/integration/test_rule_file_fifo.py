@@ -146,3 +146,25 @@ def test_a_directory_only_older_history_had_is_checked(repo: Path, tmp_path: Pat
     assert done is not None, "generate hung"
     assert done.returncode == 2
     assert "old" in done.stderr
+
+
+@pytest.mark.parametrize(
+    "command", [["generate", "-q", "-o", "r.html"], ["brief", "--since", "2000-01-01"]]
+)
+def test_an_order_file_that_blocks_is_not_read(repo: Path, command: list[str]) -> None:
+    """`diff.orderFile` is read by every diff Git prints, line counts included."""
+    os.mkfifo(repo / ".git" / "order")
+    subprocess.run(["git", "config", "diff.orderFile", ".git/order"], cwd=repo, check=True)
+    try:
+        subprocess.run(
+            ["git", "log", "--numstat"], cwd=repo, capture_output=True, timeout=5, check=False
+        )
+        blocked = False
+    except subprocess.TimeoutExpired:
+        blocked = True
+    assert blocked, "positive control: plain Git waits on the pipe"
+
+    done = _run(repo, *[str(repo / c) if c == "r.html" else c for c in command])
+
+    assert done is not None, "Reveille waited on the pipe"
+    assert done.returncode == 0, done.stderr

@@ -249,7 +249,9 @@ repository's own `.git/config`, or yours, cannot change them: `diff.algorithm` (
 moved line counts), `diff.renames` (off, a renamed file counts as deleted and added),
 `core.bigFileThreshold` (a low value turns large files into binary, counted as no lines),
 `log.showRoot` (off, the first commit's lines vanish) and `trailer.separators` (another separator
-hides `Co-authored-by` trailers). Other settings are not pinned.
+hides `Co-authored-by` trailers). Settings that could make a read start a program or wait for
+ever, such as `core.fsmonitor`, `log.showSignature` or `diff.orderFile`, are pinned off too.
+Other settings are not pinned.
 
 It pins `generated_at` to the analysed commit's timestamp instead of the clock (the idea behind
 `SOURCE_DATE_EPOCH`), and closes the analysis window on the last commit instead of today.
