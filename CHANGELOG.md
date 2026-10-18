@@ -204,6 +204,10 @@ before 0.8.0 predate the convention and are left as they were released.
   to 50 areas last changed with one `git log` per area, each walking the history: 28 s on a
   100,000-commit repository. One pass now answers them all and stops when it has (5 s there),
   with identical output.
+- **Each author is resolved once per read, not once per commit**: the `.mailmap` lookup, the
+  scrubbing and the exclusion match ran for every commit, and every commit held its own copy of
+  its author's name and address. On a 100,000-commit history with 500 authors, `generate` went
+  from 7.3 s to 6.8 s and its peak memory from 240 to 221 MB.
 - **Git's version is asked once per run**, not again by every repository read: `repos` over 200
   small repositories went from 18.7 s to 16.7 s.
 - **The part of the HTML report Reveille writes is a quarter smaller**: the template's indentation

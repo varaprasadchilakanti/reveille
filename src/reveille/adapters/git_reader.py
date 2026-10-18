@@ -914,13 +914,17 @@ class GitReader:
 
         commits: list[Commit] = []
         matched: set[str] = set()
+        # One resolution per author, not per commit: the same strings are shared.
+        identities: dict[tuple[str, str], tuple[str, str, set[str]]] = {}
         # Accumulated while streaming: memory is bounded by distinct paths.
         file_totals: dict[str, list[int]] = {}
         area_totals: dict[str, _AreaTotal] = {}
         added_paths: set[str] = set()
         dated_after = 0
         for record in records:
-            commit = _parse_log_record(record, mailmap, exclude_set, trusted, matched, undatable)
+            commit = _parse_log_record(
+                record, mailmap, exclude_set, trusted, matched, undatable, identities
+            )
             if commit is None:
                 continue
             if dated_until is not None and commit.timestamp.date() > dated_until:
@@ -2376,6 +2380,7 @@ def _parse_log_record(
     authentic_shas: set[str],
     matched: set[str],
     undatable: set[str] | None = None,
+    identities: dict[tuple[str, str], tuple[str, str, set[str]]] | None = None,
 ) -> Commit | None:
     """Turn one `git log` record into a Commit, or reject it.
 
@@ -2391,6 +2396,9 @@ def _parse_log_record(
         matched: Mutated with every exclusion value that matched.
         undatable: Mutated with each commit whose timestamp no date can hold, so it
             is counted as unreadable rather than lost without a word.
+        identities: Each author already resolved in this read, filled as it goes:
+            the mailmap and the exclusions are fixed for the read, so one author
+            is resolved once and its commits share the same strings.
 
     Returns:
         The parsed Commit, or None if empty, malformed, excluded or undatable.
@@ -2409,7 +2417,12 @@ def _parse_log_record(
     if not _SHA_RE.fullmatch(sha) or sha not in authentic_shas:
         return None
 
-    author_name, author_email, hits = _identity(raw_name, raw_email, mailmap, exclude_set)
+    resolved = None if identities is None else identities.get((raw_name, raw_email))
+    if resolved is None:
+        resolved = _identity(raw_name, raw_email, mailmap, exclude_set)
+        if identities is not None:
+            identities[(raw_name, raw_email)] = resolved
+    author_name, author_email, hits = resolved
     if hits:
         matched |= hits
         return None

@@ -16,9 +16,13 @@ from dataclasses import dataclass, field
 SCHEMA_VERSION = "1.2"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Commit:
-    """A single Git commit reduced to the fields relevant for analysis."""
+    """A single Git commit reduced to the fields relevant for analysis.
+
+    Slotted: a read holds one per commit, and without a `__dict__` each is about
+    half the size.
+    """
 
     sha: str
     author_name: str
