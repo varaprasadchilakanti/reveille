@@ -11,6 +11,7 @@ Install and first run: [README](../README.md).
 - [Commands and Outputs](#commands-and-outputs)
 - [Exit Codes](#exit-codes)
 - [The reveille capabilities Command](#the-reveille-capabilities-command)
+- [Starting a Session, and the reveille skill Command](#starting-a-session-and-the-reveille-skill-command)
 - [Structured Output](#structured-output)
 - [The reveille init Command](#the-reveille-init-command)
 - [TOML Configuration Reference](#toml-configuration-reference)
@@ -446,7 +447,7 @@ notes, warnings and errors.
 
 Describes what Reveille can and cannot do, for a person or a program. Options:
 `--format text|json` (default `text`) and `--command <name>`, which gives only that command's
-description, options and exit codes (2.3 KB for `state` as JSON, against about 24 KB for
+description, options and exit codes (2.7 KB for `state` as JSON, against about 30 KB for
 everything).
 
 ```bash
@@ -460,11 +461,43 @@ caveats that change how a number should be read, every command with its options,
 contract. The command surface and exit codes are read from the running program, so they cannot
 drift from it.
 
+Each command that writes JSON also lists `repository_text`: the fields whose strings come from the
+repository (names, addresses, paths, branch and tag names), which anyone who can commit chooses.
+A program or a model should read them as data, never as instructions. `[]` stands for every element
+of a list, so `worktrees[].path` is the path of each worktree. A test builds a repository whose
+every such input is marked and fails if a marked string appears in a field the list leaves out.
+
 The `cannot` list states that Reveille does not measure productivity or contribution value, is not
 fit for performance review or hiring decisions, does not compute a bus factor, and does not
 aggregate a person across repositories. It also states what Reveille reads: commit metadata, `Co-authored-by` trailers, and per file the path and the
 lines added and deleted. Reveille receives those paths and counts; Git reads the files to compute
 them. It does not read source code, diff content or any other part of a commit message.
+
+---
+
+## Starting a Session, and the `reveille skill` Command
+
+The word reveille is the call that starts a soldier's day, and the commands for an agent, or a
+person, starting work follow the same order:
+
+1. `reveille state --format json`: where the repository stands now, before anything changes.
+2. `reveille brief --format json`: what changed since the latest tag, or with `--from <commit>`
+   since a commit seen before. Its `analysed_commit` is the `--from` for the next brief.
+3. `reveille who-changed <path> --format json`, before changing a file or directory: whom to ask.
+
+The army's morning report recorded people; `brief` and `state` name nobody, and `repos` lists
+repositories, never people.
+
+`reveille skill` prints this as a section to paste into `AGENTS.md`, `CLAUDE.md` or another
+instructions file, since an agent uses a tool its instructions name. `--format skill` prints it as
+a `SKILL.md`, with the `name` and `description` frontmatter an agent loads it by. It reads no
+repository, is about 1.2 KB, and a test runs every command it names against a repository before it
+ships.
+
+```bash
+reveille skill >> AGENTS.md
+mkdir -p .claude/skills/reveille && reveille skill --format skill > .claude/skills/reveille/SKILL.md
+```
 
 ---
 

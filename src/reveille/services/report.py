@@ -152,6 +152,7 @@ def who_changed_text(
         EmptyRepositoryError: If no commit in the window changed the path.
     """
     reader = GitReader(config.repo_path)
+    tip = reader.resolve_head_sha(config.branch)
     cutoff = _today() if config.until is None and not config.deterministic else None
     try:
         commits = reader.read_commits(
@@ -176,7 +177,9 @@ def who_changed_text(
     first = min(c.timestamp.date() for c in commits)
     window_end = cutoff if cutoff is not None else _resolve_window_end(config, commits)
     window = (max(config.since, first) if config.since else first, window_end)
-    return Renderer.who_changed_text(who_changed(path, commits), window, output_format, limit)
+    return Renderer.who_changed_text(
+        who_changed(path, commits), window, output_format, limit, analysed_commit=tip
+    )
 
 
 def state_text(repo_path: Path, output_format: str, limit: int) -> str:

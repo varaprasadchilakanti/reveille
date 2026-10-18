@@ -41,6 +41,7 @@ from jinja2 import (
 )
 from markupsafe import Markup
 
+from reveille import __version__
 from reveille.domain.areas import AreaStatement, PathAnswer, describe_areas, is_automated
 from reveille.domain.brief import QUIET_DAYS, Brief
 from reveille.domain.coauthors import commits_with_co_authors
@@ -524,6 +525,7 @@ class Renderer:
         return {
             "schema_version": data.provenance.schema_version,
             "document": "summary",
+            "reveille_version": __version__,
             "repository": {
                 "name": data.metadata.name,
                 "analysed_branch": data.metadata.analysed_branch,
@@ -607,6 +609,7 @@ class Renderer:
         window: tuple[datetime.date, datetime.date],
         output_format: str,
         limit: int,
+        analysed_commit: str | None = None,
     ) -> str:
         """Render who changed a path, as JSON or plain lines (ADR 0015).
 
@@ -617,6 +620,7 @@ class Renderer:
             window: The analysis window.
             output_format: "json" or "text".
             limit: The most names any list carries.
+            analysed_commit: The commit the history was read from, if resolved.
 
         Returns:
             The answer.
@@ -634,7 +638,9 @@ class Renderer:
                 {
                     "schema_version": SCHEMA_VERSION,
                     "document": "who-changed",
+                    "reveille_version": __version__,
                     "path": answer.path,
+                    "analysed_commit": analysed_commit,
                     "analysis_since": window[0].isoformat(),
                     "analysis_until": window[1].isoformat(),
                     "commits": answer.commits,
@@ -714,6 +720,7 @@ class Renderer:
                 {
                     "schema_version": SCHEMA_VERSION,
                     "document": "brief",
+                    "reveille_version": __version__,
                     "repository": {"name": repository[0], "analysed_branch": repository[1]},
                     "point": {"from": named, "commit": commit}
                     if commit is not None
@@ -808,6 +815,7 @@ class Renderer:
                 {
                     "schema_version": SCHEMA_VERSION,
                     "document": "repos",
+                    "reveille_version": __version__,
                     "directory": directory,
                     "search_depth": depth,
                     "window": {
@@ -2325,6 +2333,7 @@ def _state_document(
     return {
         "schema_version": SCHEMA_VERSION,
         "document": "state",
+        "reveille_version": __version__,
         "repository": {"name": name, "bare": state.bare, "shallow": state.shallow},
         "branch": state.branch,
         "head": state.head,

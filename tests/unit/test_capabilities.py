@@ -69,6 +69,7 @@ class TestDerivedFactsCannotDrift:
             "validate",
             "init",
             "capabilities",
+            "skill",
             "help",
         }
 

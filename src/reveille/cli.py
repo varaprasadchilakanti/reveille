@@ -1443,6 +1443,28 @@ def capabilities(
 
 
 @app.command()
+def skill(
+    output_format: Annotated[
+        str,
+        typer.Option(
+            "--format",
+            help="markdown: a section for AGENTS.md or CLAUDE.md; skill: a SKILL.md.",
+        ),
+    ] = "markdown",
+) -> None:
+    """Print what to tell a coding agent about Reveille, for its instructions file.
+
+    Reads no repository. Every command the text names is run by a test before it ships.
+    """
+    from reveille.agent_guide import guide
+
+    if output_format not in {"markdown", "skill"}:
+        _err(f"Error: unsupported format '{output_format}'. Accepted values: markdown, skill.")
+        raise typer.Exit(code=ExitCode.CANNOT_RUN)
+    typer.echo(guide(output_format), nl=False)
+
+
+@app.command()
 def help(ctx: typer.Context) -> None:
     """Display help information for all available commands."""
     if ctx.parent is not None:

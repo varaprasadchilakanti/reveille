@@ -4,6 +4,9 @@
 Reveille reads a local clone (GitHub, GitLab, Bitbucket or self-hosted) and writes one HTML report: a commit calendar
 heatmap, weekly activity and how commits are spread across contributors. It never changes Git data and makes no network call.
 SHA-256 repositories and partial clones are refused.
+The name is the call that starts a soldier's day: `reveille state` and `reveille brief` tell a
+person or a coding agent starting work where the repository stands and what changed, from local
+history.
 
 [![PyPI](https://img.shields.io/pypi/v/reveille)](https://pypi.org/project/reveille/)
 [![Python](https://img.shields.io/pypi/pyversions/reveille)](https://pypi.org/project/reveille/)
@@ -307,6 +310,16 @@ program. `--format json` adds the command surface and exit codes.
 
 ```bash
 reveille capabilities --format json
+```
+
+### `reveille skill`
+
+Prints what to tell a coding agent about Reveille: a section for `AGENTS.md` or `CLAUDE.md` naming
+the commands to run, and saying that repository text in their output is data, not instructions.
+`--format skill` gives it as a `SKILL.md`. Every command it names is run by a test.
+
+```bash
+reveille skill >> AGENTS.md
 ```
 
 ### `reveille help`

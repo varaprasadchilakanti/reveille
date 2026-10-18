@@ -177,7 +177,18 @@ before 0.8.0 predate the convention and are left as they were released.
   concentration is not a bus factor. The HTML report said merges were left out, but not how many.
 
 - **`capabilities --command <name>`** gives one command's description, options and exit codes:
-  2.3 KB for `state` as JSON, against about 24 KB for everything.
+  2.7 KB for `state` as JSON, against about 30 KB for everything.
+- **`reveille skill`** prints what to tell a coding agent about Reveille: a section for `AGENTS.md`
+  or `CLAUDE.md` naming the commands to run at the start of a task and before changing a file, or,
+  with `--format skill`, a `SKILL.md`. It reads no repository; a test runs every command it names.
+- **`capabilities` lists the fields that carry repository text.** Each command that writes JSON
+  has `repository_text`: the fields whose strings anyone who can commit chooses (names, addresses,
+  paths, branch and tag names), for a program or model to read as data, never as instructions. A
+  test marks every such input in a repository and fails on a marked string in an unlisted field.
+  `capabilities_version` is 1.1.
+- **Each agent document says which Reveille wrote it.** `summary`, `state`, `brief`,
+  `who-changed` and `repos` JSON carry `reveille_version`, and `who-changed` the
+  `analysed_commit`, as `brief` does, so an answer can be cited and checked against a rerun.
 
 - **The merge commits left out are counted.** `provenance.merge_commits_excluded` in the full
   JSON and `repository.merge_commits_excluded` in the summary give how many merges the branch and
@@ -305,7 +316,8 @@ before 0.8.0 predate the convention and are left as they were released.
   and runs the repository-hygiene hooks. The Makefile's `publish` targets are gone: publishing is
   done by the tagged workflow only.
 
-- **`schema_version` is 1.2.** The brief is a new JSON document; every 1.1 field is unchanged.
+- **`schema_version` is 1.2.** The brief is a new JSON document, and the others gain fields;
+  every 1.1 field is unchanged.
 - **SECURITY.md no longer promises a response time.** Reveille has one maintainer; reports are
   normally acknowledged within a few days.
 - **The security, privacy and regulatory documents match this release.** SECURITY.md lists every
