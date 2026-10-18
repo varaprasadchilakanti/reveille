@@ -285,7 +285,7 @@ def _repository_row(
         in_window = _read_or_empty(reader, start, end, exclude_authors)
         # The last commit outside the window needs the history before it.
         history = in_window or _read_or_empty(reader, None, end, exclude_authors)
-        matched = set(exclude_authors) - set(reader.unmatched_exclusions) if has_commits else set()
+        matched = set(reader.matched_exclusions) if has_commits else set()
         return (
             describe_repository(
                 relative,

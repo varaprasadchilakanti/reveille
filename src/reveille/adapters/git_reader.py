@@ -635,6 +635,8 @@ class GitReader:
         #: Files added in the last `read_commits` with `name_status`.
         self.files_added: int = 0
         self.unmatched_exclusions: tuple[str, ...] = ()
+        #: The `--exclude-author` values, as given, that matched something.
+        self.matched_exclusions: tuple[str, ...] = ()
         self.unmatched_path_exclusions: tuple[str, ...] = ()
         try:
             self._repo = Repo(str(repo_path), search_parent_directories=False)
@@ -836,6 +838,7 @@ class GitReader:
         """
         # Cleared at entry so a call that raises leaves no stale result.
         self.unmatched_exclusions = ()
+        self.matched_exclusions = ()
         self.unmatched_path_exclusions = ()
 
         rev = self._walked_revision(branch)
@@ -959,6 +962,9 @@ class GitReader:
         found = matched | set(reached)
         unmatched = sorted(value for value, forms in requests.items() if not forms & found)
         self.unmatched_exclusions = tuple(unmatched)
+        self.matched_exclusions = tuple(
+            value for value in exclude_authors if _match_key(value) not in unmatched
+        )
         if unmatched and report_unmatched:
             _logger.warning("--exclude-author matched no commits for: %s", ", ".join(unmatched))
 

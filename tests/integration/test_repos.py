@@ -153,6 +153,16 @@ def test_an_exclusion_that_matches_nowhere_is_said_once(workspace: Path) -> None
     assert "in any repository" in err
 
 
+def test_an_unmatched_exclusion_in_capitals_is_still_said(workspace: Path) -> None:
+    """The reader compares in lower case; the values given must not be."""
+    _, _, err = _repos(
+        workspace, "--exclude-author", "Nobody@Nowhere.TEST", "--exclude-author", "CAROL@corp.test"
+    )
+
+    assert "in any repository for: Nobody@Nowhere.TEST" in err
+    assert "CAROL" not in err
+
+
 def test_an_exclusion_that_matches_somewhere_is_not_reported(workspace: Path) -> None:
     _, _, err = _repos(workspace, "--exclude-author", "carol@corp.test")
 
