@@ -13,13 +13,16 @@ from typing import Literal
 from reveille.domain.areas import is_automated
 from reveille.domain.models import Commit
 
+#: The deepest `reveille repos --depth` searches (ADR 0026).
+MAX_SEARCH_DEPTH = 3
+
 #: Beyond the window but within this many days of the last commit, a repository is quiet.
 QUIET_UNTIL_DAYS = 365
 
-Status = Literal["active", "quiet", "dormant", "empty", "not read"]
+Status = Literal["active", "quiet", "dormant", "empty", "not_read"]
 
 #: The order statuses are counted and listed in.
-STATUSES: tuple[Status, ...] = ("active", "quiet", "dormant", "empty", "not read")
+STATUSES: tuple[Status, ...] = ("active", "quiet", "dormant", "empty", "not_read")
 
 
 @dataclass(frozen=True)
@@ -30,13 +33,14 @@ class RepositoryActivity:
         path: Relative to the directory searched, with `/` separators.
         status: By the days since the last commit; see `status_of`.
         branch: The checked-out branch, or None when not read or detached.
-        last_commit: The date (UTC) of the last non-merge commit, if any.
+        last_commit: The date (UTC) of the last non-merge commit counted, if
+            any; with `--exclude-author`, the last one not excluded.
         days_since_last_commit: From that date to the window's end.
         commits: Non-merge commits in the window.
         people: Distinct identities in the window, automated accounts apart.
         automated_accounts: Distinct automated identities in the window.
         shallow: Whether only part of the history is present.
-        reason: Why the repository was not read, for "not read".
+        reason: Why the repository was not read, for "not_read".
     """
 
     path: str
@@ -59,8 +63,8 @@ def status_of(days_since_last_commit: int | None, window_days: int) -> Status:
         window_days: The activity window.
 
     Returns:
-        "active" within the window, "quiet" within `QUIET_UNTIL_DAYS`,
-        "dormant" beyond, "empty" with no commit.
+        "active" within the window, "quiet" within the longer of the window
+        and `QUIET_UNTIL_DAYS`, "dormant" beyond, "empty" with no commit.
     """
     if days_since_last_commit is None:
         return "empty"

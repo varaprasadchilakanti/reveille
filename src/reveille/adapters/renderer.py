@@ -835,7 +835,9 @@ class Renderer:
             )
         if output_format == "csv":
             return _repositories_csv(rows)
-        tally = ", ".join(f"{counts[s]:,} {s}" for s in STATUSES if counts[s] or s != "not read")
+        tally = ", ".join(
+            f"{counts[s]:,} {s.replace('_', ' ')}" for s in STATUSES if counts[s] or s != "not_read"
+        )
         head = (
             f"{len(rows):,} {'repository' if len(rows) == 1 else 'repositories'} in "
             f"{directory}, {window[0].isoformat()} to {window[1].isoformat()} ({days} days): "
@@ -1234,7 +1236,7 @@ def _repository_json(row: RepositoryActivity) -> dict[str, Any]:
 
 def _repository_line(row: RepositoryActivity) -> str:
     """One repository's row as a plain line."""
-    if row.status == "not read":
+    if row.status == "not_read":
         return f"- {row.path}: not read ({row.reason})"
     if row.last_commit is None:
         return f"- {row.path}: empty"
@@ -1258,12 +1260,12 @@ def _repository_line(row: RepositoryActivity) -> str:
 
 def _repository_markdown_row(row: RepositoryActivity) -> str:
     """One repository's row in a Markdown table."""
-    status = f"not read: {row.reason}" if row.status == "not read" else row.status
+    status = f"not read: {row.reason}" if row.status == "not_read" else row.status
     last = row.last_commit.isoformat() if row.last_commit else ""
     days = "" if row.days_since_last_commit is None else f"{row.days_since_last_commit:,}"
     cells = [
         _md(row.path),
-        _md(status) if row.status == "not read" else status,
+        _md(status) if row.status == "not_read" else status,
         last,
         days,
         f"{row.commits:,}",

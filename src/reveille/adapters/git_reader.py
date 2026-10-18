@@ -42,6 +42,7 @@ from reveille.domain.models import (
     FileStats,
     RepositoryMetadata,
 )
+from reveille.domain.repositories import MAX_SEARCH_DEPTH
 from reveille.domain.state import RepositoryState, Worktree, quiet_branches
 from reveille.exceptions import EmptyRepositoryError, RepositoryError
 
@@ -2399,10 +2400,6 @@ def _read_git_version() -> tuple[int, int] | None:
         return None
     match = re.search(r"(\d+)\.(\d+)", raw)
     return (int(match.group(1)), int(match.group(2))) if match else None
-
-
-#: The deepest `reveille repos --depth` searches (ADR 0026).
-MAX_SEARCH_DEPTH = 3
 
 
 def find_repositories(directory: Path, depth: int) -> tuple[list[Path], list[Path]]:

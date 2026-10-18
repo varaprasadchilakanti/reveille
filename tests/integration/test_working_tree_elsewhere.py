@@ -86,7 +86,7 @@ def test_repos_lists_it_as_not_read(pair: tuple[Path, Path]) -> None:
 
     assert result.exit_code == ExitCode.SUCCESS, result.stderr
     assert any(
-        line.startswith("hostile,not read") and "core.worktree" in line
+        line.startswith("hostile,not_read") and "core.worktree" in line
         for line in result.stdout.splitlines()
     )
 

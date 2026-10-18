@@ -32,6 +32,6 @@ def test_status_by_days_since_the_last_commit(days: int | None, window: int, exp
 def test_every_status_is_counted_in_a_fixed_order() -> None:
     counts = status_counts([RepositoryActivity("a", "quiet"), RepositoryActivity("b", "quiet")])
 
-    assert list(counts) == ["active", "quiet", "dormant", "empty", "not read"]
+    assert list(counts) == ["active", "quiet", "dormant", "empty", "not_read"]
     assert counts["quiet"] == 2
     assert counts["active"] == 0

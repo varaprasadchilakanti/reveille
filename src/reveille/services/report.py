@@ -15,6 +15,7 @@ import contextlib
 import datetime
 import logging
 import os
+import re
 import threading
 import time
 from collections.abc import Callable, Iterator
@@ -258,6 +259,8 @@ def repositories_text(
             row, matched_here = _repository_row(
                 path, path.relative_to(directory).as_posix(), start, end, days, exclude_authors
             )
+        if row.reason is not None:
+            row = replace(row, reason=_without_local_paths(row.reason, directory))
         return row, matched_here, records
 
     with held.installed(), ThreadPoolExecutor(max_workers=_repository_workers()) as pool:
@@ -392,7 +395,6 @@ def _repository_row(
     try:
         reader = GitReader(path)
         branch = reader.read_metadata(0, 0, start, end).analysed_branch
-        has_commits = reader.resolve_head_sha() is not None
         in_window = _read_or_empty(reader, start, end, exclude_authors)
         last_commit: datetime.date | None
         if in_window:
@@ -404,7 +406,7 @@ def _repository_row(
         else:
             # Only a date is needed from the history before the window.
             last_commit = reader.last_commit_date(end)
-        matched = set(reader.matched_exclusions) if has_commits else set()
+        matched = set(reader.matched_exclusions)
         return (
             describe_repository(
                 relative,
@@ -418,9 +420,23 @@ def _repository_row(
             matched,
         )
     except ReveilleError as exc:
-        # The first sentence, with the local path (which can hold a login name) made relative.
+        # The first sentence, with the repository's own path made relative.
         reason = str(exc).replace(str(path), relative).split(". ")[0].rstrip(".")
-        return RepositoryActivity(relative, "not read", reason=reason), set()
+        return RepositoryActivity(relative, "not_read", reason=reason), set()
+
+
+# An absolute path, POSIX or Windows, starting a word or after a quote or bracket.
+_ABSOLUTE_PATH = re.compile(r"""(?:(?<=^)|(?<=[\s'"(]))(?:/|[A-Za-z]:[\\/])[^\s'")]*""")
+
+
+def _without_local_paths(reason: str, directory: Path) -> str:
+    """Return `reason` with paths under `directory` relative and any other absolute path hidden.
+
+    A path on this machine can hold a login name, and the row is meant to be shared.
+    """
+    for root in {str(directory.resolve()), str(directory)}:
+        reason = reason.replace(root + os.sep, "")
+    return _ABSOLUTE_PATH.sub("(a path outside the directory)", reason)
 
 
 def _read_or_empty(

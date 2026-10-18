@@ -27,6 +27,7 @@ import typer
 from reveille import __version__
 from reveille.config import OutputFormat, ReportConfig, ReportConfigKwargs
 from reveille.domain.models import ProgressEvent
+from reveille.domain.repositories import MAX_SEARCH_DEPTH
 from reveille.exceptions import ConfigurationError, EmptyRepositoryError, ReveilleError
 
 _logger = logging.getLogger("reveille.cli")
@@ -1183,7 +1184,7 @@ def repos(
         typer.Option(
             "--depth",
             min=1,
-            max=3,
+            max=MAX_SEARCH_DEPTH,
             help="How many directory levels below it to search for repositories.",
         ),
     ] = 1,

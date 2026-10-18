@@ -376,7 +376,7 @@ The rules are stated in every format ([ADR 0026](adr/0026-many-repositories-one-
   applied in every repository, and no line counts. A value that matched nothing in any repository
   is reported once on stderr.
 - **A repository that cannot be read** (a partial clone, a SHA-256 repository, a corrupt one) is a
-  row with status `not read` and the reason; the others are still read, and the exit code is 0.
+  row with status `not_read` and the reason; the others are still read, and the exit code is 0.
   No repository found is a negative answer (exit 1).
 - **It names nobody and counts nobody across repositories.** The people column describes one
   repository each; adding it up does not give a number of people.

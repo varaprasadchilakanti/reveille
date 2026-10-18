@@ -93,7 +93,7 @@ def test_each_repository_has_a_status_by_its_last_commit(workspace: Path) -> Non
         "bots-only": "active",
         "legacy": "dormant",
         "mirror.git": "active",
-        "refused": "not read",
+        "refused": "not_read",
         "tools": "quiet",
         "unborn": "empty",
     }
@@ -122,6 +122,24 @@ def test_a_refused_repository_is_a_row_with_its_reason_and_the_rest_are_read(
 
     assert "partial clone" in str(refused["reason"])
     assert str(workspace) not in str(refused["reason"])
+
+
+def test_a_reason_names_no_path_outside_the_directory(tmp_path: Path) -> None:
+    """A row is meant to be shared, and a path on this machine can hold a login name."""
+    root = tmp_path / "ws"
+    inside = _repo(root / "inside", ("2026-10-01", "Ana", "ana@corp.test"))
+    subprocess.run(["git", "config", "core.worktree", str(root / "tree")], cwd=inside, check=True)
+    away = _repo(root / "away", ("2026-10-01", "Ana", "ana@corp.test"))
+    elsewhere = tmp_path / "home-of-jane" / "tree"
+    subprocess.run(["git", "config", "core.worktree", str(elsewhere)], cwd=away, check=True)
+
+    rows = _rows(root)
+
+    assert "'tree'" in str(rows["inside"]["reason"]), rows["inside"]
+    assert "(a path outside the directory)" in str(rows["away"]["reason"]), rows["away"]
+    for row in rows.values():
+        assert str(tmp_path) not in str(row["reason"])
+        assert "home-of-jane" not in str(row["reason"])
 
 
 def test_a_nested_repository_is_not_a_row(workspace: Path) -> None:
@@ -255,7 +273,7 @@ def test_repositories_are_read_side_by_side_and_listed_in_order(
         time.sleep(0.05 * (len(found) - found.index(path)))
         with lock:
             in_flight -= 1
-        return RepositoryActivity(relative, "not read", reason="slow"), set()
+        return RepositoryActivity(relative, "not_read", reason="slow"), set()
 
     monkeypatch.setattr(report, "_repository_row", slow_row)
     monkeypatch.setattr(report, "_repository_workers", lambda: 4)
@@ -306,7 +324,7 @@ def test_each_rows_warnings_come_in_the_rows_order(
         time.sleep(0.05 * (len(found) - found.index(path)))
         logger.warning("first of %s", relative)
         logger.warning("second of %s", relative)
-        return RepositoryActivity(relative, "not read", reason="slow"), set()
+        return RepositoryActivity(relative, "not_read", reason="slow"), set()
 
     monkeypatch.setattr(report, "_repository_row", slow_row)
     monkeypatch.setattr(report, "_repository_workers", lambda: 4)
