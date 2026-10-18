@@ -82,12 +82,12 @@ check-licence:  ## Assert LICENSE, pyproject.toml and reveille.__licence__ agree
 	fi; \
 	echo "Licence declarations agree: $$TOML_LIC"
 
-check-packaging:  ## Assert the PEP 561 py.typed marker ships in the built distributions
+check-packaging:  ## Assert py.typed and the vendored chart library and its notices ship in wheel and sdist
 	@rm -rf dist
 	@poetry build -q
-	@poetry run python -c "import glob, sys, tarfile, zipfile; w = sorted(glob.glob('dist/*.whl'))[-1]; s = sorted(glob.glob('dist/*.tar.gz'))[-1]; missing = [k for k, ok in (('wheel', 'reveille/py.typed' in zipfile.ZipFile(w).namelist()), ('sdist', any(n.endswith('reveille/py.typed') for n in tarfile.open(s).getnames()))) if not ok]; sys.exit('py.typed missing from: ' + ', '.join(missing)) if missing else None"
+	@poetry run python -c "import glob, sys, tarfile, zipfile; w = sorted(glob.glob('dist/*.whl'))[-1]; s = sorted(glob.glob('dist/*.tar.gz'))[-1]; wheel = zipfile.ZipFile(w).namelist(); sdist = tarfile.open(s).getnames(); files = ('py.typed', 'vendor/plotly-cartesian.min.js', 'vendor/plotly-cartesian.json', 'vendor/THIRD-PARTY-NOTICES.txt'); missing = [f'{k}: reveille/{f}' for f in files for k, ok in (('wheel', 'reveille/' + f in wheel), ('sdist', any(n.endswith('reveille/' + f) for n in sdist))) if not ok]; sys.exit('missing from the distributions: ' + ', '.join(missing)) if missing else None"
 	@rm -rf dist
-	@echo "py.typed marker present in wheel and sdist"
+	@echo "py.typed, the vendored bundle and its notices present in wheel and sdist"
 
 check-version:  ## Assert pyproject.toml version matches reveille.__version__
 	@TOML_VER=$$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['tool']['poetry']['version'])") \
@@ -110,19 +110,19 @@ check-version:  ## Assert pyproject.toml version matches reveille.__version__
 # ------------------------------------------------------------------
 
 lint:  ## Run ruff lint checks
-	poetry run ruff check src tests
+	poetry run ruff check src tests scripts
 
 format:  ## Format code with ruff formatter
-	poetry run ruff format src tests
+	poetry run ruff format src tests scripts
 
 format-check:  ## Check formatting without changing files, as CI does
-	poetry run ruff format --check src tests
+	poetry run ruff format --check src tests scripts
 
 fix:  ## Auto-fix lint issues with ruff
-	poetry run ruff check src tests --fix
+	poetry run ruff check src tests scripts --fix
 
 typecheck:  ## Run mypy in strict mode
-	poetry run mypy src
+	poetry run mypy src scripts
 
 precommit:  ## Run all pre-commit hooks against every tracked file
 	poetry run pre-commit run --all-files

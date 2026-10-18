@@ -16,10 +16,11 @@ import re
 import subprocess
 from pathlib import Path
 
-import plotly.offline
 import pytest
+from markupsafe import escape
 from typer.testing import CliRunner
 
+from reveille.adapters import renderer
 from reveille.cli import ExitCode, app
 
 pytestmark = pytest.mark.integration
@@ -85,7 +86,9 @@ def _run(repo: Path, *args: str) -> str:
 
 
 def _leaks(text: str) -> list[str]:
-    authored = text.replace(plotly.offline.get_plotlyjs(), "")
+    authored = text.replace(renderer._vendored("plotly-cartesian.min.js"), "").replace(
+        str(escape(renderer._vendored("THIRD-PARTY-NOTICES.txt"))), ""
+    )
     return [address for address in _ADDRESSES if address in authored]
 
 
@@ -209,7 +212,9 @@ def test_a_branch_directory_or_remote_named_after_an_address_is_hidden(
         named_after, "--format", fmt, "-o", "-", "--hide-emails", "--branch", "user/fay@corp.test"
     )
 
-    assert "fay@corp.test" not in text.replace(plotly.offline.get_plotlyjs(), "")
+    assert "fay@corp.test" not in text.replace(
+        renderer._vendored("plotly-cartesian.min.js"), ""
+    ).replace(str(escape(renderer._vendored("THIRD-PARTY-NOTICES.txt"))), "")
 
 
 def test_the_hidden_branch_keeps_its_shape(named_after: Path) -> None:

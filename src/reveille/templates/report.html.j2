@@ -1536,6 +1536,18 @@
             letter-spacing: 0.2px;
             color: var(--color-text-muted);
         }
+        .third-party {
+            margin-top: 12px;
+            font-size: 11px;
+            color: var(--color-text-muted);
+        }
+        .third-party summary { cursor: pointer; }
+        .third-party pre {
+            max-height: 24em;
+            overflow: auto;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
 
         /* ============================================================
            Responsive
@@ -2324,11 +2336,17 @@
             {{ data.metadata.analysis_since }} to {{ data.metadata.analysis_until }}
         </span>
     </footer>
+    <details class="third-party">
+        <summary>Third-party licences</summary>
+        <p>This report contains the plotly.js chart library and code from the packages it
+        bundles. Their copyright notices and licences follow.</p>
+        <pre>{{ third_party_notices }}</pre>
+    </details>
 
 </main>
 
 <!-- ================================================================
-     Plotly JS bundle — self-contained, no CDN
+     plotly.js cartesian bundle, shipped with Reveille; its licences are above
      ================================================================ -->
 <script>{{ plotly_js | safe }}</script>
 

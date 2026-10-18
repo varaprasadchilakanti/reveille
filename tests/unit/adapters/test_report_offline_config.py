@@ -15,7 +15,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import plotly
 import pytest
 
 pytestmark = pytest.mark.unit
@@ -23,7 +22,7 @@ pytestmark = pytest.mark.unit
 _TEMPLATE = (
     Path(__file__).resolve().parents[3] / "src" / "reveille" / "templates" / "report.html.j2"
 )
-_BUNDLE = next(Path(plotly.__file__).parent.rglob("plotly.min.js")).read_text(encoding="utf-8")
+_BUNDLE = (_TEMPLATE.parents[1] / "vendor" / "plotly-cartesian.min.js").read_text(encoding="utf-8")
 
 
 def _config() -> str:

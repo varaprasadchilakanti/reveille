@@ -84,7 +84,8 @@ gitpython = "^3.1.62"
 # Floor: no published advisory affects 3.1.6 (OSV, 2026-10-13).
 jinja2 = "^3.1.6"
 
-# Charts -- self-contained JS bundle embedded in output HTML
+# Charts -- builds the figure specifications. The report embeds the plotly.js
+# bundle vendored in src/reveille/vendor/ (ADR 0027), not this package's own.
 plotly = ">=5.20,<8.0"
 
 # Data Validation

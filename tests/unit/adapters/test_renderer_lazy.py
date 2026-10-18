@@ -24,9 +24,9 @@ pytestmark = pytest.mark.unit
 
 def test_importing_the_renderer_reads_no_bundle() -> None:
     code = (
-        "import plotly.offline\n"
-        "plotly.offline.get_plotlyjs = lambda: (_ for _ in ()).throw(SystemExit(3))\n"
         "import reveille.services.report\n"
+        "from reveille.adapters import renderer\n"
+        "raise SystemExit(renderer._vendored.cache_info().currsize)\n"
     )
     done = subprocess.run([sys.executable, "-c", code], capture_output=True, check=False)
 
@@ -39,7 +39,7 @@ def test_json_and_csv_compile_no_template_and_read_no_bundle(
     def refuse(*_: object) -> None:
         raise AssertionError("an HTML-only resource was loaded")
 
-    monkeypatch.setattr(renderer, "_plotly_js_bundle", refuse)
+    monkeypatch.setattr(renderer, "_vendored", refuse)
     monkeypatch.setattr(renderer.Environment, "get_template", refuse)
     writer = Renderer()
 

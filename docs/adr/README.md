@@ -29,7 +29,7 @@ Deprecated.
 | [0003](0003-bisect-left-for-percentile-ties.md) | Percentiles use lower-bound ranking | Accepted |
 | [0004](0004-single-pass-numstat-read.md) | History is read in a single `git log --numstat` pass | Superseded by 0019 |
 | [0005](0005-commit-concentration-not-bus-factor.md) | The concentration metric is not called a bus factor | Accepted |
-| [0006](0006-offline-single-file-report.md) | The report is a single offline file | Accepted |
+| [0006](0006-offline-single-file-report.md) | The report is a single offline file | Accepted; bundle source superseded by 0027 |
 | [0007](0007-apache-2-0-licence.md) | The licence moves from MIT to Apache-2.0 | Accepted |
 | [0008](0008-output-provenance-and-schema-version.md) | Output records its own provenance and declares a schema version | Accepted; partly superseded by 0021 |
 | [0009](0009-contributor-licence-agreement.md) | Contributions are accepted under a Contributor Licence Agreement | Accepted |
@@ -50,6 +50,7 @@ Deprecated.
 | [0024](0024-the-state-of-a-repository-now.md) | The state of a repository now: `reveille state` | Proposed |
 | [0025](0025-brief-starts-at-the-latest-tag.md) | `brief` starts at the latest tag when no point is given | Proposed |
 | [0026](0026-many-repositories-one-row-each.md) | Many repositories, one row each: `reveille repos` | Proposed |
+| [0027](0027-the-report-embeds-a-pinned-cartesian-bundle.md) | The report embeds a pinned plotly.js cartesian bundle, with its licences | Proposed |
 
 ## Notes from the review of 2026-10-09
 

@@ -243,9 +243,13 @@ class TestTheContributorTableScrollsInItsOwnPanel:
 @pytest.mark.unit
 def test_the_report_carries_no_template_indentation(rendered: str) -> None:
     """Indentation was a quarter of the markup, styles and scripts Reveille writes."""
-    import plotly.offline
+    from markupsafe import escape
 
-    authored = rendered.replace(plotly.offline.get_plotlyjs(), "")
+    from reveille.adapters import renderer
+
+    authored = rendered.replace(renderer._vendored("plotly-cartesian.min.js"), "").replace(
+        str(escape(renderer._vendored("THIRD-PARTY-NOTICES.txt"))), ""
+    )
     indented = [line for line in authored.splitlines() if line[:1] in (" ", "\t")]
 
     assert indented == [], f"{len(indented)} indented lines, first {indented[0]!r}"

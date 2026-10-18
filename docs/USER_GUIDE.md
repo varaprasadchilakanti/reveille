@@ -524,8 +524,10 @@ Columns: `rank`, `name`, `email`, `commits`, `lines_added`, `lines_deleted`, `ne
 `composite_score` and `percentile` are added and `rank` is a ranking; without it `rank` is table
 order only.
 
-**HTML** is one self-contained file of about 4.9 MB, almost all of it the embedded chart library:
-4.90 MB for a one-commit repository and 4.92 MB for this one at 0.9.0.
+**HTML** is one self-contained file of about 1.7 MB, most of it the embedded chart library (the
+plotly.js cartesian bundle, pinned) and its third-party licences, which the report carries in a
+collapsed section after its footer: 1.69 MB for a one-commit repository and 1.70 MB for this one
+(measured 2026-10-18; 0.9.0's reports were 4.9 MB).
 
 ---
 
@@ -790,7 +792,7 @@ provider.
 ## Before You Share a Report
 
 1. **Decide who needs it**, and send it only to them. The HTML is self-contained, so the recipient
-   needs only a browser. Whether a mail system accepts a 4.9 MB attachment has not been measured;
+   needs only a browser. Whether a mail system accepts a 1.7 MB attachment has not been measured;
    if one refuses it, compress the file or use a file store.
 2. **Remove anyone who should not appear** with `--exclude-author`. `--min-commits` is **not** a
    privacy control: it hides rows, while their commits stay in every figure and can be worked out

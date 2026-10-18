@@ -30,7 +30,6 @@ from pathlib import Path
 from typing import Any, cast
 
 import plotly.graph_objects as go
-import plotly.offline
 from jinja2 import (
     Environment,
     PackageLoader,
@@ -134,13 +133,23 @@ _HTML_TAG_RE: re.Pattern[str] = re.compile(r"<[^>]+>")
 
 
 @functools.cache
-def _plotly_js_bundle() -> str:
-    """Return the ~4.8 MB Plotly bundle, read once per process and only for HTML.
+def _vendored(name: str) -> str:
+    """Return a file from `reveille/vendor/`, read once per process and only for HTML.
+
+    The report embeds the plotly.js cartesian bundle Reveille ships, not the full
+    bundle in the installed plotly package, and the licences of what it carries
+    (ADR 0027).
+
+    Args:
+        name: The file's name.
 
     Returns:
-        The bundle's JavaScript.
+        The file's text.
     """
-    return str(plotly.offline.get_plotlyjs())
+    return (_VENDOR / name).read_text(encoding="utf-8")
+
+
+_VENDOR: Path = Path(__file__).resolve().parents[1] / "vendor"
 
 
 def _script_sources(*scripts: str) -> Markup:
@@ -167,10 +176,10 @@ class _DedentingLoader(PackageLoader):
     """Load templates without their leading indentation.
 
     Indentation is a quarter of the markup, styles and scripts the report
-    carries, and the template has nothing it changes the meaning of: no `<pre>`,
-    no `<textarea>`, no multi-line JavaScript string. Stripped from the template
-    source, so the Plotly bundle and the chart data rendered into it are
-    untouched.
+    carries, and the template has nothing it changes the meaning of: no `<pre>`
+    or `<textarea>` holding template text, no multi-line JavaScript string.
+    Stripped from the template source, so the Plotly bundle, the licence texts
+    and the chart data rendered into it are untouched.
     """
 
     def get_source(
@@ -282,7 +291,7 @@ class Renderer:
             )
             charts = self._build_charts(data)
             derived = self._compute_derived_stats(data)
-            plotly_js = _plotly_js_bundle()
+            plotly_js = _vendored("plotly-cartesian.min.js")
             generated_at = data.metadata.generated_at.strftime("%Y-%m-%d %H:%M UTC")
             html = self._report_template().render(
                 data=data,
@@ -298,6 +307,7 @@ class Renderer:
                 co_authored=commits_with_co_authors(data.commits),
                 notice=_NOTICE,
                 plotly_js=plotly_js,
+                third_party_notices=_vendored("THIRD-PARTY-NOTICES.txt"),
                 script_sources=_script_sources,
                 generated_at=generated_at,
             )

@@ -15,6 +15,11 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Security
 
+- **The HTML report carried third-party code without its licences.** Every report embeds the
+  plotly.js bundle, which kept only the line "Licensed under the MIT license" and none of the
+  licence texts that MIT and BSD-3-Clause require in every copy. Reports now carry the notice of
+  every package the bundle holds, in a "Third-party licences" section after the footer, and a test
+  fails if one is missing. 0.9.0's reports are affected.
 - **A repository could point Reveille at another repository with `core.worktree`.** Set in its
   own `.git/config`, which an archive or a copied directory carries (a clone does not), it made
   Reveille, run inside it, read the other repository's history and write the report into that
@@ -229,6 +234,14 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Changed
 
+- **The HTML report is 1.7 MB, down from 4.9 MB.** It embeds the plotly.js cartesian bundle,
+  pinned at 4.1.1 in `src/reveille/vendor/` with its notices, instead of the full bundle of
+  whichever plotly version is installed ([ADR 0027](docs/adr/0027-the-report-embeds-a-pinned-cartesian-bundle.md)).
+  The report's size no longer changes with a plotly upgrade, and the map traces, which the report
+  never draws, are gone, with 44 of the bundle's 55 `https://` strings; maplibre's stylesheet
+  stays, as inert CSS. In headless Chromium all 24
+  charts draw the same SVG as before, in light and dark. `scripts/vendor_plotly.py` is the only
+  way the bundle changes: it checks every download against its published integrity hash.
 - **`brief` is several times faster on a long history.** "Active again" looked up when each of up
   to 50 areas last changed with one `git log` per area, each walking the history: 28 s on a
   100,000-commit repository. One pass now answers them all and stops when it has (5 s there),

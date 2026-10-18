@@ -21,7 +21,8 @@ and never runs a mutating Git command. The report goes where you point it, by de
 tree.
 
 It is offline. Nothing is transmitted, and a partial clone is refused because Git would fetch the missing objects. The report loads no CDN, no web font and no remote
-image; the ~4.8 MB Plotly bundle is embedded in the file. A test asserts that no `<link>`,
+image; the plotly.js cartesian bundle Reveille ships (1.5 MB, pinned, with the licences of what it
+carries; [ADR 0027](adr/0027-the-report-embeds-a-pinned-cartesian-bundle.md)) is embedded in the file. A test asserts that no `<link>`,
 `<script>` or `<img>` in the template references a remote host.
 
 It is a single file: one HTML document with no sidecar assets, openable from a download folder
@@ -220,7 +221,8 @@ inside a JSON script block, which is why the escaping is explicit.
 Theme colours are supplied client-side, and a theme toggle re-plots every chart through the same
 path as the first paint, deliberately not `Plotly.relayout()`, which replaces any nested container
 it is handed and does not touch the trace-level colorscale the heatmap's two ramps depend on.
-`_PLOTLY_JS_BUNDLE` is read once at import, because `get_plotlyjs()` reads ~4.8 MB per call.
+The bundle and its notices are read from `reveille/vendor/` once per process, on the first HTML
+report, and never for JSON or CSV.
 
 ---
 

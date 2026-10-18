@@ -190,6 +190,38 @@ tool sends nothing anywhere. Contributor licence acceptance is recorded as a tic
 pull request plus a `Signed-off-by` trailer, both published by the contributor. No register, no
 database, no third-party service is kept. See [PRIVACY.md](../PRIVACY.md).
 
+## Third-party code
+
+**In the report.** Every HTML report embeds the plotly.js cartesian bundle (4.1.1), which Reveille
+ships in `src/reveille/vendor/` with a pin record of what it carries
+([ADR 0027](adr/0027-the-report-embeds-a-pinned-cartesian-bundle.md)). That is code from 84
+packages under the MIT, ISC, BSD-3-Clause, Zlib and BlueOak-1.0.0 licences. MIT requires "the
+above copyright notice and this permission notice" in "all copies or substantial portions of the
+Software", and BSD-3-Clause that "Redistributions in binary form must reproduce the above
+copyright notice, this list of conditions and the following disclaimer". A report is a copy, so
+it carries every one of those notices in a collapsed "Third-party licences" section after its
+footer, and a test fails if one is missing. Anyone who shares a report shares that code with its
+notices. Reports made by 0.9.0 and earlier embed the bundle without these texts.
+
+The wheel and sdist carry the same files. The package's licence metadata, Apache-2.0, describes
+Reveille's own code; the vendored files carry their own licences.
+
+**What Reveille runs on.** The Python packages Reveille depends on are installed beside it, each
+with its own licence files, and Reveille redistributes none of them. At the versions in
+`poetry.lock` on 2026-10-18, read from each installed package's metadata and licence file:
+
+| Licence | Packages |
+|---|---|
+| MIT | annotated-doc, annotated-types, markdown-it-py, mdurl, narwhals, plotly, pydantic, pydantic-core, rich, typer, typing-inspection |
+| BSD-3-Clause | click, gitdb, GitPython, Jinja2, MarkupSafe, smmap |
+| BSD-2-Clause | Pygments |
+| Apache-2.0 OR BSD-2-Clause | packaging |
+| ISC | shellingham |
+| PSF-2.0 | typing-extensions |
+
+Each permits use, modification and redistribution with its notice kept. None is copyleft, so
+none places a condition on Reveille's own licence.
+
 ## Liability
 
 Apache-2.0 §§7-8 disclaim warranty and limit liability as far as applicable law allows; §8 itself

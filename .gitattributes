@@ -69,6 +69,17 @@ Makefile    text
 poetry.lock     text -merge
 
 # ------------------------------------------------------------------
+# Vendored chart library (ADR 0027)
+#
+# Stored byte for byte, since a test checks its hash against the pin
+# record, and never diffed: it is one 1.5 MB line. Change it only with
+# scripts/vendor_plotly.py.
+# ------------------------------------------------------------------
+
+src/reveille/vendor/plotly-cartesian.min.js  -text -diff linguist-vendored
+src/reveille/vendor/**                       linguist-vendored
+
+# ------------------------------------------------------------------
 # Explicitly binary -- never normalise, never diff
 # ------------------------------------------------------------------
 
