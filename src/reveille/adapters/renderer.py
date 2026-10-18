@@ -19,11 +19,8 @@ import io
 import itertools
 import json
 import math
-import os
 import re
-import secrets
 import shlex
-import stat
 from collections import defaultdict
 from collections.abc import Sequence
 from pathlib import Path
@@ -58,6 +55,7 @@ from reveille.domain.profile import ProfileAxis, repository_profile
 from reveille.domain.state import QUIET_BRANCH_DAYS, RepositoryState
 from reveille.domain.summary import Finding, longest_quiet_run, summarise
 from reveille.exceptions import OutputPathError, RenderError
+from reveille.replacing import write_replacing
 
 # Label of the aggregated residual slice, referenced where its colour is chosen.
 _OTHER_LABEL: str = "Other Contributors"
@@ -177,7 +175,7 @@ class Renderer:
             )
         html = self.html_text(data)
         try:
-            _write_replacing(resolved, html, encoding="utf-8")
+            write_replacing(resolved, html, encoding="utf-8")
         except OSError as exc:
             raise OutputPathError(f"Failed to write report to '{resolved}': {exc}") from exc
 
@@ -254,7 +252,7 @@ class Renderer:
             )
         text = self.json_text(data)
         try:
-            _write_replacing(resolved, text, encoding="utf-8")
+            write_replacing(resolved, text, encoding="utf-8")
         except OSError as exc:
             raise OutputPathError(f"Failed to write JSON report to '{resolved}': {exc}") from exc
         return resolved
@@ -734,7 +732,7 @@ class Renderer:
         text = self.csv_text(data)
         try:
             # BOM for spreadsheets; stdout output (csv_text) carries none.
-            _write_replacing(resolved, text, encoding="utf-8-sig")
+            write_replacing(resolved, text, encoding="utf-8-sig")
         except OSError as exc:
             raise OutputPathError(f"Failed to write CSV report to '{resolved}': {exc}") from exc
         return resolved
@@ -1807,38 +1805,6 @@ def _compute_commit_concentration(counts: list[int]) -> int:
 # Leading characters that make a spreadsheet read a cell as a formula; a
 # leading tab or carriage return is skipped, exposing what follows.
 _CSV_FORMULA_PREFIXES: tuple[str, ...] = ("=", "+", "-", "@", "\t", "\r")
-
-
-def _write_replacing(path: Path, text: str, *, encoding: str) -> None:
-    """Write `text` to a new file and move it over `path`.
-
-    Replacing the name, not writing in place, leaves other hard links to the
-    old file untouched. A new report is 0o600 on POSIX systems
-    (tested on Linux), since it names people; an existing one keeps its mode. The temporary file is removed on failure.
-
-    Args:
-        path: The resolved output path.
-        text: What to write. Newlines are written as given.
-        encoding: The text encoding, `utf-8-sig` for a CSV with a BOM.
-
-    Raises:
-        OSError: If the file cannot be created, written or moved.
-    """
-    try:
-        kept_mode: int | None = stat.S_IMODE(path.stat().st_mode)
-    except FileNotFoundError:
-        kept_mode = None
-    temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
-    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    try:
-        with os.fdopen(descriptor, "w", encoding=encoding, newline="") as handle:
-            handle.write(text)
-        if kept_mode is not None:
-            temporary.chmod(kept_mode)
-        os.replace(temporary, path)
-    except BaseException:
-        temporary.unlink(missing_ok=True)
-        raise
 
 
 def _assert_not_symlink(output_path: Path) -> None:

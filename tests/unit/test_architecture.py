@@ -288,9 +288,10 @@ class TestDependencyDirection:
 class TestFilesystemWrites:
     """Reveille never modifies the repository it reads."""
 
-    # The only modules that may write: the renderer produces the report, and
-    # `init` scaffolds a config file the user explicitly asked for.
-    _MAY_WRITE = frozenset({"adapters/renderer.py", "init.py"})
+    # The only modules that may write: the renderer produces the report,
+    # `init` scaffolds a config file the user explicitly asked for, and
+    # `replacing` is the one routine both write files through.
+    _MAY_WRITE = frozenset({"adapters/renderer.py", "init.py", "replacing.py"})
 
     # Attribute calls that create, modify or delete something on disk. The
     # original set was five `pathlib` methods, which missed `os.remove`,

@@ -11,6 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from reveille.exceptions import ConfigurationError, OutputPathError
+from reveille.replacing import write_replacing
 
 _DEFAULT_CONFIG_TEMPLATE: str = """\
 # reveille.toml -- Configuration file for Reveille
@@ -269,7 +270,7 @@ def write_init_config(output_path: Path, *, force: bool = False) -> Path:
         )
 
     try:
-        resolved.write_text(_DEFAULT_CONFIG_TEMPLATE, encoding="utf-8")
+        write_replacing(resolved, _DEFAULT_CONFIG_TEMPLATE, encoding="utf-8", new_mode=0o666)
     except OSError as exc:
         raise OutputPathError(f"Failed to write configuration file to '{resolved}': {exc}") from exc
 
@@ -304,7 +305,7 @@ def write_mailmap_template(output_path: Path, *, force: bool = False) -> Path | 
         return None
 
     try:
-        resolved.write_text(_DEFAULT_MAILMAP_TEMPLATE, encoding="utf-8")
+        write_replacing(resolved, _DEFAULT_MAILMAP_TEMPLATE, encoding="utf-8", new_mode=0o666)
     except OSError as exc:
         raise OutputPathError(f"Failed to write .mailmap template to '{resolved}': {exc}") from exc
 

@@ -77,6 +77,7 @@ src/reveille/
     cli.py            Typer app, exit codes, progress display
     config.py         Pydantic config models and TOML loading
     init.py           reveille.toml and .mailmap scaffold generation
+    replacing.py      writes a file by replacing its name, so a hard link is never written through
     capabilities.py   the machine-readable self-description: what the tool can and cannot do
     exceptions.py     the exception hierarchy
     py.typed          PEP 561 marker
