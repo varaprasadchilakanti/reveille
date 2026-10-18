@@ -372,14 +372,22 @@ def _repository_row(
         branch = reader.read_metadata(0, 0, start, end).analysed_branch
         has_commits = reader.resolve_head_sha() is not None
         in_window = _read_or_empty(reader, start, end, exclude_authors)
-        # The last commit outside the window needs the history before it.
-        history = in_window or _read_or_empty(reader, None, end, exclude_authors)
+        last_commit: datetime.date | None
+        if in_window:
+            last_commit = max(c.timestamp.date() for c in in_window)
+        elif exclude_authors:
+            # Which earlier commit is the last one counted turns on who made it.
+            history = _read_or_empty(reader, None, end, exclude_authors)
+            last_commit = max((c.timestamp.date() for c in history), default=None)
+        else:
+            # Only a date is needed from the history before the window.
+            last_commit = reader.last_commit_date(end)
         matched = set(reader.matched_exclusions) if has_commits else set()
         return (
             describe_repository(
                 relative,
                 None if branch == "HEAD" else branch,
-                max((c.timestamp.date() for c in history), default=None),
+                last_commit,
                 in_window,
                 end,
                 days,

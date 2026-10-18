@@ -304,3 +304,49 @@ def test_each_rows_warnings_come_in_the_rows_order(
     assert places == sorted(places), err
     assert logger.parent is not None
     assert not any(h.filters for h in logging.getLogger("reveille").handlers), "filter left on"
+
+
+@pytest.mark.parametrize("until", ["2024-01-31", "2024-02-01", "2024-04-15", "2024-12-31"])
+def test_a_dormant_repositorys_last_date_is_what_a_full_read_gives(
+    tmp_path: Path, until: str
+) -> None:
+    """Dates out of order: the last commit made is not the latest dated."""
+    import datetime
+
+    from reveille.adapters.git_reader import GitReader
+    from reveille.exceptions import EmptyRepositoryError
+
+    path = _repo(
+        tmp_path / "skewed",
+        ("2024-03-01", "Ana", "ana@corp.test"),
+        ("2024-05-01", "Ben", "ben@corp.test"),
+        ("2024-02-01", "Carol", "carol@corp.test"),
+    )
+    end = datetime.date.fromisoformat(until)
+    reader = GitReader(path)
+    try:
+        full = max(c.timestamp.date() for c in reader.read_commits(None, None, end, []))
+    except EmptyRepositoryError:  # no commit on or before `end`
+        full = None
+
+    assert GitReader(path).last_commit_date(end) == full
+
+
+def test_a_dormant_repository_is_not_read_whole_for_one_date(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from reveille.adapters.git_reader import GitReader
+
+    whole: list[object] = []
+    real = GitReader.read_commits
+
+    def spy(self: GitReader, branch: object, since: object, *args: object, **kw: object) -> object:
+        if since is None:
+            whole.append(self)
+        return real(self, branch, since, *args, **kw)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(GitReader, "read_commits", spy)
+    rows = _rows(workspace)
+
+    assert rows["legacy"]["last_commit"] == "2024-01-10"
+    assert whole == []

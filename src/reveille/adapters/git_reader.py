@@ -1781,6 +1781,35 @@ class GitReader:
             process.proc.wait()
         return found
 
+    def last_commit_date(self, until: datetime.date) -> datetime.date | None:
+        """Return the date of the last non-merge commit on or before `until`.
+
+        Only the commit dates are read: what `read_commits` with no window would
+        give as its latest commit's date, without the names, the trust check or
+        the exclusions. Asked of a dormant repository, a whole history was read
+        for one date.
+
+        Args:
+            until: The last day counted, in UTC.
+
+        Returns:
+            The date, or None when the branch has no such commit.
+        """
+        log_args, _ = _build_log_args(self._resolve_active_branch(), None, until, line_counts=False)
+        log_args[log_args.index(_LOG_FORMAT)] = "--format=%ct"
+        try:
+            output = str(self._git().log(*log_args))
+        except GitCommandError:
+            return None
+        latest: datetime.date | None = None
+        for value in set(output.split()):
+            try:
+                day = datetime.datetime.fromtimestamp(int(value), tz=datetime.UTC).date()
+            except (ValueError, OverflowError, OSError):
+                continue  # skipped as read_commits skips it
+            latest = day if latest is None else max(latest, day)
+        return latest
+
     def resolve_head_sha(self, branch: str | None = None) -> str | None:
         """Return the full SHA at the tip of the analysed ref, pinning the report.
 
