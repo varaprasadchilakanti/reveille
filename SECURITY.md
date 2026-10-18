@@ -193,6 +193,16 @@ Fixed since 0.9.0, not yet released, each with a test that fails without the fix
   could fetch. Git is now asked whether any config it reads makes a partial clone.
 - A FIFO as `.mailmap`, or named by `mailmap.file`, hung every command. Git's own mailmap
   is switched off.
+- A named pipe at a file Git reads first (`.git/config`, `packed-refs`, `shallow` and
+  others), or one an `include.path` names, `/dev/stdin` included, hung every command, and
+  `include.path = /dev/zero` grew GitPython's memory without end. They are refused before
+  Git runs.
+- A named pipe named by `diff.orderFile` hung `generate`, `brief` and `validate`. The
+  setting is pinned to the null device.
+- The report's Content-Security-Policy allowed any inline script. It now allows the
+  report's own three scripts by hash, and nothing else.
+- A secret written into an scp-like remote (`user:secret@host:path`) was printed in the
+  report. It is removed, as it was from `ssh://` and `https://` remotes.
 - `validate` and `generate` printed terminal control sequences from the repository path.
 - A `.mailmap` could stall a run for minutes, because its line patterns backtracked
   quadratically and the working-tree file had no size bound. Lines are now parsed in

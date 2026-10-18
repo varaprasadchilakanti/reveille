@@ -649,6 +649,7 @@ class GitReader:
         #: The `--exclude-author` values, as given, that matched something.
         self.matched_exclusions: tuple[str, ...] = ()
         self.unmatched_path_exclusions: tuple[str, ...] = ()
+        _refuse_git_files_that_block(repo_path, search_up=False)
         try:
             self._repo = Repo(str(repo_path), search_parent_directories=False)
         except InvalidGitRepositoryError as exc:
@@ -2439,6 +2440,10 @@ def repository_root(path: Path) -> Path:
     if _REPOSITORY_VARIABLES & os.environ.keys():
         return path.resolve()
     try:
+        _refuse_git_files_that_block(path, search_up=True)
+    except RepositoryError:
+        return path.resolve()  # the reader opens it, and says why it refuses
+    try:
         # `-C`, not a working directory: GitPython runs Git in the process's own
         # directory when the one it is given cannot be entered.
         top = str(Git().execute(["git", "-C", str(path), "rev-parse", "--show-toplevel"])).strip()
@@ -2453,6 +2458,202 @@ def repository_root(path: Path) -> Path:
     if _absolute_git_dir(Path(top)) != git_dir:
         return Path(git_dir).parent.resolve() if Path(git_dir).name == ".git" else path.resolve()
     return Path(top).resolve()
+
+
+#: Files Git, or GitPython, reads in a Git directory before anything else.
+_GIT_DIR_FILES = (
+    "HEAD",
+    "config",
+    "config.worktree",
+    "commondir",
+    "packed-refs",
+    "shallow",
+    "objects/info/alternates",
+)
+
+#: Larger than any configuration a person writes: a regular file this size is refused
+#: too, as GitPython reads the whole of one, includes and all.
+_MAX_GIT_FILE_BYTES = 8 * 1024 * 1024
+
+#: Git follows `include.path` at most this deep.
+_MAX_INCLUDE_DEPTH = 10
+
+
+def _refuse_git_files_that_block(start: Path, *, search_up: bool) -> None:
+    """Refuse a repository whose Git directory would make a read wait or grow for ever.
+
+    Git and GitPython read these files before anything else. A named pipe makes
+    them wait for ever; a device such as `/dev/zero` feeds GitPython's config
+    reader without end; an `include.path` can name either, `/dev/stdin` included.
+    A copied directory or an archive can carry one; `git clone` cannot. Checked
+    before Git runs at all, so nothing here starts a read that could block.
+
+    Args:
+        start: The directory given.
+        search_up: Whether to look for the Git directory in its parents too, as
+            Git's own search does.
+
+    Raises:
+        RepositoryError: If one of those files is not a regular file, or is larger
+            than any configuration a person writes.
+    """
+    # Absolute, so the search can go up from a relative path such as `.`.
+    git_dir = _git_dir_of(Path(os.path.abspath(start)), search_up=search_up)
+    if git_dir is None:
+        return
+    directories = [git_dir]
+    if _checked(git_dir / "commondir"):
+        common = git_dir / (git_dir / "commondir").read_text("utf-8", "replace").strip()
+        directories.append(common)
+    configs: list[Path] = []
+    for directory in directories:
+        for name in _GIT_DIR_FILES:
+            if _checked(directory / name) and name.startswith("config"):
+                configs.append(directory / name)
+    for config in configs:
+        _check_includes(config, 0)
+
+
+def _git_dir_of(start: Path, *, search_up: bool) -> Path | None:
+    """Return the Git directory Git would find from `start`, without running Git.
+
+    Args:
+        start: Where to look.
+        search_up: Whether to look in its parents too.
+
+    Returns:
+        The `.git` directory, the directory a `.git` file names, `start` itself
+        when it is bare, or None when none is found.
+
+    Raises:
+        RepositoryError: If a `.git` file is not a regular file.
+    """
+    for directory in [start, *start.parents] if search_up else [start]:
+        dot_git = directory / ".git"
+        if os.path.lexists(dot_git):
+            if dot_git.is_dir():
+                return dot_git
+            if not _checked(dot_git):
+                return None
+            pointer = dot_git.read_text("utf-8", "replace").strip()
+            if not pointer.startswith("gitdir:"):
+                return None
+            return directory / pointer.removeprefix("gitdir:").strip()
+        if all((directory / name).exists() for name in ("HEAD", "objects", "refs")):
+            return directory
+    return None
+
+
+def _checked(path: Path) -> bool:
+    """Return whether a file Git reads is there, refusing one that would block.
+
+    Args:
+        path: The file; a symbolic link is followed, as Git follows it.
+
+    Returns:
+        True for a regular file of a plausible size, False when it is absent.
+
+    Raises:
+        RepositoryError: If it is not a regular file, or is too large.
+    """
+    try:
+        status = path.stat()
+    except OSError:
+        return False
+    if not stat.S_ISREG(status.st_mode):
+        if stat.S_ISDIR(status.st_mode):
+            return False
+        raise RepositoryError(
+            f"'{path}' is not a regular file (a named pipe or a device). Git reads it "
+            "before anything else, and would wait on it for ever or read it without end. "
+            "Remove it, or run Reveille on a fresh clone."
+        )
+    if status.st_size > _MAX_GIT_FILE_BYTES:
+        raise RepositoryError(
+            f"'{path}' is {status.st_size:,} bytes, larger than any configuration a person "
+            f"writes (the limit is {_MAX_GIT_FILE_BYTES:,}). Reveille does not read it."
+        )
+    return True
+
+
+def _check_includes(config: Path, depth: int) -> None:
+    """Check every file a configuration file includes, conditionally or not.
+
+    Args:
+        config: A configuration file already checked.
+        depth: How many includes led here.
+
+    Raises:
+        RepositoryError: If an included file is not a regular file, or is too large.
+    """
+    if depth >= _MAX_INCLUDE_DEPTH:
+        return
+    with config.open("rb") as handle:
+        text = handle.read(_MAX_GIT_FILE_BYTES + 1).decode("utf-8", "replace")
+    for value in _include_paths(text):
+        target = Path(value).expanduser()
+        if not target.is_absolute():
+            target = config.parent / target
+        if _checked(target):
+            _check_includes(target, depth + 1)
+
+
+# A section header, `[include]` or `[includeIf "gitdir:..."]`, and what follows it.
+_SECTION_RE = re.compile(r"^\s*\[\s*([A-Za-z0-9.-]+)[^\]]*\](.*)$")
+_PATH_KEY_RE = re.compile(r"^\s*path\s*=\s*(.*)$", re.IGNORECASE)
+
+
+def _include_paths(text: str) -> list[str]:
+    """Return the value of every `path` key in an `include` or `includeIf` section.
+
+    Read here, not by Git, so that nothing runs before the files are checked.
+    Every condition is taken as true: a file that is listed is checked.
+
+    Args:
+        text: A configuration file's text.
+
+    Returns:
+        The paths, unquoted, as written.
+    """
+    paths: list[str] = []
+    including = False
+    for line in text.splitlines():
+        header = _SECTION_RE.match(line)
+        if header is not None:
+            including = header.group(1).split(".", 1)[0].lower() in ("include", "includeif")
+            line = header.group(2)
+        key = _PATH_KEY_RE.match(line) if including else None
+        if key is not None:
+            paths.append(_config_value(key.group(1)))
+    return [path for path in paths if path]
+
+
+def _config_value(raw: str) -> str:
+    """Return a configuration value as Git reads it.
+
+    Quotes and escapes are resolved, a comment outside quotes is dropped, and
+    surrounding spaces are trimmed.
+
+    Args:
+        raw: The text after `=`.
+
+    Returns:
+        The value.
+    """
+    value: list[str] = []
+    quoted = False
+    characters = iter(raw)
+    for character in characters:
+        if character == "\\":
+            escaped = next(characters, "")
+            value.append({"n": "\n", "t": "\t", "b": "\b"}.get(escaped, escaped))
+        elif character == '"':
+            quoted = not quoted
+        elif character in "#;" and not quoted:
+            break
+        else:
+            value.append(character)
+    return "".join(value).strip()
 
 
 def _absolute_git_dir(path: Path) -> str | None:

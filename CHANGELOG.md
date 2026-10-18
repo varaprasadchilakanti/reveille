@@ -58,6 +58,13 @@ before 0.8.0 predate the convention and are left as they were released.
   The address is now hidden and such a remote keeps only its last part. A secret written into the
   user part of an scp-like remote (`git:SECRET@host:path`) is removed with or without the option,
   as it already was from `ssh://` and `https://` remotes.
+- **A file Git reads before anything else could make every command wait, or grow, for ever.** A
+  named pipe at `.git/config`, `config.worktree`, `commondir`, `packed-refs`, `shallow` or
+  `objects/info/alternates`, or one an `include.path` names (`/dev/stdin` needs nothing shipped),
+  made every command wait until killed; `include.path = /dev/zero` made GitPython's config reader
+  grow without limit (1.5 GB in under two seconds under a cap). Each is now refused (exit 2) before
+  Git runs, as is such a file over 8 MiB. Conditional includes are checked whatever their
+  condition.
 - **A repository's `diff.orderFile` could make a read wait for ever.** Git reads the file it names
   for every diff it prints, line counts included, and a named pipe there blocked `generate`,
   `brief` and `validate` until they were killed. It is now pinned to the null device.

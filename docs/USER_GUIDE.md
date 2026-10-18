@@ -946,4 +946,7 @@ to another directory. Reveille would then read and write there, so it refuses. R
 
 **"is not a regular file (a named pipe or a device)", exit 2, or "`git status` did not finish".**
 A `.gitattributes`, `.gitignore` or `info/exclude` is a named pipe, which makes Git wait for ever.
-Remove it. `reveille summary` reads no line counts and is not affected by a `.gitattributes` one.
+So is a file Git reads before anything else (`.git/config`, `config.worktree`, `commondir`,
+`packed-refs`, `shallow`, `objects/info/alternates`, `HEAD`), or one an `include.path` or
+`includeIf` names, every condition taken as true; a device there, such as `/dev/zero`, is refused
+too, and so is such a file over 8 MiB. Remove it. `reveille summary` reads no line counts and is not affected by a `.gitattributes` one.
