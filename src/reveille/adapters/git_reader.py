@@ -863,7 +863,9 @@ class GitReader:
 
         # An unborn HEAD is a negative answer, not a read failure; a named branch
         # is read even then, and a missing one fails below.
-        if branch is None and self.resolve_head_sha() is None:
+        # GitPython's check also says no for a branch whose name is not UTF-8,
+        # so a no is checked again before it is taken as the answer.
+        if branch is None and not self._repo.head.is_valid() and self.resolve_head_sha() is None:
             raise EmptyRepositoryError(
                 f"Repository at '{self._repo_path}' contains no commits. "
                 "Make at least one commit before generating a report."
@@ -1092,8 +1094,15 @@ class GitReader:
         Returns:
             The branch name, or 'HEAD'.
         """
-        # Asked of Git, not read by GitPython, which stops on a name that is not
-        # UTF-8; Git's answer keeps such bytes, so the name can be passed back.
+        try:
+            return self._repo.active_branch.name
+        except TypeError:
+            return "HEAD"
+        except UnicodeDecodeError:
+            pass
+        # GitPython stops on a name that is not UTF-8. Git's answer keeps such
+        # bytes, so the name can be passed back; asked only then, it costs a
+        # process no other read pays.
         try:
             ref = str(self._git().symbolic_ref("--quiet", "HEAD")).strip()
         except GitCommandError:
@@ -1778,9 +1787,10 @@ class GitReader:
         Returns:
             The 40-character SHA, or None if the ref cannot be resolved.
         """
+        rev = branch or self._resolve_active_branch()
         try:
-            return self.resolve_commit(branch or self._resolve_active_branch())
-        except RepositoryError:
+            return str(self._repo.commit(rev).hexsha)
+        except Exception:
             return None
 
     def _addresses_in_history(

@@ -262,7 +262,7 @@ before 0.8.0 predate the convention and are left as they were released.
   accepts any byte in them. An author's name or address so made stopped the HTML and CSV reports
   with an internal error; such a branch, checked out, stopped `generate`, `summary`, `brief` and
   `who-changed` the same way. In a report such bytes are now shown as U+FFFD, as a file path's
-  already were, and the branch is read from Git rather than through GitPython.
+  already were, and Git is asked the branch when GitPython cannot read it.
 - **`--exclude-author` missed a person when the value had a trailing or doubled space, or a
   decomposed accent** (as a paste can carry). Values and identities are now compared
   Unicode-normalised, spaces collapsed, case ignored.
