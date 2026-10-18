@@ -21,6 +21,7 @@ from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
+from typing import cast
 
 from reveille import __version__
 from reveille.adapters.git_reader import GitReader, find_repositories
@@ -343,7 +344,25 @@ def _repository_workers() -> int:
         One per CPU, at most 4. Beyond 4 the Python side of each read is the
         limit, and each read in flight holds its own history in memory.
     """
-    return max(1, min(4, os.cpu_count() or 1))
+    return max(1, min(4, _usable_cpus() or 1))
+
+
+def _usable_cpus() -> int | None:
+    """Return how many CPUs this process may run on, not how many the machine has.
+
+    A container or a CI job pinned to one CPU still sees every CPU in
+    `os.cpu_count()`. The affinity mask is what the process may use; Python
+    3.13 reads it as `os.process_cpu_count()`.
+
+    Returns:
+        The count, or None if it cannot be known.
+    """
+    counted = getattr(os, "process_cpu_count", None)
+    if counted is not None:
+        return cast("int | None", counted())
+    if hasattr(os, "sched_getaffinity"):
+        return len(os.sched_getaffinity(0))
+    return os.cpu_count()
 
 
 def _repository_row(

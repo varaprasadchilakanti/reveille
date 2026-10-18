@@ -247,7 +247,8 @@ before 0.8.0 predate the convention and are left as they were released.
   and 199 to 143 MB. Keeping the records as Git's bytes and decoding them one at a time then took
   `generate --format json` from 144 to 135 MB. With `--exclude-author`, the history the exclusion is checked against is read meanwhile
   too: 6.5 s to 5.0 s there. Every report, in every format, is byte-identical to before.
-- **`repos` reads up to four repositories at once**, one per CPU: a row's time is mostly spent
+- **`repos` reads up to four repositories at once**, one per CPU the process may use (a container
+  or a CI job pinned to one CPU reads one at a time): a row's time is mostly spent
   waiting for Git. Over 201 small repositories it went from 20.6 s to 8.3 s with the same peak
   memory (52 MB), and the rows, in every format, are as before and in the same order. So are
   the warnings each row gives, which name no repository and are placed only by their order.

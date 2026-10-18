@@ -11,6 +11,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -268,10 +269,24 @@ def test_repositories_are_read_side_by_side_and_listed_in_order(
 def test_at_most_four_repositories_are_read_at_once(monkeypatch: pytest.MonkeyPatch) -> None:
     from reveille.services import report
 
-    monkeypatch.setattr(os, "cpu_count", lambda: 64)
+    monkeypatch.setattr(report, "_usable_cpus", lambda: 64)
     assert report._repository_workers() == 4
-    monkeypatch.setattr(os, "cpu_count", lambda: None)
+    monkeypatch.setattr(report, "_usable_cpus", lambda: None)
     assert report._repository_workers() == 1
+
+
+@pytest.mark.skipif(not hasattr(os, "sched_setaffinity"), reason="no affinity mask")
+def test_a_process_pinned_to_one_cpu_reads_one_at_a_time() -> None:
+    """A container or CI job limited to one CPU still sees every CPU in `os.cpu_count()`."""
+    code = (
+        "import os; os.sched_setaffinity(0, {sorted(os.sched_getaffinity(0))[0]}); "
+        "from reveille.services import report; "
+        "print(os.cpu_count(), report._repository_workers())"
+    )
+    done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
+    machine, workers = (int(n) for n in done.stdout.split())
+
+    assert workers == 1, (machine, workers)
 
 
 def test_each_rows_warnings_come_in_the_rows_order(
