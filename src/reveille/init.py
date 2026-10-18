@@ -195,7 +195,7 @@ _DEFAULT_MAILMAP_TEMPLATE: str = """\
 # Example:
 #
 #   Address change with no name change:
-#   <helen@newcorp.com> <helen@oldcorp.com>
+#   <helen@new.example> <helen@old.example>
 #
 #
 # ------------------------------------------------------------------------------
@@ -211,13 +211,13 @@ _DEFAULT_MAILMAP_TEMPLATE: str = """\
 # Examples:
 #
 #   Employer domain change:
-#   Alice Smith <alice@newcorp.com> <alice@oldcorp.com>
+#   Alice Smith <alice@new.example> <alice@old.example>
 #
 #   GitHub web-interface and merge-button commits (noreply form):
 #   Bob Jones <bob@example.com> <12345+bobjones@users.noreply.github.com>
 #
 #   Personal account used before work account was configured:
-#   Carol Chen <carol@corp.com> <carol.chen@gmail.com>
+#   Carol Chen <carol@example.com> <carol.chen@personal.example>
 #
 #
 # ------------------------------------------------------------------------------
@@ -235,11 +235,11 @@ _DEFAULT_MAILMAP_TEMPLATE: str = """\
 # Examples:
 #
 #   Both name and address changed at once:
-#   Dan Brown <dan@newcorp.com> Daniel Brown <daniel@oldcorp.com>
+#   Dan Brown <dan@new.example> Daniel Brown <daniel@old.example>
 #
 #   Disentangling two people who shared one address:
-#   Dan Brown <dan@corp.com> Dan <build@ci.corp.com>
-#   Erica Stone <erica@corp.com> Erica <build@ci.corp.com>
+#   Dan Brown <dan@example.com> Dan <build@ci.example.com>
+#   Erica Stone <erica@example.com> Erica <build@ci.example.com>
 #
 #
 # ------------------------------------------------------------------------------
