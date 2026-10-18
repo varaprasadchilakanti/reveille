@@ -99,6 +99,13 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Added
 
+- **`--exclude-path`** leaves a file or directory out of every figure, for vendored, generated or
+  documentation trees that otherwise dominate churn and hotspots. Relative to the repository root
+  and matched literally; repeatable; `[filters] exclude_paths` in `reveille.toml`; accepted by
+  `generate`, `summary` and `brief`. A commit that changed only excluded paths is not counted, a
+  path that matched nothing is reported, and the paths are stated in the report, the summary and
+  `provenance.filters.exclude_paths`. Additive to schema 1.2.
+
 - **`capabilities --command <name>`** gives one command's description, options and exit codes:
   2.3 KB for `state` as JSON, against about 24 KB for everything.
 

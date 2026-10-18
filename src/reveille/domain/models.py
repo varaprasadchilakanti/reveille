@@ -153,6 +153,8 @@ class AnalysisProvenance:
     area_depth: int | None = None
     # Cap on any list of people in JSON or CSV (ADR 0015); None for no cap.
     limit: int | None = None
+    # Paths left out of every figure, as given; paths name no one.
+    exclude_paths: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

@@ -96,6 +96,14 @@ _DEFAULT_CONFIG_TEMPLATE: str = """\
 #     "github-actions[bot]",
 # ]
 
+# Leave paths out of every figure: commits, churn, hotspots, areas. Relative to
+# the repository root and matched literally (no wildcards); a directory takes
+# everything under it. A commit that changed only excluded paths is not counted.
+# exclude_paths = [
+#     "vendor",
+#     "docs/generated",
+# ]
+
 
 # ------------------------------------------------------------------------------
 # [ranking] -- Contributor ranking engine

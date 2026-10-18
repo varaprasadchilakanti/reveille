@@ -116,6 +116,11 @@ def _err(message: str) -> None:
     typer.echo(_printable(message), err=True)
 
 
+_EXCLUDE_PATH_HELP = (
+    "Leave a path out of every figure, relative to the repository root and matched "
+    "literally; a directory takes everything under it. Repeatable."
+)
+
 # Command-line spelling of the configuration fields a user can get wrong.
 _OPTION_NAMES = {
     "since": "--since",
@@ -127,6 +132,7 @@ _OPTION_NAMES = {
     "output_path": "--output",
     "repo_path": "--repo",
     "exclude_authors": "--exclude-author",
+    "exclude_paths": "--exclude-path",
     "area_depth": "--area-depth",
     "limit": "--limit",
 }
@@ -295,6 +301,7 @@ _TOML_KEYS: dict[str, str] = {
     "deterministic": "report.deterministic",
     "min_commits": "filters.min_commits",
     "exclude_authors": "filters.exclude_authors",
+    "exclude_paths": "filters.exclude_paths",
     "ranking_enabled": "ranking.enabled",
     "ranking_weights": "ranking.weights",
     "area_authors_enabled": "areas.enabled",
@@ -626,6 +633,7 @@ def _merge_cli_flags(
     area_authors: bool = False,
     area_depth: int | None = None,
     limit: int | None = None,
+    exclude_path: list[str] | None = None,
 ) -> ReportConfigKwargs:
     """Merge CLI flag values over the configuration file's values.
 
@@ -649,6 +657,7 @@ def _merge_cli_flags(
         area_authors: Whether --area-authors was given; it only switches on.
         area_depth: Area depth, or None if the flag was not given.
         limit: The most entries per list of people in JSON and CSV, or None.
+        exclude_path: Paths to leave out of every figure, or None.
 
     Returns:
         A merged ReportConfigKwargs ready for ReportConfig construction.
@@ -671,6 +680,7 @@ def _merge_cli_flags(
         merged["title"] = title
     if exclude_author:
         merged["exclude_authors"] = exclude_author
+    merged.update({"exclude_paths": exclude_path} if exclude_path else {})
     if min_commits is not None:
         merged["min_commits"] = min_commits
     _apply_ranking_flags(merged, ranking=ranking, no_ranking=no_ranking)
@@ -766,6 +776,13 @@ def generate(
         typer.Option(
             "--exclude-author",
             help="Exclude a contributor by name or email. Repeatable.",
+        ),
+    ] = None,
+    exclude_path: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--exclude-path",
+            help=_EXCLUDE_PATH_HELP,
         ),
     ] = None,
     min_commits: Annotated[
@@ -907,6 +924,7 @@ def generate(
         area_authors,
         area_depth,
         limit,
+        exclude_path,
     )
 
     # Validate the effective path, which a reveille.toml may have supplied.
@@ -957,8 +975,9 @@ def _query_config(
     branch: str | None,
     exclude_author: list[str] | None,
     deterministic: bool,
+    exclude_path: list[str] | None = None,
 ) -> ReportConfig:
-    """Build the configuration for `summary` and `who-changed` from options.
+    """Build the configuration for `summary`, `brief` and `who-changed` from options.
 
     No reveille.toml is read, so the answer depends only on the options passed.
 
@@ -974,6 +993,8 @@ def _query_config(
         kwargs["branch"] = branch
     if exclude_author:
         kwargs["exclude_authors"] = exclude_author
+    if exclude_path:
+        kwargs["exclude_paths"] = exclude_path
     try:
         return ReportConfig(**kwargs)
     except ValueError as exc:
@@ -1031,6 +1052,9 @@ _ExcludeOption = Annotated[
     list[str] | None,
     typer.Option("--exclude-author", help="Exclude a contributor by name or email. Repeatable."),
 ]
+_ExcludePathOption = Annotated[
+    list[str] | None, typer.Option("--exclude-path", help=_EXCLUDE_PATH_HELP)
+]
 _DeterministicOption = Annotated[
     bool,
     typer.Option("--deterministic", help="Close the window on the last commit, not today."),
@@ -1054,6 +1078,7 @@ def summary(
     until: _UntilOption = None,
     branch: _BranchOption = None,
     exclude_author: _ExcludeOption = None,
+    exclude_path: _ExcludePathOption = None,
     deterministic: _DeterministicOption = False,
     output_format: _ShareFormatOption = "text",
     verbose: _VerboseOption = False,
@@ -1066,7 +1091,7 @@ def summary(
 
     _configure_logging(verbose)
     _check_query_format(output_format, ("text", "json", "markdown"))
-    config = _query_config(repo, since, until, branch, exclude_author, deterministic)
+    config = _query_config(repo, since, until, branch, exclude_author, deterministic, exclude_path)
     _run_query(lambda notice: summary_text(config, output_format, on_notice=notice))
 
 
@@ -1084,6 +1109,7 @@ def brief(
     until: _UntilOption = None,
     branch: _BranchOption = None,
     exclude_author: _ExcludeOption = None,
+    exclude_path: _ExcludePathOption = None,
     deterministic: _DeterministicOption = False,
     output_format: _StatusFormatOption = "text",
     limit: Annotated[
@@ -1102,7 +1128,7 @@ def brief(
     if from_revision is not None and since is not None:
         _err("Error: give --from <revision> or --since <date>, not both.")
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
-    config = _query_config(repo, since, until, branch, exclude_author, deterministic)
+    config = _query_config(repo, since, until, branch, exclude_author, deterministic, exclude_path)
     _run_query(
         lambda notice: brief_text(config, from_revision, output_format, limit, on_notice=notice)
     )

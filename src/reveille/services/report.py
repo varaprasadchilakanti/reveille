@@ -152,6 +152,7 @@ def who_changed_text(
             since=config.since,
             until=config.until,
             exclude_authors=config.exclude_authors,
+            exclude_paths=config.exclude_paths,
             dated_until=cutoff,
             line_counts=False,
             path=path,
@@ -253,6 +254,7 @@ def brief_text(
             since=None if from_commit is not None else config.since,
             until=config.until,
             exclude_authors=config.exclude_authors,
+            exclude_paths=config.exclude_paths,
             dated_until=cutoff,
             area_depth=config.area_depth,
             line_counts=False,
@@ -343,6 +345,7 @@ def build_report_data(
         since=config.since,
         until=config.until,
         exclude_authors=config.exclude_authors,
+        exclude_paths=config.exclude_paths,
         dated_until=cutoff,
         # Collected only when enabled: the section names people (ADR 0013).
         area_depth=config.area_depth if config.area_authors_enabled else None,
@@ -601,6 +604,7 @@ def _build_provenance(
         requested_since=config.since,
         requested_until=config.until,
         exclude_authors_count=len(config.exclude_authors),
+        exclude_paths=tuple(config.exclude_paths),
         min_commits=config.min_commits,
         ranking_enabled=config.ranking_enabled,
         # Reporting weights that were never applied would be a false statement.

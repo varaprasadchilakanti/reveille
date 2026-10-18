@@ -633,6 +633,7 @@ class GitReader:
         #: Files added in the last `read_commits` with `name_status`.
         self.files_added: int = 0
         self.unmatched_exclusions: tuple[str, ...] = ()
+        self.unmatched_path_exclusions: tuple[str, ...] = ()
         try:
             self._repo = Repo(str(repo_path), search_parent_directories=False)
         except InvalidGitRepositoryError as exc:
@@ -705,6 +706,7 @@ class GitReader:
         path: str | None = None,
         from_commit: str | None = None,
         name_status: bool = False,
+        exclude_paths: Sequence[str] = (),
     ) -> list[Commit]:
         """Read all non-merge commits in the analysis window, in one `git log`.
 
@@ -724,6 +726,8 @@ class GitReader:
             from_commit: A full SHA from `resolve_commit`; read `<sha>..<branch>` only.
             name_status: Read files without line counts (`--name-status`), and
                 count the files added in `files_added`; overrides `line_counts`.
+            exclude_paths: Literal repository paths left out of every figure. A
+                commit that changed only these is not read.
 
         Returns:
             Commits sorted most recent first.
@@ -734,6 +738,7 @@ class GitReader:
         """
         # Cleared at entry so a call that raises leaves no stale result.
         self.unmatched_exclusions = ()
+        self.unmatched_path_exclusions = ()
 
         rev = self._walked_revision(branch)
 
@@ -747,6 +752,7 @@ class GitReader:
             line_counts=line_counts and not name_status,
             path=path,
             name_status=name_status,
+            exclude_paths=exclude_paths,
         )
 
         # An unborn HEAD is a negative answer, not a read failure; a named branch
@@ -856,6 +862,14 @@ class GitReader:
         self.unmatched_exclusions = tuple(unmatched)
         if unmatched:
             _logger.warning("--exclude-author matched no commits for: %s", ", ".join(unmatched))
+
+        self.unmatched_path_exclusions = self._paths_never_changed(rev, exclude_paths)
+        if self.unmatched_path_exclusions:
+            _logger.warning(
+                "--exclude-path matched no file in the history of %s: %s",
+                rev,
+                ", ".join(self.unmatched_path_exclusions),
+            )
 
         if not commits:
             raise _empty_window(dated_after, dated_until)
@@ -1120,6 +1134,41 @@ class GitReader:
             Git's output.
         """
         return str(self._git().log("-z", _TRAILER_FORMAT, *selection))
+
+    def _paths_never_changed(self, rev: str, paths: Sequence[str]) -> tuple[str, ...]:
+        """Return the excluded paths no commit on `rev` ever changed: almost always a typo.
+
+        Args:
+            rev: The analysed revision.
+            paths: The excluded paths, already normalised.
+
+        Returns:
+            The paths that matched nothing, in the order given.
+
+        Raises:
+            RepositoryError: If Git cannot answer.
+        """
+        unmatched: list[str] = []
+        for path in paths:
+            try:
+                found = str(
+                    self._git().log(
+                        "-1",
+                        "--full-history",
+                        "--format=%H",
+                        "--end-of-options",
+                        rev,
+                        "--",
+                        f":(top,literal){path}",
+                    )
+                ).strip()
+            except GitCommandError as exc:
+                raise RepositoryError(
+                    f"Failed to check the excluded path '{path}' on '{rev}'. Detail: {exc}"
+                ) from exc
+            if not found:
+                unmatched.append(path)
+        return tuple(unmatched)
 
     def _noreply_accounts(self, rev: str) -> tuple[dict[str, str], dict[str, str]]:
         """Read which GitHub accounts committed, for folding noreply addresses (ADR 0023).
@@ -2161,6 +2210,7 @@ def _build_log_args(
     line_counts: bool = True,
     path: str | None = None,
     name_status: bool = False,
+    exclude_paths: Sequence[str] = (),
 ) -> tuple[list[str], list[str]]:
     """Build the argument lists for the numstat read and the SHA allowlist.
 
@@ -2175,6 +2225,8 @@ def _build_log_args(
         line_counts: Whether to ask for per-file line counts (`--numstat`).
         path: Only commits changing this path, as a `:(literal)` pathspec.
         name_status: Ask for `--name-status` instead: paths without line counts.
+        exclude_paths: Literal paths whose changes are left out; a commit that
+            changed nothing else is left out with them.
 
     Returns:
         A `(log_args, rev_list_args)` pair.
@@ -2201,8 +2253,9 @@ def _build_log_args(
         rev_list_args.append(f"--before={boundary}")
 
     # `--end-of-options` stops option parsing; `--` separates revision from path.
+    scoped = path is not None or bool(exclude_paths)
     for args in (log_args, rev_list_args):
-        if path is not None:
+        if scoped:
             # A pathspec turns on history simplification, which skips a merged
             # branch whose changes the merge did not keep (`-s ours`): commits
             # every other figure counts would vanish from this one.
@@ -2210,6 +2263,8 @@ def _build_log_args(
         args.extend(["--end-of-options", rev, "--"])
         if path is not None:
             args.append(f":(literal){path}")
+        # With no other pathspec, Git subtracts an exclusion from the whole tree.
+        args.extend(f":(top,exclude,literal){excluded}" for excluded in exclude_paths)
 
     return log_args, rev_list_args
 

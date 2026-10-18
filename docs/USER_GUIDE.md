@@ -87,6 +87,7 @@ author, carries no notice, and a newline in a name is shown as `\n`.
 | `--since`, `--until` | first commit; today (UTC) | Inclusive dates, `YYYY-MM-DD`. See [The window](#the-window). |
 | `--branch`, `-b` | the checked-out branch | Commits reachable from this branch. The checked-out branch is not necessarily the default branch. |
 | `--exclude-author` | none | Removes a person. Repeatable. See [below](#--exclude-author). |
+| `--exclude-path` | none | Leaves a path out of every figure. Repeatable. See [below](#--exclude-path). |
 | `--min-commits` | `1` | Lists only contributors with at least this many commits. See [below](#--min-commits). |
 | `--title` | repository name | The report's title. |
 | `--ranking`, `--no-ranking` | ranking off | See [Ranking](#--ranking-and---no-ranking). |
@@ -154,6 +155,21 @@ reveille generate --exclude-author "dependabot[bot]" --exclude-author "release-b
 Accounts with `[bot]` in the name or address are already kept out of the people figures (see
 [Summary cards](#summary-cards)); excluding one removes its commits from every figure too.
 
+### `--exclude-path`
+
+Leaves a file or directory out of every figure: commits, lines, hotspots, file types and areas.
+The path is relative to the repository root, whichever directory you run from, and is matched
+literally: `*.md` is a file of that name, not a pattern. A directory takes everything under it.
+A commit that changed only excluded paths is not counted at all; a commit that also changed
+something else is counted, without the excluded lines. A path no commit on the branch ever
+changed is reported on stderr, since it is almost always a typo. The paths are stated in the
+report header, the summary and the JSON `provenance.filters.exclude_paths`. `generate`,
+`summary` and `brief` accept it; in `reveille.toml` it is `[filters] exclude_paths`.
+
+```bash
+reveille generate --exclude-path vendor --exclude-path docs/generated
+```
+
 ### `--min-commits`
 
 Chooses who is *listed*, not who is counted: every figure still describes everyone, and the
@@ -218,7 +234,7 @@ The repository in a few lines, naming no contributor: window, commit and people 
 longest quiet run, the written findings and a notice that the figures need checking.
 `--format json` adds commit concentration and days since the last commit. It reads no line counts
 and no `reveille.toml`. Options: `--repo`, `--since`, `--until`, `--branch`, `--exclude-author`,
-`--deterministic`, `--verbose` and `--format text|json|markdown` (default `text`).
+`--exclude-path`, `--deterministic`, `--verbose` and `--format text|json|markdown` (default `text`).
 
 ```bash
 reveille summary --format json
@@ -263,7 +279,7 @@ reveille brief --since 2026-10-01 --format json
 What changed since a point, in counts. Give `--from <revision>` (a tag, branch or commit, read by
 ancestry as `git log <revision>..<branch>` is) or `--since <date>`; with neither, it starts at the
 latest tag reachable on the branch and names it, and with no tag it stops with exit 2. Other
-options: `--repo`, `--branch`, `--until`, `--exclude-author`, `--deterministic`, `--limit`
+options: `--repo`, `--branch`, `--until`, `--exclude-author`, `--exclude-path`, `--deterministic`, `--limit`
 (default 5), `--verbose` and `--format text|json|markdown|line`.
 
 It states commits (merges excluded), people and automated accounts as counts, commits crediting a
@@ -499,6 +515,7 @@ exclude_authors = [                        # repeated --exclude-author
     "dependabot[bot]",
     "github-actions[bot]",
 ]
+exclude_paths = ["vendor"]                 # repeated --exclude-path
 
 [ranking]
 enabled = false                            # --ranking; read "The Ranking Algorithm" first

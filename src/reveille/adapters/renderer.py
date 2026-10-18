@@ -312,6 +312,7 @@ class Renderer:
                         else None
                     ),
                     "exclude_authors_count": data.provenance.exclude_authors_count,
+                    "exclude_paths": list(data.provenance.exclude_paths),
                     "min_commits": data.provenance.min_commits,
                 },
                 "ranking": {
@@ -442,6 +443,7 @@ class Renderer:
                 "merge_commits_excluded": data.provenance.merge_commits_excluded,
                 "replace_refs_not_followed": data.provenance.replace_refs_not_followed,
                 "graft_file_not_followed": data.provenance.graft_file_not_followed,
+                "exclude_paths": list(data.provenance.exclude_paths),
             },
             "totals": {
                 "commits": data.metadata.total_commits,
@@ -501,6 +503,8 @@ class Renderer:
                 if merges == 1
                 else f"{merges:,} merge commits are not counted."
             )
+        if repo["exclude_paths"]:
+            lines.append(f"Not counted, by request: {', '.join(repo['exclude_paths'])}.")
         lines.append(document["notice"])
         return _joined(lines)
 
@@ -2207,6 +2211,11 @@ def _summary_markdown(document: dict[str, Any]) -> str:
         f"- **Gini:** {measures['gini_coefficient']:.2f}; longest quiet run "
         f"{_counted(measures['longest_quiet_run_days'], 'day')}",
         *(f"- {finding['headline']}" for finding in document["findings"]),
+        *(
+            [f"- **Not counted, by request:** {', '.join(_md(p) for p in repo['exclude_paths'])}"]
+            if repo["exclude_paths"]
+            else []
+        ),
         "",
         f"> {document['notice']}",
     ]

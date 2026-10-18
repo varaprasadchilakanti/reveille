@@ -1044,6 +1044,14 @@
                     are still counted in every figure here.
                 </span>
                 {% endif %}
+                {% if data.provenance.exclude_paths %}
+                <span class="filter-note">
+                    <strong>Paths not counted:</strong>
+                    {{ data.provenance.exclude_paths | join(', ') }}, as requested; their
+                    changes are in no figure, and a commit that changed nothing else is
+                    not counted.
+                </span>
+                {% endif %}
                 {% if data.provenance.shallow_clone %}
                 <span class="filter-note">
                     <strong>Shallow clone:</strong>
