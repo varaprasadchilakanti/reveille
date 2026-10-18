@@ -182,3 +182,106 @@ def test_a_co_author_read_that_fails_credits_nobody_and_says_so(
 
     assert len(commits) == 1 and commits[0].co_authors == ()
     assert "co-author trailers could not be read" in caplog.text
+
+
+class _FailsAfterOneRead(io.RawIOBase):
+    """Gives one chunk of a pipe, then fails as a broken read would."""
+
+    def __init__(self, pipe: Any, failure: BaseException) -> None:
+        self._pipe, self._failure, self._reads = pipe, failure, 0
+
+    def readable(self) -> bool:
+        return True
+
+    def read(self, n: int = -1) -> bytes:
+        self._reads += 1
+        if self._reads > 1:
+            raise self._failure
+        return bytes(self._pipe.read(n))
+
+
+@pytest.mark.parametrize("failure", [OSError("broken"), RuntimeError("unexpected")])
+def test_a_read_that_fails_part_way_is_an_error_not_a_shorter_history(
+    failure: BaseException,
+) -> None:
+    """Git can exit 0 although its output was not all read; that is not the whole log."""
+    stream = _LogStream(_Done(_FailsAfterOneRead(io.BytesIO(b"\x1ea\x1eb" * 100_000), failure)))
+
+    with pytest.raises(GitCommandError, match="could not be read"):
+        stream.records()
+
+
+def test_a_reader_that_fails_stops_git_rather_than_waiting_for_ever() -> None:
+    """Unread, Git blocks on a full pipe, and the wait for it would never end."""
+    handle = _python("import sys\nwhile True: sys.stdout.write('\\x1er' * 1000)")
+    handle.proc.stdout = _FailsAfterOneRead(handle.proc.stdout, RuntimeError("unexpected"))
+    stream = _LogStream(handle)
+    raised: list[BaseException] = []
+
+    def take() -> None:
+        try:
+            stream.raw_records()
+        except GitCommandError as exc:
+            raised.append(exc)
+
+    reader = threading.Thread(target=take, daemon=True)
+    reader.start()
+    reader.join(timeout=20)
+    stopped = handle.proc.poll() is not None
+    handle.proc.kill()
+
+    assert stopped, "Git was left writing to a pipe nobody reads"
+    assert raised, "the failure was lost with the thread"
+
+
+def test_the_main_log_is_stopped_when_the_second_cannot_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "r"
+    path.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=path, check=True)
+    (path / "a.txt").write_text("a", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=path, check=True)
+    subprocess.run(
+        ["git", "-c", "user.name=A", "-c", "user.email=a@e.test", "commit", "-qm", "a"],
+        cwd=path,
+        check=True,
+    )
+    writers: list[Any] = []
+    real = git_reader._LogStream
+
+    def second_fails(process: Any, **kwargs: Any) -> _LogStream:
+        process.proc.kill()
+        if writers:
+            raise RuntimeError("can't start new thread")
+        writers.append(_python("import sys\nwhile True: sys.stdout.write('\\x1er' * 1000)"))
+        return real(writers[-1], **kwargs)
+
+    monkeypatch.setattr(git_reader, "_LogStream", second_fails)
+
+    with pytest.raises(RuntimeError):
+        GitReader(path).read_commits(None, None, None, [])
+    stopped = writers[0].proc.poll() is not None
+    writers[0].proc.kill()
+
+    assert stopped, "the main log was left running"
+
+
+def test_git_is_stopped_when_a_reader_cannot_start(monkeypatch: pytest.MonkeyPatch) -> None:
+    handle = _python("import sys\nwhile True: sys.stdout.write('\\x1er' * 1000)")
+    started: list[threading.Thread] = []
+    real = threading.Thread.start
+
+    def second_fails(thread: threading.Thread) -> None:
+        if started:
+            raise RuntimeError("can't start new thread")
+        started.append(thread)
+        real(thread)
+
+    monkeypatch.setattr(threading.Thread, "start", second_fails)
+
+    with pytest.raises(RuntimeError):
+        _LogStream(handle)
+    monkeypatch.undo()
+    handle.proc.wait(timeout=20)  # killed, so it ends; left running, this times out
+    started[0].join(timeout=20)

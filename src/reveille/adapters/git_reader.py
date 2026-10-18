@@ -13,6 +13,7 @@ spawn one `git diff` per commit.
 
 from __future__ import annotations
 
+import contextlib
 import datetime
 import functools
 import logging
@@ -22,7 +23,7 @@ import stat
 import threading
 import unicodedata
 from collections import defaultdict
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -876,18 +877,20 @@ class GitReader:
         # Started first: Git writes both logs while the queries below run. The
         # co-author read covers the same selection (ADR 0014).
         stream = _LogStream(self._git().log(*log_args, as_process=True))
-        trailers = _LogStream(
-            self._git().log("-z", _TRAILER_FORMAT, *_selection(log_args), as_process=True),
-            separator=b"\0",
-        )
+        trailers: _LogStream | None = None
         try:
+            trailers = _LogStream(
+                self._git().log("-z", _TRAILER_FORMAT, *_selection(log_args), as_process=True),
+                separator=b"\0",
+            )
             records, authentic_order, mailmap, requests, reached = self._read_alongside(
                 stream, rev, rev_list_args, exclude_authors
             )
             co_author_records = self._trailer_records(trailers)
         finally:
             stream.close()
-            trailers.close()
+            if trailers is not None:
+                trailers.close()
         authentic_shas = set(authentic_order)
         exclude_set = set().union(*requests.values())
 
@@ -2152,35 +2155,55 @@ class _LogStream:
         self._separator = separator
         self._records: list[bytes] = []
         self._stderr: list[bytes] = []
+        self._failure: BaseException | None = None
         self._threads = [
-            threading.Thread(target=self._split, daemon=True),
+            threading.Thread(target=self._reading, args=(self._split,), daemon=True),
             # Read too, so warnings Git writes cannot fill the pipe and stop it.
-            threading.Thread(target=self._drain_stderr, daemon=True),
+            threading.Thread(target=self._reading, args=(self._drain_stderr,), daemon=True),
         ]
-        for thread in self._threads:
-            thread.start()
+        try:
+            for thread in self._threads:
+                thread.start()
+        except BaseException:
+            self._stop()
+            raise
+
+    def _reading(self, read: Callable[[], None]) -> None:
+        """Run one reader; if it fails, keep the failure and stop Git.
+
+        Stopped, Git cannot wait for ever on a pipe nobody reads, and the
+        failure is raised where the records are taken, not lost with the thread.
+
+        Args:
+            read: The reader to run.
+        """
+        try:
+            read()
+        except BaseException as exc:  # raised again by raw_records
+            self._failure = self._failure or exc
+            self._stop()
+
+    def _stop(self) -> None:
+        """Stop Git if it is still running."""
+        if self._process.proc.poll() is None:
+            with contextlib.suppress(OSError):
+                self._process.proc.kill()
 
     def _split(self) -> None:
         """Read the output to its end, one record per separator."""
         pieces: list[bytes] = []
-        try:
-            for chunk in iter(lambda: self._process.proc.stdout.read(1 << 16), b""):
-                parts = chunk.split(self._separator)
-                pieces.append(parts[0])
-                if len(parts) > 1:
-                    self._records.append(b"".join(pieces))
-                    self._records.extend(parts[1:-1])
-                    pieces = [parts[-1]]
-        except (OSError, ValueError):  # the process was stopped; close() says so
-            return
+        for chunk in iter(lambda: self._process.proc.stdout.read(1 << 16), b""):
+            parts = chunk.split(self._separator)
+            pieces.append(parts[0])
+            if len(parts) > 1:
+                self._records.append(b"".join(pieces))
+                self._records.extend(parts[1:-1])
+                pieces = [parts[-1]]
         self._records.append(b"".join(pieces))
 
     def _drain_stderr(self) -> None:
         """Read Git's error output to its end."""
-        try:
-            self._stderr.append(self._process.proc.stderr.read())
-        except (OSError, ValueError):  # the process was stopped
-            return
+        self._stderr.append(self._process.proc.stderr.read())
 
     def raw_records(self) -> list[bytes]:
         """Wait for Git and return the records as Git wrote them.
@@ -2189,11 +2212,16 @@ class _LogStream:
             The records, the bytes before the first separator first.
 
         Raises:
-            GitCommandError: If Git exits with an error.
+            GitCommandError: If Git exits with an error, or its output could not
+                be read to the end.
         """
         for thread in self._threads:
             thread.join()
         status = self._process.proc.wait()
+        if self._failure is not None:
+            raise GitCommandError(
+                self._process.args, status, f"its output could not be read: {self._failure!r}"
+            ) from self._failure
         if status != 0:
             raise GitCommandError(self._process.args, status, b"".join(self._stderr))
         records, self._records = self._records, []
@@ -2212,8 +2240,7 @@ class _LogStream:
 
     def close(self) -> None:
         """Stop Git if it is still running, and wait for the readers."""
-        if self._process.proc.poll() is None:
-            self._process.proc.kill()
+        self._stop()
         self._process.proc.wait()
         for thread in self._threads:
             thread.join()
