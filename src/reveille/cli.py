@@ -833,8 +833,8 @@ def generate(
         typer.Option(
             "--hide-emails",
             help=(
-                "Replace every email address with a per-report token, for a report "
-                "you share. Names stay; every figure is unchanged."
+                "Replace people's email addresses with per-report tokens, for a report "
+                "you share. Names and file paths stay; every figure is unchanged."
             ),
         ),
     ] = False,

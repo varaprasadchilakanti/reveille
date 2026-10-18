@@ -88,7 +88,7 @@ author, carries no notice, and a newline in a name is shown as `\n`.
 | `--branch`, `-b` | the checked-out branch | Commits reachable from this branch. The checked-out branch is not necessarily the default branch. |
 | `--exclude-author` | none | Removes a person. Repeatable. See [below](#--exclude-author). |
 | `--exclude-path` | none | Leaves a path out of every figure. Repeatable. See [below](#--exclude-path). |
-| `--hide-emails` | off | Replaces every email address with a per-report token. See [below](#--hide-emails). |
+| `--hide-emails` | off | Replaces people's email addresses with per-report tokens. See [below](#--hide-emails). |
 | `--min-commits` | `1` | Lists only contributors with at least this many commits. See [below](#--min-commits). |
 | `--title` | repository name | The report's title. |
 | `--ranking`, `--no-ranking` | ranking off | See [Ranking](#--ranking-and---no-ranking). |
@@ -176,12 +176,18 @@ reveille generate --exclude-path vendor --exclude-path docs/generated
 
 ### `--hide-emails`
 
-Replaces every email address in the report with a token, `contributor-1@hidden.invalid`,
+Replaces people's email addresses in the report with a token, `contributor-1@hidden.invalid`,
 `contributor-2@hidden.invalid` and so on, numbered in the order the contributor table lists people.
 It covers authors, co-authors, people below `--min-commits`, area authors, the data the charts are
 drawn from, an address written into a name (shown as `(address hidden)`), and the login in an SSH
-remote (`jane@host:group/repo` becomes `host:group/repo`). The HTML table then shows names only;
+remote (`jane@host:group/repo` becomes `host:group/repo`). An address in the branch name, the
+repository's directory name or the remote's path is shown as `(address hidden)` too
+(`user/jane@example.com` becomes `user/(address hidden)`). The HTML table then shows names only;
 JSON and CSV carry the tokens, and `provenance.emails_hidden` is `true`.
+
+File paths are not changed: the extension and generated-file figures are read from them, so a
+file or directory named after an address (`users/jane@example.com/`) stays in the report as it
+is. Check the file sections before sharing a report of such a repository.
 
 A token is a number, not derived from the address, so it cannot be reversed by trying addresses,
 and `.invalid` is a domain that can never receive mail. Tokens mean nothing across reports: the
@@ -784,8 +790,8 @@ provider.
 5. **For an assistant or a script, prefer `reveille summary`**, which names no contributor, or
    bound the JSON with `--limit`.
 6. **Naming nobody does not hide anyone.** With few people, a figure traces to one person; the
-   repository name, branch, remote URL (an SSH login included, unless `--hide-emails`), title and
-   file paths can identify someone too. A report already sent is not changed by a later `--exclude-author`.
+   repository name, branch, remote URL (an SSH login or an address in them included, unless
+   `--hide-emails`), title and file paths can identify someone too. A report already sent is not changed by a later `--exclude-author`.
 7. **Whether you may use a report about the people who work with you** is a question for the law
    and the agreements that apply to you. [COMPLIANCE.md](COMPLIANCE.md) sets out who is
    responsible for what. This guide is not legal advice.

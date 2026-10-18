@@ -128,12 +128,14 @@ before 0.8.0 predate the convention and are left as they were released.
   cannot read a row saying why, and names nobody and counts nobody across repositories (ADR 0026,
   proposed). Text, JSON, Markdown and CSV.
 
-- **`generate --hide-emails`** replaces every email address in the report with a per-report token
-  (`contributor-N@hidden.invalid`, or `contributor-N[bot]@hidden.invalid` for an automated
+- **`generate --hide-emails`** replaces people's email addresses in the report with a per-report
+  token (`contributor-N@hidden.invalid`, or `contributor-N[bot]@hidden.invalid` for an automated
   account, numbered in table order, never derived from the address), for a report that is shared.
   It covers authors, co-authors, people below `--min-commits`, area authors, chart data, an
-  address written as a name and an SSH remote's login; every figure is unchanged, and
-  `provenance.emails_hidden` records it. `[report] hide_emails` in `reveille.toml`. Additive to
+  address written as a name, an SSH remote's login, and an address in the branch, the directory
+  name or the remote's path (shown as `(address hidden)`). File paths are not changed, since
+  figures are read from them. Every figure is unchanged, and `provenance.emails_hidden` records
+  it. `[report] hide_emails` in `reveille.toml`. Additive to
   schema 1.2.
 
 - **The report says how its figures can mislead**, in a "Read Before Using These Figures" panel

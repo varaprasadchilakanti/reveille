@@ -182,3 +182,57 @@ def test_the_config_file_refuses_a_quoted_boolean(repo: Path, tmp_path: Path) ->
 
     assert result.exit_code == ExitCode.CANNOT_RUN
     assert "hide_emails" in result.stderr
+
+
+@pytest.fixture(scope="module")
+def named_after(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A repository whose directory, branch and remote path carry an address, and a file
+    named after one."""
+    path = tmp_path_factory.mktemp("named") / "fay@corp.test"
+    (path / "src").mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", "-b", "user/fay@corp.test"], cwd=path, check=True)
+    subprocess.run(
+        ["git", "remote", "add", "origin", "https://git.corp.test/fay@corp.test/r.git"],
+        cwd=path,
+        check=True,
+    )
+    (path / "src" / "gus@corp.test.txt").write_text("x\n", encoding="utf-8")
+    _commit(path, "Fay", "fay@corp.test", "work", 1)
+    return path
+
+
+@pytest.mark.parametrize("fmt", ["html", "json", "csv"])
+def test_a_branch_directory_or_remote_named_after_an_address_is_hidden(
+    named_after: Path, fmt: str
+) -> None:
+    text = _run(
+        named_after, "--format", fmt, "-o", "-", "--hide-emails", "--branch", "user/fay@corp.test"
+    )
+
+    assert "fay@corp.test" not in text.replace(plotly.offline.get_plotlyjs(), "")
+
+
+def test_the_hidden_branch_keeps_its_shape(named_after: Path) -> None:
+    hidden = json.loads(
+        _run(
+            named_after,
+            "--format",
+            "json",
+            "-o",
+            "-",
+            "--hide-emails",
+            "--branch",
+            "user/fay@corp.test",
+        )
+    )
+
+    assert hidden["metadata"]["analysed_branch"] == "user/(address hidden)"
+    assert hidden["provenance"]["filters"]["requested_branch"] == "user/(address hidden)"
+
+
+def test_a_file_path_is_left_as_it_is(named_after: Path) -> None:
+    """The extension and generated-file figures are read from paths, so paths are not
+    changed; the guide says to check them before sharing."""
+    html = _run(named_after, "-o", "-", "--hide-emails")
+
+    assert "gus@corp.test.txt" in html

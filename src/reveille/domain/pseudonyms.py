@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti
 # SPDX-License-Identifier: Apache-2.0
 
-"""Replace every email address in a report with a token that means nothing outside it.
+"""Replace people's email addresses in a report with tokens that mean nothing outside it.
 
 For a report that is shared: an address is the likeliest thing in it to be
 misused, and names alone still let a reader tell people apart. A token is
@@ -35,12 +35,15 @@ HIDDEN_DOMAIN = "hidden.invalid"
 # Square brackets end it, so a `[bot]` suffix after an address survives.
 _ADDRESS_IN_TEXT = re.compile(r"[^\s<>@\[\]]+@[^\s<>@\[\]]+")
 
+# An address in a branch, a directory or a URL path: it ends at a separator too.
+_ADDRESS_IN_PATH = re.compile(r"[^\s<>@\[\]/:]+@[^\s<>@\[\]/:]+")
+
 # The user part of a remote, scp-like (`user@host:path`) or a URL (`ssh://user@host/path`).
 _USER_IN_REMOTE = re.compile(r"^((?:[a-z][a-z0-9+.-]*://)?)[^@/:]+@")
 
 
 def hide_emails(data: ReportData) -> ReportData:
-    """Return the report with every address replaced by a per-report token.
+    """Return the report with people's addresses replaced by per-report tokens.
 
     Args:
         data: The report as computed.
@@ -62,19 +65,44 @@ def hide_emails(data: ReportData) -> ReportData:
             tokens.of(email, name)
 
     remote = data.metadata.remote_url
+    if remote:
+        # An SSH remote can carry a person's login: `jane@host:group/repo`.
+        remote = _hidden_in_path(_USER_IN_REMOTE.sub(r"\1", remote))
+    requested = data.provenance.requested_branch
     return replace(
         data,
-        # An SSH remote can carry a person's login: `jane@host:group/repo`.
+        # A branch, a directory or a remote's path can be named after a person's
+        # address (`user/jane@example.com`). File paths are left as they are: the
+        # extension and generated-file figures are read from them.
         metadata=replace(
-            data.metadata, remote_url=_USER_IN_REMOTE.sub(r"\1", remote) if remote else remote
+            data.metadata,
+            name=_hidden_in_path(data.metadata.name),
+            remote_url=remote,
+            analysed_branch=_hidden_in_path(data.metadata.analysed_branch),
         ),
         ranked_contributors=[_ranked(r, tokens) for r in data.ranked_contributors],
         suppressed_contributors=[_stats(s, tokens) for s in data.suppressed_contributors],
         commits=[_commit(c, tokens) for c in data.commits],
         areas=[_area(a, tokens) for a in data.areas],
         co_authors_only=[_co_author(c, tokens) for c in data.co_authors_only],
-        provenance=replace(data.provenance, emails_hidden=True),
+        provenance=replace(
+            data.provenance,
+            emails_hidden=True,
+            requested_branch=_hidden_in_path(requested) if requested else requested,
+        ),
     )
+
+
+def _hidden_in_path(text: str) -> str:
+    """Return a branch, directory or URL with each address in it replaced.
+
+    Args:
+        text: The text.
+
+    Returns:
+        The text, each address in it replaced by "(address hidden)".
+    """
+    return _ADDRESS_IN_PATH.sub("(address hidden)", text)
 
 
 class _Tokens:
