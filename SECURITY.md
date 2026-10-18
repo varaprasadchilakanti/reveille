@@ -137,7 +137,7 @@ The case that matters is a user running Reveille against a repository somebody
 else controls: a clone, a fork, a pull-request branch. Everything in git
 history is then attacker-supplied text: author names, email addresses,
 `.mailmap` contents, and ref names. So is any `reveille.toml` at the repository
-root, because the CLI discovers that file automatically from the working
+root, because `generate` discovers that file automatically from the working
 directory, and its values reach the same places the flags do.
 
 v0.8.0 closed five issues under that model, each reproduced against a real
@@ -218,10 +218,33 @@ Fixed since 0.9.0, not yet released, each with a test that fails without the fix
   `.mailmap` name on stdout. Their text output is now escaped.
 - A token in a remote URL with a transport prefix was printed in the report. The
   scheme after the prefix now decides what is removed.
+- A password holding `#` or `?` was partly printed in the remote URL. The credential is
+  now removed before the query and fragment.
+- An author address could make the HTML report request a URL as soon as it was opened,
+  which tells a third party when and from where it was read. Chart labels now lose any
+  stray `<` or `>`, and the report's policy allows no network source.
+- `core.worktree` in a repository's own config could point Reveille at another
+  repository, which it then read and wrote its report into. Such a repository is refused.
+- A named pipe at a `.gitattributes`, `info/attributes` or `core.attributesFile` hung
+  `generate`; every command that counts lines refuses it. One at a `.gitignore` or `info/exclude` makes `state` wait;
+  `state` stops `git status` after 120 seconds and says why.
+- `i18n.logOutputEncoding` in a repository's config could garble names, so
+  `--exclude-author` missed a person, or stop every read. It is pinned to UTF-8.
+- `state` ran a content filter whose name is empty (`filter=`). It is switched off like
+  the others.
+- The `reveille brief --from <tag>` command `state` suggests did not quote the tag for
+  the shell, and a tag name may hold `;` or `$(...)`. It is quoted.
+- A newline in a path or name could add a line to text output that Reveille did not
+  write. CR and LF inside a value are shown as `\r` and `\n`.
+- The dependency floors allowed GitPython, Jinja2 and Pydantic releases with published
+  advisories. The floors are raised, and a test fails if one is lowered.
 
-Tests found no script execution from repository text, no loading of remote resources by
-the report, and no problem in the CI workflows. The offline property was affected by the
-partial-clone fetch listed under 0.9.0 above.
+The full entries are in [CHANGELOG.md](CHANGELOG.md) under Unreleased, Security.
+
+Before these fixes, the HTML report could request a URL when opened (the author-address
+entry above), and Git could fetch from the network during a read (the partial-clone entry
+under 0.9.0 above); both broke the offline property. A review on 2026-10-13 found no
+problem in the CI workflows; the later passes did not test them.
 
 Limit: Git honours the configuration in a repository's
 own `.git/config`, and some settings name a program for Git to run. Reveille
@@ -237,9 +260,13 @@ untrusted code.
 
 ## Scope
 
-Reveille is a local analysis tool. It reads only the Git repository
-it is explicitly pointed at, writes one output file (HTML, JSON or
-CSV), and does not transmit data over a network. It does not accept inbound
+Reveille is a local analysis tool. A command reads the Git repository it
+is pointed at; `repos` reads every repository it finds below the directory given
+(`--depth` levels, at most three), each with that repository's own `.git/config`. Git also
+reads your global and system Git configuration. `generate` writes one report
+file (HTML, JSON or CSV), `init` writes a configuration file and optionally a
+`.mailmap`, and the other commands write to standard output. Reveille does not
+transmit data over a network. It does not accept inbound
 connections and does not execute content from commit messages or file
 contents. Git, which Reveille runs, obeys the repository's own `.git/config`
 (see Threat Model above). The primary attack surface is maliciously crafted Git

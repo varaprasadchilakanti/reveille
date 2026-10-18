@@ -302,7 +302,8 @@ stale, and runs the programs a repository's own config names as `core.fsmonitor`
 filter; Reveille switches all three off, and tests check each. A filter from your own global config
 runs as you set it; one the repository defines does not, so files it covers may show as modified,
 and the answer says so. It names no author. It lists local paths (changed files and worktree
-directories, which can contain your login name), the current branch, its upstream and the branches checked out in worktrees; no other branch is named.
+directories, which can contain your login name), the current branch, its upstream, the branches checked out in worktrees and the latest tag; no
+other branch is named. Branch, directory and tag names are printed as they are.
 
 ### `reveille brief`
 
@@ -761,7 +762,8 @@ For each listed contributor, the HTML, JSON and CSV carry:
 - commits, lines added, lines deleted, net lines and active days;
 - the date of the last commit (and, in JSON, of the first);
 - how many commits credit the identity as a co-author;
-- with `--ranking`, a rank, a tier and a score.
+- in JSON and CSV, a `rank` in table order (by commits); with `--ranking`, the rank follows the
+  score, and the report adds a tier, a designation, a score and (in JSON) a percentile.
 
 The HTML also carries, for each listed contributor, commits per day (the heatmap selector) and up
 to four contributors' commits per week, and file paths with their line counts (Where Change
@@ -769,12 +771,16 @@ Concentrates). With `--area-authors`, the HTML names the authors of each of the 
 most-changed directories, and the JSON lists those directories with their authors' names and
 addresses and the date each was last changed.
 
-The HTML and JSON carry the repository's name, the analysed branch and its remote URL (any
-credential removed), and name the identities credited only by a `Co-authored-by` trailer; the JSON
+The HTML and JSON carry the repository's name, the analysed branch and its remote URL, and name the identities credited only by a `Co-authored-by` trailer; the JSON
 gives their addresses and the hash of the analysed commit. The CSV is the contributor table
 alone, with no file paths. The JSON carries directory paths only with `--area-authors`.
 
-`--exclude-author` values are recorded only as a count. `reveille summary` names nobody (with one or two people, its counts can identify someone).
+The remote URL loses any password, query string and fragment. An SSH login name and the path stay
+unless you pass `--hide-emails`, and a token written into the path is not recognised as one.
+
+`--exclude-author` values are recorded only as a count. `--exclude-path` values are recorded as
+written, in the report header and in `provenance.filters.exclude_paths`, so a path that names a
+client or a person names them in the report, with or without `--hide-emails`. `reveille summary` names nobody (with one or two people, its counts can identify someone).
 `reveille who-changed` names the authors of one path; its JSON adds their addresses.
 
 Reveille sends none of this anywhere. The file goes where you write it, and anyone who receives it
@@ -790,7 +796,8 @@ provider.
    privacy control: it hides rows, while their commits stay in every figure and can be worked out
    from them.
 3. **Leave the addresses out** with `--hide-emails` when the recipient does not need them. Names
-   stay, so it reduces what the report gives away; it does not make anyone anonymous.
+   stay, so it reduces what the report gives away; it does not make anyone anonymous. With or without
+   it, the report is personal data about the people it names.
 4. **Leave `--ranking` and `--area-authors` off** unless the question needs them.
 5. **For an assistant or a script, prefer `reveille summary`**, which names no contributor, or
    bound the JSON with `--limit`.

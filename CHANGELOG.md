@@ -295,6 +295,12 @@ before 0.8.0 predate the convention and are left as they were released.
 - **`schema_version` is 1.2.** The brief is a new JSON document; every 1.1 field is unchanged.
 - **SECURITY.md no longer promises a response time.** Reveille has one maintainer; reports are
   normally acknowledged within a few days.
+- **The security, privacy and regulatory documents match this release.** SECURITY.md lists every
+  security fix since 0.9.0 and says what `repos` and `init` read and write; COMPLIANCE.md lists
+  what each command reads, what would make the Cyber Resilience Act and Product Liability
+  Directive apply, the DPDP Rules' commencement, why `--hide-emails` output is still personal data,
+  and the workplace rules an employer deploying Reveille should check; the User Guide says what the
+  remote URL and `--exclude-path` values give away.
 
 - **Progress off a terminal is one plain line per stage.** The animation redraws its line with
   carriage returns, which only a terminal interprets; a CI log, a pipe or an assistant received

@@ -61,8 +61,8 @@ limit liability as far as applicable law allows.
 - Not a ranking unless you ask: ranking people needs `--ranking`, and the report then states what the
   score measures and what it does not. JSON and CSV still carry a `rank` column, in table order
   (by commits; by score with `--ranking`).
-- Not anonymised. Every report names the people in the history and carries their email addresses and
-  activity. [What the report contains about people](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md#what-the-report-contains-about-people)
+- Not anonymised. A report names the people in the history and carries their activity, and their
+  email addresses unless you pass `--hide-emails`, which replaces the addresses and leaves the names. [What the report contains about people](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md#what-the-report-contains-about-people)
   lists it field by field, and [Before you share a report](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md#before-you-share-a-report)
   says what to check.
 - Not a bus factor. Commit concentration says who committed, not who understands the code.
