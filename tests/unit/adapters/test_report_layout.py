@@ -256,6 +256,26 @@ def test_the_report_carries_no_template_indentation(rendered: str) -> None:
 
 
 @pytest.mark.unit
+def test_the_template_holds_nothing_indentation_means_something_in() -> None:
+    """The loader strips leading whitespace from every template line (`_DedentingLoader`)."""
+    from pathlib import Path
+
+    from reveille.adapters import renderer
+
+    template = (Path(renderer.__file__).parents[1] / "templates" / "report.html.j2").read_text(
+        encoding="utf-8"
+    )
+    scripts = re.findall(r"<script[^>]*>(.*?)</script>", template, re.S)
+
+    assert scripts, "positive control: the template has scripts"
+    assert "<textarea" not in template
+    assert not any("`" in script for script in scripts), "a template literal can span lines"
+    # Text rendered into a <pre> keeps its indentation; template text in one would not.
+    for body in re.findall(r"<pre[^>]*>(.*?)</pre>", template, re.S):
+        assert re.fullmatch(r"\{\{[^{}]*\}\}", body), f"template text in a <pre>: {body!r}"
+
+
+@pytest.mark.unit
 def test_the_theme_is_set_before_the_first_paint(rendered: str) -> None:
     """Set only after the chart library was parsed, a dark-mode reader saw the light page first."""
     head = rendered[: rendered.index("</head>")]

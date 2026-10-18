@@ -347,8 +347,8 @@ def _repository_workers() -> int:
     """Return how many repositories `repos` reads at once.
 
     Returns:
-        One per CPU, at most 4. Beyond 4 the Python side of each read is the
-        limit, and each read in flight holds its own history in memory.
+        One per CPU, at most 4: each read in flight holds its own history in
+        memory, and 8 or 16 were measured slower than 4 (commit a9ead3b).
     """
     return max(1, min(4, _usable_cpus() or 1))
 

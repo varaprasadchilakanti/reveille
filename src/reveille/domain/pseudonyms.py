@@ -3,8 +3,8 @@
 
 """Replace people's email addresses in a report with tokens that mean nothing outside it.
 
-For a report that is shared: an address is the likeliest thing in it to be
-misused, and names alone still let a reader tell people apart. A token is
+For a report that is shared: names alone still let a reader tell people
+apart; an address also lets them be contacted. A token is
 numbered in the order people are listed, not derived from the address, so it
 cannot be reversed by hashing a guessed address. The `.invalid` top-level
 domain (RFC 2606) can never receive mail.
@@ -28,7 +28,7 @@ from reveille.domain.models import (
     ReportData,
 )
 
-#: The domain every token carries; a reader of the code can tell a token from an address.
+#: The domain of every token; the renderer recognises a token by it.
 HIDDEN_DOMAIN = "hidden.invalid"
 
 # An address written into a display name, as some Git configurations produce.

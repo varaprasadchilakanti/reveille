@@ -11,7 +11,7 @@ import pytest
 
 from reveille.adapters.git_reader import (
     _co_author_value,
-    _expand_exclusions,
+    _exclusion_requests,
     _Mailmap,
     _match_key,
     _normalise_github_noreply,
@@ -19,6 +19,11 @@ from reveille.adapters.git_reader import (
     _resolve_identity,
     _sum_numstat,
 )
+
+
+def _expanded(values: list[str], mailmap: _Mailmap) -> set[str]:
+    """Every form the exclusion values reach, together."""
+    return set().union(*_exclusion_requests(values, mailmap).values())
 
 
 @pytest.mark.unit
@@ -296,7 +301,7 @@ def test_a_four_field_entry_naming_someone_else_adds_nothing() -> None:
         by_name_and_email={("daniel brown", "daniel@old.test"): ("Dan Brown", "dan@new.test")}
     )
 
-    assert _expand_exclusions(["Erica Stone"], mailmap) == {"erica stone"}
+    assert _expanded(["Erica Stone"], mailmap) == {"erica stone"}
 
 
 @pytest.mark.unit
@@ -320,7 +325,7 @@ def test_a_mailmap_entry_without_a_name_adds_only_its_address() -> None:
         by_name_and_email={("ana", "ana@old.test"): (None, "ana@new.test")},
     )
 
-    assert _expand_exclusions(["OLD@e.test", "Ana"], mailmap) == {
+    assert _expanded(["OLD@e.test", "Ana"], mailmap) == {
         "old@e.test",
         "new@e.test",
         "ana",

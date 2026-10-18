@@ -176,11 +176,11 @@ def _script_sources(*scripts: str) -> Markup:
 class _DedentingLoader(PackageLoader):
     """Load templates without their leading indentation.
 
-    Indentation is a quarter of the markup, styles and scripts the report
+    Indentation is about a quarter of the markup, styles and scripts the report
     carries, and the template has nothing it changes the meaning of: no `<pre>`
-    or `<textarea>` holding template text, no multi-line JavaScript string.
-    Stripped from the template source, so the Plotly bundle, the licence texts
-    and the chart data rendered into it are untouched.
+    or `<textarea>` holding template text, no multi-line JavaScript string (a
+    test checks each). Stripped from the template source, so the Plotly bundle,
+    the licence texts and the chart data rendered into it are untouched.
     """
 
     def get_source(
@@ -1336,7 +1336,7 @@ def _contributor_labels(ranked: list[RankedContributor]) -> dict[str, str]:
     Names are not unique (ADR 0002), and Plotly merges repeated category labels.
     A repeated name carries its address in parentheses, not angle brackets: Plotly
     renders `<a>`, `<b>` and `<span style>` in labels, and a Git address cannot hold
-    `>`, so `<span style='...' x>` built from one was a tag the browser obeyed.
+    `>`, so a label built from one cannot form a tag such as `<span style='...' x>`.
 
     Args:
         ranked: Every contributor in the report.
@@ -1692,8 +1692,8 @@ def _build_heatmap_data(
 
     payload: dict[str, object] = {
         "years": years,
-        # The year shown first: the latest with a commit. The window runs to today,
-        # so a history that stopped earlier opened on an empty grid.
+        # The year shown first: the latest with a commit, since the window can end
+        # in a year with none.
         "default_year": max((int(day[:4]) for day in agg_counts), default=years[-1]),
         # The grid draws these bounds, so days outside the window are not zeros.
         "since": analysis_since.isoformat(),

@@ -687,8 +687,8 @@ class GitReader:
             GIT_NO_REPLACE_OBJECTS="1",
             GIT_GRAFT_FILE=os.devnull,
             GIT_OPTIONAL_LOCKS="0",
-            # To a pipe, Git flushes after every commit: 100,000 writes, and as many
-            # wake-ups of the reader, for a 100,000-commit log. Unset, it writes in blocks.
+            # To a pipe, Git flushes after every record unless GIT_FLUSH=0: a write, and a
+            # wake-up of the reader, per commit. At 0 it writes in blocks.
             GIT_FLUSH="0",
         )
         version = self._git_version()
@@ -909,8 +909,8 @@ class GitReader:
             stream.close()
             if trailers is not None:
                 trailers.close()
-        # One string per hash, shared by every structure that names it: four
-        # copies of 100,000 hashes were 30 MB.
+        # One string per hash, shared by every structure that names it, so each hash
+        # is held once.
         canonical = {sha: sha for sha in authentic_order}
         authentic_shas = canonical.keys()
         co_author_records = _shared_trailer_records(co_author_records, canonical)
@@ -932,8 +932,8 @@ class GitReader:
         area_totals: dict[str, _AreaTotal] = {}
         added_paths: set[str] = set()
         dated_after = 0
-        # Not freed one by one: on 100,000 commits that saved 8 MB for JSON but
-        # left the heap 3.5 MB higher once the HTML report was rendered.
+        # Not freed one by one: at 100,000 commits that lowers the JSON peak but
+        # raises the heap left once the HTML report is rendered.
         for raw in records:
             # Decoded one at a time: the read holds Git's bytes, not a copy as text.
             record = safe_decode(raw)
@@ -1312,7 +1312,7 @@ class GitReader:
                 "mailmap.file=",
                 "mailmap.blob=",
                 # Read by every diff Git prints, numstat included: a FIFO named here
-                # blocked the read for ever. An empty value is refused, so the null file.
+                # blocks the read for ever. An empty value is refused, so the null file.
                 f"diff.orderFile={os.devnull}",
                 *extra,
             ]
@@ -1755,9 +1755,8 @@ class GitReader:
         """Return when each directory last changed before a point, in one pass.
 
         Exclusions do not apply: this is about the directories, not a person. One
-        `git log`, newest first, read until every directory has its answer; a
-        lookup per directory walked the same history once each, 50 times on a
-        large repository. Renames count on both sides, as a path lookup does.
+        `git log`, newest first, read until every directory has its answer.
+        Renames count on both sides, as a path lookup does.
 
         Args:
             areas: Directory paths; the root area is never looked up.
@@ -1813,8 +1812,7 @@ class GitReader:
 
         Only the commit dates are read: what `read_commits` with no window would
         give as its latest commit's date, without the names, the trust check or
-        the exclusions. Asked of a dormant repository, a whole history was read
-        for one date.
+        the exclusions.
 
         Args:
             until: The last day counted, in UTC.
@@ -2334,8 +2332,8 @@ def _shared_trailer_records(
 ) -> list[str] | GitCommandError:
     """Keep a co-author record that credits nobody as its hash alone, the shared string.
 
-    Almost every commit has no trailer; its record was a second copy of its hash
-    held through the whole read. The order, which `_credit_co_authors` checks
+    Almost every commit has no trailer; otherwise its record is a second copy of
+    its hash, held for the whole read. The order, which `_credit_co_authors` checks
     against `rev-list`, is kept, and a record whose hash Git did not list is kept
     whole, so it still fails that check.
 
@@ -2391,10 +2389,9 @@ _GIT_VERSION_LOCK = threading.Lock()
 def _installed_git_version() -> tuple[int, int] | None:
     """Return the installed Git's major and minor version, or None if unreadable.
 
-    Read once per process: it reads no repository, and every reader asked again,
-    once when opened and once per history read, for each repository under
-    `reveille repos`. Locked, because `repos` opens readers on several threads,
-    and each would otherwise ask before the first answer was kept.
+    Read once per process, since it depends on no repository. Locked, because
+    `repos` opens readers on several threads, and each would otherwise ask
+    before the first answer is cached.
     """
     with _GIT_VERSION_LOCK:
         return _read_git_version()
@@ -3018,7 +3015,7 @@ def _match_key(value: str) -> str:
     collapsed, lower case. A trailing or doubled space, a decomposed accent, or a
     word joiner a crafted name carries must not let an excluded person back in:
     for a privacy flag, matching too little is the wrong way round. Only the
-    comparison changes; names are shown and counted as before.
+    comparison changes; names are shown and counted unchanged.
     """
     visible = "".join(
         c
@@ -3026,19 +3023,6 @@ def _match_key(value: str) -> str:
         if unicodedata.category(c) != "Cf"
     )
     return " ".join(visible.split()).lower()
-
-
-def _expand_exclusions(exclude_authors: list[str], mailmap: _Mailmap) -> set[str]:
-    """Expand each exclusion to every identity the `.mailmap` ties it to.
-
-    Args:
-        exclude_authors: Raw values as supplied, by name or by address.
-        mailmap: The parsed `.mailmap` for this repository.
-
-    Returns:
-        The match keys of the values plus any canonical names and addresses.
-    """
-    return set().union(*_exclusion_requests(exclude_authors, mailmap).values())
 
 
 def _exclusion_requests(exclude_authors: list[str], mailmap: _Mailmap) -> dict[str, set[str]]:

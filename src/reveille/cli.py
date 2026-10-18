@@ -819,7 +819,7 @@ def generate(
         bool,
         typer.Option(
             "--no-ranking",
-            help="Explicitly omit the ranking table. Ranking is already off by default.",
+            help="Omit the ranking even if the configuration file enables it.",
         ),
     ] = False,
     output_format: Annotated[
@@ -874,7 +874,7 @@ def generate(
             "--limit",
             help=(
                 "Bound every list of people in JSON and CSV to this many, with "
-                "the full total beside it. Default: every one."
+                "the full total beside it; the HTML report is not bounded. Default: every one."
             ),
         ),
     ] = None,
@@ -1456,7 +1456,7 @@ def skill(
 ) -> None:
     """Print what to tell a coding agent about Reveille, for its instructions file.
 
-    Reads no repository. Every command the text names is run by a test before it ships.
+    Reads no repository.
     """
     from reveille.agent_guide import guide
 
