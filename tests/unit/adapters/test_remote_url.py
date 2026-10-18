@@ -34,6 +34,12 @@ class TestWithoutCredentials:
             ("https://SE?CRET@example.test", "https://example.test"),
             ("ssh://git:SE#CRET@example.test/r.git", "ssh://git@example.test/r.git"),
             ("https://example.test?private_token=SECRET", "https://example.test"),
+            # scp-like, with a secret written into the user part.
+            ("git:SECRET@example.test:team/r.git", "git@example.test:team/r.git"),
+            ("git:SE@CRET@example.test:r.git", "git@example.test:r.git"),
+            # Local paths are not addresses, whatever they contain.
+            ("/srv/a:b@c/r.git", "/srv/a:b@c/r.git"),
+            ("C:\\work\\a:b@c", "C:\\work\\a:b@c"),
         ],
     )
     def test_the_secret_goes_and_the_address_stays(self, raw: str, expected: str) -> None:
