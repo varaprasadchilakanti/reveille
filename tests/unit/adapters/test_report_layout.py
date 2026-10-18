@@ -249,3 +249,15 @@ def test_the_report_carries_no_template_indentation(rendered: str) -> None:
     indented = [line for line in authored.splitlines() if line[:1] in (" ", "\t")]
 
     assert indented == [], f"{len(indented)} indented lines, first {indented[0]!r}"
+
+
+@pytest.mark.unit
+def test_the_theme_is_set_before_the_first_paint(rendered: str) -> None:
+    """Set only after the chart library was parsed, a dark-mode reader saw the light page first."""
+    head = rendered[: rendered.index("</head>")]
+    first_style = head.index("<style>")
+    setter = head.find("document.documentElement.setAttribute('data-theme'")
+
+    assert 0 <= setter < first_style, "no theme is set in <head> before the styles"
+    assert "prefers-color-scheme: dark" in head[:first_style]
+    assert "localStorage.getItem('reveille-theme')" in head[:first_style]

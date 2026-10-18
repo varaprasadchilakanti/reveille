@@ -37,6 +37,21 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ data.metadata.name }} — Reveille Report</title>
+    {#- The theme before the first paint. Applied only by the script at the end of
+        the page, after the chart library is parsed, it let a dark-mode reader see
+        the light page first and watch it fade. The same rule as readTheme(). #}
+    <script>
+    (function () {
+        var theme = null;
+        try { theme = localStorage.getItem('reveille-theme'); } catch (e) { theme = null; }
+        if (theme !== 'light' && theme !== 'dark') {
+            try {
+                theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+            } catch (e) { theme = 'light'; }
+        }
+        document.documentElement.setAttribute('data-theme', theme);
+    })();
+    </script>
     <style>
         /* ============================================================
            Custom Properties — Light Theme (default)

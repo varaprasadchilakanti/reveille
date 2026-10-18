@@ -245,6 +245,9 @@ before 0.8.0 predate the convention and are left as they were released.
   compared before the display cut (up to 4,096 characters), noreply addresses fold onto their
   account (ADR 0023), and format characters are ignored in the comparison. Names are shown as
   before.
+- **A dark-mode reader saw the HTML report light first, then watched it fade to dark.** The theme
+  was applied by the script at the end of the page, after the 4.8 MB chart library was parsed. It
+  is now set in the page's head, before the first paint.
 - **`reveille init --force` wrote into the existing file**, so a `reveille.toml` or `.mailmap`
   hard-linked to another file overwrote that file too. It now replaces the name, as reports
   already did, and a new scaffold keeps the usual mode (`0o644` under umask `022`).

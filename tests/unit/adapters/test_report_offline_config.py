@@ -63,4 +63,4 @@ def test_the_report_refuses_every_network_fetch() -> None:
     assert directives["connect-src"] == "'none'"
     for name, value in directives.items():
         assert "http" not in value and "*" not in value, f"{name} allows a remote source"
-    assert match.start() < text.index("<style>") < text.index("<script>")
+    assert match.start() < min(text.index("<style>"), text.index("<script>"))
