@@ -229,3 +229,46 @@ def test_a_repository_name_cannot_break_the_markdown_table(tmp_path: Path) -> No
     row = next(line for line in out.splitlines() if line.startswith("| `a"))
     # Seven cells take eight separators; a `|` from the name must be escaped.
     assert len(re.findall(r"(?<!\\)\|", row)) == 8
+
+
+def test_repositories_are_read_side_by_side_and_listed_in_order(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The first repository found takes longest, so a pool that listed rows as
+    they finished would put it last."""
+    import threading
+    import time
+
+    from reveille.domain.repositories import RepositoryActivity
+    from reveille.services import report
+
+    in_flight, most = 0, 0
+    lock = threading.Lock()
+    found = sorted(report.find_repositories(workspace, 1)[0])
+
+    def slow_row(path: Path, relative: str, *_: object) -> tuple[RepositoryActivity, set[str]]:
+        nonlocal in_flight, most
+        with lock:
+            in_flight += 1
+            most = max(most, in_flight)
+        time.sleep(0.05 * (len(found) - found.index(path)))
+        with lock:
+            in_flight -= 1
+        return RepositoryActivity(relative, "not read", reason="slow"), set()
+
+    monkeypatch.setattr(report, "_repository_row", slow_row)
+    monkeypatch.setattr(report, "_repository_workers", lambda: 4)
+    _, out, _ = _repos(workspace, "--format", "json")
+
+    listed = [row["path"] for row in json.loads(out)["repositories"]]
+    assert listed == [p.relative_to(workspace).as_posix() for p in found]
+    assert 1 < most <= 4, most
+
+
+def test_at_most_four_repositories_are_read_at_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    from reveille.services import report
+
+    monkeypatch.setattr(os, "cpu_count", lambda: 64)
+    assert report._repository_workers() == 4
+    monkeypatch.setattr(os, "cpu_count", lambda: None)
+    assert report._repository_workers() == 1

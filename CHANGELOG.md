@@ -214,6 +214,9 @@ before 0.8.0 predate the convention and are left as they were released.
   size). On the same 100,000-commit history, `generate` went from 6.8 s to 5.3 s and 221 to
   205 MB, `summary` from 3.1 s to 2.4 s and 196 to 146 MB, and `who-changed` from 6.9 s to
   4.1 s. Every report, in every format, is byte-identical to before.
+- **`repos` reads up to four repositories at once**, one per CPU: a row's time is mostly spent
+  waiting for Git. Over 201 small repositories it went from 20.6 s to 8.3 s with the same peak
+  memory (52 MB), and the rows, in every format, are as before and in the same order.
 - **Git's version is asked once per run**, not again by every repository read: `repos` over 200
   small repositories went from 18.7 s to 16.7 s.
 - **The part of the HTML report Reveille writes is a quarter smaller**: the template's indentation

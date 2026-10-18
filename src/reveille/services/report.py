@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import datetime
 import logging
+import os
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
 
@@ -240,12 +242,18 @@ def repositories_text(
         )
     rows: list[RepositoryActivity] = []
     matched: set[str] = set()
-    for path in found:
-        row, matched_here = _repository_row(
-            path, path.relative_to(directory).as_posix(), start, end, days, exclude_authors
-        )
-        rows.append(row)
-        matched |= matched_here
+    # Most of a row's time is spent waiting for Git, so rows are read side by
+    # side. Each has its own reader, and so its own Git runner; rows keep the
+    # order they were found in.
+    with ThreadPoolExecutor(max_workers=_repository_workers()) as pool:
+        for row, matched_here in pool.map(
+            lambda path: _repository_row(
+                path, path.relative_to(directory).as_posix(), start, end, days, exclude_authors
+            ),
+            found,
+        ):
+            rows.append(row)
+            matched |= matched_here
     unmatched = [value for value in exclude_authors if value not in matched]
     if unmatched:
         _notify(
@@ -255,6 +263,16 @@ def repositories_text(
     return Renderer.repositories_text(
         rows, directory.name, (start, end), days, depth, output_format
     )
+
+
+def _repository_workers() -> int:
+    """Return how many repositories `repos` reads at once.
+
+    Returns:
+        One per CPU, at most 4. Beyond 4 the Python side of each read is the
+        limit, and each read in flight holds its own history in memory.
+    """
+    return max(1, min(4, os.cpu_count() or 1))
 
 
 def _repository_row(
