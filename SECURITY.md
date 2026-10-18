@@ -182,69 +182,29 @@ v0.9.0 closed eleven more, each with a test that fails without the fix:
   another name. Every commit under an address the value reached, anywhere in
   the branch's history, is now removed.
 
-Fixed since 0.9.0, not yet released, each with a test that fails without the fix:
+Fixed since 0.9.0, not yet released, each with a test that fails without the fix. The
+entries are in [CHANGELOG.md](CHANGELOG.md) under Unreleased, Security; by class:
 
-- An author name holding the separators the history is read with could add commits and
-  people to every figure. Records are now framed by the commit hash at both ends, and a
-  hash with more than one record is counted as unreadable.
-- One `Co-authored-by` line could stall a run for minutes. It is read in one pass, bounded.
-- The HTML report's charts offered Plotly's "Share chart..." upload. It is switched off.
-- On Git older than 2.44, a promisor remote in worktree config was not refused, and a read
-  could fetch. Git is now asked whether any config it reads makes a partial clone.
-- A FIFO as `.mailmap`, or named by `mailmap.file`, hung every command. Git's own mailmap
-  is switched off.
-- A named pipe at a file Git reads first (`.git/config`, `packed-refs`, `shallow` and
-  others), or one an `include.path` names, `/dev/stdin` included, hung every command, and
-  `include.path = /dev/zero` grew GitPython's memory without end. They are refused before
-  Git runs.
-- A named pipe named by `diff.orderFile` hung `generate`, `brief` and `validate`. The
-  setting is pinned to the null device.
-- The report's Content-Security-Policy allowed any inline script. It now allows the
-  report's own three scripts by hash, and nothing else.
-- A secret written into an scp-like remote (`user:secret@host:path`) was printed in the
-  report. It is removed, as it was from `ssh://` and `https://` remotes.
-- `validate` and `generate` printed terminal control sequences from the repository path.
-- A `.mailmap` could stall a run for minutes, because its line patterns backtracked
-  quadratically and the working-tree file had no size bound. Lines are now parsed in
-  one pass and the file is bounded at 1 MiB.
-- A report path that was a hard link to a Git file was written through, and `--output`
-  could name a file in the Git directory of the repository a linked worktree belongs
-  to. Reports are now written to a new file and moved into place, and that Git
-  directory is refused.
-- A file extension could put a clickable link into a chart, and certain markup in a
-  path, extension or name blanked every chart. Labels are now sanitised and the
-  embedded chart data escapes every `<`. In tests, no script ran in either case.
-- `summary` and `who-changed` printed control characters from a directory name or a
-  `.mailmap` name on stdout. Their text output is now escaped.
-- A token in a remote URL with a transport prefix was printed in the report. The
-  scheme after the prefix now decides what is removed.
-- A password holding `#` or `?` was partly printed in the remote URL. The credential is
-  now removed before the query and fragment.
-- An author address could make the HTML report request a URL as soon as it was opened,
-  which tells a third party when and from where it was read. Chart labels now lose any
-  stray `<` or `>`, and the report's policy allows no network source.
-- `core.worktree` in a repository's own config could point Reveille at another
-  repository, which it then read and wrote its report into. Such a repository is refused.
-- A named pipe at a `.gitattributes`, `info/attributes` or `core.attributesFile` hung
-  `generate`; every command that counts lines refuses it. One at a `.gitignore` or `info/exclude` makes `state` wait;
-  `state` stops `git status` after 120 seconds and says why.
-- `i18n.logOutputEncoding` in a repository's config could garble names, so
-  `--exclude-author` missed a person, or stop every read. It is pinned to UTF-8.
-- `state` ran a content filter whose name is empty (`filter=`). It is switched off like
-  the others.
-- The `reveille brief --from <tag>` command `state` suggests did not quote the tag for
-  the shell, and a tag name may hold `;` or `$(...)`. It is quoted.
-- A newline in a path or name could add a line to text output that Reveille did not
-  write. CR and LF inside a value are shown as `\r` and `\n`.
-- The dependency floors allowed GitPython, Jinja2 and Pydantic releases with published
-  advisories. The floors are raised, and a test fails if one is lowered.
+- **Programs and hangs a repository could cause:** named pipes or devices at files Git
+  reads (config, includes, attributes, ignore files, `.mailmap`, `diff.orderFile`), an
+  empty filter name in `state`, and `i18n.logOutputEncoding`.
+- **Stalls:** `.mailmap` and `Co-authored-by` patterns that backtracked.
+- **Reading the wrong data:** separators in author names, `core.worktree` pointing at
+  another repository, partial clones on Git older than 2.44.
+- **Text in output Reveille did not write:** control characters, newlines and markup
+  from paths, names and extensions; an unquoted tag in the command `state` suggests.
+- **Secrets in the remote URL:** tokens and passwords in scp-like, prefixed and
+  `#`/`?`-holding remotes.
+- **The offline property:** an author address could make the report request a URL when
+  opened, and the Content-Security-Policy allowed any inline script; Plotly's
+  "Share chart..." upload is switched off.
+- **Writing:** a report path hard-linked to a Git file, and a worktree's Git directory.
+- **Dependencies:** floors that allowed releases with published advisories.
 
-The full entries are in [CHANGELOG.md](CHANGELOG.md) under Unreleased, Security.
-
-Before these fixes, the HTML report could request a URL when opened (the author-address
-entry above), and Git could fetch from the network during a read (the partial-clone entry
-under 0.9.0 above); both broke the offline property. A review on 2026-10-13 found no
-problem in the CI workflows; the later passes did not test them.
+Before these fixes, the HTML report could request a URL when opened, and Git could fetch
+from the network during a read (the partial-clone entry under 0.9.0 above); both broke the
+offline property. A review on 2026-10-13 found no problem in the CI workflows; the later
+passes did not test them.
 
 Limit: Git honours the configuration in a repository's
 own `.git/config`, and some settings name a program for Git to run. Reveille

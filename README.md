@@ -24,8 +24,8 @@ history.
 and rendered with `reveille generate --deterministic`.*
 
 The report also shows where change concentrates and a per-contributor table. The same figures are
-available as JSON or CSV, and `state`, `brief`, `summary` and `who-changed` answer single questions
-as text, JSON, Markdown or (for `state` and `brief`) one line.
+available as JSON or CSV. `state`, `brief`, `summary` and `who-changed` answer single questions as
+text or JSON; the first three also give Markdown, and `state` and `brief` one line.
 
 ```bash
 pipx install reveille

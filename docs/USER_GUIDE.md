@@ -109,9 +109,9 @@ flag, not a command: `reveille version` exits 2.
 The parent directory must exist. A path inside the Git directory, a path containing `..`, and a
 directory are refused (exit 2). The default path is inside the working tree, untracked, so
 `git add -A` would commit it; add it to `.gitignore` or choose another path. On POSIX systems a new
-report is readable and writable by its owner only, because it names people; a report written over
-an existing file keeps that file's permissions. A path outside the repository given with `--output` is written,
-with a warning on stderr; the same path set in `reveille.toml` is refused, because a configuration
+report is readable and writable by its owner only (mode 600, tested on Linux), because it names
+people; a report written over an existing file keeps that file's permissions. A path outside the
+repository given with `--output` is written, with a warning on stderr; the same path set in `reveille.toml` is refused, because a configuration
 file is found automatically and may come from a repository you do not control. A bare repository
 needs an explicit path.
 
@@ -122,9 +122,7 @@ notes and errors are on stderr. CSV on stdout carries no byte-order mark.
 reveille generate --format json --output - | jq .derived
 ```
 
-JSON and CSV are written at the `--output` stem with a `.json` or `.csv` extension. A new report
-file is readable only by you (mode 600, on POSIX systems; tested on Linux); regenerating it keeps any
-permissions you set.
+JSON and CSV are written at the `--output` stem with a `.json` or `.csv` extension.
 
 ### The window
 
@@ -334,9 +332,10 @@ answer depends on nothing else, so it is reproducible without `--deterministic`.
 
 Area paths and tag names come from the repository and can name people (`users/jsmith/`). With one
 or two people, the counts can identify someone: "1 person" identifies them to a team that knows who
-it was. On llama.cpp, from
-its oldest tag (8,928 commits), it took about 2 seconds and printed 672 bytes (measured
-2026-10-12, Git 2.55, warm cache, one 20-core machine).
+it was.
+
+On llama.cpp, from its oldest tag (8,928 commits), it took about 2 seconds and printed 672 bytes
+(measured 2026-10-12, Git 2.55, warm cache, one 20-core machine).
 
 ### `reveille who-changed`
 
@@ -345,8 +344,8 @@ reveille who-changed src/parser/lexer.c --since 2026-01-01
 ```
 
 Takes a path (literal, inside the repository; relative to the current directory when you run it
-inside the repository, else to the repository's root) and the options of `summary`,
-plus `--limit` (default 20). The answer lists the path's authors alphabetically, the five who
+inside the repository, else to the repository's root) and the options of `summary` except
+`--exclude-path` and `--format markdown`, plus `--limit` (default 20). The answer lists the path's authors alphabetically, the five who
 changed it most recently (the people to ask first), automated accounts and co-authors apart, and
 when the path was last changed. It gives no count or date per person: who changed a file is a
 fact the history records, and "who did the most" is not what this is for. It says who changed the
@@ -438,7 +437,7 @@ format is known. `generate` keeps text on stderr, beside its progress lines.
 
 ### Diagnostics
 
-`--verbose` (on `generate`, `validate`, `summary` and `who-changed`) writes DEBUG diagnostics to
+`--verbose` (on every command except `init`, `capabilities` and `skill`) writes DEBUG diagnostics to
 stderr: the resolved configuration after flags and the TOML file are merged, the `git log`
 invocation, how many commits were read, and every file written. Normal output is unchanged.
 
@@ -997,8 +996,9 @@ to another directory. Reveille would then read and write there, so it refuses. R
 (`git config --unset core.worktree`) if it is not meant, or run Reveille in that other directory.
 
 **"is not a regular file (a named pipe or a device)", exit 2, or "`git status` did not finish".**
-A `.gitattributes`, `.gitignore` or `info/exclude` is a named pipe, which makes Git wait for ever.
-So is a file Git reads before anything else (`.git/config`, `config.worktree`, `commondir`,
-`packed-refs`, `shallow`, `objects/info/alternates`, `HEAD`), or one an `include.path` or
-`includeIf` names, every condition taken as true; a device there, such as `/dev/zero`, is refused
-too, and so is such a file over 8 MiB. Remove it. `reveille summary` reads no line counts and is not affected by a `.gitattributes` one.
+Git would wait for ever on a named pipe, or read a device without end, at one of these:
+`.gitattributes`, `.gitignore`, `info/exclude`, a file Git reads first (`.git/config`,
+`config.worktree`, `commondir`, `packed-refs`, `shallow`, `objects/info/alternates`, `HEAD`), or
+a file an `include.path` or `includeIf` names (every condition taken as true). Such a file over
+8 MiB is refused too. Remove it. `reveille summary` reads no line counts, so a `.gitattributes`
+pipe does not affect it.

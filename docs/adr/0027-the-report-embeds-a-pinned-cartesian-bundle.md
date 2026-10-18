@@ -53,8 +53,8 @@ every HTML report embeds that bundle and the licence of every package it carries
 
 - The report is 1.7 MB instead of 4.9 MB (1,688,634 bytes for a one-commit repository, measured
   2026-10-18; 118,473 bytes of it the notices), and does not change with the installed plotly version.
-- 24 of 24 charts render with the same SVG as with the full bundle in headless Chromium, light and
-  dark, apart from Plotly's random element ids.
+- 24 of 24 chart renderings (12 charts, light and dark) produce the same SVG as with the full
+  bundle in headless Chromium, apart from Plotly's random element ids.
 - A plotly.js security fix reaches reports only when the maintainer reruns the script; it no
   longer arrives with a plotly upgrade. The pin record names the version, so this is visible.
 - The wheel and sdist now carry third-party JavaScript under those licences, with its notices.

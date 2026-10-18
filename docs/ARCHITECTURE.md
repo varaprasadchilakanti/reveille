@@ -11,7 +11,8 @@ To use Reveille, see [USER_GUIDE.md](USER_GUIDE.md). For individual decisions, s
 ## What Reveille is
 
 A command-line tool that reads a local Git repository and writes a single self-contained HTML file
-describing its commit history. Three properties constrain nearly every decision; a change that
+describing its commit history, or answers one question about it (`summary`, `brief`, `state`,
+`who-changed`, `repos`) as text or JSON. Three properties constrain nearly every decision; a change that
 breaks one changes what the product is, and needs to be argued as such.
 
 It does not change Git data (history, refs, index, objects or configuration). Reveille opens a
@@ -46,7 +47,7 @@ Dependencies point inward. The domain knows nothing about how commits are read o
 | `domain/` | stdlib, `config.py` | GitPython, Plotly, Jinja2, Typer |
 | `adapters/` | stdlib, `domain/`, `exceptions.py`, `replacing.py`, its own framework | `services/`, `cli.py` |
 | `services/` | `domain/`, `adapters/`, `config.py` | Typer, GitPython, Plotly, Jinja2 |
-| `cli.py` | `services/`, `config.py`, `exceptions.py` | GitPython, Plotly, Jinja2 |
+| `cli.py` | `services/`, `config.py`, `exceptions.py`, `capabilities.py`, `agent_guide.py`, `init.py`, `domain/models.py` (`ProgressEvent`), `domain/repositories.py` (`MAX_SEARCH_DEPTH`), and `adapters/git_reader.py` inside a function (`validate`, the repository root) | GitPython, Plotly, Jinja2 |
 
 Framework ownership is exclusive: `adapters/git_reader.py` is the only module that imports
 GitPython, `adapters/renderer.py` the only one that imports Plotly or Jinja2, and `cli.py` the only
@@ -80,6 +81,7 @@ src/reveille/
     init.py           reveille.toml and .mailmap scaffold generation
     replacing.py      writes a file by replacing its name, so a hard link is never written through
     capabilities.py   the machine-readable self-description: what the tool can and cannot do
+    agent_guide.py    the text `reveille skill` prints for an agent's instructions
     exceptions.py     the exception hierarchy
     py.typed          PEP 561 marker
     domain/
@@ -94,13 +96,16 @@ src/reveille/
         brief.py      what changed since a point, in counts (ADR 0022)
         state.py      the repository's present state (ADR 0024)
         pseudonyms.py every address replaced by a per-report token (--hide-emails)
+        repositories.py   one row per repository for `repos` (ADR 0026)
     adapters/
         git_reader.py GitPython in; domain models out
         renderer.py   domain models in; HTML, JSON or CSV out
     services/
-        report.py     generate_report, the pipeline
+        report.py     generate_report, the pipeline; one *_text function per query command
     templates/
         report.html.j2
+    vendor/           the plotly.js cartesian bundle, its pin record and its licence notices
+                      (ADR 0027); changed only by scripts/vendor_plotly.py
 ```
 
 ---
@@ -168,7 +173,9 @@ a code per cause does not scale and would break callers branching on the old num
 ## The pipeline
 
 `services/report.py::generate_report(config, on_progress=None)` runs up to four stages, emitting a
-`ProgressEvent` before each:
+`ProgressEvent` before each. The query commands skip ranking and rendering: each calls its own
+`*_text` function in the same module (`summary_text`, `brief_text`, `state_text`,
+`who_changed_text`, `repositories_text`), which reads through `GitReader` and returns the text.
 
 1. **Reading commit history**: `GitReader.read_commits`
 2. **Aggregating contributor statistics**: `GitReader.aggregate_contributor_stats`

@@ -29,12 +29,12 @@ answers your question. What each section contains is in
 | Measure | Supports | Does **not** support |
 |---|---|---|
 | Commit count | How much recorded activity there was | How much work was done |
-| Contributors, Gini, Hold Half | How activity is spread across people; automated accounts with `[bot]` are stated apart | How many people work on the code: review, pairing and unmerged work leave no commit |
+| Contributors, Gini | How activity is spread across people; automated accounts with `[bot]` are stated apart | How many people work on the code: review, pairing and unmerged work leave no commit |
 | Gini / Lorenz | Whether activity is concentrated | Whether that is a problem |
-| Commit concentration | How few people hold most commits | A bus factor; it says nothing about who *knows* the code |
+| Commit concentration (the "Hold Half the Commits" card) | How few people hold most commits | A bus factor; it says nothing about who *knows* the code |
 | Active days | Regularity of committing | Hours worked |
 | Lines added/deleted | Size of recorded change | Quality, difficulty, or value |
-| Weekend share | When commits were timestamped | Overwork — time zones and rebases move commits across the boundary |
+| Weekend finding (stated when more than 15% of commits fall on a weekend) | When commits were timestamped | Overwork — time zones and rebases move commits across the boundary |
 | Ranking (`--ranking`) | Volume and regularity, nothing else | Any assessment of a person |
 
 The ranking is off by default and should usually stay off. JSON and CSV still carry a `rank` column,
@@ -77,7 +77,7 @@ json` so a diff is readable.
    Keep the JSON: `provenance` records the Reveille version,
    the analysed commit hash, whether a `.mailmap` was applied, whether the
    clone was shallow, and the filters as requested.
-2. **Reconcile before relying.** `total_commits` should match
+2. **Reconcile before relying.** `metadata.total_commits` should match
    `git rev-list --no-merges --count <commit>` over the same window; merge
    commits are excluded by design.
 3. **Know what it is not evidence of.** Author names and addresses are
@@ -87,7 +87,10 @@ json` so a diff is readable.
 
 ## For agents and scripts
 
-Read [llms.txt](../llms.txt) first; it is the short index. Then:
+Read [llms.txt](../llms.txt) first; it is the short index. `reveille skill` prints the commands
+to put in an agent's instructions: `state` at the start of a task, `brief` for what changed,
+`who-changed` before changing a file. `repos <dir>` gives one row per repository in a directory.
+Then:
 
 1. **Ask, do not guess:** `reveille capabilities --format json` reports
    the command surface, its `guarantees` field (properties designed and

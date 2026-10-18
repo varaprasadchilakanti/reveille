@@ -17,8 +17,8 @@ superseded. The history is the point.
 
 **Context** — the situation and the constraint. **Decision** — what was
 chosen, stated plainly. **Consequences** — what this costs, including
-what it rules out. **Status** — Accepted, Superseded by NNNN, or
-Deprecated.
+what it rules out. **Status** — Proposed, Accepted, Superseded by NNNN (wholly or
+in part), or Deprecated.
 
 ## Index
 
