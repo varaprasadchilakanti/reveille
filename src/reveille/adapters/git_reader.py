@@ -14,6 +14,7 @@ spawn one `git diff` per commit.
 from __future__ import annotations
 
 import datetime
+import functools
 import logging
 import os
 import re
@@ -1832,12 +1833,7 @@ class GitReader:
 
     def _git_version(self) -> tuple[int, int] | None:
         """Return the installed Git's major and minor version, or None if unreadable."""
-        try:
-            raw = str(self._git().version())
-        except Exception:  # a missing or broken git binary is reported by the first read
-            return None
-        match = re.search(r"(\d+)\.(\d+)", raw)
-        return (int(match.group(1)), int(match.group(2))) if match else None
+        return _installed_git_version()
 
     def _supports_since_as_filter(self) -> bool:
         """Whether the installed git (2.37 or newer) understands `--since-as-filter`.
@@ -2115,6 +2111,22 @@ _CHANGE_HEADER_RE = re.compile(rb"\x01[0-9a-f]{40} ([0-9]+)")
 
 #: How long `state` lets `git status` run before stopping it (a FIFO makes it wait for ever).
 STATUS_TIMEOUT_SECONDS = 120
+
+
+@functools.cache
+def _installed_git_version() -> tuple[int, int] | None:
+    """Return the installed Git's major and minor version, or None if unreadable.
+
+    Read once per process: it reads no repository, and every reader asked again,
+    once when opened and once per history read, for each repository under
+    `reveille repos`.
+    """
+    try:
+        raw = str(Git().version())
+    except Exception:  # a missing or broken git binary is reported by the first read
+        return None
+    match = re.search(r"(\d+)\.(\d+)", raw)
+    return (int(match.group(1)), int(match.group(2))) if match else None
 
 
 #: The deepest `reveille repos --depth` searches (ADR 0026).

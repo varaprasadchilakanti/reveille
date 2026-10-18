@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 from git.exc import GitCommandError
 
+from reveille.adapters import git_reader
 from reveille.adapters.git_reader import GitReader
 from reveille.exceptions import RepositoryError
 
@@ -76,11 +77,40 @@ def test_worktrees_that_cannot_be_listed_are_none(
 
 def test_an_unreadable_git_version_is_none(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     reader = GitReader(repo)
-    real = reader._git()
-    monkeypatch.setattr(reader, "_git", lambda extra=(): _Runner(real, {"version": 1}))
 
-    assert reader._git_version() is None
-    assert reader._supports_since_as_filter() is False
+    class _NoVersion:
+        def version(self) -> str:
+            raise GitCommandError("version", 1)
+
+    monkeypatch.setattr(git_reader, "Git", _NoVersion)
+    git_reader._installed_git_version.cache_clear()
+    try:
+        assert reader._git_version() is None
+        assert reader._supports_since_as_filter() is False
+    finally:
+        monkeypatch.undo()
+        git_reader._installed_git_version.cache_clear()
+
+
+def test_the_version_is_asked_once_per_process(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    git_reader._installed_git_version.cache_clear()
+    asked: list[str] = []
+    real = git_reader.Git
+
+    class _Counting(real):  # type: ignore[misc, valid-type]
+        def version(self) -> str:
+            asked.append("version")
+            return str(super().version())
+
+    monkeypatch.setattr(git_reader, "Git", _Counting)
+    try:
+        for _ in range(3):
+            reader = GitReader(repo)
+            reader.read_commits(None, None, None, [])
+        assert asked == ["version"]
+    finally:
+        monkeypatch.undo()
+        git_reader._installed_git_version.cache_clear()
 
 
 def test_a_rev_parse_failure_other_than_ownership_cannot_run(

@@ -203,6 +203,8 @@ before 0.8.0 predate the convention and are left as they were released.
   to 50 areas last changed with one `git log` per area, each walking the history: 28 s on a
   100,000-commit repository. One pass now answers them all and stops when it has (5 s there),
   with identical output.
+- **Git's version is asked once per run**, not again by every repository read: `repos` over 200
+  small repositories went from 18.7 s to 16.7 s.
 - **The part of the HTML report Reveille writes is a quarter smaller**: the template's indentation
   is no longer copied into every report (107,656 to 80,464 bytes on Reveille's own history). The
   4.8 MB Plotly bundle is untouched, so the whole file shrinks by about 0.6%.
