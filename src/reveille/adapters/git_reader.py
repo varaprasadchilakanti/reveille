@@ -902,7 +902,9 @@ class GitReader:
         area_totals: dict[str, _AreaTotal] = {}
         added_paths: set[str] = set()
         dated_after = 0
-        for record in records:
+        for raw in records:
+            # Decoded one at a time: the read holds Git's bytes, not a copy as text.
+            record = safe_decode(raw)
             commit = _parse_log_record(
                 record, mailmap, exclude_set, trusted, matched, undatable, identities
             )
@@ -1098,7 +1100,7 @@ class GitReader:
         rev: str,
         rev_list_args: list[str],
         exclude_authors: list[str],
-    ) -> tuple[list[str], list[str], _Mailmap, dict[str, set[str]], dict[str, set[str]]]:
+    ) -> tuple[list[bytes], list[str], _Mailmap, dict[str, set[str]], dict[str, set[str]]]:
         """Run the queries the main read needs while Git writes the log, then take it.
 
         Args:
@@ -1108,7 +1110,7 @@ class GitReader:
             exclude_authors: The `--exclude-author` values.
 
         Returns:
-            The log's records, the authentic hashes in log order, the mailmap with
+            The log's records as Git wrote them, the authentic hashes in log order, the mailmap with
             the noreply accounts folded in, each exclusion's forms, and the
             addresses each exclusion reaches in the branch's history.
 
@@ -1145,7 +1147,7 @@ class GitReader:
         reached = self._addresses_in_history(rev, mailmap, set().union(*requests.values()))
 
         try:
-            records = stream.records()
+            records = stream.raw_records()
         except GitCommandError as exc:
             raise RepositoryError(
                 f"Failed to read commits from branch '{rev}'. "
@@ -2165,11 +2167,11 @@ class _LogStream:
         except (OSError, ValueError):  # the process was stopped
             return
 
-    def records(self) -> list[str]:
-        """Wait for Git and return the records, decoded as GitPython decodes output.
+    def raw_records(self) -> list[bytes]:
+        """Wait for Git and return the records as Git wrote them.
 
         Returns:
-            The records, the text before the first separator first.
+            The records, the bytes before the first separator first.
 
         Raises:
             GitCommandError: If Git exits with an error.
@@ -2179,9 +2181,19 @@ class _LogStream:
         status = self._process.proc.wait()
         if status != 0:
             raise GitCommandError(self._process.args, status, b"".join(self._stderr))
-        records = [safe_decode(record) for record in self._records]
-        self._records = []
+        records, self._records = self._records, []
         return records
+
+    def records(self) -> list[str]:
+        """Wait for Git and return the records, decoded as GitPython decodes output.
+
+        Returns:
+            The records, the text before the first separator first.
+
+        Raises:
+            GitCommandError: If Git exits with an error.
+        """
+        return [safe_decode(record) for record in self.raw_records()]
 
     def close(self) -> None:
         """Stop Git if it is still running, and wait for the readers."""
@@ -2192,14 +2204,14 @@ class _LogStream:
             thread.join()
 
 
-def _well_formed_shas(records: list[str], authentic_shas: set[str]) -> set[str]:
+def _well_formed_shas(records: Sequence[bytes], authentic_shas: set[str]) -> set[str]:
     """Return the object names whose log record has the expected shape.
 
     A record split by injected separators fails this check, so its commit is
     counted as unreadable rather than lost silently (ADR 0019).
 
     Args:
-        records: The main read's records.
+        records: The main read's records, as Git wrote them.
         authentic_shas: Object names git reported for this revision.
 
     Returns:
@@ -2208,7 +2220,8 @@ def _well_formed_shas(records: list[str], authentic_shas: set[str]) -> set[str]:
     """
     seen: dict[str, int] = {}
     for record in records:
-        fields = record.partition("\n")[0].split(_FIELD_SEP)
+        # Only the header is decoded: a newline is one byte in UTF-8, never part of another.
+        fields = safe_decode(record.partition(b"\n")[0]).split(_FIELD_SEP)
         if len(fields) == 5 and fields[0] == fields[4] and fields[0] in authentic_shas:
             seen[fields[0]] = seen.get(fields[0], 0) + 1
     # A hash with two well-formed records has one forged copy, and nothing says

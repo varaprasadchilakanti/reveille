@@ -207,13 +207,16 @@ before 0.8.0 predate the convention and are left as they were released.
 - **Each author is resolved once per read, not once per commit**: the `.mailmap` lookup, the
   scrubbing and the exclusion match ran for every commit, and every commit held its own copy of
   its author's name and address. On a 100,000-commit history with 500 authors, `generate` went
-  from 7.3 s to 6.8 s and its peak memory from 240 to 221 MB.
+  from 7.3 s to 6.8 s and its peak memory from 239 to 222 MB. Peak memory in these entries is
+  Reveille's own process; Git's `git log --numstat` takes about 210 MB of its own on that history,
+  which none of them changes.
 - **The history is read while Git writes it.** The main `git log` and the co-author `git log`
   start first and run alongside the other queries, and the output is split into records as it
   arrives instead of being held whole as one string (which one non-ASCII name made twice the
-  size). On the same 100,000-commit history, `generate` went from 6.8 s to 5.3 s and 221 to
-  205 MB, `summary` from 3.1 s to 2.4 s and 196 to 146 MB, and `who-changed` from 6.9 s to
-  4.1 s. With `--exclude-author`, the history the exclusion is checked against is read meanwhile
+  size). On the same 100,000-commit history, `generate` went from 6.8 s to 5.3 s and 222 to
+  156 MB, `summary` from 3.1 s to 2.4 s and 196 to 145 MB, and `who-changed` from 6.9 s to 4.1 s
+  and 199 to 143 MB. Keeping the records as Git's bytes and decoding them one at a time then took
+  `generate --format json` from 144 to 135 MB. With `--exclude-author`, the history the exclusion is checked against is read meanwhile
   too: 6.5 s to 5.0 s there. Every report, in every format, is byte-identical to before.
 - **`repos` reads up to four repositories at once**, one per CPU: a row's time is mostly spent
   waiting for Git. Over 201 small repositories it went from 20.6 s to 8.3 s with the same peak
