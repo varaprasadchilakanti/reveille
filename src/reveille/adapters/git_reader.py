@@ -17,6 +17,7 @@ import datetime
 import logging
 import os
 import re
+import stat
 import unicodedata
 from collections import defaultdict
 from collections.abc import Iterator, Sequence
@@ -695,6 +696,67 @@ class GitReader:
                 "so it does not read a partial clone. Run it on a full clone."
             )
 
+    def _refuse_attribute_files_that_block(self, *, counts_lines: bool) -> None:
+        """Refuse when a file Git reads attributes from is not a regular file.
+
+        Counting lines (`--numstat`) makes Git read attributes, to tell binary files
+        apart: `.gitattributes` in the working tree, `info/attributes`, and
+        `core.attributesFile`. A named pipe there blocks the read for ever, and a
+        device can feed it without end. A copied directory or an archive can carry
+        one; `git clone` cannot. The working tree is checked in its root and in
+        every directory HEAD's tree holds.
+
+        Args:
+            counts_lines: Whether the read counts lines; only then are attributes read.
+
+        Raises:
+            RepositoryError: If one is a named pipe, a device or a socket.
+        """
+        if not counts_lines:
+            return
+        candidates = self._attribute_files()
+        for candidate in candidates:
+            try:
+                mode = candidate.stat().st_mode
+            except OSError:
+                continue
+            if not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
+                raise RepositoryError(
+                    f"'{candidate}' is not a regular file (a named pipe or a device). Git "
+                    "reads attributes from it to count lines, and would wait on it for ever. "
+                    "Remove it, or read without line counts (`reveille summary`)."
+                )
+
+    def _attribute_files(self) -> list[Path]:
+        """Return the files Git may read attributes from when it counts lines.
+
+        Returns:
+            `info/attributes` in the Git and common directories, `core.attributesFile`,
+            and `.gitattributes` in the working tree's root and each directory of HEAD.
+        """
+        candidates: list[Path] = []
+        for flag in ("--git-dir", "--git-common-dir"):
+            try:
+                found = str(self._git().rev_parse(flag)).strip()
+            except GitCommandError:
+                continue
+            git_dir = Path(found) if Path(found).is_absolute() else self._repo_path / found
+            candidates.append(git_dir / "info" / "attributes")
+        try:
+            configured = str(self._git().config("--get", "core.attributesFile")).strip()
+        except GitCommandError:
+            configured = ""
+        if configured:
+            candidates.append(Path(os.path.expanduser(configured)))
+        if not self._repo.bare:
+            try:
+                listed = str(self._git().ls_tree("-d", "-r", "-z", "--name-only", "HEAD"))
+            except GitCommandError:
+                listed = ""
+            directories = ["", *(d for d in listed.split("\0") if d)]
+            candidates += [self._repo_path / d / ".gitattributes" for d in directories]
+        return candidates
+
     def _refuse_a_working_tree_elsewhere(self, repo_path: Path) -> None:
         """Refuse a repository whose configuration puts its working tree somewhere else.
 
@@ -828,6 +890,7 @@ class GitReader:
         requests = _exclusion_requests(exclude_authors, mailmap)
         exclude_set = set().union(*requests.values())
 
+        self._refuse_attribute_files_that_block(counts_lines=line_counts and not name_status)
         _logger.debug("git log %s", " ".join(log_args))
         try:
             raw_log = self._git().log(*log_args)
@@ -1285,15 +1348,29 @@ class GitReader:
                     f"filter.{name}.required=false",
                 )
             ]
-            raw = str(
-                self._git(overrides).status(
-                    "--porcelain=v2",
-                    "--branch",
-                    "-z",
-                    "--untracked-files=normal",
-                    "--ignore-submodules=all",
+            try:
+                raw = str(
+                    self._git(overrides).status(
+                        "--porcelain=v2",
+                        "--branch",
+                        "-z",
+                        "--untracked-files=normal",
+                        "--ignore-submodules=all",
+                        kill_after_timeout=STATUS_TIMEOUT_SECONDS,
+                    )
                 )
-            )
+            except GitCommandError as exc:
+                # GitPython's own marker when it stopped the command; any other
+                # failure is Git's, and is reported as Git's.
+                if "Timeout:" not in str(exc.stderr):
+                    raise
+                # A FIFO where Git reads ignore rules (`.gitignore`, `info/exclude`)
+                # blocks the read until something writes to it: forever.
+                raise RepositoryError(
+                    f"`git status` did not finish within {STATUS_TIMEOUT_SECONDS} seconds and "
+                    "was stopped. A named pipe (FIFO) where Git reads ignore rules, such as "
+                    "a .gitignore, makes it wait for ever; so can a very large working tree."
+                ) from exc
             status = _parse_status(raw)
         else:
             # Bare, or filters unknown: read where HEAD is, compare no files.
@@ -2007,6 +2084,9 @@ def _state_wide_exclusions(reached: dict[str, set[str]]) -> None:
 #: The largest `.mailmap` read, in bytes; a real one is kilobytes.
 _MAX_MAILMAP_BYTES = 1_048_576
 
+
+#: How long `state` lets `git status` run before stopping it (a FIFO makes it wait for ever).
+STATUS_TIMEOUT_SECONDS = 120
 
 #: The deepest `reveille repos --depth` searches (ADR 0026).
 MAX_SEARCH_DEPTH = 3

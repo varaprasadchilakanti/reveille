@@ -928,3 +928,11 @@ which can name a program for Git to run. Reveille switches off the ones its read
 checking, fsmonitor, and content filters during `state`), but Git has many settings. `git clone`
 does not copy that file; a copied directory or an archive does. Run Reveille on a fresh clone of
 anything you do not trust. See [SECURITY.md](../SECURITY.md).
+
+**"sets its working tree to ...", exit 2.** The repository's `.git/config` sets `core.worktree`
+to another directory. Reveille would then read and write there, so it refuses. Remove the setting
+(`git config --unset core.worktree`) if it is not meant, or run Reveille in that other directory.
+
+**"is not a regular file (a named pipe or a device)", exit 2, or "`git status` did not finish".**
+A `.gitattributes`, `.gitignore` or `info/exclude` is a named pipe, which makes Git wait for ever.
+Remove it. `reveille summary` reads no line counts and is not affected by a `.gitattributes` one.

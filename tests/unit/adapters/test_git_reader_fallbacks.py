@@ -40,13 +40,13 @@ class _Runner:
         self._real, self._fail, self._worktrees = real, fail, worktrees
 
     def __getattr__(self, command: str) -> Any:
-        def call(*args: str) -> Any:
+        def call(*args: str, **options: Any) -> Any:
             key = command if command != "worktree" else f"worktree{'-z' if '-z' in args else ''}"
             if key in self._fail:
                 raise GitCommandError(command, self._fail[key])
             if command == "worktree":
                 return self._worktrees
-            return getattr(self._real, command)(*args)
+            return getattr(self._real, command)(*args, **options)
 
         return call
 
