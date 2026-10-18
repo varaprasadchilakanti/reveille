@@ -88,6 +88,7 @@ author, carries no notice, and a newline in a name is shown as `\n`.
 | `--branch`, `-b` | the checked-out branch | Commits reachable from this branch. The checked-out branch is not necessarily the default branch. |
 | `--exclude-author` | none | Removes a person. Repeatable. See [below](#--exclude-author). |
 | `--exclude-path` | none | Leaves a path out of every figure. Repeatable. See [below](#--exclude-path). |
+| `--hide-emails` | off | Replaces every email address with a per-report token. See [below](#--hide-emails). |
 | `--min-commits` | `1` | Lists only contributors with at least this many commits. See [below](#--min-commits). |
 | `--title` | repository name | The report's title. |
 | `--ranking`, `--no-ranking` | ranking off | See [Ranking](#--ranking-and---no-ranking). |
@@ -171,6 +172,26 @@ report header, the summary and the JSON `provenance.filters.exclude_paths`. `gen
 
 ```bash
 reveille generate --exclude-path vendor --exclude-path docs/generated
+```
+
+### `--hide-emails`
+
+Replaces every email address in the report with a token, `contributor-1@hidden.invalid`,
+`contributor-2@hidden.invalid` and so on, numbered in the order the contributor table lists people.
+It covers authors, co-authors, people below `--min-commits`, area authors, the data the charts are
+drawn from, an address written into a name (shown as `(address hidden)`), and the login in an SSH
+remote (`jane@host:group/repo` becomes `host:group/repo`). The HTML table then shows names only;
+JSON and CSV carry the tokens, and `provenance.emails_hidden` is `true`.
+
+A token is a number, not derived from the address, so it cannot be reversed by trying addresses,
+and `.invalid` is a domain that can never receive mail. Tokens mean nothing across reports: the
+same person can have a different number in another report. An automated account keeps its `[bot]`
+marker, so every figure is the same as without the option. Names are not changed; to keep a person
+out of the report entirely, use `--exclude-author`. In `reveille.toml` it is `[report]
+hide_emails = true`.
+
+```bash
+reveille generate --hide-emails --output shared-report.html
 ```
 
 ### `--min-commits`
@@ -509,6 +530,7 @@ branch = "main"                            # --branch
 since = "2024-10-01"                       # --since
 until = "2024-12-31"                       # --until
 limit = 50                                 # --limit
+hide_emails = false                        # --hide-emails; a real boolean
 # format = "html"                          # --format: html (default), json, csv
 deterministic = false                      # --deterministic; a real boolean
 
@@ -726,13 +748,15 @@ provider.
 2. **Remove anyone who should not appear** with `--exclude-author`. `--min-commits` is **not** a
    privacy control: it hides rows, while their commits stay in every figure and can be worked out
    from them.
-3. **Leave `--ranking` and `--area-authors` off** unless the question needs them.
-4. **For an assistant or a script, prefer `reveille summary`**, which names no contributor, or
+3. **Leave the addresses out** with `--hide-emails` when the recipient does not need them. Names
+   stay, so it reduces what the report gives away; it does not make anyone anonymous.
+4. **Leave `--ranking` and `--area-authors` off** unless the question needs them.
+5. **For an assistant or a script, prefer `reveille summary`**, which names no contributor, or
    bound the JSON with `--limit`.
-5. **Naming nobody does not hide anyone.** With few people, a figure traces to one person; the
-   repository name, branch, remote URL (an SSH login included), title and file paths can identify
-   someone too. A report already sent is not changed by a later `--exclude-author`.
-6. **Whether you may use a report about the people who work with you** is a question for the law
+6. **Naming nobody does not hide anyone.** With few people, a figure traces to one person; the
+   repository name, branch, remote URL (an SSH login included, unless `--hide-emails`), title and
+   file paths can identify someone too. A report already sent is not changed by a later `--exclude-author`.
+7. **Whether you may use a report about the people who work with you** is a question for the law
    and the agreements that apply to you. [COMPLIANCE.md](COMPLIANCE.md) sets out who is
    responsible for what. This guide is not legal advice.
 

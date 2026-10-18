@@ -33,6 +33,7 @@ from reveille.domain.models import (
     RankedContributor,
     ReportData,
 )
+from reveille.domain.pseudonyms import hide_emails
 from reveille.domain.ranking import rank_contributors
 from reveille.exceptions import EmptyRepositoryError, RepositoryError
 
@@ -475,6 +476,8 @@ def build_report_data(
         areas=list(reader.area_activity) if config.area_authors_enabled else [],
         co_authors_only=co_authors_only(commits),
     )
+    if config.hide_emails:
+        report_data = hide_emails(report_data)
 
     _logger.debug(
         "assembled report data: %d commits, %d contributors",

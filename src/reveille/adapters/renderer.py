@@ -52,6 +52,7 @@ from reveille.domain.models import (
     ReportData,
 )
 from reveille.domain.profile import ProfileAxis, repository_profile
+from reveille.domain.pseudonyms import HIDDEN_DOMAIN
 from reveille.domain.state import QUIET_BRANCH_DAYS, RepositoryState
 from reveille.domain.summary import Finding, longest_quiet_run, summarise
 from reveille.exceptions import OutputPathError, RenderError
@@ -325,6 +326,7 @@ class Renderer:
                 "replace_refs_not_followed": data.provenance.replace_refs_not_followed,
                 "graft_file_not_followed": data.provenance.graft_file_not_followed,
                 "limit": data.provenance.limit,
+                "emails_hidden": data.provenance.emails_hidden,
                 "areas": {
                     "enabled": data.provenance.area_authors_enabled,
                     "depth": data.provenance.area_depth,
@@ -1108,9 +1110,15 @@ def _contributor_labels(ranked: list[RankedContributor]) -> dict[str, str]:
         occurrences[label] += 1
 
     return {
-        email: (label if occurrences[label] == 1 else f"{label} ({_sanitise_chart_label(email)})")
+        email: (label if occurrences[label] == 1 else f"{label} ({_label_key(email)})")
         for email, label in sanitised.items()
     }
+
+
+def _label_key(email: str) -> str:
+    """Return what tells two people of one name apart: the address, or a hidden one's token."""
+    local, _, domain = email.rpartition("@")
+    return _sanitise_chart_label(local if domain == HIDDEN_DOMAIN else email)
 
 
 #: Axis pairs to read a table from, per trace type, so the table cannot drift.

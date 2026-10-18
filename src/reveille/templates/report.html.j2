@@ -1603,9 +1603,11 @@
                             <span class="contributor-name">
                                 {{ contributor.stats.name }}
                             </span>
+                            {% if not data.provenance.emails_hidden %}
                             <span class="contributor-email">
                                 {{ contributor.stats.email }}
                             </span>
+                            {% endif %}
                         </{% if ranked %}td{% else %}th{% endif %}>
                         {% if ranked %}
                         <td>

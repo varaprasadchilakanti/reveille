@@ -82,6 +82,8 @@ class ReportConfig(BaseModel):
     deterministic: bool = Field(default=False)
     # Bounds every list of people in JSON and CSV (ADR 0015); None keeps all.
     limit: int | None = Field(default=None, ge=1)
+    # Every address replaced by a per-report token, for a report that is shared.
+    hide_emails: bool = Field(default=False)
 
     @field_validator("exclude_paths")
     @classmethod
@@ -154,6 +156,7 @@ class ReportConfigKwargs(TypedDict, total=False):
     output_format: OutputFormat
     deterministic: bool
     limit: int
+    hide_emails: bool
 
 
 def load_config_from_toml(path: Path) -> ReportConfigKwargs:
@@ -234,9 +237,27 @@ def _parse_report_section(report: dict[str, Any]) -> dict[str, Any]:
                 ) from exc
     if "format" in report:
         kwargs["output_format"] = cast(OutputFormat, str(report["format"]))
-    if "deterministic" in report:
-        # Strict, like [ranking] enabled: bool("false") is True.
-        kwargs["deterministic"] = _strict_bool("report", "deterministic", report["deterministic"])
+    kwargs.update(_parse_report_switches(report))
+    return kwargs
+
+
+def _parse_report_switches(report: dict[str, Any]) -> dict[str, Any]:
+    """Parse the [report] keys that are a boolean or a whole number, strictly.
+
+    Args:
+        report: The raw [report] table.
+
+    Returns:
+        The keys present, typed.
+
+    Raises:
+        ConfigurationError: If a value has the wrong type.
+    """
+    kwargs: dict[str, Any] = {}
+    # Strict, like [ranking] enabled: bool("false") is True.
+    for key in ("deterministic", "hide_emails"):
+        if key in report:
+            kwargs[key] = _strict_bool("report", key, report[key])
     if "limit" in report:
         kwargs["limit"] = _strict_int("report", "limit", report["limit"])
     return kwargs

@@ -307,6 +307,7 @@ _TOML_KEYS: dict[str, str] = {
     "area_authors_enabled": "areas.enabled",
     "area_depth": "areas.depth",
     "limit": "report.limit",
+    "hide_emails": "report.hide_emails",
 }
 
 
@@ -634,6 +635,7 @@ def _merge_cli_flags(
     area_depth: int | None = None,
     limit: int | None = None,
     exclude_path: list[str] | None = None,
+    hide_emails: bool = False,
 ) -> ReportConfigKwargs:
     """Merge CLI flag values over the configuration file's values.
 
@@ -658,6 +660,7 @@ def _merge_cli_flags(
         area_depth: Area depth, or None if the flag was not given.
         limit: The most entries per list of people in JSON and CSV, or None.
         exclude_path: Paths to leave out of every figure, or None.
+        hide_emails: Whether --hide-emails was given; it only switches on.
 
     Returns:
         A merged ReportConfigKwargs ready for ReportConfig construction.
@@ -681,6 +684,7 @@ def _merge_cli_flags(
     if exclude_author:
         merged["exclude_authors"] = exclude_author
     merged.update({"exclude_paths": exclude_path} if exclude_path else {})
+    merged.update({"hide_emails": True} if hide_emails else {})
     if min_commits is not None:
         merged["min_commits"] = min_commits
     _apply_ranking_flags(merged, ranking=ranking, no_ranking=no_ranking)
@@ -824,6 +828,16 @@ def generate(
             help="Output format. Accepted values: html, json, csv. [default: html]",
         ),
     ] = None,
+    hide_emails: Annotated[
+        bool,
+        typer.Option(
+            "--hide-emails",
+            help=(
+                "Replace every email address with a per-report token, for a report "
+                "you share. Names stay; every figure is unchanged."
+            ),
+        ),
+    ] = False,
     deterministic: Annotated[
         bool,
         typer.Option(
@@ -925,6 +939,7 @@ def generate(
         area_depth,
         limit,
         exclude_path,
+        hide_emails,
     )
 
     # Validate the effective path, which a reveille.toml may have supplied.

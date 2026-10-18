@@ -155,6 +155,8 @@ class AnalysisProvenance:
     limit: int | None = None
     # Paths left out of every figure, as given; paths name no one.
     exclude_paths: tuple[str, ...] = ()
+    # Every address replaced by a per-report token (`--hide-emails`).
+    emails_hidden: bool = False
 
 
 @dataclass(frozen=True)

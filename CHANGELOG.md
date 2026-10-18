@@ -106,6 +106,13 @@ before 0.8.0 predate the convention and are left as they were released.
   path that matched nothing is reported, and the paths are stated in the report, the summary and
   `provenance.filters.exclude_paths`. Additive to schema 1.2.
 
+- **`generate --hide-emails`** replaces every email address in the report with a per-report token
+  (`contributor-N@hidden.invalid`, numbered in table order, never derived from the address), for a
+  report that is shared. It covers authors, co-authors, people below `--min-commits`, area authors,
+  chart data, an address written as a name and an SSH remote's login; every figure is unchanged,
+  and `provenance.emails_hidden` records it. `[report] hide_emails` in `reveille.toml`. Additive to
+  schema 1.2.
+
 - **The report says how its figures can mislead**, in a "Read Before Using These Figures" panel
   under the summary cards: commits are counted, not weighed; the merge commits left out, counted;
   a squash merge credits one author, with the number of commits carrying a Co-authored-by

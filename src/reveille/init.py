@@ -76,6 +76,11 @@ _DEFAULT_CONFIG_TEMPLATE: str = """\
 # full total is written beside each list. Equivalent to --limit.
 # limit = 50
 
+# Replace every email address with a per-report token (contributor-1@hidden.invalid),
+# for a report you share. Names stay; every figure is unchanged. Equivalent to
+# --hide-emails.
+# hide_emails = false
+
 
 # ------------------------------------------------------------------------------
 # [filters] -- Contributor and commit filtering

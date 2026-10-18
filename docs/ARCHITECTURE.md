@@ -43,7 +43,7 @@ Dependencies point inward. The domain knows nothing about how commits are read o
 | Layer | May import | Must not import |
 |---|---|---|
 | `domain/` | stdlib, `config.py` | GitPython, Plotly, Jinja2, Typer |
-| `adapters/` | stdlib, `domain/`, its own framework | `services/`, `cli.py` |
+| `adapters/` | stdlib, `domain/`, `exceptions.py`, `replacing.py`, its own framework | `services/`, `cli.py` |
 | `services/` | `domain/`, `adapters/`, `config.py` | Typer, GitPython, Plotly, Jinja2 |
 | `cli.py` | `services/`, `config.py`, `exceptions.py` | GitPython, Plotly, Jinja2 |
 
@@ -92,6 +92,7 @@ src/reveille/
         coauthors.py  Co-authored-by credits, kept apart from authorship
         brief.py      what changed since a point, in counts (ADR 0022)
         state.py      the repository's present state (ADR 0024)
+        pseudonyms.py every address replaced by a per-report token (--hide-emails)
     adapters/
         git_reader.py GitPython in; domain models out
         renderer.py   domain models in; HTML, JSON or CSV out
