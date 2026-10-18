@@ -46,7 +46,9 @@ Limits: Git has many settings, and Reveille switches off only those its reads we
 repository whose `.git` came from someone else may still run one. `git clone` does not copy
 `.git/config`; a copied directory or an archive does. A partial clone (`git clone --filter`) is
 refused, because reading it would make Git fetch. A SHA-256 repository is refused for now: the
-library Reveille reads it with cannot parse its references.
+library Reveille reads it with cannot parse its references. A repository whose `.git/config` sets
+`core.worktree` to another directory is refused, since the report would describe that directory
+and be written into it.
 
 Reveille is provided under the Apache Licence 2.0 "AS IS"; sections 7 and 8 of the
 [LICENSE](https://github.com/varaprasadchilakanti/reveille/blob/main/LICENSE) disclaim warranty and

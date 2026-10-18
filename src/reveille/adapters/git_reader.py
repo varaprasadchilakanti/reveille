@@ -686,12 +686,44 @@ class GitReader:
             raise RepositoryError(
                 f"'{repo_path}' uses SHA-256 object names, which Reveille cannot read yet."
             )
+        self._refuse_a_working_tree_elsewhere(repo_path)
         if _is_partial_clone(self._repo) or self._promisor_in_any_scope():
             raise RepositoryError(
                 f"'{repo_path}' is a partial clone (made with --filter): some of its "
                 "objects are still on the server, and reading them would make Git "
                 "fetch them. Reveille makes no network call and changes no Git data, "
                 "so it does not read a partial clone. Run it on a full clone."
+            )
+
+    def _refuse_a_working_tree_elsewhere(self, repo_path: Path) -> None:
+        """Refuse a repository whose configuration puts its working tree somewhere else.
+
+        `core.worktree` in a repository's own `.git/config`, which an archive or a
+        copied directory carries, can name another repository's directory. The
+        report would then describe that one's files and be written into it, under
+        the name of the repository given. A linked worktree and a submodule keep
+        their working tree where they are, so they pass.
+
+        Args:
+            repo_path: The repository as given, for the message.
+
+        Raises:
+            RepositoryError: If Git puts the working tree elsewhere.
+        """
+        # GIT_WORK_TREE is the caller's own setting, as a hook sets it, not one a
+        # repository can carry; Git's answer here would follow it.
+        if "GIT_WORK_TREE" in os.environ:
+            return
+        try:
+            top = str(self._git().rev_parse("--show-toplevel")).strip()
+        except GitCommandError:
+            return  # A bare repository has no working tree to put elsewhere.
+        if top and Path(top).resolve() != self._repo_path:
+            raise RepositoryError(
+                f"'{repo_path}' sets its working tree to '{top}' (core.worktree in its "
+                "Git configuration). Reveille reads only the repository it is given, and "
+                "that setting would make the report describe, and be written into, another "
+                "directory. Remove the setting, or run Reveille in the other repository."
             )
 
     def read_commits(
@@ -2055,9 +2087,27 @@ def repository_root(path: Path) -> Path:
         # `-C`, not a working directory: GitPython runs Git in the process's own
         # directory when the one it is given cannot be entered.
         top = str(Git().execute(["git", "-C", str(path), "rev-parse", "--show-toplevel"])).strip()
+        git_dir = _absolute_git_dir(path)
     except (GitCommandError, OSError):
         return path.resolve()
-    return Path(top).resolve() if top else path.resolve()
+    if not top or git_dir is None:
+        return path.resolve()
+    # `core.worktree` can name another repository's directory: from there, Git
+    # finds that one's Git directory, not this one's. Return the repository the
+    # path is in, so the reader refuses it, rather than the other repository.
+    if _absolute_git_dir(Path(top)) != git_dir:
+        return Path(git_dir).parent.resolve() if Path(git_dir).name == ".git" else path.resolve()
+    return Path(top).resolve()
+
+
+def _absolute_git_dir(path: Path) -> str | None:
+    """Return the Git directory Git finds from `path`, or None if it finds none."""
+    try:
+        return str(
+            Git().execute(["git", "-C", str(path), "rev-parse", "--absolute-git-dir"])
+        ).strip()
+    except (GitCommandError, OSError):
+        return None
 
 
 def _git_error(exc: GitCommandError) -> str:

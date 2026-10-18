@@ -15,6 +15,13 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Security
 
+- **A repository could point Reveille at another repository with `core.worktree`.** Set in its
+  own `.git/config`, which an archive or a copied directory carries (a clone does not), it made
+  Reveille, run inside it, read the other repository's history and write the report into that
+  repository's directory. Such a repository is now refused (exit 2) by every command, and
+  `repos` lists it as not read. A linked worktree and a submodule are read as before. 0.9.0 is
+  not affected: it does not search upwards for the repository, which `--repo` from a subdirectory
+  (unreleased) introduced.
 - **`remote.<name>.promisor = 2` in worktree config skipped the partial-clone refusal.** Git reads
   any non-zero number as true; Reveille read only `true`, `yes`, `on` and `1`. Below Git 2.44,
   where nothing else stops Git fetching missing objects, a run could then reach the network and

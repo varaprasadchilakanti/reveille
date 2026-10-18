@@ -321,7 +321,9 @@ _GUARANTEES: tuple[dict[str, str], ...] = (
             "Analysis never changes the repository's Git data: its history, "
             "refs, index, objects or configuration. An output path inside "
             ".git is refused. The report is written where you say, by default "
-            "reveille-report.html in the repository root. `reveille init` "
+            "reveille-report.html in the repository root. A repository whose "
+            "configuration sets its working tree to another directory "
+            "(core.worktree) is refused. `reveille init` "
             "writes only the files you ask it for: reveille.toml, and "
             ".mailmap with --mailmap."
         ),
