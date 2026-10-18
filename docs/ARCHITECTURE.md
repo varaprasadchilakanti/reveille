@@ -286,6 +286,8 @@ Several tests protect properties that could erode unnoticed; know them before ch
 
 - **Offline moat**: no `<link>`, `<script>` or `<img>` in the output references a remote host, no
   chart label carries markup, and the report's Content-Security-Policy allows no network source.
+- **Own scripts only**: the policy allows each of the report's three scripts by its hash, taken
+  from the text the renderer supplies, and no other script or event handler.
 - **Layering**: no framework import crosses the boundaries above.
 - **Contrast**: WCAG AA ratios computed from the template's own CSS custom properties.
 - **Packaging**: the `py.typed` marker is present in both wheel and sdist.

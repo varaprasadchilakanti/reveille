@@ -13,9 +13,11 @@ is a daily-count payload the client turns into a calendar grid.
 
 from __future__ import annotations
 
+import base64
 import csv
 import datetime
 import functools
+import hashlib
 import io
 import itertools
 import json
@@ -38,6 +40,7 @@ from jinja2 import (
     TemplatesNotFound,
     select_autoescape,
 )
+from markupsafe import Markup
 
 from reveille.domain.areas import AreaStatement, PathAnswer, describe_areas, is_automated
 from reveille.domain.brief import QUIET_DAYS, Brief
@@ -138,6 +141,26 @@ def _plotly_js_bundle() -> str:
         The bundle's JavaScript.
     """
     return str(plotly.offline.get_plotlyjs())
+
+
+def _script_sources(*scripts: str) -> Markup:
+    """Return the Content-Security-Policy sources that let exactly these scripts run.
+
+    Each is hashed from the text Reveille supplies, never found in the page: a
+    script repository data put into the page would be hashed and allowed too.
+
+    Args:
+        scripts: Each script, exactly as it stands between its tags.
+
+    Returns:
+        One `'sha256-...'` source per script, space-separated.
+    """
+    return Markup(
+        " ".join(
+            f"'sha256-{base64.b64encode(hashlib.sha256(str(script).encode()).digest()).decode()}'"
+            for script in scripts
+        )
+    )
 
 
 class _DedentingLoader(PackageLoader):
@@ -275,6 +298,7 @@ class Renderer:
                 co_authored=commits_with_co_authors(data.commits),
                 notice=_NOTICE,
                 plotly_js=plotly_js,
+                script_sources=_script_sources,
                 generated_at=generated_at,
             )
         except RenderError:

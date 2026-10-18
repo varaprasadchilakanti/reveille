@@ -1,3 +1,592 @@
+{#- The report's own scripts, captured so the Content-Security-Policy can name
+    each by its hash and allow nothing else to run, not even a script repository
+    data might put into the page. Printed unchanged where they always stood. #}
+{% set theme_js %}
+    (function () {
+        var theme = null;
+        try { theme = localStorage.getItem('reveille-theme'); } catch (e) { theme = null; }
+        if (theme !== 'light' && theme !== 'dark') {
+            try {
+                theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+            } catch (e) { theme = 'light'; }
+        }
+        document.documentElement.setAttribute('data-theme', theme);
+    })();
+{% endset %}
+{% set report_js %}
+(function () {
+    'use strict';
+
+    var THEME_KEY = 'reveille-theme';
+
+    var CHART_IDS = [
+        'timeline',
+        'contributor_timeline',
+        'contributor_lines',
+        'pie_commits',
+        'lorenz',
+        'commit_size',
+        'hotspots',
+        'extensions'
+    ];
+
+    var PLOTLY_CONFIG = {
+        responsive: true,
+        // 'hover' rather than true: ten always-visible toolbars were
+        // printed into every PDF export, advertising controls a reader
+        // of paper cannot operate.
+        displayModeBar: 'hover',
+        displaylogo: false,
+        // The report is offline: no "Share chart..." button posting the data,
+        // names included, to Plotly's cloud, and no server for it to use.
+        showSendToCloud: false,
+        plotlyServerURL: '',
+        modeBarButtonsToRemove: ['sendChartToCloud']
+    };
+
+    // Heatmap colour ramps, one per theme.
+    //
+    // A sequential ramp encodes magnitude, so a busier day must always read as
+    // more prominent than a quieter one. A single ramp cannot do that on two
+    // surfaces: the old fixed scale ended at #1e3a8a, which sits at 9.73:1
+    // against the light plot background but only 1.67:1 against the dark one.
+    // In dark mode the busiest days therefore faded into the background while
+    // the quietest ones glowed -- the chart read backwards, and the effect was
+    // strongest exactly where the data mattered most.
+    //
+    // Both ramps below are one hue, and both were checked so that contrast
+    // against their own surface rises at every step:
+    //   light  #f6f8fa : 1.66 -> 2.92 -> 4.85 -> 9.73
+    //   dark   #161b22 : 1.67 -> 3.35 -> 5.57 -> 9.59
+    // The first stop stays transparent so a day with no commits is the surface
+    // itself rather than a colour meaning "zero".
+    // Heatmap colour ramps, one per theme.
+    //
+    // A sequential ramp encodes magnitude, so a busier day must always read
+    // as more prominent than a quieter one. A single ramp cannot do that on
+    // two surfaces, and contrast has to rise at every step.
+    //
+    // The lowest non-zero step matters most and was the weakest: at 1.66:1
+    // light and 1.67:1 dark, a day with one commit was barely separable
+    // from a day with none -- and colour is the only encoding here, with no
+    // hover in a printed PDF. Both ramps now start at or above the 3:1 that
+    // WCAG 2.1 asks of a graphical object needed to understand the content.
+    //
+    //   light  #f6f8fa : 3.67 -> 5.44 -> 7.57 -> 10.86
+    //   dark   #161b22 : 3.61 -> 5.22 -> 7.82 -> 11.41
+    //
+    // The first stop stays transparent, so a day with no commits is the
+    // surface itself rather than a colour meaning "zero".
+    var HEATMAP_SCALES = {
+        light: [
+            [0.0,   'rgba(0,0,0,0)'],
+            [0.001, '#4f83c4'],
+            [0.35,  '#2f66ad'],
+            [0.70,  '#1d4f95'],
+            [1.0,   '#12386e']
+        ],
+        dark: [
+            [0.0,   'rgba(0,0,0,0)'],
+            [0.001, '#3d6fd0'],
+            [0.35,  '#5b8ce6'],
+            [0.70,  '#83b0f5'],
+            [1.0,   '#b6d4ff']
+        ]
+    };
+
+    var THEME_LAYOUTS = {
+        light: {
+            paper_bgcolor: '#ffffff',
+            plot_bgcolor:  '#f6f8fa',
+            font:   { color: '#1c2128' },
+            xaxis:  { gridcolor: '#e2e8f0', linecolor: '#d1d9e0',
+                      zerolinecolor: '#d1d9e0', tickcolor: '#d1d9e0' },
+            yaxis:  { gridcolor: '#e2e8f0', linecolor: '#d1d9e0',
+                      zerolinecolor: '#d1d9e0', tickcolor: '#d1d9e0' },
+            legend: { font: { color: '#1c2128' } },
+            hoverlabel: {
+                bgcolor:     '#ffffff',
+                bordercolor: '#d1d9e0',
+                font:        { color: '#1c2128' }
+            },
+            // Left to Plotly, these derive from paper_bgcolor: the icons are
+            // drawn at 30% of a contrast colour and repainted at 70% on
+            // hover. Pinning both ends the derivation, so the toolbar keeps
+            // a fixed, checked contrast under either theme instead of one
+            // computed from a background we change underneath it.
+            // A polar plot does not inherit plot_bgcolor. Plotly defaults
+            // polar.bgcolor to #fff, so the radar drew a white disc inside
+            // a dark card -- the same class of defect the cartesian axes
+            // were cleared of, living in the gap between two guards.
+            polar: {
+                bgcolor: '#f6f8fa',
+                radialaxis:  { gridcolor: '#e2e8f0', linecolor: '#e2e8f0', color: '#1c2128' },
+                angularaxis: { gridcolor: '#e2e8f0', linecolor: '#e2e8f0', color: '#1c2128' }
+            },
+            modebar: {
+                bgcolor:     '#ffffff',
+                color:       '#57606a',
+                activecolor: '#1e40af'
+            }
+        },
+        dark: {
+            paper_bgcolor: '#21262d',
+            plot_bgcolor:  '#161b22',
+            font:   { color: '#e6edf3' },
+            xaxis:  { gridcolor: '#30363d', linecolor: '#30363d',
+                      zerolinecolor: '#30363d', tickcolor: '#30363d' },
+            yaxis:  { gridcolor: '#30363d', linecolor: '#30363d',
+                      zerolinecolor: '#30363d', tickcolor: '#30363d' },
+            legend: { font: { color: '#e6edf3' } },
+            hoverlabel: {
+                bgcolor:     '#21262d',
+                bordercolor: '#30363d',
+                font:        { color: '#e6edf3' }
+            },
+            // A polar plot does not inherit plot_bgcolor. Plotly defaults
+            // polar.bgcolor to #fff, so the radar drew a white disc inside
+            // a dark card -- the same class of defect the cartesian axes
+            // were cleared of, living in the gap between two guards.
+            polar: {
+                bgcolor: '#161b22',
+                radialaxis:  { gridcolor: '#30363d', linecolor: '#30363d', color: '#e6edf3' },
+                angularaxis: { gridcolor: '#30363d', linecolor: '#30363d', color: '#e6edf3' }
+            },
+            modebar: {
+                bgcolor:     '#21262d',
+                color:       '#8b949e',
+                activecolor: '#58a6ff'
+            }
+        }
+    };
+
+    // Recursively merge the theme layout over a chart's own layout.
+    //
+    // Object.assign is shallow. Assigning { xaxis: { gridcolor } } over a
+    // layout whose xaxis carries { type, tickangle, title } would replace
+    // the axis wholesale and take the axis title with it.
+    function mergeLayout(base, overlay) {
+        var out = Object.assign({}, base);
+        Object.keys(overlay).forEach(function (key) {
+            var value = overlay[key];
+            var target = out[key];
+            if (value && typeof value === 'object' && !Array.isArray(value)) {
+                out[key] = mergeLayout(
+                    (target && typeof target === 'object' && !Array.isArray(target))
+                        ? target
+                        : {},
+                    value
+                );
+            } else {
+                out[key] = value;
+            }
+        });
+        return out;
+    }
+
+    // Heatmap state — populated during DOMContentLoaded.
+    var heatmapData = null;
+    var currentYear = null;
+    var currentContributor = '__aggregated__';
+    // True while the page is being printed: charts take the light theme and
+    // the printed width (see fitChartsTo).
+    var printing = false;
+
+    // ------------------------------------------------------------------
+    // Theme persistence
+    // ------------------------------------------------------------------
+
+    // A choice made on this page wins. Without one, the report follows the
+    // reader's system setting: it always opened light, so a reader whose
+    // system is dark got a white page they had to switch by hand.
+    function readTheme() {
+        var stored = null;
+        try { stored = localStorage.getItem(THEME_KEY); } catch (e) { stored = null; }
+        if (stored === 'light' || stored === 'dark') return stored;
+        try {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                return 'dark';
+            }
+        } catch (e) { /* no media queries: the default stands */ }
+        return 'light';
+    }
+
+    function writeTheme(theme) {
+        try { localStorage.setItem(THEME_KEY, theme); }
+        catch (e) { /* localStorage unavailable — non-fatal */ }
+    }
+
+    // ------------------------------------------------------------------
+    // Document theme
+    // ------------------------------------------------------------------
+
+    function applyThemeToDocument(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        var btn = document.getElementById('theme-toggle');
+        if (btn) btn.textContent = theme === 'dark' ? 'Light Mode' : 'Dark Mode';
+    }
+
+    // ------------------------------------------------------------------
+    // Non-heatmap chart initialisation
+    // ------------------------------------------------------------------
+
+    function initChart(id, theme) {
+        var specEl = document.getElementById('spec-' + id);
+        var divEl  = document.getElementById('chart-' + id);
+        if (!specEl || !divEl) return;
+
+        var raw = specEl.textContent.trim();
+        if (!raw || raw === 'null') {
+            divEl.innerHTML =
+                '<p class="chart-empty">Insufficient data for this view.</p>';
+            return;
+        }
+
+        var spec;
+        try { spec = JSON.parse(raw); }
+        catch (e) {
+            divEl.innerHTML =
+                '<p class="chart-empty">Chart specification could not be parsed.</p>';
+            return;
+        }
+
+        if (!spec || !spec.data || spec.data.length === 0) {
+            divEl.innerHTML =
+                '<p class="chart-empty">Insufficient data for this view.</p>';
+            return;
+        }
+
+        var layout = mergeLayout(spec.layout || {}, THEME_LAYOUTS[theme]);
+        if (printing) layout.width = divEl.clientWidth;
+        layout = applyNarrowLayout(layout, spec, divEl.clientWidth);
+        if (divEl._fullLayout) {
+            Plotly.react(divEl, spec.data, layout, PLOTLY_CONFIG);
+        } else {
+            Plotly.newPlot(divEl, spec.data, layout, PLOTLY_CONFIG);
+        }
+    }
+
+    // A phone's axis cannot widen to fit a long label, and Plotly cuts it at
+    // the panel edge without saying so. Below 560 px a chart that declares
+    // narrow-screen overrides gets them -- shortened labels marked with an
+    // ellipsis, fewer ticks, more height. The data, the hover and the text
+    // table keep the full labels.
+    function applyNarrowLayout(layout, spec, width) {
+        var narrow = spec.layout && spec.layout.meta && spec.layout.meta.narrow_layout;
+        if (!narrow || width >= 560) return layout;
+        return mergeLayout(layout, narrow);
+    }
+
+    function initAllCharts(theme) {
+        CHART_IDS.forEach(function (id) { initChart(id, theme); });
+        initHeatmapControls(theme);
+    }
+
+    // ------------------------------------------------------------------
+    // Heatmap: GitHub-style grid builder
+    //
+    // All date arithmetic uses UTC milliseconds to avoid DST anomalies.
+    // The grid covers the part of the requested year that lies inside the
+    // analysis window, from the Monday of its first week to the Sunday of
+    // its last. Days outside the window are null -- drawn as no cell, with
+    // no hover -- because they are not days with no commits: before the
+    // window the repository may not have existed, and after it is the
+    // future. They were once drawn as zero, the whole year round.
+    // ------------------------------------------------------------------
+
+    function buildYearGrid(year, counts, since, until) {
+        function dayMs(iso) {
+            var p = iso.split('-');
+            return Date.UTC(+p[0], +p[1] - 1, +p[2]);
+        }
+        var firstMs = Math.max(Date.UTC(year, 0, 1), since ? dayMs(since) : -Infinity);
+        var lastMs  = Math.min(Date.UTC(year, 11, 31), until ? dayMs(until) : Infinity);
+        var jan1Ms  = firstMs;
+        var dec31Ms = lastMs;
+
+        // Convert JS Sunday=0 to Monday=0 day-of-week index.
+        var jan1Dow  = (new Date(jan1Ms).getUTCDay() + 6) % 7;
+        var dec31Dow = (new Date(dec31Ms).getUTCDay() + 6) % 7;
+
+        var gridStartMs = jan1Ms  - jan1Dow  * 86400000;
+        var gridEndMs   = dec31Ms + (6 - dec31Dow) * 86400000;
+
+        // gridStart is always Monday, gridEnd always Sunday —
+        // total days is always divisible by 7.
+        var numWeeks = Math.round(
+            (gridEndMs - gridStartMs) / 86400000 + 1
+        ) / 7;
+
+        var MONTHS = [
+            'Jan','Feb','Mar','Apr','May','Jun',
+            'Jul','Aug','Sep','Oct','Nov','Dec'
+        ];
+        var DAY_LABELS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+        var z = [], customdata = [], xLabels = [];
+        for (var d = 0; d < 7; d++) { z.push([]); customdata.push([]); }
+
+        for (var w = 0; w < numWeeks; w++) {
+            var weekMonMs = gridStartMs + w * 7 * 86400000;
+            var wm = new Date(weekMonMs);
+            xLabels.push(
+                MONTHS[wm.getUTCMonth()] + ' ' +
+                String(wm.getUTCDate()).padStart(2, '0')
+            );
+
+            for (var d = 0; d < 7; d++) {
+                var cellMs = weekMonMs + d * 86400000;
+                var cd = new Date(cellMs);
+                if (cellMs >= firstMs && cellMs <= lastMs) {
+                    var mo = String(cd.getUTCMonth() + 1).padStart(2, '0');
+                    var da = String(cd.getUTCDate()).padStart(2, '0');
+                    var dateStr = year + '-' + mo + '-' + da;
+                    z[d].push(counts[dateStr] || 0);
+                    customdata[d].push(dateStr);
+                } else {
+                    // Outside the window: no cell and no hover.
+                    z[d].push(null);
+                    customdata[d].push('');
+                }
+            }
+        }
+
+        return { z: z, x: xLabels, y: DAY_LABELS, customdata: customdata };
+    }
+
+    // ------------------------------------------------------------------
+    // Heatmap rendering
+    // ------------------------------------------------------------------
+
+    function renderHeatmap(year, email, theme) {
+        var divEl = document.getElementById('chart-heatmap');
+        if (!divEl || !heatmapData) return;
+
+        var counts = heatmapData.daily_counts[email] || {};
+        var grid   = buildYearGrid(year, counts, heatmapData.since, heatmapData.until);
+
+        // About 14 pixels a week plus room for the day labels and colour
+        // bar. Below this the container scrolls instead of the cells
+        // shrinking to nothing.
+        divEl.style.minWidth = (grid.x.length * 14 + 120) + 'px';
+
+        // Compute the peak commit count across the current grid.
+        // When a contributor has no activity in the selected year, every z
+        // value is 0. Plotly's zauto collapses a flat-zero dataset to an
+        // arbitrary scale centred at 0, mapping all cells to a non-transparent
+        // colour. Anchoring zmin=0 and zmax=max(peak,1) ensures zero always
+        // resolves to the transparent stop in the colorscale.
+        var zPeak = 1;
+        for (var ri = 0; ri < grid.z.length; ri++) {
+            for (var ci = 0; ci < grid.z[ri].length; ci++) {
+                if (grid.z[ri][ci] > zPeak) zPeak = grid.z[ri][ci];
+            }
+        }
+
+        var trace = {
+            type: 'heatmap',
+            z: grid.z,
+            x: grid.x,
+            y: grid.y,
+            customdata: grid.customdata,
+            zauto: false,
+            zmin: 0,
+            zmax: zPeak,
+            colorscale: HEATMAP_SCALES[theme],
+            showscale: true,
+            hovertemplate: '%{customdata}<br>Commits: %{z}<extra></extra>'
+        };
+
+        var layout = mergeLayout({
+            font: {
+                family: "-apple-system, BlinkMacSystemFont, 'Segoe UI', " +
+                        "Roboto, 'Helvetica Neue', Arial, sans-serif",
+                size: 12
+            },
+            margin:     { l: 60, r: 30, t: 40, b: 50 },
+            // 'domain' on both axes: square cells shrink the plot area to the
+            // weeks drawn. The default extends the x range instead, which
+            // drew empty columns past the end of the window.
+            xaxis:      { type: 'category', tickangle: -45, constrain: 'domain' },
+            yaxis:      { autorange: 'reversed', scaleanchor: 'x',
+                          constrain: 'domain' },
+            showlegend: false,
+            modebar:    { remove: ['logo'] },
+            height:     260
+        }, THEME_LAYOUTS[theme]);
+        if (printing) layout.width = divEl.clientWidth;
+
+        var drawn = divEl._fullLayout
+            ? Plotly.react(divEl, [trace], layout, PLOTLY_CONFIG)
+            : Plotly.newPlot(divEl, [trace], layout, PLOTLY_CONFIG);
+        Promise.resolve(drawn).then(function () { showLatestWeeks(divEl); });
+    }
+
+    // Where the grid is wider than its panel (a phone, or a long window),
+    // the panel scrolls. It opened on the oldest weeks, so the recent ones --
+    // the ones a reader comes for -- were off screen, and an overlay
+    // scrollbar gave no sign that more was there. Open at the latest week and
+    // say that the panel scrolls; say nothing where it does not.
+    function showLatestWeeks(divEl) {
+        var panel = divEl.parentNode;
+        var note = document.getElementById('heatmap-scroll-note');
+        var overflows = panel.scrollWidth > panel.clientWidth + 1;
+        if (overflows) panel.scrollLeft = panel.scrollWidth;
+        if (note) note.hidden = !overflows;
+    }
+
+    // ------------------------------------------------------------------
+    // Heatmap controls initialisation
+    // ------------------------------------------------------------------
+
+    function initHeatmapControls(theme) {
+        var specEl = document.getElementById('spec-heatmap');
+        if (!specEl) return;
+
+        var raw = specEl.textContent.trim();
+        if (!raw || raw === 'null') {
+            var divEl = document.getElementById('chart-heatmap');
+            if (divEl) divEl.innerHTML =
+                '<p class="chart-empty">Insufficient data for this view.</p>';
+            return;
+        }
+
+        try { heatmapData = JSON.parse(raw); }
+        catch (e) { return; }
+
+        var years        = heatmapData.years        || [];
+        var contributors = heatmapData.contributors || [];
+
+        // Default: the latest year with a commit, aggregated view.
+        currentYear        = heatmapData.default_year || years[years.length - 1];
+        currentContributor = '__aggregated__';
+
+        // Build year tab buttons.
+        var tabsEl = document.getElementById('heatmap-year-tabs');
+        if (tabsEl) {
+            tabsEl.innerHTML = '';
+            years.forEach(function (yr) {
+                var btn = document.createElement('button');
+                btn.type      = 'button';
+                btn.textContent = String(yr);
+                btn.className = 'heatmap-year-btn' +
+                    (yr === currentYear ? ' heatmap-year-active' : '');
+                // Communicates the selected year to assistive technology,
+                // which cannot infer it from the active-state class alone.
+                btn.setAttribute('aria-pressed', yr === currentYear ? 'true' : 'false');
+                btn.addEventListener('click', function () {
+                    currentYear = yr;
+                    tabsEl.querySelectorAll('.heatmap-year-btn')
+                        .forEach(function (b) {
+                            var selected = b.textContent === String(yr);
+                            b.classList.toggle('heatmap-year-active', selected);
+                            b.setAttribute('aria-pressed', selected ? 'true' : 'false');
+                        });
+                    renderHeatmap(currentYear, currentContributor, readTheme());
+                });
+                tabsEl.appendChild(btn);
+            });
+        }
+
+        // Build contributor dropdown.
+        var selectEl = document.getElementById('heatmap-contributor-select');
+        if (selectEl) {
+            if (contributors.length > 1) {
+                selectEl.innerHTML = '';
+                contributors.forEach(function (c) {
+                    var opt       = document.createElement('option');
+                    opt.value     = c.email;
+                    opt.textContent = c.name;
+                    selectEl.appendChild(opt);
+                });
+                selectEl.value = '__aggregated__';
+                selectEl.style.display = '';
+                selectEl.addEventListener('change', function () {
+                    currentContributor = selectEl.value;
+                    renderHeatmap(currentYear, currentContributor, readTheme());
+                });
+            } else {
+                // Single contributor: dropdown provides no choice — hide it.
+                selectEl.style.display = 'none';
+            }
+        }
+
+        renderHeatmap(currentYear, currentContributor, theme);
+    }
+
+    // ------------------------------------------------------------------
+    // Theme update for already-rendered charts
+    // ------------------------------------------------------------------
+
+    function applyThemeToCharts(theme) {
+        // Re-plot through the same path the first render uses, rather than
+        // Plotly.relayout. relayout would work -- it is the one entry point
+        // that expands dotted attribute strings, which is why the toggle
+        // appeared correct while the first paint was not -- but handing it a
+        // nested object replaces the container it names, so a themed xaxis
+        // would take the axis title with it. One path, one set of semantics.
+        CHART_IDS.forEach(function (id) { initChart(id, theme); });
+        // The heatmap needs a full re-render rather than a relayout. Its
+        // colour ramp is theme-specific -- see HEATMAP_SCALES -- and a
+        // colorscale lives on the trace, which Plotly.relayout does not touch.
+        // Relayout alone would swap the background and leave a ramp built for
+        // the other surface, which would read inverted.
+        var heatmapEl = document.getElementById('chart-heatmap');
+        if (heatmapEl && heatmapEl._fullLayout && heatmapData) {
+            renderHeatmap(currentYear, currentContributor, theme);
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Theme toggle
+    // ------------------------------------------------------------------
+
+    function toggleTheme() {
+        var next = readTheme() === 'dark' ? 'light' : 'dark';
+        applyThemeToDocument(next);
+        writeTheme(next);
+        applyThemeToCharts(next);
+    }
+
+    // ------------------------------------------------------------------
+    // Boot
+    // ------------------------------------------------------------------
+
+    var initialTheme = readTheme();
+    applyThemeToDocument(initialTheme);
+
+    // Printing reflows the page to the paper's width without firing a resize
+    // event, so every chart kept its screen width and was cut off at the
+    // right edge. Plotly.Plots.resize redraws on a timer, after the page has
+    // already been printed, and 'beforeprint' fires before the print styles
+    // apply. So the charts are redrawn when the print media query starts to
+    // match -- the containers then have their printed width -- through the
+    // same path as the first paint, with that width set. The page prints in
+    // the light palette whatever theme it is shown in, so the charts do too;
+    // they kept a dark theme and printed as dark panels on white paper. On
+    // return they are redrawn in the reader's theme, sized to the screen.
+    function fitChartsTo(isPrinting) {
+        printing = isPrinting;
+        var theme = printing ? 'light' : readTheme();
+        CHART_IDS.forEach(function (id) { initChart(id, theme); });
+        if (heatmapData) renderHeatmap(currentYear, currentContributor, theme);
+    }
+    var printQuery = window.matchMedia ? window.matchMedia('print') : null;
+    if (printQuery && printQuery.addEventListener) {
+        printQuery.addEventListener('change', function (query) {
+            fitChartsTo(query.matches);
+        });
+    }
+    window.addEventListener('afterprint', function () { fitChartsTo(false); });
+
+    document.addEventListener('DOMContentLoaded', function () {
+        initAllCharts(initialTheme);
+        var themeBtn = document.getElementById('theme-toggle');
+        if (themeBtn) themeBtn.addEventListener('click', toggleTheme);
+    });
+
+}());
+{% endset %}
 {#
    The text alternative for a chart. `role="img"` makes an SVG's children
    presentational, so the aria-label is the only thing a screen-reader
@@ -34,24 +623,13 @@
     {#- The report is offline: nothing in it may load from, or send to, the network.
         Inline script and style are the report itself; data: and blob: images are
         what Plotly's PNG download renders through. #}
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src {{ script_sources(theme_js, plotly_js, report_js) }}; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ data.metadata.name }} — Reveille Report</title>
     {#- The theme before the first paint. Applied only by the script at the end of
         the page, after the chart library is parsed, it let a dark-mode reader see
         the light page first and watch it fade. The same rule as readTheme(). #}
-    <script>
-    (function () {
-        var theme = null;
-        try { theme = localStorage.getItem('reveille-theme'); } catch (e) { theme = null; }
-        if (theme !== 'light' && theme !== 'dark') {
-            try {
-                theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-            } catch (e) { theme = 'light'; }
-        }
-        document.documentElement.setAttribute('data-theme', theme);
-    })();
-    </script>
+    <script>{{ theme_js }}</script>
     <style>
         /* ============================================================
            Custom Properties — Light Theme (default)
@@ -1794,580 +2372,7 @@
 <!-- ================================================================
      Theme manager and chart initialisation
      ================================================================ -->
-<script>
-(function () {
-    'use strict';
-
-    var THEME_KEY = 'reveille-theme';
-
-    var CHART_IDS = [
-        'timeline',
-        'contributor_timeline',
-        'contributor_lines',
-        'pie_commits',
-        'lorenz',
-        'commit_size',
-        'hotspots',
-        'extensions'
-    ];
-
-    var PLOTLY_CONFIG = {
-        responsive: true,
-        // 'hover' rather than true: ten always-visible toolbars were
-        // printed into every PDF export, advertising controls a reader
-        // of paper cannot operate.
-        displayModeBar: 'hover',
-        displaylogo: false,
-        // The report is offline: no "Share chart..." button posting the data,
-        // names included, to Plotly's cloud, and no server for it to use.
-        showSendToCloud: false,
-        plotlyServerURL: '',
-        modeBarButtonsToRemove: ['sendChartToCloud']
-    };
-
-    // Heatmap colour ramps, one per theme.
-    //
-    // A sequential ramp encodes magnitude, so a busier day must always read as
-    // more prominent than a quieter one. A single ramp cannot do that on two
-    // surfaces: the old fixed scale ended at #1e3a8a, which sits at 9.73:1
-    // against the light plot background but only 1.67:1 against the dark one.
-    // In dark mode the busiest days therefore faded into the background while
-    // the quietest ones glowed -- the chart read backwards, and the effect was
-    // strongest exactly where the data mattered most.
-    //
-    // Both ramps below are one hue, and both were checked so that contrast
-    // against their own surface rises at every step:
-    //   light  #f6f8fa : 1.66 -> 2.92 -> 4.85 -> 9.73
-    //   dark   #161b22 : 1.67 -> 3.35 -> 5.57 -> 9.59
-    // The first stop stays transparent so a day with no commits is the surface
-    // itself rather than a colour meaning "zero".
-    // Heatmap colour ramps, one per theme.
-    //
-    // A sequential ramp encodes magnitude, so a busier day must always read
-    // as more prominent than a quieter one. A single ramp cannot do that on
-    // two surfaces, and contrast has to rise at every step.
-    //
-    // The lowest non-zero step matters most and was the weakest: at 1.66:1
-    // light and 1.67:1 dark, a day with one commit was barely separable
-    // from a day with none -- and colour is the only encoding here, with no
-    // hover in a printed PDF. Both ramps now start at or above the 3:1 that
-    // WCAG 2.1 asks of a graphical object needed to understand the content.
-    //
-    //   light  #f6f8fa : 3.67 -> 5.44 -> 7.57 -> 10.86
-    //   dark   #161b22 : 3.61 -> 5.22 -> 7.82 -> 11.41
-    //
-    // The first stop stays transparent, so a day with no commits is the
-    // surface itself rather than a colour meaning "zero".
-    var HEATMAP_SCALES = {
-        light: [
-            [0.0,   'rgba(0,0,0,0)'],
-            [0.001, '#4f83c4'],
-            [0.35,  '#2f66ad'],
-            [0.70,  '#1d4f95'],
-            [1.0,   '#12386e']
-        ],
-        dark: [
-            [0.0,   'rgba(0,0,0,0)'],
-            [0.001, '#3d6fd0'],
-            [0.35,  '#5b8ce6'],
-            [0.70,  '#83b0f5'],
-            [1.0,   '#b6d4ff']
-        ]
-    };
-
-    var THEME_LAYOUTS = {
-        light: {
-            paper_bgcolor: '#ffffff',
-            plot_bgcolor:  '#f6f8fa',
-            font:   { color: '#1c2128' },
-            xaxis:  { gridcolor: '#e2e8f0', linecolor: '#d1d9e0',
-                      zerolinecolor: '#d1d9e0', tickcolor: '#d1d9e0' },
-            yaxis:  { gridcolor: '#e2e8f0', linecolor: '#d1d9e0',
-                      zerolinecolor: '#d1d9e0', tickcolor: '#d1d9e0' },
-            legend: { font: { color: '#1c2128' } },
-            hoverlabel: {
-                bgcolor:     '#ffffff',
-                bordercolor: '#d1d9e0',
-                font:        { color: '#1c2128' }
-            },
-            // Left to Plotly, these derive from paper_bgcolor: the icons are
-            // drawn at 30% of a contrast colour and repainted at 70% on
-            // hover. Pinning both ends the derivation, so the toolbar keeps
-            // a fixed, checked contrast under either theme instead of one
-            // computed from a background we change underneath it.
-            // A polar plot does not inherit plot_bgcolor. Plotly defaults
-            // polar.bgcolor to #fff, so the radar drew a white disc inside
-            // a dark card -- the same class of defect the cartesian axes
-            // were cleared of, living in the gap between two guards.
-            polar: {
-                bgcolor: '#f6f8fa',
-                radialaxis:  { gridcolor: '#e2e8f0', linecolor: '#e2e8f0', color: '#1c2128' },
-                angularaxis: { gridcolor: '#e2e8f0', linecolor: '#e2e8f0', color: '#1c2128' }
-            },
-            modebar: {
-                bgcolor:     '#ffffff',
-                color:       '#57606a',
-                activecolor: '#1e40af'
-            }
-        },
-        dark: {
-            paper_bgcolor: '#21262d',
-            plot_bgcolor:  '#161b22',
-            font:   { color: '#e6edf3' },
-            xaxis:  { gridcolor: '#30363d', linecolor: '#30363d',
-                      zerolinecolor: '#30363d', tickcolor: '#30363d' },
-            yaxis:  { gridcolor: '#30363d', linecolor: '#30363d',
-                      zerolinecolor: '#30363d', tickcolor: '#30363d' },
-            legend: { font: { color: '#e6edf3' } },
-            hoverlabel: {
-                bgcolor:     '#21262d',
-                bordercolor: '#30363d',
-                font:        { color: '#e6edf3' }
-            },
-            // A polar plot does not inherit plot_bgcolor. Plotly defaults
-            // polar.bgcolor to #fff, so the radar drew a white disc inside
-            // a dark card -- the same class of defect the cartesian axes
-            // were cleared of, living in the gap between two guards.
-            polar: {
-                bgcolor: '#161b22',
-                radialaxis:  { gridcolor: '#30363d', linecolor: '#30363d', color: '#e6edf3' },
-                angularaxis: { gridcolor: '#30363d', linecolor: '#30363d', color: '#e6edf3' }
-            },
-            modebar: {
-                bgcolor:     '#21262d',
-                color:       '#8b949e',
-                activecolor: '#58a6ff'
-            }
-        }
-    };
-
-    // Recursively merge the theme layout over a chart's own layout.
-    //
-    // Object.assign is shallow. Assigning { xaxis: { gridcolor } } over a
-    // layout whose xaxis carries { type, tickangle, title } would replace
-    // the axis wholesale and take the axis title with it.
-    function mergeLayout(base, overlay) {
-        var out = Object.assign({}, base);
-        Object.keys(overlay).forEach(function (key) {
-            var value = overlay[key];
-            var target = out[key];
-            if (value && typeof value === 'object' && !Array.isArray(value)) {
-                out[key] = mergeLayout(
-                    (target && typeof target === 'object' && !Array.isArray(target))
-                        ? target
-                        : {},
-                    value
-                );
-            } else {
-                out[key] = value;
-            }
-        });
-        return out;
-    }
-
-    // Heatmap state — populated during DOMContentLoaded.
-    var heatmapData = null;
-    var currentYear = null;
-    var currentContributor = '__aggregated__';
-    // True while the page is being printed: charts take the light theme and
-    // the printed width (see fitChartsTo).
-    var printing = false;
-
-    // ------------------------------------------------------------------
-    // Theme persistence
-    // ------------------------------------------------------------------
-
-    // A choice made on this page wins. Without one, the report follows the
-    // reader's system setting: it always opened light, so a reader whose
-    // system is dark got a white page they had to switch by hand.
-    function readTheme() {
-        var stored = null;
-        try { stored = localStorage.getItem(THEME_KEY); } catch (e) { stored = null; }
-        if (stored === 'light' || stored === 'dark') return stored;
-        try {
-            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-                return 'dark';
-            }
-        } catch (e) { /* no media queries: the default stands */ }
-        return 'light';
-    }
-
-    function writeTheme(theme) {
-        try { localStorage.setItem(THEME_KEY, theme); }
-        catch (e) { /* localStorage unavailable — non-fatal */ }
-    }
-
-    // ------------------------------------------------------------------
-    // Document theme
-    // ------------------------------------------------------------------
-
-    function applyThemeToDocument(theme) {
-        document.documentElement.setAttribute('data-theme', theme);
-        var btn = document.getElementById('theme-toggle');
-        if (btn) btn.textContent = theme === 'dark' ? 'Light Mode' : 'Dark Mode';
-    }
-
-    // ------------------------------------------------------------------
-    // Non-heatmap chart initialisation
-    // ------------------------------------------------------------------
-
-    function initChart(id, theme) {
-        var specEl = document.getElementById('spec-' + id);
-        var divEl  = document.getElementById('chart-' + id);
-        if (!specEl || !divEl) return;
-
-        var raw = specEl.textContent.trim();
-        if (!raw || raw === 'null') {
-            divEl.innerHTML =
-                '<p class="chart-empty">Insufficient data for this view.</p>';
-            return;
-        }
-
-        var spec;
-        try { spec = JSON.parse(raw); }
-        catch (e) {
-            divEl.innerHTML =
-                '<p class="chart-empty">Chart specification could not be parsed.</p>';
-            return;
-        }
-
-        if (!spec || !spec.data || spec.data.length === 0) {
-            divEl.innerHTML =
-                '<p class="chart-empty">Insufficient data for this view.</p>';
-            return;
-        }
-
-        var layout = mergeLayout(spec.layout || {}, THEME_LAYOUTS[theme]);
-        if (printing) layout.width = divEl.clientWidth;
-        layout = applyNarrowLayout(layout, spec, divEl.clientWidth);
-        if (divEl._fullLayout) {
-            Plotly.react(divEl, spec.data, layout, PLOTLY_CONFIG);
-        } else {
-            Plotly.newPlot(divEl, spec.data, layout, PLOTLY_CONFIG);
-        }
-    }
-
-    // A phone's axis cannot widen to fit a long label, and Plotly cuts it at
-    // the panel edge without saying so. Below 560 px a chart that declares
-    // narrow-screen overrides gets them -- shortened labels marked with an
-    // ellipsis, fewer ticks, more height. The data, the hover and the text
-    // table keep the full labels.
-    function applyNarrowLayout(layout, spec, width) {
-        var narrow = spec.layout && spec.layout.meta && spec.layout.meta.narrow_layout;
-        if (!narrow || width >= 560) return layout;
-        return mergeLayout(layout, narrow);
-    }
-
-    function initAllCharts(theme) {
-        CHART_IDS.forEach(function (id) { initChart(id, theme); });
-        initHeatmapControls(theme);
-    }
-
-    // ------------------------------------------------------------------
-    // Heatmap: GitHub-style grid builder
-    //
-    // All date arithmetic uses UTC milliseconds to avoid DST anomalies.
-    // The grid covers the part of the requested year that lies inside the
-    // analysis window, from the Monday of its first week to the Sunday of
-    // its last. Days outside the window are null -- drawn as no cell, with
-    // no hover -- because they are not days with no commits: before the
-    // window the repository may not have existed, and after it is the
-    // future. They were once drawn as zero, the whole year round.
-    // ------------------------------------------------------------------
-
-    function buildYearGrid(year, counts, since, until) {
-        function dayMs(iso) {
-            var p = iso.split('-');
-            return Date.UTC(+p[0], +p[1] - 1, +p[2]);
-        }
-        var firstMs = Math.max(Date.UTC(year, 0, 1), since ? dayMs(since) : -Infinity);
-        var lastMs  = Math.min(Date.UTC(year, 11, 31), until ? dayMs(until) : Infinity);
-        var jan1Ms  = firstMs;
-        var dec31Ms = lastMs;
-
-        // Convert JS Sunday=0 to Monday=0 day-of-week index.
-        var jan1Dow  = (new Date(jan1Ms).getUTCDay() + 6) % 7;
-        var dec31Dow = (new Date(dec31Ms).getUTCDay() + 6) % 7;
-
-        var gridStartMs = jan1Ms  - jan1Dow  * 86400000;
-        var gridEndMs   = dec31Ms + (6 - dec31Dow) * 86400000;
-
-        // gridStart is always Monday, gridEnd always Sunday —
-        // total days is always divisible by 7.
-        var numWeeks = Math.round(
-            (gridEndMs - gridStartMs) / 86400000 + 1
-        ) / 7;
-
-        var MONTHS = [
-            'Jan','Feb','Mar','Apr','May','Jun',
-            'Jul','Aug','Sep','Oct','Nov','Dec'
-        ];
-        var DAY_LABELS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-
-        var z = [], customdata = [], xLabels = [];
-        for (var d = 0; d < 7; d++) { z.push([]); customdata.push([]); }
-
-        for (var w = 0; w < numWeeks; w++) {
-            var weekMonMs = gridStartMs + w * 7 * 86400000;
-            var wm = new Date(weekMonMs);
-            xLabels.push(
-                MONTHS[wm.getUTCMonth()] + ' ' +
-                String(wm.getUTCDate()).padStart(2, '0')
-            );
-
-            for (var d = 0; d < 7; d++) {
-                var cellMs = weekMonMs + d * 86400000;
-                var cd = new Date(cellMs);
-                if (cellMs >= firstMs && cellMs <= lastMs) {
-                    var mo = String(cd.getUTCMonth() + 1).padStart(2, '0');
-                    var da = String(cd.getUTCDate()).padStart(2, '0');
-                    var dateStr = year + '-' + mo + '-' + da;
-                    z[d].push(counts[dateStr] || 0);
-                    customdata[d].push(dateStr);
-                } else {
-                    // Outside the window: no cell and no hover.
-                    z[d].push(null);
-                    customdata[d].push('');
-                }
-            }
-        }
-
-        return { z: z, x: xLabels, y: DAY_LABELS, customdata: customdata };
-    }
-
-    // ------------------------------------------------------------------
-    // Heatmap rendering
-    // ------------------------------------------------------------------
-
-    function renderHeatmap(year, email, theme) {
-        var divEl = document.getElementById('chart-heatmap');
-        if (!divEl || !heatmapData) return;
-
-        var counts = heatmapData.daily_counts[email] || {};
-        var grid   = buildYearGrid(year, counts, heatmapData.since, heatmapData.until);
-
-        // About 14 pixels a week plus room for the day labels and colour
-        // bar. Below this the container scrolls instead of the cells
-        // shrinking to nothing.
-        divEl.style.minWidth = (grid.x.length * 14 + 120) + 'px';
-
-        // Compute the peak commit count across the current grid.
-        // When a contributor has no activity in the selected year, every z
-        // value is 0. Plotly's zauto collapses a flat-zero dataset to an
-        // arbitrary scale centred at 0, mapping all cells to a non-transparent
-        // colour. Anchoring zmin=0 and zmax=max(peak,1) ensures zero always
-        // resolves to the transparent stop in the colorscale.
-        var zPeak = 1;
-        for (var ri = 0; ri < grid.z.length; ri++) {
-            for (var ci = 0; ci < grid.z[ri].length; ci++) {
-                if (grid.z[ri][ci] > zPeak) zPeak = grid.z[ri][ci];
-            }
-        }
-
-        var trace = {
-            type: 'heatmap',
-            z: grid.z,
-            x: grid.x,
-            y: grid.y,
-            customdata: grid.customdata,
-            zauto: false,
-            zmin: 0,
-            zmax: zPeak,
-            colorscale: HEATMAP_SCALES[theme],
-            showscale: true,
-            hovertemplate: '%{customdata}<br>Commits: %{z}<extra></extra>'
-        };
-
-        var layout = mergeLayout({
-            font: {
-                family: "-apple-system, BlinkMacSystemFont, 'Segoe UI', " +
-                        "Roboto, 'Helvetica Neue', Arial, sans-serif",
-                size: 12
-            },
-            margin:     { l: 60, r: 30, t: 40, b: 50 },
-            // 'domain' on both axes: square cells shrink the plot area to the
-            // weeks drawn. The default extends the x range instead, which
-            // drew empty columns past the end of the window.
-            xaxis:      { type: 'category', tickangle: -45, constrain: 'domain' },
-            yaxis:      { autorange: 'reversed', scaleanchor: 'x',
-                          constrain: 'domain' },
-            showlegend: false,
-            modebar:    { remove: ['logo'] },
-            height:     260
-        }, THEME_LAYOUTS[theme]);
-        if (printing) layout.width = divEl.clientWidth;
-
-        var drawn = divEl._fullLayout
-            ? Plotly.react(divEl, [trace], layout, PLOTLY_CONFIG)
-            : Plotly.newPlot(divEl, [trace], layout, PLOTLY_CONFIG);
-        Promise.resolve(drawn).then(function () { showLatestWeeks(divEl); });
-    }
-
-    // Where the grid is wider than its panel (a phone, or a long window),
-    // the panel scrolls. It opened on the oldest weeks, so the recent ones --
-    // the ones a reader comes for -- were off screen, and an overlay
-    // scrollbar gave no sign that more was there. Open at the latest week and
-    // say that the panel scrolls; say nothing where it does not.
-    function showLatestWeeks(divEl) {
-        var panel = divEl.parentNode;
-        var note = document.getElementById('heatmap-scroll-note');
-        var overflows = panel.scrollWidth > panel.clientWidth + 1;
-        if (overflows) panel.scrollLeft = panel.scrollWidth;
-        if (note) note.hidden = !overflows;
-    }
-
-    // ------------------------------------------------------------------
-    // Heatmap controls initialisation
-    // ------------------------------------------------------------------
-
-    function initHeatmapControls(theme) {
-        var specEl = document.getElementById('spec-heatmap');
-        if (!specEl) return;
-
-        var raw = specEl.textContent.trim();
-        if (!raw || raw === 'null') {
-            var divEl = document.getElementById('chart-heatmap');
-            if (divEl) divEl.innerHTML =
-                '<p class="chart-empty">Insufficient data for this view.</p>';
-            return;
-        }
-
-        try { heatmapData = JSON.parse(raw); }
-        catch (e) { return; }
-
-        var years        = heatmapData.years        || [];
-        var contributors = heatmapData.contributors || [];
-
-        // Default: the latest year with a commit, aggregated view.
-        currentYear        = heatmapData.default_year || years[years.length - 1];
-        currentContributor = '__aggregated__';
-
-        // Build year tab buttons.
-        var tabsEl = document.getElementById('heatmap-year-tabs');
-        if (tabsEl) {
-            tabsEl.innerHTML = '';
-            years.forEach(function (yr) {
-                var btn = document.createElement('button');
-                btn.type      = 'button';
-                btn.textContent = String(yr);
-                btn.className = 'heatmap-year-btn' +
-                    (yr === currentYear ? ' heatmap-year-active' : '');
-                // Communicates the selected year to assistive technology,
-                // which cannot infer it from the active-state class alone.
-                btn.setAttribute('aria-pressed', yr === currentYear ? 'true' : 'false');
-                btn.addEventListener('click', function () {
-                    currentYear = yr;
-                    tabsEl.querySelectorAll('.heatmap-year-btn')
-                        .forEach(function (b) {
-                            var selected = b.textContent === String(yr);
-                            b.classList.toggle('heatmap-year-active', selected);
-                            b.setAttribute('aria-pressed', selected ? 'true' : 'false');
-                        });
-                    renderHeatmap(currentYear, currentContributor, readTheme());
-                });
-                tabsEl.appendChild(btn);
-            });
-        }
-
-        // Build contributor dropdown.
-        var selectEl = document.getElementById('heatmap-contributor-select');
-        if (selectEl) {
-            if (contributors.length > 1) {
-                selectEl.innerHTML = '';
-                contributors.forEach(function (c) {
-                    var opt       = document.createElement('option');
-                    opt.value     = c.email;
-                    opt.textContent = c.name;
-                    selectEl.appendChild(opt);
-                });
-                selectEl.value = '__aggregated__';
-                selectEl.style.display = '';
-                selectEl.addEventListener('change', function () {
-                    currentContributor = selectEl.value;
-                    renderHeatmap(currentYear, currentContributor, readTheme());
-                });
-            } else {
-                // Single contributor: dropdown provides no choice — hide it.
-                selectEl.style.display = 'none';
-            }
-        }
-
-        renderHeatmap(currentYear, currentContributor, theme);
-    }
-
-    // ------------------------------------------------------------------
-    // Theme update for already-rendered charts
-    // ------------------------------------------------------------------
-
-    function applyThemeToCharts(theme) {
-        // Re-plot through the same path the first render uses, rather than
-        // Plotly.relayout. relayout would work -- it is the one entry point
-        // that expands dotted attribute strings, which is why the toggle
-        // appeared correct while the first paint was not -- but handing it a
-        // nested object replaces the container it names, so a themed xaxis
-        // would take the axis title with it. One path, one set of semantics.
-        CHART_IDS.forEach(function (id) { initChart(id, theme); });
-        // The heatmap needs a full re-render rather than a relayout. Its
-        // colour ramp is theme-specific -- see HEATMAP_SCALES -- and a
-        // colorscale lives on the trace, which Plotly.relayout does not touch.
-        // Relayout alone would swap the background and leave a ramp built for
-        // the other surface, which would read inverted.
-        var heatmapEl = document.getElementById('chart-heatmap');
-        if (heatmapEl && heatmapEl._fullLayout && heatmapData) {
-            renderHeatmap(currentYear, currentContributor, theme);
-        }
-    }
-
-    // ------------------------------------------------------------------
-    // Theme toggle
-    // ------------------------------------------------------------------
-
-    function toggleTheme() {
-        var next = readTheme() === 'dark' ? 'light' : 'dark';
-        applyThemeToDocument(next);
-        writeTheme(next);
-        applyThemeToCharts(next);
-    }
-
-    // ------------------------------------------------------------------
-    // Boot
-    // ------------------------------------------------------------------
-
-    var initialTheme = readTheme();
-    applyThemeToDocument(initialTheme);
-
-    // Printing reflows the page to the paper's width without firing a resize
-    // event, so every chart kept its screen width and was cut off at the
-    // right edge. Plotly.Plots.resize redraws on a timer, after the page has
-    // already been printed, and 'beforeprint' fires before the print styles
-    // apply. So the charts are redrawn when the print media query starts to
-    // match -- the containers then have their printed width -- through the
-    // same path as the first paint, with that width set. The page prints in
-    // the light palette whatever theme it is shown in, so the charts do too;
-    // they kept a dark theme and printed as dark panels on white paper. On
-    // return they are redrawn in the reader's theme, sized to the screen.
-    function fitChartsTo(isPrinting) {
-        printing = isPrinting;
-        var theme = printing ? 'light' : readTheme();
-        CHART_IDS.forEach(function (id) { initChart(id, theme); });
-        if (heatmapData) renderHeatmap(currentYear, currentContributor, theme);
-    }
-    var printQuery = window.matchMedia ? window.matchMedia('print') : null;
-    if (printQuery && printQuery.addEventListener) {
-        printQuery.addEventListener('change', function (query) {
-            fitChartsTo(query.matches);
-        });
-    }
-    window.addEventListener('afterprint', function () { fitChartsTo(false); });
-
-    document.addEventListener('DOMContentLoaded', function () {
-        initAllCharts(initialTheme);
-        var themeBtn = document.getElementById('theme-toggle');
-        if (themeBtn) themeBtn.addEventListener('click', toggleTheme);
-    });
-
-}());
-</script>
+<script>{{ report_js }}</script>
 
 </body>
 </html>
