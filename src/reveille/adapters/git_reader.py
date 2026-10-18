@@ -72,6 +72,9 @@ _MIN_GIT = (2, 24)
 # C0, DEL and C1: some terminals obey a C1 control (U+009B is CSI) given as UTF-8.
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 
+# A byte that is not UTF-8 decodes to a lone surrogate, which no output can encode.
+_UNDECODED_RE = re.compile(r"[\ud800-\udfff]")
+
 # Bidi overrides, embeddings and isolates, zero-width space and BOM: they change
 # how a name displays. ZWJ, ZWNJ, LRM and RLM are kept; real names use them.
 _INVISIBLE_IN_NAMES_RE = re.compile("[\u202a-\u202e\u2066-\u2069\u200b\ufeff]")
@@ -860,7 +863,7 @@ class GitReader:
 
         # An unborn HEAD is a negative answer, not a read failure; a named branch
         # is read even then, and a missing one fails below.
-        if branch is None and not self._repo.head.is_valid():
+        if branch is None and self.resolve_head_sha() is None:
             raise EmptyRepositoryError(
                 f"Repository at '{self._repo_path}' contains no commits. "
                 "Make at least one commit before generating a report."
@@ -1046,7 +1049,7 @@ class GitReader:
         return RepositoryMetadata(
             name=self._repo_path.name,
             remote_url=remote_url,
-            analysed_branch=branch or self._resolve_active_branch(),
+            analysed_branch=_shown(branch or self._resolve_active_branch()),
             total_commits=total_commits,
             unique_contributors=unique_contributors,
             analysis_since=analysis_since,
@@ -1089,10 +1092,13 @@ class GitReader:
         Returns:
             The branch name, or 'HEAD'.
         """
+        # Asked of Git, not read by GitPython, which stops on a name that is not
+        # UTF-8; Git's answer keeps such bytes, so the name can be passed back.
         try:
-            return self._repo.active_branch.name
-        except TypeError:
+            ref = str(self._git().symbolic_ref("--quiet", "HEAD")).strip()
+        except GitCommandError:
             return "HEAD"
+        return ref.removeprefix("refs/heads/")
 
     def _read_alongside(
         self,
@@ -1772,10 +1778,9 @@ class GitReader:
         Returns:
             The 40-character SHA, or None if the ref cannot be resolved.
         """
-        rev = branch or self._resolve_active_branch()
         try:
-            return str(self._repo.commit(rev).hexsha)
-        except Exception:
+            return self.resolve_commit(branch or self._resolve_active_branch())
+        except RepositoryError:
             return None
 
     def _addresses_in_history(
@@ -2452,9 +2457,22 @@ def _strip_control_chars(value: str) -> str:
         value: A raw author name or address straight from `git log`.
 
     Returns:
-        The value with every C0 control character and DEL removed.
+        The value with every C0 control character and DEL removed, and each byte
+        that is not UTF-8 shown as U+FFFD, as a path's is.
     """
-    return _CONTROL_CHARS_RE.sub("", value)
+    return _shown(_CONTROL_CHARS_RE.sub("", value))
+
+
+def _shown(value: str) -> str:
+    """Show each byte Git gave that is not UTF-8 as U+FFFD, which every output can write.
+
+    Args:
+        value: Text decoded from Git's output, or a ref name.
+
+    Returns:
+        The value with each lone surrogate replaced.
+    """
+    return _UNDECODED_RE.sub("\ufffd", value)
 
 
 def _strip_invisible(name: str) -> str:
