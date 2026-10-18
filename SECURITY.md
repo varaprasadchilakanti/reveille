@@ -187,7 +187,9 @@ entries are in [CHANGELOG.md](CHANGELOG.md) under Unreleased, Security; by class
 
 - **Programs and hangs a repository could cause:** named pipes or devices at files Git
   reads (config, includes, attributes, ignore files, `.mailmap`, `diff.orderFile`), an
-  empty filter name in `state`, and `i18n.logOutputEncoding`.
+  empty filter name in `state`, and `i18n.logOutputEncoding`. Every other Git command is
+  stopped after 300 seconds (on a timeout GitPython runs `pgrep` or `ps` to find Git's
+  children); a pipe at a loose ref or object, or a nested alternates file, still hangs.
 - **Stalls:** `.mailmap` and `Co-authored-by` patterns that backtracked.
 - **Reading the wrong data:** separators in author names, `core.worktree` pointing at
   another repository, partial clones on Git older than 2.44.

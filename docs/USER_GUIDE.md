@@ -1000,5 +1000,8 @@ Git would wait for ever on a named pipe, or read a device without end, at one of
 `.gitattributes`, `.gitignore`, `info/exclude`, a file Git reads first (`.git/config`,
 `config.worktree`, `commondir`, `packed-refs`, `shallow`, `objects/info/alternates`, `HEAD`), or
 a file an `include.path` or `includeIf` names (every condition taken as true). Such a file over
-8 MiB is refused too. Remove it. `reveille summary` reads no line counts, so a `.gitattributes`
+8 MiB is refused too. Remove it. Elsewhere in `.git`, Git is stopped after 300 seconds (or 300
+seconds without output while it reads the history) with "Git did not finish ... and was
+stopped", exit 2; a pipe at a loose ref or object, or at an alternates file an alternate names,
+is not yet covered. `reveille summary` reads no line counts, so a `.gitattributes`
 pipe does not affect it.

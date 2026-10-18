@@ -84,7 +84,7 @@ def test_an_unreadable_git_version_is_none(repo: Path, monkeypatch: pytest.Monke
         def version(self) -> str:
             raise GitCommandError("version", 1)
 
-    monkeypatch.setattr(git_reader, "Git", _NoVersion)
+    monkeypatch.setattr(git_reader, "_TimedGit", _NoVersion)
     git_reader._read_git_version.cache_clear()
     try:
         assert reader._git_version() is None
@@ -97,14 +97,14 @@ def test_an_unreadable_git_version_is_none(repo: Path, monkeypatch: pytest.Monke
 def test_the_version_is_asked_once_per_process(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     git_reader._read_git_version.cache_clear()
     asked: list[str] = []
-    real = git_reader.Git
+    real = git_reader._TimedGit
 
     class _Counting(real):  # type: ignore[misc, valid-type]
         def version(self) -> str:
             asked.append("version")
             return str(super().version())
 
-    monkeypatch.setattr(git_reader, "Git", _Counting)
+    monkeypatch.setattr(git_reader, "_TimedGit", _Counting)
     try:
         for _ in range(3):
             reader = GitReader(repo)
@@ -214,7 +214,7 @@ def test_the_version_is_asked_once_when_readers_open_together(
     """`repos` opens readers on four threads at once."""
     git_reader._read_git_version.cache_clear()
     asked: list[str] = []
-    real = git_reader.Git
+    real = git_reader._TimedGit
 
     class _Slow(real):  # type: ignore[misc, valid-type]
         def version(self) -> str:
@@ -222,7 +222,7 @@ def test_the_version_is_asked_once_when_readers_open_together(
             time.sleep(0.2)  # long enough for every thread to ask before the answer
             return str(super().version())
 
-    monkeypatch.setattr(git_reader, "Git", _Slow)
+    monkeypatch.setattr(git_reader, "_TimedGit", _Slow)
     try:
         with ThreadPoolExecutor(max_workers=4) as pool:
             list(pool.map(lambda _: GitReader(repo), range(4)))

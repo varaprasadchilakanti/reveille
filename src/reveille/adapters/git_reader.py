@@ -20,7 +20,9 @@ import logging
 import os
 import re
 import stat
+import sys
 import threading
+import time
 import unicodedata
 from collections import defaultdict
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -661,7 +663,7 @@ class GitReader:
         self.unmatched_path_exclusions: tuple[str, ...] = ()
         _refuse_git_files_that_block(repo_path, search_up=False)
         try:
-            self._repo = Repo(str(repo_path), search_parent_directories=False)
+            self._repo = _TimedRepo(str(repo_path), search_parent_directories=False)
         except InvalidGitRepositoryError as exc:
             # An unreadable `.git` raises the same exception as a missing one;
             # the fixes differ, so tell them apart.
@@ -775,13 +777,21 @@ class GitReader:
         except GitCommandError:
             configured = ""
         if configured:
-            candidates.append(Path(os.path.expanduser(configured)))
+            # Git runs where GitPython starts it, so a relative path is relative to that.
+            candidates.append(self._repo_path / os.path.expanduser(configured))
         if not self._repo.bare:
             # Every directory on disk, not only HEAD's: a path in older history is
             # looked up where it was, and that directory may exist untracked.
             for directory, subdirectories, _ in os.walk(self._repo_path):
                 subdirectories[:] = [d for d in subdirectories if d != ".git"]
                 candidates.append(Path(directory) / ".gitattributes")
+                # Git follows a link to a directory; the walk does not. One level is
+                # checked, and the deadline on every read covers what lies deeper.
+                candidates.extend(
+                    Path(directory) / d / ".gitattributes"
+                    for d in subdirectories
+                    if os.path.islink(os.path.join(directory, d))
+                )
         return candidates
 
     def _refuse_a_working_tree_elsewhere(self, repo_path: Path) -> None:
@@ -1784,10 +1794,12 @@ class GitReader:
             process = self._git().log(*args, "--", as_process=True)
         except GitCommandError:
             return found
+        silence = _Silence(process.proc)
         try:
             when: datetime.date | None = None
             pending = b""
             for chunk in iter(lambda: process.stdout.read(1 << 16), b""):
+                silence.heard()
                 *tokens, pending = (pending + chunk).split(b"\0")
                 for token in tokens:
                     header = _CHANGE_HEADER_RE.fullmatch(token)
@@ -1803,8 +1815,7 @@ class GitReader:
                     break
         finally:
             # Stop Git once every area is answered; reading on would only cost time.
-            process.proc.kill()
-            process.proc.wait()
+            silence.stop()
         return found
 
     def last_commit_date(self, until: datetime.date) -> datetime.date | None:
@@ -2206,6 +2217,7 @@ class _LogStream:
             separator: The byte between records.
         """
         self._process = process
+        self._silence = _Silence(process.proc)
         self._separator = separator
         self._records: list[bytes] = []
         self._stderr: list[bytes] = []
@@ -2247,6 +2259,7 @@ class _LogStream:
         """Read the output to its end, one record per separator."""
         pieces: list[bytes] = []
         for chunk in iter(lambda: self._process.proc.stdout.read(1 << 16), b""):
+            self._silence.heard()
             parts = chunk.split(self._separator)
             pieces.append(parts[0])
             if len(parts) > 1:
@@ -2268,10 +2281,15 @@ class _LogStream:
         Raises:
             GitCommandError: If Git exits with an error, or its output could not
                 be read to the end.
+            RepositoryError: If Git wrote nothing for `GIT_TIMEOUT_SECONDS` and
+                was stopped; not a GitCommandError, so no caller takes it for a
+                failure it can read past.
         """
         for thread in self._threads:
             thread.join()
         status = self._process.proc.wait()
+        if self._silence.expired:
+            raise _timed_out("git log")
         if self._failure is not None:
             raise GitCommandError(
                 self._process.args, status, f"its output could not be read: {self._failure!r}"
@@ -2382,6 +2400,101 @@ _CHANGE_HEADER_RE = re.compile(rb"\x01[0-9a-f]{40} ([0-9]+)")
 #: How long `state` lets `git status` run before stopping it (a FIFO makes it wait for ever).
 STATUS_TIMEOUT_SECONDS = 120
 
+#: How long any other Git command may run, or a history read go without output, before it
+#: is stopped. A named pipe or a device anywhere Git opens a file makes it wait for ever, and
+#: no list of such files is complete; this bounds the wait whatever the file.
+GIT_TIMEOUT_SECONDS = 300
+
+
+def _timed_out(command: object) -> RepositoryError:
+    """The error for a Git command stopped at its deadline."""
+    return RepositoryError(
+        f"Git did not finish ({command}) within {GIT_TIMEOUT_SECONDS} seconds and was "
+        "stopped. A named pipe (FIFO) or a device where Git reads a file makes it wait for "
+        "ever. Remove it, or run Reveille on a fresh clone."
+    )
+
+
+class _TimedGit(Git):
+    """GitPython's runner, with a deadline on every command it waits for.
+
+    GitPython stops a command at its deadline with SIGKILL, and first lists the
+    command's children with `pgrep` (or `ps`) to stop them too. It cannot do
+    this on Windows, where the deadline is not set.
+    """
+
+    def execute(self, *args: Any, **kwargs: Any) -> Any:
+        """Run a command as `Git.execute` does, stopping it at `GIT_TIMEOUT_SECONDS`.
+
+        A command started as a process is not waited for here; its reader keeps
+        the deadline (`_Silence`). A caller's own deadline is kept, and so is the
+        error it gets.
+        """
+        timed = (
+            sys.platform != "win32"
+            and not kwargs.get("as_process")
+            and kwargs.get("kill_after_timeout") is None
+        )
+        if not timed:
+            return super().execute(*args, **kwargs)
+        try:
+            return super().execute(*args, kill_after_timeout=GIT_TIMEOUT_SECONDS, **kwargs)
+        except GitCommandError as exc:
+            if "Timeout:" in str(exc.stderr):
+                raise _timed_out(" ".join(map(str, exc.command))) from exc
+            raise
+
+
+class _TimedRepo(Repo):
+    """A repository whose Git commands run with a deadline."""
+
+    GitCommandWrapperType = _TimedGit
+
+
+class _Silence:
+    """Stop a Git process that has written nothing for `GIT_TIMEOUT_SECONDS`.
+
+    A history read can rightly run for minutes on a long history, but it writes
+    as it goes; one that writes nothing for that long is waiting on a file.
+    """
+
+    def __init__(self, process: Any) -> None:
+        """Start watching.
+
+        Args:
+            process: The `subprocess.Popen` of a running Git command.
+        """
+        self._process = process
+        self._last = time.monotonic()
+        self.expired = False
+        threading.Thread(target=self._watch, daemon=True).start()
+
+    def heard(self) -> None:
+        """Note that the process wrote something."""
+        self._last = time.monotonic()
+
+    def stop(self) -> None:
+        """Stop the process, read or not, and raise if it was stopped for its silence.
+
+        Raises:
+            RepositoryError: If it wrote nothing for `GIT_TIMEOUT_SECONDS`.
+        """
+        with contextlib.suppress(OSError):
+            self._process.kill()
+        self._process.wait()
+        if self.expired:
+            raise _timed_out("git log")
+
+    def _watch(self) -> None:
+        while self._process.poll() is None:
+            idle = time.monotonic() - self._last
+            if idle >= GIT_TIMEOUT_SECONDS:
+                self.expired = True
+                with contextlib.suppress(OSError):
+                    self._process.kill()
+                return
+            time.sleep(min(1.0, GIT_TIMEOUT_SECONDS - idle))
+
 
 _GIT_VERSION_LOCK = threading.Lock()
 
@@ -2401,7 +2514,7 @@ def _installed_git_version() -> tuple[int, int] | None:
 def _read_git_version() -> tuple[int, int] | None:
     """Ask Git its version; called only by `_installed_git_version`."""
     try:
-        raw = str(Git().version())
+        raw = str(_TimedGit().version())
     except Exception:  # a missing or broken git binary is reported by the first read
         return None
     match = re.search(r"(\d+)\.(\d+)", raw)
@@ -2486,7 +2599,9 @@ def repository_root(path: Path) -> Path:
     try:
         # `-C`, not a working directory: GitPython runs Git in the process's own
         # directory when the one it is given cannot be entered.
-        top = str(Git().execute(["git", "-C", str(path), "rev-parse", "--show-toplevel"])).strip()
+        top = str(
+            _TimedGit().execute(["git", "-C", str(path), "rev-parse", "--show-toplevel"])
+        ).strip()
         git_dir = _absolute_git_dir(path)
     except (GitCommandError, OSError):
         return path.resolve()
@@ -2628,9 +2743,14 @@ def _check_includes(config: Path, depth: int) -> None:
     """
     if depth >= _MAX_INCLUDE_DEPTH:
         return
-    with config.open("rb") as handle:
-        text = handle.read(_MAX_GIT_FILE_BYTES + 1).decode("utf-8", "replace")
-    for value in _include_paths(text):
+    for value in _include_paths(config):
+        if value.startswith("%(prefix)/"):
+            # Git expands it to its install prefix, which Reveille cannot know for sure.
+            raise RepositoryError(
+                f"'{config}' includes '{value}', a path under Git's install prefix. "
+                "Reveille checks every file a configuration includes before Git reads it, "
+                "and cannot check this one."
+            )
         target = Path(value).expanduser()
         if not target.is_absolute():
             target = config.parent / target
@@ -2638,69 +2758,50 @@ def _check_includes(config: Path, depth: int) -> None:
             _check_includes(target, depth + 1)
 
 
-# A section header, `[include]` or `[includeIf "gitdir:..."]`, and what follows it.
-_SECTION_RE = re.compile(r"^\s*\[\s*([A-Za-z0-9.-]+)[^\]]*\](.*)$")
-_PATH_KEY_RE = re.compile(r"^\s*path\s*=\s*(.*)$", re.IGNORECASE)
-
-
-def _include_paths(text: str) -> list[str]:
+def _include_paths(config: Path) -> list[str]:
     """Return the value of every `path` key in an `include` or `includeIf` section.
 
-    Read here, not by Git, so that nothing runs before the files are checked.
+    Git reads the file, with includes off, so its own grammar decides what is a
+    key (continuations, quoting, a byte-order mark), and nothing else is opened.
     Every condition is taken as true: a file that is listed is checked.
 
     Args:
-        text: A configuration file's text.
+        config: A configuration file already checked to be a regular file.
 
     Returns:
-        The paths, unquoted, as written.
+        The paths, as Git reads them.
+
+    Raises:
+        RepositoryError: If Git cannot read the file as configuration.
     """
-    paths: list[str] = []
-    including = False
-    for line in text.splitlines():
-        header = _SECTION_RE.match(line)
-        if header is not None:
-            including = header.group(1).split(".", 1)[0].lower() in ("include", "includeif")
-            line = header.group(2)
-        key = _PATH_KEY_RE.match(line) if including else None
-        if key is not None:
-            paths.append(_config_value(key.group(1)))
-    return [path for path in paths if path]
-
-
-def _config_value(raw: str) -> str:
-    """Return a configuration value as Git reads it.
-
-    Quotes and escapes are resolved, a comment outside quotes is dropped, and
-    surrounding spaces are trimmed.
-
-    Args:
-        raw: The text after `=`.
-
-    Returns:
-        The value.
-    """
-    value: list[str] = []
-    quoted = False
-    characters = iter(raw)
-    for character in characters:
-        if character == "\\":
-            escaped = next(characters, "")
-            value.append({"n": "\n", "t": "\t", "b": "\b"}.get(escaped, escaped))
-        elif character == '"':
-            quoted = not quoted
-        elif character in "#;" and not quoted:
-            break
-        else:
-            value.append(character)
-    return "".join(value).strip()
+    try:
+        raw = _TimedGit().execute(
+            [
+                "git",
+                "config",
+                "--file",
+                str(config),
+                "--no-includes",
+                "-z",
+                "--get-regexp",
+                r"^include(if\..*)?\.path$",
+            ]
+        )
+    except GitCommandError as exc:
+        if exc.status == 1:  # no such key
+            return []
+        raise RepositoryError(
+            f"Git cannot read '{config}' as configuration: {_git_error(exc)}"
+        ) from exc
+    entries = str(raw).split("\0")
+    return [value for _, _, value in (e.partition("\n") for e in entries if e) if value]
 
 
 def _absolute_git_dir(path: Path) -> str | None:
     """Return the Git directory Git finds from `path`, or None if it finds none."""
     try:
         return str(
-            Git().execute(["git", "-C", str(path), "rev-parse", "--absolute-git-dir"])
+            _TimedGit().execute(["git", "-C", str(path), "rev-parse", "--absolute-git-dir"])
         ).strip()
     except (GitCommandError, OSError):
         return None

@@ -135,9 +135,41 @@ def test_a_regular_include_and_a_linked_worktree_are_read(repo: Path, tmp_path: 
         assert done is not None and done.returncode == 0, done
 
 
+@pytest.mark.parametrize(
+    "written",
+    [
+        "[include]\n\tpath = pi\\\npe\n",  # a line continuation
+        "\ufeff[include]\n\tpath = pipe\n",  # a byte-order mark before the section
+        '[core]\n\tx = "a\\\n[core]"\n[include]\n\tpath = pipe\n',  # a section in a value
+    ],
+    ids=["continuation", "byte-order-mark", "section-in-a-value"],
+)
+def test_an_include_is_found_however_git_reads_it(repo: Path, written: str) -> None:
+    """Git's grammar, not a pattern, says which keys are includes."""
+    os.mkfifo(repo / ".git" / "pipe")
+    config = repo / ".git" / "config"
+    before = config.read_text(encoding="utf-8")
+    # Git skips a byte-order mark only at the start of the file.
+    bom = written.startswith("\ufeff")
+    config.write_text(written + before if bom else before + written, encoding="utf-8")
+
+    _refused(repo, "pipe")
+
+
+def test_an_include_under_gits_install_prefix_is_refused(repo: Path) -> None:
+    subprocess.run(
+        ["git", "config", "include.path", "%(prefix)/../dev/stdin"], cwd=repo, check=True
+    )
+
+    done = _summary(repo)
+
+    assert done is not None and done.returncode == 2, done
+    assert "install prefix" in done.stderr
+
+
 @pytest.mark.unit
 class TestIncludePaths:
-    def test_every_include_section_form_is_read(self) -> None:
+    def test_every_include_section_form_is_read(self, tmp_path: Path) -> None:
         text = (
             "[core]\n\tpath = not-an-include\n"
             "[include]\n\tpath = a.cfg  # a comment\n"
@@ -147,7 +179,11 @@ class TestIncludePaths:
             "[include]\n\tpath = e\\\\f ; another\n"
         )
 
-        assert _include_paths(text) == ["a.cfg", "~/b c.cfg", "d.cfg", "e\\f"]
+        (tmp_path / "c.cfg").write_text(text, encoding="utf-8")
 
-    def test_a_file_with_no_include_lists_none(self) -> None:
-        assert _include_paths("[core]\n\tbare = false\n") == []
+        assert _include_paths(tmp_path / "c.cfg") == ["a.cfg", "~/b c.cfg", "d.cfg", "e\\f"]
+
+    def test_a_file_with_no_include_lists_none(self, tmp_path: Path) -> None:
+        (tmp_path / "c.cfg").write_text("[core]\n\tbare = false\n", encoding="utf-8")
+
+        assert _include_paths(tmp_path / "c.cfg") == []
