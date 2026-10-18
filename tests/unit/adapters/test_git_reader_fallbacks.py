@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 from git.exc import GitCommandError
 
-from reveille.adapters.git_reader import GitReader, _Mailmap
+from reveille.adapters.git_reader import GitReader
 from reveille.exceptions import RepositoryError
 
 pytestmark = pytest.mark.unit
@@ -119,22 +119,51 @@ def test_a_tag_listing_failure_is_reported_as_git_s(
         reader.tags_in_range(None, None, None, None)
 
 
-def test_unreadable_co_author_trailers_keep_the_authors_already_reached(
-    repo: Path, monkeypatch: pytest.MonkeyPatch
+class _LogFails:
+    """Stands in for `GitReader._git()`; a `git log` whose format matches raises."""
+
+    def __init__(self, real: Any, marker: str) -> None:
+        self._real, self._marker = real, marker
+
+    def __getattr__(self, command: str) -> Any:
+        def call(*args: str) -> Any:
+            if command == "log" and any(self._marker in arg for arg in args):
+                raise GitCommandError(command, 128)
+            return getattr(self._real, command)(*args)
+
+        return call
+
+
+@pytest.mark.parametrize("marker", ["%an%x1f%ae", "trailers:key=Co-authored-by"])
+def test_an_exclusion_whose_history_cannot_be_read_is_refused(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, marker: str
 ) -> None:
-    """The trailer query can fail on its own; the author query's answer stands."""
+    """Either query failing would apply the exclusion to part of the history."""
     reader = GitReader(repo)
     real = reader._git()
+    monkeypatch.setattr(reader, "_git", lambda extra=(): _LogFails(real, marker))
 
-    class _TrailersFail:
-        def __getattr__(self, command: str) -> Any:
-            def call(*args: str) -> Any:
-                if command == "log" and any("trailers:" in arg for arg in args):
-                    raise GitCommandError(command, 128)
-                return getattr(real, command)(*args)
+    with pytest.raises(RepositoryError, match="cannot be applied in full"):
+        reader.read_commits(None, None, None, ["a@e.test"])
 
-            return call
 
-    monkeypatch.setattr(reader, "_git", lambda extra=(): _TrailersFail())
+def test_without_an_exclusion_the_history_is_not_read_for_one(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reader = GitReader(repo)
+    real = reader._git()
+    monkeypatch.setattr(reader, "_git", lambda extra=(): _LogFails(real, "%an%x1f%ae"))
 
-    assert reader._addresses_in_history("HEAD", _Mailmap(), {"a"}) == {"a": {"a@e.test"}}
+    assert len(reader.read_commits(None, None, None, [])) == 1
+
+
+def test_unreadable_noreply_addresses_are_refused(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without them an account splits in two and a noreply exclusion misses one half."""
+    reader = GitReader(repo)
+    real = reader._git()
+    monkeypatch.setattr(reader, "_git", lambda extra=(): _LogFails(real, "--format=%ae"))
+
+    with pytest.raises(RepositoryError, match="author addresses"):
+        reader.read_commits(None, None, None, [])

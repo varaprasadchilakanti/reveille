@@ -584,6 +584,23 @@ def _without_credentials(url: str) -> str:
     return f"{scheme}://{authority}{slash}{path}"
 
 
+def _exclusion_unreadable(rev: str, exc: GitCommandError) -> RepositoryError:
+    """Build the error for history an exclusion needs but Git would not give.
+
+    Args:
+        rev: The analysed revision.
+        exc: Git's failure.
+
+    Returns:
+        The error to raise.
+    """
+    return RepositoryError(
+        f"Failed to read the history on '{rev}' that --exclude-author is checked against, "
+        "so the exclusion cannot be applied in full. "
+        f"Detail: {exc}"
+    )
+
+
 class GitReader:
     """Reads commit history and metadata from a local Git repository.
 
@@ -732,15 +749,6 @@ class GitReader:
             name_status=name_status,
         )
 
-        # Read first: an exclusion names a person, expanded through the mailmap.
-        mailmap = self._read_mailmap()
-        self._mailmap_applied = bool(mailmap.by_email or mailmap.by_name_and_email)
-        accounts, usernames = self._noreply_accounts(rev)
-        mailmap = replace(mailmap, noreply_accounts=accounts, noreply_usernames=usernames)
-
-        requests = _exclusion_requests(exclude_authors, mailmap)
-        exclude_set = set().union(*requests.values())
-
         # An unborn HEAD is a negative answer, not a read failure; a named branch
         # is read even then, and a missing one fails below.
         if branch is None and not self._repo.head.is_valid():
@@ -769,6 +777,15 @@ class GitReader:
                 f"Failed to enumerate commits on branch '{rev}'. "
                 "Verify the branch exists in this repository."
             ) from exc
+
+        # Once the branch is known to exist: an exclusion names a person, through the mailmap.
+        mailmap = self._read_mailmap()
+        self._mailmap_applied = bool(mailmap.by_email or mailmap.by_name_and_email)
+        accounts, usernames = self._noreply_accounts(rev)
+        mailmap = replace(mailmap, noreply_accounts=accounts, noreply_usernames=usernames)
+
+        requests = _exclusion_requests(exclude_authors, mailmap)
+        exclude_set = set().union(*requests.values())
 
         _logger.debug("git log %s", " ".join(log_args))
         try:
@@ -1116,11 +1133,17 @@ class GitReader:
         Returns:
             Account number to canonical address, and legacy username to that address
             for usernames only one account used.
+
+        Raises:
+            RepositoryError: If Git cannot list the addresses. Going on without them
+                would split accounts and narrow an exclusion without a word.
         """
         try:
             out = str(self._git().log("--no-merges", "--format=%ae", "--end-of-options", rev, "--"))
-        except GitCommandError:
-            return {}, {}
+        except GitCommandError as exc:
+            raise RepositoryError(
+                f"Failed to read the author addresses on '{rev}'. Detail: {exc}"
+            ) from exc
         current: dict[str, str] = {}
         accounts_of: dict[str, set[str]] = defaultdict(set)
         for line in out.splitlines():
@@ -1530,14 +1553,19 @@ class GitReader:
 
         Returns:
             Each matching value and its addresses; empty when nothing is excluded.
+
+        Raises:
+            RepositoryError: If Git cannot read either part of the history. An
+                exclusion that cannot be checked in full is refused, not applied
+                to part of it.
         """
         reached: dict[str, set[str]] = {}
         if not exclude_set:
             return reached
         try:
             raw = str(self._git().log("-z", "--format=%an%x1f%ae", "--end-of-options", rev, "--"))
-        except GitCommandError:
-            return reached
+        except GitCommandError as exc:
+            raise _exclusion_unreadable(rev, exc) from exc
         for record in raw.split("\0"):
             fields = record.split(_FIELD_SEP)
             if len(fields) != 2:
@@ -1557,8 +1585,8 @@ class GitReader:
                     "--",
                 )
             )
-        except GitCommandError:
-            return reached
+        except GitCommandError as exc:
+            raise _exclusion_unreadable(rev, exc) from exc
         for value in trailers.replace("\0", _FIELD_SEP).split(_FIELD_SEP):
             parsed = _co_author_value(_strip_control_chars(value[: _MAX_TRAILER_VALUE + 1]))
             if parsed is None:
