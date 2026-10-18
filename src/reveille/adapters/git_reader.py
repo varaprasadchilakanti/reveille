@@ -2301,14 +2301,24 @@ _CHANGE_HEADER_RE = re.compile(rb"\x01[0-9a-f]{40} ([0-9]+)")
 STATUS_TIMEOUT_SECONDS = 120
 
 
-@functools.cache
+_GIT_VERSION_LOCK = threading.Lock()
+
+
 def _installed_git_version() -> tuple[int, int] | None:
     """Return the installed Git's major and minor version, or None if unreadable.
 
     Read once per process: it reads no repository, and every reader asked again,
     once when opened and once per history read, for each repository under
-    `reveille repos`.
+    `reveille repos`. Locked, because `repos` opens readers on several threads,
+    and each would otherwise ask before the first answer was kept.
     """
+    with _GIT_VERSION_LOCK:
+        return _read_git_version()
+
+
+@functools.cache
+def _read_git_version() -> tuple[int, int] | None:
+    """Ask Git its version; called only by `_installed_git_version`."""
     try:
         raw = str(Git().version())
     except Exception:  # a missing or broken git binary is reported by the first read

@@ -6,6 +6,8 @@
 from __future__ import annotations
 
 import subprocess
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -83,17 +85,17 @@ def test_an_unreadable_git_version_is_none(repo: Path, monkeypatch: pytest.Monke
             raise GitCommandError("version", 1)
 
     monkeypatch.setattr(git_reader, "Git", _NoVersion)
-    git_reader._installed_git_version.cache_clear()
+    git_reader._read_git_version.cache_clear()
     try:
         assert reader._git_version() is None
         assert reader._supports_since_as_filter() is False
     finally:
         monkeypatch.undo()
-        git_reader._installed_git_version.cache_clear()
+        git_reader._read_git_version.cache_clear()
 
 
 def test_the_version_is_asked_once_per_process(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    git_reader._installed_git_version.cache_clear()
+    git_reader._read_git_version.cache_clear()
     asked: list[str] = []
     real = git_reader.Git
 
@@ -110,7 +112,7 @@ def test_the_version_is_asked_once_per_process(repo: Path, monkeypatch: pytest.M
         assert asked == ["version"]
     finally:
         monkeypatch.undo()
-        git_reader._installed_git_version.cache_clear()
+        git_reader._read_git_version.cache_clear()
 
 
 def test_a_rev_parse_failure_other_than_ownership_cannot_run(
@@ -204,3 +206,27 @@ def test_unreadable_noreply_addresses_are_refused(
 
     with pytest.raises(RepositoryError, match="author addresses"):
         reader.read_commits(None, None, None, [])
+
+
+def test_the_version_is_asked_once_when_readers_open_together(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`repos` opens readers on four threads at once."""
+    git_reader._read_git_version.cache_clear()
+    asked: list[str] = []
+    real = git_reader.Git
+
+    class _Slow(real):  # type: ignore[misc, valid-type]
+        def version(self) -> str:
+            asked.append("version")
+            time.sleep(0.2)  # long enough for every thread to ask before the answer
+            return str(super().version())
+
+    monkeypatch.setattr(git_reader, "Git", _Slow)
+    try:
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            list(pool.map(lambda _: GitReader(repo), range(4)))
+        assert asked == ["version"]
+    finally:
+        monkeypatch.undo()
+        git_reader._read_git_version.cache_clear()
