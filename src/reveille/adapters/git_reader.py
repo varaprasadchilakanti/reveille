@@ -706,8 +706,8 @@ class GitReader:
         apart: `.gitattributes` in the working tree, `info/attributes`, and
         `core.attributesFile`. A named pipe there blocks the read for ever, and a
         device can feed it without end. A copied directory or an archive can carry
-        one; `git clone` cannot. The working tree is checked in its root and in
-        every directory HEAD's tree holds.
+        one; `git clone` cannot. Every directory of the working tree is checked,
+        tracked or not, apart from `.git`; symbolic links are not followed.
 
         Args:
             counts_lines: Whether the read counts lines; only then are attributes read.
@@ -735,7 +735,7 @@ class GitReader:
 
         Returns:
             `info/attributes` in the Git and common directories, `core.attributesFile`,
-            and `.gitattributes` in the working tree's root and each directory of HEAD.
+            and `.gitattributes` in every directory of the working tree.
         """
         candidates: list[Path] = []
         for flag in ("--git-dir", "--git-common-dir"):
@@ -752,12 +752,11 @@ class GitReader:
         if configured:
             candidates.append(Path(os.path.expanduser(configured)))
         if not self._repo.bare:
-            try:
-                listed = str(self._git().ls_tree("-d", "-r", "-z", "--name-only", "HEAD"))
-            except GitCommandError:
-                listed = ""
-            directories = ["", *(d for d in listed.split("\0") if d)]
-            candidates += [self._repo_path / d / ".gitattributes" for d in directories]
+            # Every directory on disk, not only HEAD's: a path in older history is
+            # looked up where it was, and that directory may exist untracked.
+            for directory, subdirectories, _ in os.walk(self._repo_path):
+                subdirectories[:] = [d for d in subdirectories if d != ".git"]
+                candidates.append(Path(directory) / ".gitattributes")
         return candidates
 
     def _refuse_a_working_tree_elsewhere(self, repo_path: Path) -> None:

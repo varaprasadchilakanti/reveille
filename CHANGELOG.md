@@ -25,11 +25,11 @@ before 0.8.0 predate the convention and are left as they were released.
 - **A named pipe where Git reads rules hung Reveille for ever.** Git opens `.gitattributes` itself
   to count lines, and `.gitignore` or `info/exclude` for `git status`, and waits on a FIFO until
   something writes to it. An archive or a copied directory can carry one (`git clone` cannot).
-  `generate` now checks the attribute files Git would read (`.gitattributes` in the root and in
-  every directory of HEAD, `info/attributes`, `core.attributesFile`) and refuses one that is a
-  pipe or a device (exit 2); `summary`, `brief`, `who-changed` and `repos` read no line counts and
-  were not affected. `state` stops `git status` after 120 seconds and says why. 0.9.0's `generate`
-  is affected.
+  `generate` now checks the attribute files Git would read (`.gitattributes` in every directory
+  of the working tree, tracked or not, `info/attributes`, `core.attributesFile`) and refuses one
+  that is a pipe or a device (exit 2); `summary`, `brief`, `who-changed` and `repos` read no line
+  counts and were not affected. `state` stops `git status` after 120 seconds and says why. 0.9.0's
+  `generate` is affected.
 - **`remote.<name>.promisor = 2` in worktree config skipped the partial-clone refusal.** Git reads
   any non-zero number as true; Reveille read only `true`, `yes`, `on` and `1`. Below Git 2.44,
   where nothing else stops Git fetching missing objects, a run could then reach the network and

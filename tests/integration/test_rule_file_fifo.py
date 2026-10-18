@@ -120,3 +120,29 @@ def test_regular_rule_files_are_read_as_before(repo: Path, tmp_path: Path) -> No
     for args in (("state",), ("generate", "--format", "json", "-o", str(tmp_path / "o.json"))):
         done = _run(repo, *args)
         assert done is not None and done.returncode == 0, (args, done and done.stderr)
+
+
+def test_a_directory_only_older_history_had_is_checked(repo: Path, tmp_path: Path) -> None:
+    """Not in HEAD, but on disk: Git looks up the old path's attributes there."""
+    (repo / "old").mkdir()
+    (repo / "old" / "a.txt").write_text("a", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "-c", "user.name=A", "-c", "user.email=a@e.test", "commit", "-qm", "b"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(["git", "rm", "-rq", "old"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "-c", "user.name=A", "-c", "user.email=a@e.test", "commit", "-qm", "c"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "old").mkdir()
+    os.mkfifo(repo / "old" / ".gitattributes")
+
+    done = _run(repo, "generate", "--format", "json", "-o", str(tmp_path / "out.json"))
+
+    assert done is not None, "generate hung"
+    assert done.returncode == 2
+    assert "old" in done.stderr
