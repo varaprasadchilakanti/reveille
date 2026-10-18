@@ -200,6 +200,9 @@ before 0.8.0 predate the convention and are left as they were released.
 - **When Git failed on the history `--exclude-author` is checked against, the exclusion was
   applied to part of it without a word**, and an account's noreply addresses were left unfolded.
   Both now stop with a repository error (exit 2) instead.
+- **`who-changed` missed commits on a branch merged without its changes** (`git merge -s ours`):
+  a path turns on Git's history simplification, which skips such a branch although every other
+  figure counts its commits. Path-scoped reads now ask for the full history.
 
 - **`--exclude-author` by name missed a person who appears only as a co-author** under another
   name. The name now reaches the addresses it carries in `Co-authored-by` trailers too (ADR 0020).

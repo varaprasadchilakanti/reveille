@@ -2202,6 +2202,11 @@ def _build_log_args(
 
     # `--end-of-options` stops option parsing; `--` separates revision from path.
     for args in (log_args, rev_list_args):
+        if path is not None:
+            # A pathspec turns on history simplification, which skips a merged
+            # branch whose changes the merge did not keep (`-s ours`): commits
+            # every other figure counts would vanish from this one.
+            args.append("--full-history")
         args.extend(["--end-of-options", rev, "--"])
         if path is not None:
             args.append(f":(literal){path}")
