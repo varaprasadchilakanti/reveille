@@ -87,13 +87,9 @@ jinja2 = "^3.1.6"
 # Charts -- self-contained JS bundle embedded in output HTML
 plotly = ">=5.20,<8.0"
 
-# Data Validation & Settings
+# Data Validation
 # Floor: no published advisory affects 2.4.0 (OSV, 2026-10-13).
 pydantic = "^2.4"
-pydantic-settings = "^2.0"
-
-# Date & Time Utilities
-python-dateutil = "^2.9.0"
 
 
 # ------------------------------------------------------------------
@@ -113,7 +109,6 @@ pytest-timeout = "^2.3.0"
 
 # Type Checking
 mypy = ">=1.8,<3.0"
-types-python-dateutil = "^2.9.0"
 
 # Linting & Formatting
 ruff = ">=0.16.9"

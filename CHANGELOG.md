@@ -59,6 +59,11 @@ before 0.8.0 predate the convention and are left as they were released.
   release already installed if the floor allows it. The floors are now GitPython 3.1.62,
   Jinja2 3.1.6 and Pydantic 2.4, releases no published advisory affected on
   2026-10-13, and a test fails if one is lowered. The locked versions are unchanged.
+- **Two runtime dependencies were never used.** `pydantic-settings` and `python-dateutil` were
+  installed with Reveille, and with them `python-dotenv` and `six`, although no module imports
+  either. All four are gone, with `types-python-dateutil` from the development tools: an install
+  now declares six runtime requirements instead of eight, and installs four fewer packages an
+  advisory could affect. Every package kept is at the same locked version.
 - **A `.mailmap` could stall a run for minutes.** Its line patterns could backtrack on a long
   hostile line, and the working-tree file had no size bound. Lines are now parsed in one pass,
   and the working-tree file is bounded at 1 MiB like the committed one, with a warning when it
