@@ -251,6 +251,10 @@ before 0.8.0 predate the convention and are left as they were released.
   waiting for Git. Over 201 small repositories it went from 20.6 s to 8.3 s with the same peak
   memory (52 MB), and the rows, in every format, are as before and in the same order. So are
   the warnings each row gives, which name no repository and are placed only by their order.
+- **Git writes its output in blocks, not one commit at a time.** Writing to a pipe, Git flushed
+  after every commit: on 100,000 commits, 100,000 writes, and as many wake-ups for Reveille, against
+  1,001 now. `summary` there spends about 3.3 s of processor time instead of 4.3 s (system time
+  0.8 s to 0.17 s); `generate` finishes in 4.76 s instead of 4.98 s. Every output is the same.
 - **`repos` reads only the commit dates of a repository with no commit in the window**, to find
   its last commit, instead of its whole history. For one dormant repository of 100,000 commits
   the row went from 2.69 s to 1.56 s and Reveille's own peak memory from 140 MB to 60 MB, with the

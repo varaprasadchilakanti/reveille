@@ -677,6 +677,9 @@ class GitReader:
             GIT_NO_REPLACE_OBJECTS="1",
             GIT_GRAFT_FILE=os.devnull,
             GIT_OPTIONAL_LOCKS="0",
+            # To a pipe, Git flushes after every commit: 100,000 writes, and as many
+            # wake-ups of the reader, for a 100,000-commit log. Unset, it writes in blocks.
+            GIT_FLUSH="0",
         )
         version = self._git_version()
         if version is not None and version < _MIN_GIT:
