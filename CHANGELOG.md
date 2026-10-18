@@ -129,17 +129,18 @@ before 0.8.0 predate the convention and are left as they were released.
   proposed). Text, JSON, Markdown and CSV.
 
 - **`generate --hide-emails`** replaces every email address in the report with a per-report token
-  (`contributor-N@hidden.invalid`, numbered in table order, never derived from the address), for a
-  report that is shared. It covers authors, co-authors, people below `--min-commits`, area authors,
-  chart data, an address written as a name and an SSH remote's login; every figure is unchanged,
-  and `provenance.emails_hidden` records it. `[report] hide_emails` in `reveille.toml`. Additive to
+  (`contributor-N@hidden.invalid`, or `contributor-N[bot]@hidden.invalid` for an automated
+  account, numbered in table order, never derived from the address), for a report that is shared.
+  It covers authors, co-authors, people below `--min-commits`, area authors, chart data, an
+  address written as a name and an SSH remote's login; every figure is unchanged, and
+  `provenance.emails_hidden` records it. `[report] hide_emails` in `reveille.toml`. Additive to
   schema 1.2.
 
 - **The report says how its figures can mislead**, in a "Read Before Using These Figures" panel
   under the summary cards: commits are counted, not weighed; the merge commits left out, counted;
   a squash merge credits one author, with the number of commits carrying a Co-authored-by
   trailer; dates are commit dates, so a rebase moves a commit; whether a `.mailmap` was applied;
-  concentration is not a bus factor. The HTML report did not state the merges left out before.
+  concentration is not a bus factor. The HTML report said merges were left out, but not how many.
 
 - **`capabilities --command <name>`** gives one command's description, options and exit codes:
   2.3 KB for `state` as JSON, against about 24 KB for everything.
@@ -206,8 +207,9 @@ before 0.8.0 predate the convention and are left as they were released.
 - **Git's version is asked once per run**, not again by every repository read: `repos` over 200
   small repositories went from 18.7 s to 16.7 s.
 - **The part of the HTML report Reveille writes is a quarter smaller**: the template's indentation
-  is no longer copied into every report (107,656 to 80,464 bytes on Reveille's own history). The
-  4.8 MB Plotly bundle is untouched, so the whole file shrinks by about 0.6%.
+  is no longer copied into every report (111,043 to 82,977 bytes on Reveille's own history with
+  `--deterministic`). The 4.8 MB Plotly bundle is untouched, so the whole file shrinks by about
+  0.6%.
 - **Release and contribution checks.** A tag is published only if its commit is on `main`. The
   sign-off check reads `Signed-off-by` as Git's trailers, not any matching line in the body, and
   the contributor-agreement check ignores code fences and unterminated comments, needs "I accept",
