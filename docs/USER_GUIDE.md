@@ -133,6 +133,9 @@ that kept a future date) is counted in no figure: the header and a note on stder
 and a later `--until` includes them. With `--deterministic` the window closes on the last commit
 instead.
 
+A commit's date is its commit date (Git's committer date), not the date it was first written: a
+rebase, an amend or a cherry-pick places the commit on the day it was rewritten.
+
 In a shallow clone, which CI checkouts are by default, only the history the clone holds is
 analysed, and the header and stderr say so. `git fetch --unshallow` fetches the rest.
 
@@ -543,6 +546,15 @@ how many commits are dated after the window, how many could not be read, and tha
 is a shallow clone. One sentence states the report's limits: the figures are computed from Git
 history by fixed rules, offline, and history can be incomplete or wrong, so check before relying
 on them for a decision.
+
+### Read Before Using These Figures
+
+A panel under the summary cards states, with this report's own numbers, the rules that most
+change a reading: commits are counted, not weighed; how many merge commits were left out; a squash
+merge is one commit by one author, with others shown only through Co-authored-by trailers (and
+how many commits carry one); dates are commit dates; whether a `.mailmap` merged identities; and
+that concentration is not a bus factor. It is in the file because a report is forwarded without
+this guide.
 
 ### Summary cards
 

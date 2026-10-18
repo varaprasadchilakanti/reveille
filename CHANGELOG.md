@@ -106,6 +106,12 @@ before 0.8.0 predate the convention and are left as they were released.
   path that matched nothing is reported, and the paths are stated in the report, the summary and
   `provenance.filters.exclude_paths`. Additive to schema 1.2.
 
+- **The report says how its figures can mislead**, in a "Read Before Using These Figures" panel
+  under the summary cards: commits are counted, not weighed; the merge commits left out, counted;
+  a squash merge credits one author, with the number of commits carrying a Co-authored-by
+  trailer; dates are commit dates, so a rebase moves a commit; whether a `.mailmap` was applied;
+  concentration is not a bus factor. The HTML report did not state the merges left out before.
+
 - **`capabilities --command <name>`** gives one command's description, options and exit codes:
   2.3 KB for `state` as JSON, against about 24 KB for everything.
 

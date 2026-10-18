@@ -244,6 +244,7 @@ class Renderer:
                     for name, specification in charts.items()
                 },
                 derived=derived,
+                co_authored=commits_with_co_authors(data.commits),
                 notice=_NOTICE,
                 plotly_js=plotly_js,
                 generated_at=generated_at,

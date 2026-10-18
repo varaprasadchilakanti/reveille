@@ -253,6 +253,39 @@
             margin-bottom: 48px;
         }
 
+        /* Read before the figures: what they cannot carry, with this report's own numbers. */
+        .caveats {
+            margin: 0 0 44px;
+            padding: 16px 20px;
+            max-width: 88ch;
+            border: 1px solid var(--color-border);
+            border-left: 4px solid var(--color-text-muted);
+            border-radius: 6px;
+            background: var(--color-surface);
+            color: var(--color-text-secondary);
+            font-size: 12.5px;
+            line-height: 1.6;
+        }
+
+        .caveats h2 {
+            margin: 0 0 8px;
+            font-size: 14px;
+            color: var(--color-text-primary);
+        }
+
+        .caveats ul {
+            margin: 0;
+            padding-left: 18px;
+        }
+
+        .caveats li + li {
+            margin-top: 4px;
+        }
+
+        .caveats strong {
+            color: var(--color-text-primary);
+        }
+
         .section-note {
             margin: -6px 0 18px;
             max-width: 78ch;
@@ -1175,6 +1208,45 @@
          What the history shows -- generated from the figures below
          ============================================================ -->
     {% if derived.findings %}
+    <!-- ============================================================
+         How These Figures Can Mislead
+         ============================================================ -->
+    {#
+       The documentation does not travel with the file; this does. Each line
+       is a rule of the reading, with this report's own number where there is
+       one, so it is a fact about these figures and not general advice.
+    #}
+    <aside class="caveats" aria-labelledby="caveats-title">
+        <h2 id="caveats-title">Read Before Using These Figures</h2>
+        <ul>
+            <li><strong>Commits are counted, not weighed.</strong> A one-line fix and a
+                month's work are one commit each. The figures describe the volume and
+                regularity of commits, not effort, value or anyone's performance.</li>
+            {% set merges = data.provenance.merge_commits_excluded %}
+            <li><strong>Merge commits are not counted.</strong>
+                {% if merges %}{{ '{:,}'.format(merges) }} {{ 'merge commit' if merges == 1 else 'merge commits' }}
+                in this branch and period {{ 'is' if merges == 1 else 'are' }} left out, so totals are
+                lower than <code>git log</code> gives.{% else %}This branch and period have none.{% endif %}</li>
+            <li><strong>A squash merge is one commit by one author.</strong> Work squashed from
+                several people is credited to the author Git recorded for the result, which
+                depends on the host and how the merge was made. Others appear only through
+                Co-authored-by trailers, which
+                {{ '{:,}'.format(co_authored) }} {{ 'commit' if co_authored == 1 else 'commits' }}
+                here {{ 'carries' if co_authored == 1 else 'carry' }}; a trailer is not verified.</li>
+            <li><strong>Dates are commit dates.</strong> A commit is placed on the day it was
+                last committed, so a rebase, an amend or a cherry-pick moves it to that day.</li>
+            {% if data.provenance.mailmap_applied %}
+            <li><strong>Identities are merged by the repository's <code>.mailmap</code>.</strong>
+                A person it does not cover, under two addresses, counts as two.</li>
+            {% else %}
+            <li><strong>No <code>.mailmap</code> was applied.</strong> One person under two
+                addresses counts as two people; a <code>.mailmap</code> merges them.</li>
+            {% endif %}
+            <li><strong>Concentration is not a bus factor.</strong> Who committed most is not who
+                understands the code, and a quiet person may hold what matters.</li>
+        </ul>
+    </aside>
+
     <div class="section">
         <h2 class="section-title">What the History Shows</h2>
         <ul class="findings">
