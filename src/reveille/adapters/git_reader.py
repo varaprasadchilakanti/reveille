@@ -578,10 +578,19 @@ def _without_credentials(url: str) -> str:
     """
     scheme, separator, rest = url.partition("://")
     if not separator:
-        # scp-like `user@host:path`; a `user:secret@` written there keeps its login.
-        userinfo, at, place = url.rpartition("@")
-        if at and ":" in userinfo and not any(c in userinfo for c in "/\\"):
-            return f"{userinfo.partition(':')[0]}@{place}"
+        # scp-like `user@host:path`; a `user:secret@` written there keeps only its
+        # login. The user part ends at the last `@` followed by `host:`, so an `@`
+        # in the secret or in the path is not taken for the end of it.
+        cut = len(url)
+        while (cut := url.rfind("@", 0, cut)) != -1:
+            host, colon, _ = url[cut + 1 :].partition(":")
+            if colon and host and not any(c in host for c in "@/\\"):
+                break
+        else:
+            return url
+        userinfo = url[:cut]
+        if ":" in userinfo and not any(c in userinfo for c in "/\\"):
+            return f"{userinfo.partition(':')[0]}{url[cut:]}"
         return url
     authority, slash, path = rest.partition("/")
     # The user part ends at the last `@` before the path, so a raw `#` or `?`

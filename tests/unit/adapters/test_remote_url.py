@@ -37,6 +37,9 @@ class TestWithoutCredentials:
             # scp-like, with a secret written into the user part.
             ("git:SECRET@example.test:team/r.git", "git@example.test:team/r.git"),
             ("git:SE@CRET@example.test:r.git", "git@example.test:r.git"),
+            # An `@` in the path is not the end of the user part.
+            ("git@example.test:team@x/r.git", "git@example.test:team@x/r.git"),
+            ("git:SECRET@example.test:team@x/r.git", "git@example.test:team@x/r.git"),
             # Local paths are not addresses, whatever they contain.
             ("/srv/a:b@c/r.git", "/srv/a:b@c/r.git"),
             ("C:\\work\\a:b@c", "C:\\work\\a:b@c"),
