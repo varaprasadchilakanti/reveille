@@ -319,7 +319,7 @@ def _read_or_empty(
         return []
 
 
-#: Areas whose earlier history is looked up for "active again": one `git log -1` each.
+#: Areas whose earlier history is looked up for "active again", in one pass.
 _MAX_AREAS_LOOKED_UP = 50
 
 
@@ -402,15 +402,12 @@ def brief_text(
             "branch's commits not reachable from it.",
         )
     areas = sorted(reader.area_activity, key=lambda a: (-a.commits, a.area))
-    previous = {
-        a.area: reader.last_change_before(
-            a.area,
-            config.branch,
-            from_commit,
-            config.since if from_commit is None else None,
-        )
-        for a in areas[:_MAX_AREAS_LOOKED_UP]
-    }
+    previous = reader.last_changes_before(
+        [a.area for a in areas[:_MAX_AREAS_LOOKED_UP]],
+        config.branch,
+        from_commit,
+        config.since if from_commit is None else None,
+    )
     facts = describe_range(commits, list(reader.file_stats), areas, reader.files_added, previous)
     tags = reader.tags_in_range(
         config.branch,

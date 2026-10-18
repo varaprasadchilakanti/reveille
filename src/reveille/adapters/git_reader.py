@@ -1646,29 +1646,35 @@ class GitReader:
                 found.append((order[commit], name))
         return [name for _, name in sorted(found)]
 
-    def last_change_before(
+    def last_changes_before(
         self,
-        area: str,
+        areas: Sequence[str],
         branch: str | None,
         before_commit: str | None,
         before_date: datetime.date | None,
-    ) -> datetime.date | None:
-        """Return when a directory last changed before a point, or None.
+    ) -> dict[str, datetime.date | None]:
+        """Return when each directory last changed before a point, in one pass.
 
-        Exclusions do not apply: this is about the directory, not a person.
+        Exclusions do not apply: this is about the directories, not a person. One
+        `git log`, newest first, read until every directory has its answer; a
+        lookup per directory walked the same history once each, 50 times on a
+        large repository. Renames count on both sides, as a path lookup does.
 
         Args:
-            area: A directory path; the root area is not looked up.
+            areas: Directory paths; the root area is never looked up.
             branch: The analysed branch; the active branch if None.
             before_commit: Look at this commit's history (inclusive).
             before_date: Or look at the branch's history before this date.
 
         Returns:
-            The date (UTC) of the latest non-merge commit that changed it, if any.
+            Each area and the date (UTC) of the latest non-merge commit before the
+            point that changed a file in it, or None.
         """
-        if area == ROOT_AREA:
-            return None
-        args = ["-1", "--no-merges", "--format=%ct"]
+        found: dict[str, datetime.date | None] = dict.fromkeys(areas)
+        remaining = {area for area in areas if area != ROOT_AREA}
+        if not remaining:
+            return found
+        args = ["--no-merges", "--no-renames", "--name-only", "-z", "--format=%x01%H %ct"]
         if before_commit is not None:
             args += ["--end-of-options", before_commit]
         else:
@@ -1677,12 +1683,31 @@ class GitReader:
                 args.append(f"--before={before_date.isoformat()}T00:00:00+00:00")
             args += ["--end-of-options", rev]
         try:
-            out = str(self._git().log(*args, "--", f":(literal){area}")).strip()
+            process = self._git().log(*args, "--", as_process=True)
         except GitCommandError:
-            return None
-        if not out.isdigit():
-            return None
-        return datetime.datetime.fromtimestamp(int(out), tz=datetime.UTC).date()
+            return found
+        try:
+            when: datetime.date | None = None
+            pending = b""
+            for chunk in iter(lambda: process.stdout.read(1 << 16), b""):
+                *tokens, pending = (pending + chunk).split(b"\0")
+                for token in tokens:
+                    header = _CHANGE_HEADER_RE.fullmatch(token)
+                    if header is not None:
+                        stamp = int(header.group(1))
+                        when = datetime.datetime.fromtimestamp(stamp, tz=datetime.UTC).date()
+                        continue
+                    path = token.lstrip(b"\n").decode("utf-8", "replace")
+                    for area in [a for a in remaining if path.startswith(a + "/") or path == a]:
+                        found[area] = when
+                        remaining.discard(area)
+                if not remaining:
+                    break
+        finally:
+            # Stop Git once every area is answered; reading on would only cost time.
+            process.proc.kill()
+            process.proc.wait()
+        return found
 
     def resolve_head_sha(self, branch: str | None = None) -> str | None:
         """Return the full SHA at the tip of the analysed ref, pinning the report.
@@ -2085,8 +2110,12 @@ def _state_wide_exclusions(reached: dict[str, set[str]]) -> None:
 _MAX_MAILMAP_BYTES = 1_048_576
 
 
+# A commit's line in `last_changes_before`: \x01, its hash, its commit time.
+_CHANGE_HEADER_RE = re.compile(rb"\x01[0-9a-f]{40} ([0-9]+)")
+
 #: How long `state` lets `git status` run before stopping it (a FIFO makes it wait for ever).
 STATUS_TIMEOUT_SECONDS = 120
+
 
 #: The deepest `reveille repos --depth` searches (ADR 0026).
 MAX_SEARCH_DEPTH = 3
