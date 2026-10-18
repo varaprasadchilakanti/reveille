@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import csv
 import datetime
+import functools
 import io
 import itertools
 import json
@@ -32,6 +33,7 @@ from jinja2 import (
     Environment,
     PackageLoader,
     StrictUndefined,
+    Template,
     TemplateNotFound,
     TemplatesNotFound,
     select_autoescape,
@@ -127,8 +129,15 @@ _SCRIPT_BLOCK_RE: re.Pattern[str] = re.compile(
 )
 _HTML_TAG_RE: re.Pattern[str] = re.compile(r"<[^>]+>")
 
-# The ~4.8 MB Plotly bundle, read once per process rather than per report.
-_PLOTLY_JS_BUNDLE: str = plotly.offline.get_plotlyjs()
+
+@functools.cache
+def _plotly_js_bundle() -> str:
+    """Return the ~4.8 MB Plotly bundle, read once per process and only for HTML.
+
+    Returns:
+        The bundle's JavaScript.
+    """
+    return str(plotly.offline.get_plotlyjs())
 
 
 class _DedentingLoader(PackageLoader):
@@ -164,24 +173,36 @@ class Renderer:
     """Renders a ReportData instance into a self-contained HTML file."""
 
     def __init__(self) -> None:
-        """Load the Jinja2 environment and validate the template is present.
+        """Create a renderer; the HTML template is compiled when first needed."""
+        self._template: Template | None = None
+
+    def _report_template(self) -> Template:
+        """Return the compiled HTML template, compiling it on first use.
+
+        JSON, CSV and the text answers never need it, and compiling it is the
+        larger part of a small report's run time.
+
+        Returns:
+            The report template.
 
         Raises:
             RenderError: If the report template is missing from the package.
         """
-        try:
-            self._env = Environment(
-                loader=_DedentingLoader("reveille", "templates"),
-                autoescape=select_autoescape(["html", "j2"]),
-                undefined=StrictUndefined,
-            )
-            self._template = self._env.get_template("report.html.j2")
-        except (TemplateNotFound, TemplatesNotFound, OSError) as exc:
-            raise RenderError(
-                "Failed to load the report template. "
-                "Verify the package was installed correctly and that "
-                "src/reveille/templates/report.html.j2 exists."
-            ) from exc
+        if self._template is None:
+            try:
+                environment = Environment(
+                    loader=_DedentingLoader("reveille", "templates"),
+                    autoescape=select_autoescape(["html", "j2"]),
+                    undefined=StrictUndefined,
+                )
+                self._template = environment.get_template("report.html.j2")
+            except (TemplateNotFound, TemplatesNotFound, OSError) as exc:
+                raise RenderError(
+                    "Failed to load the report template. "
+                    "Verify the package was installed correctly and that "
+                    "src/reveille/templates/report.html.j2 exists."
+                ) from exc
+        return self._template
 
     def render(
         self,
@@ -238,9 +259,9 @@ class Renderer:
             )
             charts = self._build_charts(data)
             derived = self._compute_derived_stats(data)
-            plotly_js = _PLOTLY_JS_BUNDLE
+            plotly_js = _plotly_js_bundle()
             generated_at = data.metadata.generated_at.strftime("%Y-%m-%d %H:%M UTC")
-            html = self._template.render(
+            html = self._report_template().render(
                 data=data,
                 charts=charts,
                 # Rendered by the template in HTML, CSS and SVG (ADR 0012, 0016).
