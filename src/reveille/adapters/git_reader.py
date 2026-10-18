@@ -876,7 +876,7 @@ class GitReader:
             separator=b"\0",
         )
         try:
-            records, authentic_order, mailmap, requests = self._read_alongside(
+            records, authentic_order, mailmap, requests, reached = self._read_alongside(
                 stream, rev, rev_list_args, exclude_authors
             )
             co_author_records = self._trailer_records(trailers)
@@ -886,11 +886,10 @@ class GitReader:
         authentic_shas = set(authentic_order)
         exclude_set = set().union(*requests.values())
 
-        # An identity is its address (ADR 0002): excluding one name drops every
-        # commit under the addresses it reaches.
         trusted = _well_formed_shas(records, authentic_shas)
         undatable: set[str] = set()
-        reached = self._addresses_in_history(rev, mailmap, exclude_set)
+        # An identity is its address (ADR 0002): excluding one name drops every
+        # commit under the addresses it reaches.
         exclude_set |= {address for addresses in reached.values() for address in addresses}
         _state_wide_exclusions(reached)
 
@@ -1099,7 +1098,7 @@ class GitReader:
         rev: str,
         rev_list_args: list[str],
         exclude_authors: list[str],
-    ) -> tuple[list[str], list[str], _Mailmap, dict[str, set[str]]]:
+    ) -> tuple[list[str], list[str], _Mailmap, dict[str, set[str]], dict[str, set[str]]]:
         """Run the queries the main read needs while Git writes the log, then take it.
 
         Args:
@@ -1110,10 +1109,12 @@ class GitReader:
 
         Returns:
             The log's records, the authentic hashes in log order, the mailmap with
-            the noreply accounts folded in, and each exclusion's forms.
+            the noreply accounts folded in, each exclusion's forms, and the
+            addresses each exclusion reaches in the branch's history.
 
         Raises:
-            RepositoryError: If the branch cannot be enumerated or the log not read.
+            RepositoryError: If the branch cannot be enumerated, the history an
+                exclusion is checked against cannot be read, or the log not read.
         """
         # A crafted author name can inject a whole record, so authentic SHAs
         # come from `rev-list`, which computes them; a record whose SHA is not
@@ -1141,6 +1142,7 @@ class GitReader:
         accounts, usernames = self._noreply_accounts(rev)
         mailmap = replace(mailmap, noreply_accounts=accounts, noreply_usernames=usernames)
         requests = _exclusion_requests(exclude_authors, mailmap)
+        reached = self._addresses_in_history(rev, mailmap, set().union(*requests.values()))
 
         try:
             records = stream.records()
@@ -1149,7 +1151,7 @@ class GitReader:
                 f"Failed to read commits from branch '{rev}'. "
                 f"Verify the branch name is correct. Detail: {exc}"
             ) from exc
-        return records, authentic_order, mailmap, requests
+        return records, authentic_order, mailmap, requests, reached
 
     def _credit_co_authors(
         self,
