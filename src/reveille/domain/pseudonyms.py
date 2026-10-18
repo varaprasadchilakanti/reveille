@@ -32,11 +32,16 @@ from reveille.domain.models import (
 HIDDEN_DOMAIN = "hidden.invalid"
 
 # An address written into a display name, as some Git configurations produce.
-# Square brackets end it, so a `[bot]` suffix after an address survives.
-_ADDRESS_IN_TEXT = re.compile(r"[^\s<>@\[\]]+@[^\s<>@\[\]]+")
+# Square brackets end it, so a `[bot]` suffix after an address survives, unless
+# they hold the domain itself (`bob@[10.1.2.3]`).
+_ADDRESS_IN_TEXT = re.compile(r"[^\s<>@\[\]]+@(?:\[[^\]\s]+\]|[^\s<>@\[\]]+)")
 
 # An address in a branch, a directory or a URL path: it ends at a separator too.
 _ADDRESS_IN_PATH = re.compile(r"[^\s<>@\[\]/:]+@[^\s<>@\[\]/:]+")
+
+# A remote that is a path on this machine: it names the owner's directories
+# (`/home/jane/clients/...`), so only its last part is kept.
+_LOCAL_REMOTE = re.compile(r"^(?:file:|/|~|\.{1,2}[\\/]|[A-Za-z]:[\\/])")
 
 # The user part of a remote, scp-like (`user@host:path`) or a URL (`ssh://user@host/path`).
 _USER_IN_REMOTE = re.compile(r"^((?:[a-z][a-z0-9+.-]*://)?)[^@/:]+@")
@@ -66,6 +71,8 @@ def hide_emails(data: ReportData) -> ReportData:
 
     remote = data.metadata.remote_url
     if remote:
+        if _LOCAL_REMOTE.match(remote):
+            remote = re.split(r"[\\/]", remote.rstrip("\\/"))[-1]
         # An SSH remote can carry a person's login: `jane@host:group/repo`.
         remote = _hidden_in_path(_USER_IN_REMOTE.sub(r"\1", remote))
     requested = data.provenance.requested_branch

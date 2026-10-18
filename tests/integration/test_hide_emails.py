@@ -236,3 +236,35 @@ def test_a_file_path_is_left_as_it_is(named_after: Path) -> None:
     html = _run(named_after, "-o", "-", "--hide-emails")
 
     assert "gus@corp.test.txt" in html
+
+
+@pytest.fixture(scope="module")
+def local_remote(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A clone of a path on this machine, by someone whose name is an address with an IP domain."""
+    path = tmp_path_factory.mktemp("local") / "r"
+    (path / "src").mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=path, check=True)
+    subprocess.run(
+        ["git", "remote", "add", "origin", "/home/jsmith/clients/acme-merger.git"],
+        cwd=path,
+        check=True,
+    )
+    _commit(path, "bob@[10.1.2.3]", "bob@corp.test", "work", 1)
+    return path
+
+
+@pytest.mark.parametrize("fmt", ["html", "json", "csv"])
+def test_an_address_with_a_bracketed_domain_is_hidden(local_remote: Path, fmt: str) -> None:
+    plain = _run(local_remote, "--format", fmt, "-o", "-")
+    hidden = _run(local_remote, "--format", fmt, "-o", "-", "--hide-emails")
+
+    assert "bob@[10.1.2.3]" in plain, "positive control"
+    assert "10.1.2.3" not in hidden
+
+
+def test_a_local_remote_keeps_only_its_last_part(local_remote: Path) -> None:
+    plain = json.loads(_run(local_remote, "--format", "json", "-o", "-"))
+    hidden = json.loads(_run(local_remote, "--format", "json", "-o", "-", "--hide-emails"))
+
+    assert plain["metadata"]["remote_url"] == "/home/jsmith/clients/acme-merger.git"
+    assert hidden["metadata"]["remote_url"] == "acme-merger.git"

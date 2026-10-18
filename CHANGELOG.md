@@ -52,6 +52,12 @@ before 0.8.0 predate the convention and are left as they were released.
   is now drawn in parentheses, chart labels lose any stray `<` or `>`, and the report carries a
   Content-Security-Policy that allows no network source. With only that policy added, the 0.9.0
   report requested nothing.
+- **`--hide-emails` missed an address with an IP domain, and a local remote's directories.** A
+  name such as `bob@[10.1.2.3]` was printed as it was, and a remote that is a path on the machine
+  (`/home/jane/clients/acme.git`, or a `file://` URL) gave away a login name and a client's name.
+  The address is now hidden and such a remote keeps only its last part. A secret written into the
+  user part of an scp-like remote (`git:SECRET@host:path`) is removed with or without the option,
+  as it already was from `ssh://` and `https://` remotes.
 - **A repository's `diff.orderFile` could make a read wait for ever.** Git reads the file it names
   for every diff it prints, line counts included, and a named pipe there blocked `generate`,
   `brief` and `validate` until they were killed. It is now pinned to the null device.

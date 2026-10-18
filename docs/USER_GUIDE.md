@@ -182,7 +182,10 @@ It covers authors, co-authors, people below `--min-commits`, area authors, the d
 drawn from, an address written into a name (shown as `(address hidden)`), and the login in an SSH
 remote (`jane@host:group/repo` becomes `host:group/repo`). An address in the branch name, the
 repository's directory name or the remote's path is shown as `(address hidden)` too
-(`user/jane@example.com` becomes `user/(address hidden)`). The HTML table then shows names only;
+(`user/jane@example.com` becomes `user/(address hidden)`), and so is one with an IP address for
+its domain (`bob@[10.1.2.3]`). A remote that is a path on your machine keeps only its last part
+(`/home/jane/clients/acme.git` becomes `acme.git`), since the rest names your directories. The
+HTML table then shows names only;
 JSON and CSV carry the tokens, and `provenance.emails_hidden` is `true`.
 
 File paths are not changed: the extension and generated-file figures are read from them, so a
@@ -792,8 +795,8 @@ provider.
 5. **For an assistant or a script, prefer `reveille summary`**, which names no contributor, or
    bound the JSON with `--limit`.
 6. **Naming nobody does not hide anyone.** With few people, a figure traces to one person; the
-   repository name, branch, remote URL (an SSH login or an address in them included, unless
-   `--hide-emails`), title and file paths can identify someone too. A report already sent is not changed by a later `--exclude-author`.
+   repository name, branch, remote URL (an SSH login, an address, or a local remote's
+   directories included, unless `--hide-emails`), title and file paths can identify someone too. A report already sent is not changed by a later `--exclude-author`.
 7. **Whether you may use a report about the people who work with you** is a question for the law
    and the agreements that apply to you. [COMPLIANCE.md](COMPLIANCE.md) sets out who is
    responsible for what. This guide is not legal advice.
