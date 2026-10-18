@@ -272,3 +272,35 @@ def test_at_most_four_repositories_are_read_at_once(monkeypatch: pytest.MonkeyPa
     assert report._repository_workers() == 4
     monkeypatch.setattr(os, "cpu_count", lambda: None)
     assert report._repository_workers() == 1
+
+
+def test_each_rows_warnings_come_in_the_rows_order(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The warnings name no repository, so their order is what places them."""
+    import logging
+    import time
+
+    from reveille.domain.repositories import RepositoryActivity
+    from reveille.services import report
+
+    found = sorted(report.find_repositories(workspace, 1)[0])
+    logger = logging.getLogger("reveille.adapters.git_reader")
+
+    def slow_row(path: Path, relative: str, *_: object) -> tuple[RepositoryActivity, set[str]]:
+        time.sleep(0.05 * (len(found) - found.index(path)))
+        logger.warning("first of %s", relative)
+        logger.warning("second of %s", relative)
+        return RepositoryActivity(relative, "not read", reason="slow"), set()
+
+    monkeypatch.setattr(report, "_repository_row", slow_row)
+    monkeypatch.setattr(report, "_repository_workers", lambda: 4)
+    _, _, err = _repos(workspace, "--format", "json")
+
+    names = [p.relative_to(workspace).as_posix() for p in found]
+    wanted = [f"{which} of {name}" for name in names for which in ("first", "second")]
+    places = [err.find(json.dumps(line)[1:-1]) for line in wanted]
+    assert -1 not in places, err
+    assert places == sorted(places), err
+    assert logger.parent is not None
+    assert not any(h.filters for h in logging.getLogger("reveille").handlers), "filter left on"

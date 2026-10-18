@@ -222,7 +222,8 @@ before 0.8.0 predate the convention and are left as they were released.
   too: 6.5 s to 5.0 s there. Every report, in every format, is byte-identical to before.
 - **`repos` reads up to four repositories at once**, one per CPU: a row's time is mostly spent
   waiting for Git. Over 201 small repositories it went from 20.6 s to 8.3 s with the same peak
-  memory (52 MB), and the rows, in every format, are as before and in the same order.
+  memory (52 MB), and the rows, in every format, are as before and in the same order. So are
+  the warnings each row gives, which name no repository and are placed only by their order.
 - **Only an HTML report loads the chart library and the HTML template.** The 4.8 MB Plotly
   bundle was read when Reveille started and the template compiled for every report, so `state`,
   `brief`, `summary`, `who-changed`, `repos` and JSON or CSV reports paid for both: on a

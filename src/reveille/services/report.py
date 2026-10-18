@@ -11,11 +11,13 @@ JSON or CSV. Imports no GitPython, Jinja2, Plotly or Typer; progress goes to a
 
 from __future__ import annotations
 
+import contextlib
 import datetime
 import logging
 import os
+import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
@@ -243,17 +245,23 @@ def repositories_text(
     rows: list[RepositoryActivity] = []
     matched: set[str] = set()
     # Most of a row's time is spent waiting for Git, so rows are read side by
-    # side. Each has its own reader, and so its own Git runner; rows keep the
-    # order they were found in.
-    with ThreadPoolExecutor(max_workers=_repository_workers()) as pool:
-        for row, matched_here in pool.map(
-            lambda path: _repository_row(
+    # side. Each has its own reader, and so its own Git runner; rows, and the
+    # warnings each gives, keep the order the repositories were found in.
+    held = _HeldWarnings()
+
+    def read_row(path: Path) -> tuple[RepositoryActivity, set[str], list[logging.LogRecord]]:
+        with held.on_this_thread() as records:
+            row, matched_here = _repository_row(
                 path, path.relative_to(directory).as_posix(), start, end, days, exclude_authors
-            ),
-            found,
-        ):
+            )
+        return row, matched_here, records
+
+    with held.installed(), ThreadPoolExecutor(max_workers=_repository_workers()) as pool:
+        for row, matched_here, records in pool.map(read_row, found):
             rows.append(row)
             matched |= matched_here
+            for record in records:
+                logging.getLogger(record.name).handle(record)
     unmatched = [value for value in exclude_authors if value not in matched]
     if unmatched:
         _notify(
@@ -263,6 +271,69 @@ def repositories_text(
     return Renderer.repositories_text(
         rows, directory.name, (start, end), days, depth, output_format
     )
+
+
+class _HeldWarnings(logging.Filter):
+    """Holds back what a thread logs, so it can be given out later, in order.
+
+    The warnings name no repository, so the order of the rows is what tells a
+    reader which one each came from.
+    """
+
+    def __init__(self) -> None:
+        """Hold nothing until a thread asks."""
+        super().__init__()
+        self._local = threading.local()
+
+    @contextlib.contextmanager
+    def installed(self) -> Iterator[None]:
+        """Filter every handler a `reveille` record reaches, until the block ends.
+
+        Yields:
+            Nothing.
+        """
+        handlers: list[logging.Handler] = []
+        logger: logging.Logger | None = logging.getLogger("reveille")
+        while logger is not None:
+            handlers.extend(logger.handlers)
+            logger = logger.parent if logger.propagate else None
+        for handler in handlers:
+            handler.addFilter(self)
+        try:
+            yield
+        finally:
+            for handler in handlers:
+                handler.removeFilter(self)
+
+    @contextlib.contextmanager
+    def on_this_thread(self) -> Iterator[list[logging.LogRecord]]:
+        """Hold what this thread logs in the block.
+
+        Yields:
+            The records held, in the order they were logged.
+        """
+        records: list[logging.LogRecord] = []
+        self._local.records = records
+        try:
+            yield records
+        finally:
+            self._local.records = None
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Hold the record if its thread asked; pass it on otherwise.
+
+        Args:
+            record: What was logged.
+
+        Returns:
+            False for a record held, True for one to emit now.
+        """
+        records: list[logging.LogRecord] | None = getattr(self._local, "records", None)
+        if records is None:
+            return True
+        if record not in records:  # each handler sees it; hold it once
+            records.append(record)
+        return False
 
 
 def _repository_workers() -> int:
