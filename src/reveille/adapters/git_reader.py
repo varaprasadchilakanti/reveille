@@ -898,7 +898,7 @@ class GitReader:
         if branch is None and not self._repo.head.is_valid() and self.resolve_head_sha() is None:
             raise EmptyRepositoryError(
                 f"Repository at '{self._repo_path}' contains no commits. "
-                "Make at least one commit before generating a report."
+                "There is nothing to read until the first commit is made."
             )
 
         self._refuse_attribute_files_that_block(counts_lines=line_counts and not name_status)
