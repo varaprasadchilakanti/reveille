@@ -3082,7 +3082,6 @@ def _parse_log_record(
     # Shape alone can be forged; membership in the set git computed cannot.
     if not _SHA_RE.fullmatch(sha) or sha not in authentic_shas:
         return None
-    sha = authentic_shas[sha]  # the string the rest of the read shares
 
     resolved = None if identities is None else identities.get((raw_name, raw_email))
     if resolved is None:
@@ -3105,7 +3104,7 @@ def _parse_log_record(
 
     lines_added, lines_deleted = _sum_numstat(numstat_block)
     return Commit(
-        sha=sha,
+        sha=authentic_shas[sha],  # a kept commit shares the string the rest of the read holds
         author_name=author_name,
         author_email=author_email,
         timestamp=timestamp,
