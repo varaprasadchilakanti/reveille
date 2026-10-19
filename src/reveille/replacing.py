@@ -37,8 +37,8 @@ def write_replacing(path: Path, text: str, *, encoding: str, new_mode: int = 0o6
     except FileNotFoundError:
         kept_mode = None
     temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
-    safe_mode = stat.S_IMODE(new_mode) & 0o600
-    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, safe_mode)
+    # Reports pass 0o600; `init` passes 0o666 on purpose, as its files are meant to be committed.
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, new_mode)
     try:
         with os.fdopen(descriptor, "w", encoding=encoding, newline="") as handle:
             handle.write(text)
