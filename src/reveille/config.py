@@ -17,7 +17,7 @@ import tomllib
 from pathlib import Path
 from typing import Any, Literal, TypedDict, cast
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 from reveille.exceptions import ConfigurationError
 
@@ -284,7 +284,8 @@ def read_config_file(path: Path) -> tuple[ReportConfigKwargs, list[str]]:
         ConfigurationError: If the file is missing, unreadable, not TOML, or invalid.
     """
     try:
-        raw = tomllib.loads(_read_config_bytes(path).decode("utf-8"))
+        # "utf-8-sig": an editor that writes a byte-order mark still wrote UTF-8.
+        raw = tomllib.loads(_read_config_bytes(path).decode("utf-8-sig"))
     except FileNotFoundError as exc:
         raise ConfigurationError(f"Configuration file not found: '{path}'.") from exc
     except tomllib.TOMLDecodeError as exc:
@@ -512,19 +513,34 @@ def _parse_ranking_section(ranking: dict[str, Any]) -> dict[str, Any]:
             raise ConfigurationError(
                 f"[ranking] weights must be a table of named weights, not {w!r}."
             )
-        # Catches `float()`'s ValueError and pydantic's ValidationError (a
-        # ValueError), so a bad weight is a configuration error, not a traceback.
-
+        for name in ("commits", "lines", "consistency", "recency"):
+            # A number, as TOML writes one: `float(True)` is 1.0, and a quoted
+            # value is a string, refused as `enabled = "false"` is.
+            if name in w and (isinstance(w[name], bool) or not isinstance(w[name], int | float)):
+                raise ConfigurationError(
+                    f"[ranking] weights {name} must be a number, not {w[name]!r}."
+                )
         try:
             kwargs["ranking_weights"] = RankingWeights(
-                commits=float(w.get("commits", 0.30)),
-                lines=float(w.get("lines", 0.25)),
-                consistency=float(w.get("consistency", 0.25)),
-                recency=float(w.get("recency", 0.20)),
+                **{
+                    name: w[name]
+                    for name in ("commits", "lines", "consistency", "recency")
+                    if name in w
+                }
             )
-        except (TypeError, ValueError) as exc:
-            raise ConfigurationError(
-                f"[ranking] weights is not valid: {exc}. Each weight must be a "
-                "number between 0 and 1, and the four must sum to 1.0."
-            ) from exc
+        except ValidationError as exc:
+            # Pydantic's own text carries its input dump and a link to its site.
+            errors = exc.errors()
+            reasons = " ".join(
+                f"{error['loc'][0]}: {error['msg']}."
+                if error["loc"]
+                else error["msg"].removeprefix("Value error, ")
+                for error in errors
+            )
+            tail = (
+                " Each weight must be a number between 0 and 1, and the four must sum to 1.0."
+                if any(error["loc"] for error in errors)
+                else ""
+            )
+            raise ConfigurationError(f"[ranking] weights is not valid: {reasons}{tail}") from exc
     return kwargs

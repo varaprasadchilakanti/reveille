@@ -653,7 +653,7 @@ exclude_paths = ["vendor"]                 # repeated --exclude-path
 
 [ranking]
 enabled = false                            # --ranking; read "The Ranking Algorithm" first
-# Four weights; they must sum to 1.0. These are the documented defaults.
+# Four weights, as numbers (not quoted); they must sum to 1.0. These are the documented defaults.
 weights = { commits = 0.30, lines = 0.25, consistency = 0.25, recency = 0.20 }
 
 [areas]

@@ -95,9 +95,14 @@ before release.
   the affirmative answer, over a table of `not_read` rows. The rows are still written, since each
   says why; one readable repository, even an empty one, keeps exit 0
   ([ADR 0028](docs/adr/0028-repos-exits-2-when-nothing-was-read.md)).
+- **A `reveille.toml` that starts with a byte-order mark is read.** It was reported as "Invalid
+  statement" at line 1.
 - **A key or table in `reveille.toml` that Reveille does not read is named in a note.** A
   misspelt `[report] tittle` used to be ignored without a word. The run continues and the exit code
   is unchanged.
+- **A ranking weight must be a TOML number.** A quoted `"0.30"` was converted, and `commits = true`
+  counted as 1.0. Both are now refused, as a quoted `enabled = "false"` already was. A weight error
+  is one sentence, without Pydantic's input dump and link.
 - **With two people, the distribution sentence's evidence is "2 contributors", not the Gini.** With
   two people the Gini fixes each share. The Gini itself is still shown, as the repository's measure,
   and the contributor table shows each share.
