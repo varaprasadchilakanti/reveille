@@ -82,7 +82,7 @@ def test_only_the_reports_own_scripts_may_run(tmp_path: Path) -> None:
     directives = dict(d.strip().split(" ", 1) for d in policy.group(1).split(";") if d.strip())
     allowed = directives["script-src"].split()
 
-    run = re.findall(r"<script>(.*?)</script>", page, re.DOTALL)
+    run = re.findall(r"<script>(.*?)</script>", page, re.DOTALL | re.IGNORECASE)
     assert len(run) == 3, "the theme, the chart library and the report's own script"
     assert sorted(allowed) == sorted(
         f"'sha256-{base64.b64encode(hashlib.sha256(s.encode()).digest()).decode()}'" for s in run
