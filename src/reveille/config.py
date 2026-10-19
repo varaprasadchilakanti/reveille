@@ -266,6 +266,9 @@ def _parse_report_section(report: dict[str, Any]) -> dict[str, Any]:
                     f"Invalid '{field}' date in configuration file: "
                     f"'{report[field]}'. Expected YYYY-MM-DD."
                 ) from exc
+            if field == "until" and kwargs[field] == datetime.date.max:
+                # An inclusive end is read up to the next day, which does not exist.
+                raise ConfigurationError(f"'until' must be before {datetime.date.max}.")
     if "format" in report:
         kwargs["output_format"] = cast(OutputFormat, str(report["format"]))
     kwargs.update(_parse_report_switches(report))

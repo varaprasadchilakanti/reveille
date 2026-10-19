@@ -131,7 +131,9 @@ an earlier `--since` changes nothing, because days before a repository existed a
 Without `--until` it ends today (UTC), and a commit dated after today (a wrong clock, or a rebase
 that kept a future date) is counted in no figure: the header and a note on stderr say how many,
 and a later `--until` includes them. With `--deterministic` the window closes on the last commit
-instead.
+instead. Git reads dates only from 1970 through 2099: an earlier `--since` or a later `--until` is
+no limit, and a later `--since` is read as 2099-12-31, after which only a commit with a wrong clock
+can fall.
 
 A commit's date is its commit date (Git's committer date), not the date it was first written: a
 rebase, an amend or a cherry-pick places the commit on the day it was rewritten.

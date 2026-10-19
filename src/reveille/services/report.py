@@ -234,7 +234,10 @@ def repositories_text(
         EmptyRepositoryError: If no repository is found.
     """
     end = until if until is not None else _today()
-    start = end - datetime.timedelta(days=days - 1)
+    try:
+        start = end - datetime.timedelta(days=days - 1)
+    except OverflowError:
+        start = datetime.date.min  # a window reaching past the calendar's first day
     found, unreadable = find_repositories(directory, depth)
     if unreadable:
         _notify(

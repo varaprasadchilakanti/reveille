@@ -1812,8 +1812,9 @@ class GitReader:
             args += ["--end-of-options", before_commit]
         else:
             rev = branch or self._resolve_active_branch()
-            if before_date is not None:
-                args.append(f"--before={before_date.isoformat()}T00:00:00+00:00")
+            before = None if before_date is None else _git_before(before_date)
+            if before is not None:
+                args.append(f"--before={before}")
             args += ["--end-of-options", rev]
         try:
             process = self._git().log(*args, "--", as_process=True)
@@ -3178,6 +3179,29 @@ def _selection(log_args: list[str]) -> list[str]:
     return [a for a in log_args if a not in ("--numstat", "--name-status", _LOG_FORMAT)]
 
 
+# Git reads a date only from 1970 through 2099 (Git 2.55, measured with
+# `git rev-parse --since=`): past 2099 `--before` matched no commit and `--since`
+# every one, and `@<seconds>` past it is read as another date. A bound outside
+# those years is dropped where nothing Git can date lies beyond it, and moved to
+# the nearest day Git reads where something could.
+_GIT_FIRST_DAY = datetime.date(1970, 1, 1)
+_GIT_LAST_DAY = datetime.date(2099, 12, 31)
+
+
+def _git_after(day: datetime.date) -> str | None:
+    """Return a lower date bound as Git reads it, or None when no dated commit is earlier."""
+    if day <= _GIT_FIRST_DAY:
+        return None
+    return f"{min(day, _GIT_LAST_DAY).isoformat()}T00:00:00+00:00"
+
+
+def _git_before(day: datetime.date) -> str | None:
+    """Return an exclusive upper date bound as Git reads it, or None when none is later."""
+    if day > _GIT_LAST_DAY:
+        return None
+    return f"{max(day, _GIT_FIRST_DAY).isoformat()}T00:00:00+00:00"
+
+
 def _build_log_args(
     rev: str,
     since: datetime.date | None,
@@ -3214,18 +3238,19 @@ def _build_log_args(
 
     # Boundaries are pinned to UTC: git reads a bare date in local time, so the
     # answer would depend on the machine (and `--deterministic` would not hold).
-    if since is not None:
-        boundary = f"{since.isoformat()}T00:00:00+00:00"
+    after = None if since is None else _git_after(since)
+    if after is not None:
+        boundary = after
         # `--since` stops the walk at the first older commit, silently losing
         # in-window commits behind it on non-chronological history; the filter
         # does not. `--before` needs no equivalent: the walk starts newest.
         flag = "--since-as-filter" if supports_since_as_filter else "--after"
         log_args.append(f"{flag}={boundary}")
         rev_list_args.append(f"{flag}={boundary}")
-    if until is not None:
-        # One day past the boundary, so `--until` is inclusive of its own date.
-        inclusive_until = (until + datetime.timedelta(days=1)).isoformat()
-        boundary = f"{inclusive_until}T00:00:00+00:00"
+    # One day past the boundary, so `--until` is inclusive of its own date.
+    before = None if until is None else _git_before(until + datetime.timedelta(days=1))
+    if before is not None:
+        boundary = before
         log_args.append(f"--before={boundary}")
         rev_list_args.append(f"--before={boundary}")
 
