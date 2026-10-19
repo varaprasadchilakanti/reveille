@@ -586,9 +586,17 @@ class TestFilesystemWrites:
         """Return the flags if `os.open(path, flags)` can write, else None.
 
         Flags read as `os.O_*` names joined by `|`, with `getattr(os, "O_*", 0)`
-        for a platform's optional ones. A write flag, or anything else, is reported.
+        for a platform's optional ones. A write flag, or anything else, is reported,
+        except on `os.devnull`.
         """
         writing = {"O_WRONLY", "O_RDWR", "O_CREAT", "O_TRUNC", "O_APPEND"}
+        target = node.args[0] if node.args else None
+        if (
+            isinstance(target, ast.Attribute)
+            and isinstance(target.value, ast.Name)
+            and (target.value.id, target.attr) == ("os", "devnull")
+        ):
+            return None  # the null device keeps nothing written to it
         names: list[str] = []
         pending = node.args[1:2]
         while pending:

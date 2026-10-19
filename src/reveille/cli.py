@@ -9,6 +9,7 @@ Exit codes are a contract: see `ExitCode` and docs/USER_GUIDE.md.
 
 from __future__ import annotations
 
+import contextlib
 import datetime
 import enum
 import itertools
@@ -115,6 +116,46 @@ def _err(message: str) -> None:
         typer.echo(json.dumps({"level": level, "message": text}), err=True)
         return
     typer.echo(_printable(message), err=True)
+
+
+def _say(text: str, *, nl: bool = True, answer: bool = True) -> None:
+    """Write to stdout, and say so when it cannot be done.
+
+    A reader that stopped early (`| head`) ends the run quietly with exit 0, as
+    it chose. A full disk, or a closed stdout for an answer, cannot deliver the
+    answer, so it exits 2 rather than 0 or Click's 1. Stdout is then pointed at
+    the null device, so the interpreter's last flush cannot fail again.
+
+    Args:
+        text: What to write.
+        nl: Whether to end it with a newline.
+        answer: False for a confirmation, such as a written file's path, which is
+            left out, not an error, when stdout is closed.
+
+    Raises:
+        typer.Exit: SUCCESS for a reader that stopped, CANNOT_RUN otherwise.
+    """
+    if sys.stdout is None:
+        if not answer:
+            return
+        _err("Error: standard output is closed, so the answer has nowhere to go.")
+        raise typer.Exit(code=ExitCode.CANNOT_RUN)
+    try:
+        typer.echo(text, nl=nl)
+        sys.stdout.flush()
+    except BrokenPipeError as exc:
+        _discard_stdout()
+        raise typer.Exit(code=ExitCode.SUCCESS) from exc
+    except OSError as exc:
+        _discard_stdout()
+        _err(f"Error: the output could not be written to standard output: {exc.strerror}.")
+        raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
+
+
+def _discard_stdout() -> None:
+    """Point stdout's descriptor at the null device, dropping what is buffered."""
+    with contextlib.suppress(OSError, ValueError):
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
 
 
 _EXCLUDE_PATH_HELP = (
@@ -446,7 +487,7 @@ def _make_progress_callback(spinner: _StageSpinner) -> Callable[[ProgressEvent],
 
 def _version_callback(value: bool) -> None:
     if value:
-        typer.echo(f"reveille {__version__}")
+        _say(f"reveille {__version__}")
         raise typer.Exit()
 
 
@@ -730,10 +771,10 @@ def _run_report(report_config: ReportConfig, *, to_stdout: bool, quiet: bool = F
     spinner.complete()
     _print_notices(notices)
     if to_stdout:
-        typer.echo(text, nl=not text.endswith("\n"))
+        _say(text, nl=not text.endswith("\n"))
         return
     for path in written:
-        typer.echo(_printable(f"Report written to: {path}"))
+        _say(_printable(f"Report written to: {path}"), answer=False)
 
 
 def _apply_area_flags(
@@ -1041,7 +1082,7 @@ def _run_query(produce: Callable[[Callable[[str], None]], str]) -> None:
     # The text carries repository-chosen names, so it is escaped like
     # stderr; json.dumps already escapes control characters.
     text = _printable(text)
-    typer.echo(text, nl=not text.endswith("\n"))
+    _say(text, nl=not text.endswith("\n"))
 
 
 def _check_query_format(output_format: str, allowed: tuple[str, ...] = ("text", "json")) -> None:
@@ -1331,7 +1372,7 @@ def validate(
         _err(f"Error: {exc}")
         raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
 
-    typer.echo(_printable(f"Repository at {resolved} is valid."))
+    _say(_printable(f"Repository at {resolved} is valid."), answer=False)
 
 
 @app.command()
@@ -1383,7 +1424,7 @@ def init(
         if mailmap:
             refuse_symlink(cwd / ".mailmap")  # first, so a refusal writes neither file
         written_path = write_init_config(output, force=force)
-        typer.echo(f"Configuration file written to: {written_path}")
+        _say(f"Configuration file written to: {written_path}", answer=False)
     except ReveilleError as exc:
         _err(f"Error: {exc}")
         raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
@@ -1395,9 +1436,9 @@ def init(
             _err(f"Error: {exc}")
             raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
         if mailmap_result is not None:
-            typer.echo(f".mailmap template written to: {mailmap_result}")
+            _say(f".mailmap template written to: {mailmap_result}", answer=False)
         else:
-            typer.echo(".mailmap already exists; skipped.")
+            _say(".mailmap already exists; skipped.", answer=False)
 
 
 @app.command()
@@ -1434,16 +1475,16 @@ def capabilities(
             known = ", ".join(c["name"] for c in document["commands"])
             _err(f"Error: no command {command!r}; the commands are {known}.")
             raise typer.Exit(code=ExitCode.CANNOT_RUN)
-        typer.echo(
+        _say(
             json.dumps(narrowed, indent=2)
             if output_format == "json"
             else render_command_text(narrowed)
         )
         return
     if output_format == "json":
-        typer.echo(json.dumps(document, indent=2))
+        _say(json.dumps(document, indent=2))
     else:
-        typer.echo(render_text(document))
+        _say(render_text(document))
 
 
 @app.command()
@@ -1465,7 +1506,7 @@ def skill(
     if output_format not in {"markdown", "skill"}:
         _err(f"Error: unsupported format '{output_format}'. Accepted values: markdown, skill.")
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
-    typer.echo(guide(output_format), nl=False)
+    _say(guide(output_format), nl=False)
 
 
 @app.command()
