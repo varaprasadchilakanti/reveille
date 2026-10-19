@@ -28,6 +28,7 @@ import typer.main
 from typer.testing import CliRunner
 
 from reveille import __version__
+from reveille.adapters.renderer import _vendored
 from reveille.cli import ExitCode, app
 
 runner = CliRunner()
@@ -455,7 +456,10 @@ class TestGenerateCommand:
         assert "</html>" in default_report_content
 
     def test_output_contains_plotly_bundle(self, default_report_content: str) -> None:
-        assert "plotly" in default_report_content.lower()
+        # The whole vendored bundle, inline. "plotly" alone also appears in the
+        # licence notices, so a report without the bundle passed.
+        bundle = _vendored("plotly-cartesian.min.js")
+        assert f"<script>{bundle}</script>" in default_report_content
 
     def test_output_contains_contributor_names(self, default_report_content: str) -> None:
         assert "Alice" in default_report_content
