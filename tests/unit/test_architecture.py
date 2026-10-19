@@ -396,9 +396,10 @@ class TestFilesystemWrites:
     # has a working tree, which decides where its `.mailmap` is read from.
     # `git_dir` is the Git directory's path, read to find a stopped merge or
     # rebase by the files Git leaves there (ADR 0024); nothing is written.
-    _READ_ONLY_REPO_MEMBERS = frozenset(
-        {"active_branch", "bare", "commit", "git", "git_dir", "head", "remotes"}
-    )
+    # `common_dir` is the path the object directory is pinned under. Refs and
+    # commits are asked of Git, so `active_branch`, `commit` and `head` are not
+    # allowed: GitPython reads ref files, which a reftable repository has none of.
+    _READ_ONLY_REPO_MEMBERS = frozenset({"bare", "common_dir", "git", "git_dir", "remotes"})
 
     def test_only_designated_modules_write_to_disk(self) -> None:
         """A write from the reader or the domain would break the read-only claim.

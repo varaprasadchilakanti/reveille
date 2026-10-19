@@ -729,6 +729,7 @@ class GitReader:
                 f"'{repo_path}' uses SHA-256 object names, which Reveille cannot read yet."
             )
         self._refuse_a_working_tree_elsewhere(repo_path)
+        self._pin_locations()
         if _is_partial_clone(self._repo) or self._promisor_in_any_scope():
             raise RepositoryError(
                 f"'{repo_path}' is a partial clone (made with --filter): some of its "
@@ -805,6 +806,20 @@ class GitReader:
                 )
         return candidates
 
+    def _pin_locations(self) -> None:
+        """Pin the index, the object directory and the working tree to the repository's own.
+
+        A hook runs with GIT_WORK_TREE or GIT_INDEX_FILE set, and Git honours them
+        over the repository's layout; GitPython pins GIT_DIR alone. Run after
+        `core.worktree` is checked, which a pinned working tree overrides.
+        """
+        self._repo.git.update_environment(
+            GIT_INDEX_FILE=os.path.join(self._repo.git_dir, "index"),
+            GIT_OBJECT_DIRECTORY=os.path.join(self._repo.common_dir, "objects"),
+        )
+        if not self._repo.bare:
+            self._repo.git.update_environment(GIT_WORK_TREE=str(self._repo_path))
+
     def _refuse_a_working_tree_elsewhere(self, repo_path: Path) -> None:
         """Refuse a repository whose configuration puts its working tree somewhere else.
 
@@ -820,14 +835,16 @@ class GitReader:
         Raises:
             RepositoryError: If Git puts the working tree elsewhere.
         """
-        # GIT_WORK_TREE is the caller's own setting, as a hook sets it, not one a
-        # repository can carry; Git's answer here would follow it.
-        if "GIT_WORK_TREE" in os.environ:
-            return
+        # Git's answer would follow a caller's GIT_WORK_TREE, as a hook sets it, so the
+        # setting itself is read then.
         try:
-            top = str(self._git().rev_parse("--show-toplevel")).strip()
+            if "GIT_WORK_TREE" in os.environ:
+                named = str(self._git().config("--get", "core.worktree")).strip()
+                top = str(Path(self._repo.git_dir, named)) if named else ""
+            else:
+                top = str(self._git().rev_parse("--show-toplevel")).strip()
         except GitCommandError:
-            return  # A bare repository has no working tree to put elsewhere.
+            return  # No such setting, or a bare repository: no working tree elsewhere.
         if top and Path(top).resolve() != self._repo_path:
             raise RepositoryError(
                 f"'{repo_path}' sets its working tree to '{top}' (core.worktree in its "
