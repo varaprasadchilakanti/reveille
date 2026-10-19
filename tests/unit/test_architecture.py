@@ -558,6 +558,13 @@ class TestFilesystemWrites:
         """
         if isinstance(node.func, ast.Name) and node.func.id == "open":
             positional = node.args[1:2]  # open(file, mode)
+        elif (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "open"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "os"
+        ):
+            return TestFilesystemWrites._os_open_for_writing(node)
         elif isinstance(node.func, ast.Attribute) and node.func.attr == "open":
             positional = node.args[0:1]  # path.open(mode)
         else:
@@ -573,6 +580,35 @@ class TestFilesystemWrites:
         if not (isinstance(mode_node, ast.Constant) and isinstance(mode_node.value, str)):
             return "<not a literal>"
         return mode_node.value if any(f in mode_node.value for f in "wax+") else None
+
+    @staticmethod
+    def _os_open_for_writing(node: ast.Call) -> str | None:
+        """Return the flags if `os.open(path, flags)` can write, else None.
+
+        Flags read as `os.O_*` names joined by `|`, with `getattr(os, "O_*", 0)`
+        for a platform's optional ones. A write flag, or anything else, is reported.
+        """
+        writing = {"O_WRONLY", "O_RDWR", "O_CREAT", "O_TRUNC", "O_APPEND"}
+        names: list[str] = []
+        pending = node.args[1:2]
+        while pending:
+            flag = pending.pop()
+            if isinstance(flag, ast.BinOp) and isinstance(flag.op, ast.BitOr):
+                pending += [flag.left, flag.right]
+            elif isinstance(flag, ast.Attribute) and isinstance(flag.value, ast.Name):
+                names.append(flag.attr if flag.value.id == "os" else "<not os>")
+            elif (
+                isinstance(flag, ast.Call)
+                and isinstance(flag.func, ast.Name)
+                and flag.func.id == "getattr"
+                and isinstance(flag.args[1], ast.Constant)
+            ):
+                names.append(str(flag.args[1].value))
+            else:
+                return "<not a literal>"
+        if not names or any(n in writing or not n.startswith("O_") for n in names):
+            return " | ".join(names) or "<no flags>"
+        return None
 
     @classmethod
     def _executed_subcommand(cls, node: ast.Call) -> str | None:
