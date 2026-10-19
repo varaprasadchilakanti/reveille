@@ -1014,8 +1014,10 @@ Git would wait for ever on a named pipe, or read a device without end, at one of
 `config.worktree`, `commondir`, `packed-refs`, `shallow`, `objects/info/alternates`, `HEAD`), or
 a file an `include.path` or `includeIf` names (every condition taken as true). Such a file over
 8 MiB is refused too, except `packed-refs` and `shallow`, which grow with the repository; so is
-anything under `refs/` or `objects/` (and the object directories alternates name) that is not a
-regular file. Remove it. Anywhere else, Git is stopped
+an `index`, and anything under `refs/`, `logs/`, `worktrees/` or `objects/` (and the object
+directories alternates name) that is not a regular file. Remove it. The same words for `--output`
+mean the path is a device, a pipe or a socket, which Reveille does not replace: give a file
+name, or `-o -` for standard output. Anywhere else, Git is stopped
 after 300 seconds (or 300 seconds without output while it reads the history) with "Git did not
 finish ... and was stopped", exit 2; `git status` in `reveille state` is stopped after 120
 seconds. On Windows only the history read is stopped: GitPython cannot stop a command it waits
