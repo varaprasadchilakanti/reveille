@@ -1270,14 +1270,24 @@ class GitReader:
 
         credited: dict[str, tuple[tuple[str, str], ...]] = {}
         authors = {c.sha: c.author_email.lower() for c in commits}
+        crowded = ignored = 0
         for record in records:
             sha, _, values = record.partition(_FIELD_SEP)
             sha = sha.strip()
             if sha not in authors or not values.strip():
                 continue
-            found = _co_author_identities(values, mailmap, exclude_set, matched, authors[sha])
+            found, dropped = _co_author_identities(
+                values, mailmap, exclude_set, matched, authors[sha]
+            )
             if found:
                 credited[sha] = found
+            if dropped:
+                crowded, ignored = crowded + 1, ignored + dropped
+        if crowded:  # once per read, not once per commit
+            _logger.warning(
+                "%d commit%s name more than %d co-authors; %d ignored",
+                *(crowded, "" if crowded == 1 else "s", _MAX_CO_AUTHORS, ignored),
+            )
         return [replace(c, co_authors=credited[c.sha]) if c.sha in credited else c for c in commits]
 
     def _promisor_in_any_scope(self) -> bool:
@@ -2156,7 +2166,7 @@ def _co_author_identities(
     exclude_set: set[str],
     matched: set[str],
     author: str,
-) -> tuple[tuple[str, str], ...]:
+) -> tuple[tuple[tuple[str, str], ...], int]:
     """Resolve one commit's `Co-authored-by` values like author identities.
 
     Args:
@@ -2167,7 +2177,8 @@ def _co_author_identities(
         author: The commit's own author address, lowercased.
 
     Returns:
-        Up to `_MAX_CO_AUTHORS` distinct `(name, address)` pairs.
+        Up to `_MAX_CO_AUTHORS` distinct `(name, address)` pairs, and how
+        many more distinct co-authors were ignored.
     """
     found: dict[str, str] = {}
     dropped = 0
@@ -2191,11 +2202,7 @@ def _co_author_identities(
             dropped += 1
             continue
         found[email] = name or email
-    if dropped:
-        _logger.warning(
-            "a commit names more than %d co-authors; %d ignored", _MAX_CO_AUTHORS, dropped
-        )
-    return tuple((name, email) for email, name in found.items())
+    return tuple((name, email) for email, name in found.items()), dropped
 
 
 def _count_commits(n: int) -> str:
