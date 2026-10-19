@@ -992,6 +992,12 @@ stderr say how many. `--exclude-author` removes an author's commits from every f
 **"No commits found", exit 1.** No non-merge commit falls in the window on the analysed branch.
 Check `--since`, `--until` and `--branch`; the branch defaults to the one checked out.
 
+**"Git could not be started", exit 2.** No `git` is on `PATH`, it cannot run, or Git's own
+configuration is broken; the message says which. Reveille runs the first `git` on `PATH`,
+as Git's own tools do, and asks it for its version before any deadline applies, so a `git` that
+never answers (a wrapper waiting on a network drive, for example) makes Reveille wait with it. Run
+`git version` to check, and give a caller that cannot wait a timeout of its own.
+
 **The report says the repository is a shallow clone.** Only the fetched history was read. `git
 fetch --unshallow` fetches the rest.
 
