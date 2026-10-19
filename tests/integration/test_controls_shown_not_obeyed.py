@@ -61,7 +61,7 @@ def _report(repo: Path, output_format: str) -> str:
 def test_the_html_report_shows_them_as_escapes(repo: Path) -> None:
     page = _report(repo, "html")
     # The vendored chart bundle holds its own bytes.
-    text = re.sub(r"<script\b.*?</script>", "", page, flags=re.DOTALL)
+    text = re.sub(r"<script\b.*?</script>", "", page, flags=re.DOTALL | re.IGNORECASE)
     assert "Remote:" in text and "contributor-email" in text, "positive control"
 
     assert _RLO not in text and _ESC not in text
