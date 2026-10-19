@@ -189,9 +189,10 @@ entries are in [CHANGELOG.md](CHANGELOG.md) under Unreleased, Security; by class
   reads (config, includes, attributes, ignore files, `.mailmap`, `diff.orderFile`), an
   empty filter name in `state`, and `i18n.logOutputEncoding`. Every other Git command is
   stopped after 300 seconds (on a timeout GitPython runs `pgrep` or `ps` to find Git's
-  children); on Windows, where GitPython cannot stop a command, only a history read that
-  writes nothing for 300 seconds is. Refs and objects, alternates followed, are checked before Git runs, because
-  GitPython reads them itself.
+  children); `git status` in `state` after 120 seconds. On Windows, where GitPython cannot
+  stop a command, only a history read that writes nothing for 300 seconds is. Refs and
+  objects, alternates followed, are checked before Git runs, because GitPython reads them
+  itself.
 - **Stalls:** `.mailmap` and `Co-authored-by` patterns that backtracked.
 - **Reading the wrong data:** separators in author names, `core.worktree` pointing at
   another repository, partial clones on Git older than 2.44.
@@ -207,8 +208,7 @@ entries are in [CHANGELOG.md](CHANGELOG.md) under Unreleased, Security; by class
 
 Before these fixes, the HTML report could request a URL when opened, and Git could fetch
 from the network during a read (the partial-clone entry under 0.9.0 above); both broke the
-offline property. A review on 2026-10-13 found no problem in the CI workflows; the later
-passes did not test them.
+offline property.
 
 Limit: Git honours the configuration in a repository's
 own `.git/config`, and some settings name a program for Git to run. Reveille

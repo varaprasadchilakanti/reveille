@@ -11,6 +11,7 @@ completeness, and the behavioural contract for edge cases.
 from __future__ import annotations
 
 import csv
+import dataclasses
 import datetime
 import json
 from pathlib import Path
@@ -324,11 +325,14 @@ class TestSanitiseChartLabel:
     def test_plain_string_passes_through_unchanged(self) -> None:
         assert _sanitise_chart_label("Alice Smith") == "Alice Smith"
 
-    def test_html_tag_stripped(self) -> None:
-        assert _sanitise_chart_label("Alice <b>Smith</b>") == "Alice Smith"
+    def test_a_tag_is_written_as_text_plotly_shows(self) -> None:
+        """Plotly decodes the entities to `<b>` as text; it reads no tag."""
+        assert _sanitise_chart_label("Alice <b>Smith</b>") == "Alice &lt;b&gt;Smith&lt;/b&gt;"
 
-    def test_script_tag_stripped(self) -> None:
-        assert _sanitise_chart_label("<script>alert(1)</script>Alice") == "Alice"
+    def test_a_script_is_written_as_text_plotly_shows(self) -> None:
+        assert _sanitise_chart_label("<script>alert(1)</script>Alice") == (
+            "&lt;script&gt;alert(1)&lt;/script&gt;Alice"
+        )
 
     def test_null_byte_stripped(self) -> None:
         assert _sanitise_chart_label("Alice\x00Smith") == "AliceSmith"
@@ -336,8 +340,9 @@ class TestSanitiseChartLabel:
     def test_surrounding_whitespace_trimmed(self) -> None:
         assert _sanitise_chart_label("  Alice  ") == "Alice"
 
-    def test_ampersand_preserved(self) -> None:
-        assert _sanitise_chart_label("Alice & Bob") == "Alice & Bob"
+    def test_an_ampersand_is_an_entity_so_none_typed_is_decoded(self) -> None:
+        assert _sanitise_chart_label("Alice & Bob") == "Alice &amp; Bob"
+        assert _sanitise_chart_label("A&#8238;B") == "A&amp;#8238;B"
 
     def test_parentheses_preserved(self) -> None:
         assert _sanitise_chart_label("Alice (Smith)") == "Alice (Smith)"
@@ -540,7 +545,7 @@ class TestBuildHeatmapData:
     ) -> None:
         result = _build_heatmap_data([], [], datetime.date(2024, 1, 1), datetime.date(2024, 12, 31))
         parsed = json.loads(result)
-        assert parsed["daily_counts"]["__aggregated__"] == {}
+        assert parsed["daily_counts"]["__AGGREGATED__"] == {}
 
     def test_years_span_full_analysis_window(self) -> None:
         result = _build_heatmap_data([], [], datetime.date(2022, 6, 1), datetime.date(2024, 3, 31))
@@ -552,7 +557,7 @@ class TestBuildHeatmapData:
 
     def test_aggregated_contributor_is_always_first(self) -> None:
         result = _build_heatmap_data([], [], datetime.date(2024, 1, 1), datetime.date(2024, 12, 31))
-        assert json.loads(result)["contributors"][0]["email"] == "__aggregated__"
+        assert json.loads(result)["contributors"][0]["email"] == "__AGGREGATED__"
 
     def test_aggregated_counts_sum_all_contributors(self) -> None:
         commits = [
@@ -563,9 +568,32 @@ class TestBuildHeatmapData:
         result = _build_heatmap_data(
             commits, [], datetime.date(2024, 1, 1), datetime.date(2024, 12, 31)
         )
-        agg = json.loads(result)["daily_counts"]["__aggregated__"]
+        agg = json.loads(result)["daily_counts"]["__AGGREGATED__"]
         assert agg["2024-03-15"] == 2
         assert agg["2024-03-20"] == 1
+
+    def test_an_address_spelled_like_the_aggregate_key_cannot_replace_it(self) -> None:
+        """A committer chooses their address; the "All Contributors" view stays every commit."""
+        ann = _make_ranked("Ann", commit_count=5)
+        mallory = _make_ranked("Mallory", commit_count=1)
+        key = json.loads(
+            _build_heatmap_data([], [], datetime.date(2024, 1, 1), datetime.date(2024, 12, 31))
+        )["contributors"][0]["email"]
+        mallory = dataclasses.replace(mallory, stats=dataclasses.replace(mallory.stats, email=key))
+        commits = [
+            _make_commit(datetime.date(2024, 3, day), email="ann@example.com")
+            for day in range(1, 6)
+        ]
+        commits.append(_make_commit(datetime.date(2024, 3, 20), email=key))
+
+        payload = json.loads(
+            _build_heatmap_data(
+                commits, [ann, mallory], datetime.date(2024, 1, 1), datetime.date(2024, 12, 31)
+            )
+        )
+
+        assert sum(payload["daily_counts"][key].values()) == 6
+        assert [c["email"] for c in payload["contributors"]].count(key) == 1
 
     def test_per_contributor_counts_keyed_by_lowercased_email(self) -> None:
         commits = [
@@ -597,7 +625,7 @@ class TestBuildHeatmapData:
             commits, ranked, datetime.date(2024, 1, 1), datetime.date(2024, 12, 31)
         )
         contributors = json.loads(result)["contributors"]
-        assert contributors[0]["email"] == "__aggregated__"
+        assert contributors[0]["email"] == "__AGGREGATED__"
         assert contributors[1]["email"] == "alice@example.com"
         assert contributors[2]["email"] == "bob@example.com"
 

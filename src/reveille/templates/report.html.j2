@@ -187,7 +187,7 @@
     // Heatmap state — populated during DOMContentLoaded.
     var heatmapData = null;
     var currentYear = null;
-    var currentContributor = '__aggregated__';
+    var currentContributor = '__AGGREGATED__';
     // True while the page is being printed: charts take the light theme and
     // the printed width (see fitChartsTo).
     var printing = false;
@@ -459,7 +459,7 @@
 
         // Default: the latest year with a commit, aggregated view.
         currentYear        = heatmapData.default_year || years[years.length - 1];
-        currentContributor = '__aggregated__';
+        currentContributor = '__AGGREGATED__';
 
         // Build year tab buttons.
         var tabsEl = document.getElementById('heatmap-year-tabs');
@@ -499,7 +499,7 @@
                     opt.textContent = c.name;
                     selectEl.appendChild(opt);
                 });
-                selectEl.value = '__aggregated__';
+                selectEl.value = '__AGGREGATED__';
                 selectEl.style.display = '';
                 selectEl.addEventListener('change', function () {
                     currentContributor = selectEl.value;

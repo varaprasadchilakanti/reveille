@@ -10,6 +10,8 @@ and an optional TOML file; flags always take precedence.
 from __future__ import annotations
 
 import datetime
+import os
+import stat
 import tomllib
 from pathlib import Path
 from typing import Any, Literal, TypedDict, cast
@@ -159,6 +161,32 @@ class ReportConfigKwargs(TypedDict, total=False):
     hide_emails: bool
 
 
+#: Larger than any configuration a person writes; the file can come with a clone.
+_MAX_CONFIG_BYTES = 1_048_576
+
+
+def _read_config_bytes(path: Path) -> bytes:
+    """Read a configuration file that is a regular file of a plausible size.
+
+    Opened without waiting, then checked on the open file, so a named pipe or a
+    device (`/dev/zero` behind a link) is refused, not waited on or read without end.
+    """
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
+    with os.fdopen(descriptor, "rb") as handle:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise ConfigurationError(
+                f"Configuration file '{path}' is not a regular file (a directory, a "
+                "named pipe or a device), so it is not read."
+            )
+        data = handle.read(_MAX_CONFIG_BYTES + 1)
+    if len(data) > _MAX_CONFIG_BYTES:
+        raise ConfigurationError(
+            f"Configuration file '{path}' is larger than {_MAX_CONFIG_BYTES:,} bytes, more "
+            "than any configuration a person writes, so it is not read."
+        )
+    return data
+
+
 def load_config_from_toml(path: Path) -> ReportConfigKwargs:
     """Load and flatten configuration values from a Reveille TOML file.
 
@@ -174,12 +202,15 @@ def load_config_from_toml(path: Path) -> ReportConfigKwargs:
         ConfigurationError: If the file is missing, unreadable, not TOML, or invalid.
     """
     try:
-        with path.open("rb") as fh:
-            raw = tomllib.load(fh)
+        raw = tomllib.loads(_read_config_bytes(path).decode("utf-8"))
     except FileNotFoundError as exc:
         raise ConfigurationError(f"Configuration file not found: '{path}'.") from exc
     except tomllib.TOMLDecodeError as exc:
         raise ConfigurationError(f"Configuration file is not valid TOML: {exc}") from exc
+    except RecursionError as exc:
+        raise ConfigurationError(
+            f"Configuration file '{path}' is nested too deeply to be a configuration."
+        ) from exc
     # Caught so they exit as configuration errors, not tracebacks with exit 1
     # ("negative answer"). TOML must be UTF-8; a directory is not a file.
     except UnicodeDecodeError as exc:
@@ -235,6 +266,9 @@ def _parse_report_section(report: dict[str, Any]) -> dict[str, Any]:
                     f"Invalid '{field}' date in configuration file: "
                     f"'{report[field]}'. Expected YYYY-MM-DD."
                 ) from exc
+            if field == "until" and kwargs[field] == datetime.date.max:
+                # An inclusive end is read up to the next day, which does not exist.
+                raise ConfigurationError(f"'until' must be before {datetime.date.max}.")
     if "format" in report:
         kwargs["output_format"] = cast(OutputFormat, str(report["format"]))
     kwargs.update(_parse_report_switches(report))

@@ -31,17 +31,25 @@ from reveille.domain.models import (
 #: The domain of every token; the renderer recognises a token by it.
 HIDDEN_DOMAIN = "hidden.invalid"
 
-# An address written into a display name, as some Git configurations produce.
-# Square brackets end it, so a `[bot]` suffix after an address survives, unless
-# they hold the domain itself (`bob@[10.1.2.3]`).
-_ADDRESS_IN_TEXT = re.compile(r"[^\s<>@\[\]]+@(?:\[[^\]\s]+\]|[^\s<>@\[\]]+)")
+# The at sign as people and tools write it: plain, fullwidth (U+FF20), small
+# (U+FE6B), or `%40` from a URL. A pattern cannot know every spelling; these err
+# towards hiding more.
+_AT = "@\uff20\ufe6b"
+
+# An address written into a display name, as some Git configurations produce, with
+# spaces around the sign too. Square brackets end it, so a `[bot]` suffix after an
+# address survives, unless they hold the domain itself (`bob@[10.1.2.3]`).
+_ADDRESS_IN_TEXT = re.compile(
+    rf"[^\s<>{_AT}\[\]]+(?:\s*[{_AT}]\s*|%40)(?:\[[^\]\s]+\]|[^\s<>{_AT}\[\]]+)"
+)
 
 # An address in a branch, a directory or a URL path: it ends at a separator too.
-_ADDRESS_IN_PATH = re.compile(r"[^\s<>@\[\]/:]+@[^\s<>@\[\]/:]+")
+_ADDRESS_IN_PATH = re.compile(rf"[^\s<>{_AT}\[\]/:]+(?:[{_AT}]|%40)[^\s<>{_AT}\[\]/:]+")
 
-# A remote that is a path on this machine: it names the owner's directories
-# (`/home/jane/clients/...`), so only its last part is kept.
-_LOCAL_REMOTE = re.compile(r"^(?:file:|/|~|\.{1,2}[\\/]|[A-Za-z]:[\\/])")
+# A remote that is a path on this machine or a share: it names the owner's
+# directories (`/home/jane/clients/...`, `\\server\home\jane`), so only its last
+# part is kept.
+_LOCAL_REMOTE = re.compile(r"^(?:file:|/|~|\.{1,2}[\\/]|[A-Za-z]:[\\/]|\\\\)")
 
 # The user part of a remote, scp-like (`user@host:path`) or a URL (`ssh://user@host/path`).
 _USER_IN_REMOTE = re.compile(r"^((?:[a-z][a-z0-9+.-]*://)?)[^@/:]+@")
@@ -70,11 +78,6 @@ def hide_emails(data: ReportData) -> ReportData:
             tokens.of(email, name)
 
     remote = data.metadata.remote_url
-    if remote:
-        if _LOCAL_REMOTE.match(remote):
-            remote = re.split(r"[\\/]", remote.rstrip("\\/"))[-1]
-        # An SSH remote can carry a person's login: `jane@host:group/repo`.
-        remote = _hidden_in_path(_USER_IN_REMOTE.sub(r"\1", remote))
     requested = data.provenance.requested_branch
     return replace(
         data,
@@ -84,7 +87,7 @@ def hide_emails(data: ReportData) -> ReportData:
         metadata=replace(
             data.metadata,
             name=_hidden_in_path(data.metadata.name),
-            remote_url=remote,
+            remote_url=_hidden_remote(remote) if remote else remote,
             analysed_branch=_hidden_in_path(data.metadata.analysed_branch),
         ),
         ranked_contributors=[_ranked(r, tokens) for r in data.ranked_contributors],
@@ -98,6 +101,23 @@ def hide_emails(data: ReportData) -> ReportData:
             requested_branch=_hidden_in_path(requested) if requested else requested,
         ),
     )
+
+
+def _hidden_remote(remote: str) -> str:
+    """Return a remote with the logins, addresses and local directories in it removed.
+
+    Args:
+        remote: The remote's URL, its credentials already removed.
+
+    Returns:
+        The remote as a shared report shows it.
+    """
+    if remote.startswith("ext::"):
+        return "ext::(command hidden)"  # a command line, which can carry a login
+    if _LOCAL_REMOTE.match(remote):
+        remote = re.split(r"[\\/]", remote.rstrip("\\/"))[-1]
+    # An SSH remote can carry a person's login: `jane@host:group/repo`.
+    return _hidden_in_path(_USER_IN_REMOTE.sub(r"\1", remote))
 
 
 def _hidden_in_path(text: str) -> str:

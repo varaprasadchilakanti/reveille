@@ -294,7 +294,7 @@ exclude_lines = [
     "if TYPE_CHECKING:",
     "raise NotImplementedError",
     "if __name__ == .__main__.:",
-    "\\.\\.\\.",
+    "^\\s*\\.\\.\\.\\s*$",
 ]
 
 [tool.coverage.html]

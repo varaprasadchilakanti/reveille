@@ -19,8 +19,11 @@ import functools
 import logging
 import os
 import re
+import secrets
+import shlex
 import stat
 import sys
+import tempfile
 import threading
 import time
 import unicodedata
@@ -646,6 +649,7 @@ class GitReader:
             RepositoryError: If the path is not a valid readable Git repository.
         """
         self._mailmap_applied = False
+        self._active_branch: str | None = None
         self._file_stats: tuple[FileStats, ...] = ()
         #: Commits the last `read_commits` dropped as dated after `dated_until`.
         self.commits_dated_after: int = 0
@@ -668,7 +672,14 @@ class GitReader:
             # An unreadable `.git` raises the same exception as a missing one;
             # the fixes differ, so tell them apart.
             git_dir = repo_path / ".git"
-            if git_dir.exists() and not os.access(git_dir, os.R_OK | os.X_OK):
+            named = _git_dir_of(repo_path, search_up=False) if git_dir.is_file() else None
+            if named is not None and not named.exists():
+                raise RepositoryError(
+                    f"'{repo_path}' has a .git file naming '{named}', which does not exist: "
+                    "the repository it belongs to was moved or deleted. If it was moved, run "
+                    f"`git worktree repair {shlex.quote(str(repo_path))}` in its new place."
+                ) from exc
+            if git_dir.is_dir() and not os.access(git_dir, os.R_OK | os.X_OK):
                 raise RepositoryError(
                     f"'{repo_path}' is a Git repository, but its .git directory "
                     "cannot be read. Check the permissions on it."
@@ -718,6 +729,7 @@ class GitReader:
                 f"'{repo_path}' uses SHA-256 object names, which Reveille cannot read yet."
             )
         self._refuse_a_working_tree_elsewhere(repo_path)
+        self._pin_locations()
         if _is_partial_clone(self._repo) or self._promisor_in_any_scope():
             raise RepositoryError(
                 f"'{repo_path}' is a partial clone (made with --filter): some of its "
@@ -794,6 +806,20 @@ class GitReader:
                 )
         return candidates
 
+    def _pin_locations(self) -> None:
+        """Pin the index, the object directory and the working tree to the repository's own.
+
+        A hook runs with GIT_WORK_TREE or GIT_INDEX_FILE set, and Git honours them
+        over the repository's layout; GitPython pins GIT_DIR alone. Run after
+        `core.worktree` is checked, which a pinned working tree overrides.
+        """
+        self._repo.git.update_environment(
+            GIT_INDEX_FILE=os.path.join(self._repo.git_dir, "index"),
+            GIT_OBJECT_DIRECTORY=os.path.join(self._repo.common_dir, "objects"),
+        )
+        if not self._repo.bare:
+            self._repo.git.update_environment(GIT_WORK_TREE=str(self._repo_path))
+
     def _refuse_a_working_tree_elsewhere(self, repo_path: Path) -> None:
         """Refuse a repository whose configuration puts its working tree somewhere else.
 
@@ -809,15 +835,22 @@ class GitReader:
         Raises:
             RepositoryError: If Git puts the working tree elsewhere.
         """
-        # GIT_WORK_TREE is the caller's own setting, as a hook sets it, not one a
-        # repository can carry; Git's answer here would follow it.
-        if "GIT_WORK_TREE" in os.environ:
-            return
+        # Git's answer would follow a caller's GIT_WORK_TREE, as a hook sets it, so the
+        # setting itself is read then.
         try:
-            top = str(self._git().rev_parse("--show-toplevel")).strip()
+            if "GIT_WORK_TREE" in os.environ:
+                named = str(self._git().config("--get", "core.worktree")).strip()
+                top = str(Path(self._repo.git_dir, named)) if named else ""
+            else:
+                top = str(self._git().rev_parse("--show-toplevel")).strip()
         except GitCommandError:
-            return  # A bare repository has no working tree to put elsewhere.
+            return  # No such setting, or a bare repository: no working tree elsewhere.
         if top and Path(top).resolve() != self._repo_path:
+            if Path(self._repo.git_dir).resolve() == self._repo_path:
+                raise RepositoryError(
+                    f"'{repo_path}' is the Git directory of the working tree '{top}'. "
+                    "Give the working tree instead."
+                )
             raise RepositoryError(
                 f"'{repo_path}' sets its working tree to '{top}' (core.worktree in its "
                 "Git configuration). Reveille reads only the repository it is given, and "
@@ -892,12 +925,10 @@ class GitReader:
 
         # An unborn HEAD is a negative answer, not a read failure; a named branch
         # is read even then, and a missing one fails below.
-        # GitPython's check also says no for a branch whose name is not UTF-8,
-        # so a no is checked again before it is taken as the answer.
-        if branch is None and not self._repo.head.is_valid() and self.resolve_head_sha() is None:
+        if branch is None and not self._head_is_born():
             raise EmptyRepositoryError(
                 f"Repository at '{self._repo_path}' contains no commits. "
-                "Make at least one commit before generating a report."
+                "There is nothing to read until the first commit is made."
             )
 
         self._refuse_attribute_files_that_block(counts_lines=line_counts and not name_status)
@@ -1114,7 +1145,7 @@ class GitReader:
                 is not one branch, tag or commit (a range would narrow the history
                 while the report still says "branch").
         """
-        rev = branch or self._resolve_active_branch()
+        rev = branch or self._active_revision()
         if rev.startswith("-"):
             raise RepositoryError(
                 f"Refusing to use {rev!r} as a revision: a value beginning with "
@@ -1125,26 +1156,56 @@ class GitReader:
             self.resolve_commit(branch)
         return rev
 
+    def _head_is_born(self) -> bool:
+        """Return whether HEAD names a commit, as Git sees it; False when it is unborn.
+
+        Asked of Git, not GitPython: GitPython says no for a HEAD it cannot
+        parse or whose commit it cannot read, which made a repository with
+        history, or a damaged one, read as having none.
+
+        Raises:
+            RepositoryError: If HEAD exists but names no commit Git can read.
+        """
+        try:
+            self._git().rev_parse("--quiet", "--verify", "--end-of-options", "HEAD^{commit}")
+        except GitCommandError:
+            pass
+        else:
+            return True
+        try:
+            self._git().rev_parse("--quiet", "--verify", "--end-of-options", "HEAD")
+        except GitCommandError:
+            return False  # no such ref: unborn
+        raise RepositoryError(
+            f"HEAD in '{self._repo_path}' names an object that is missing or is not a "
+            "commit, so the repository is damaged. Run `git fsck` to see what is wrong."
+        )
+
     def _resolve_active_branch(self) -> str:
-        """Return the active branch name, or 'HEAD' when detached.
+        """Return the active branch name, as shown, or 'HEAD' when detached.
 
         Returns:
             The branch name, or 'HEAD'.
         """
-        try:
-            return self._repo.active_branch.name
-        except TypeError:
-            return "HEAD"
-        except UnicodeDecodeError:
-            pass
-        # GitPython stops on a name that is not UTF-8. Git's answer keeps such
-        # bytes, so the name can be passed back; asked only then, it costs a
-        # process no other read pays.
-        try:
-            ref = str(self._git().symbolic_ref("--quiet", "HEAD")).strip()
-        except GitCommandError:
-            return "HEAD"
-        return ref.removeprefix("refs/heads/")
+        return self._active_revision().removeprefix("refs/heads/")
+
+    def _active_revision(self) -> str:
+        """Return the active branch's full ref, as read, or 'HEAD' when detached.
+
+        Git's answer, asked once: GitPython splits HEAD at U+2028, U+2029 and
+        U+0085, which a branch name may hold, and stops on one that is not UTF-8.
+        The full ref, because Git reads a tag before a branch of the same name.
+
+        Returns:
+            The ref, such as `refs/heads/main`, or 'HEAD'.
+        """
+        if self._active_branch is None:
+            try:
+                ref = str(self._git().symbolic_ref("--quiet", "HEAD")).rstrip("\n")
+            except GitCommandError:
+                ref = "HEAD"
+            self._active_branch = ref
+        return self._active_branch
 
     def _read_alongside(
         self,
@@ -1185,9 +1246,9 @@ class GitReader:
             merges = ["--merges" if a == "--no-merges" else a for a in rev_list_args]
             self.merges_excluded = int(str(self._git().rev_list("--count", *merges)).strip() or 0)
         except GitCommandError as exc:
+            # The revision was resolved already, so the cause is elsewhere: say Git's.
             raise RepositoryError(
-                f"Failed to enumerate commits on branch '{rev}'. "
-                "Verify the branch exists in this repository."
+                f"Git could not list the commits on '{rev}': {_git_error(exc)}"
             ) from exc
 
         # Once the branch is known to exist: an exclusion names a person, through the mailmap.
@@ -1202,8 +1263,7 @@ class GitReader:
             records = stream.raw_records()
         except GitCommandError as exc:
             raise RepositoryError(
-                f"Failed to read commits from branch '{rev}'. "
-                f"Verify the branch name is correct. Detail: {exc}"
+                f"Git could not read the commits on '{rev}': {_git_error(exc)}"
             ) from exc
         return records, authentic_order, mailmap, requests, reached
 
@@ -1249,14 +1309,24 @@ class GitReader:
 
         credited: dict[str, tuple[tuple[str, str], ...]] = {}
         authors = {c.sha: c.author_email.lower() for c in commits}
+        crowded = ignored = 0
         for record in records:
             sha, _, values = record.partition(_FIELD_SEP)
             sha = sha.strip()
             if sha not in authors or not values.strip():
                 continue
-            found = _co_author_identities(values, mailmap, exclude_set, matched, authors[sha])
+            found, dropped = _co_author_identities(
+                values, mailmap, exclude_set, matched, authors[sha]
+            )
             if found:
                 credited[sha] = found
+            if dropped:
+                crowded, ignored = crowded + 1, ignored + dropped
+        if crowded:  # once per read, not once per commit
+            _logger.warning(
+                "%d commit%s name more than %d co-authors; %d ignored",
+                *(crowded, "" if crowded == 1 else "s", _MAX_CO_AUTHORS, ignored),
+            )
         return [replace(c, co_authors=credited[c.sha]) if c.sha in credited else c for c in commits]
 
     def _promisor_in_any_scope(self) -> bool:
@@ -1457,6 +1527,10 @@ class GitReader:
                     f"filter.{name}.required=false",
                 )
             ]
+            # GitPython refuses a deadline on Windows rather than run the command.
+            deadline = (
+                {} if sys.platform == "win32" else {"kill_after_timeout": STATUS_TIMEOUT_SECONDS}
+            )
             try:
                 raw = str(
                     self._git(overrides).status(
@@ -1465,7 +1539,7 @@ class GitReader:
                         "-z",
                         "--untracked-files=normal",
                         "--ignore-submodules=all",
-                        kill_after_timeout=STATUS_TIMEOUT_SECONDS,
+                        **deadline,
                     )
                 )
             except GitCommandError as exc:
@@ -1663,10 +1737,14 @@ class GitReader:
             The 40-character SHA of the commit it names.
 
         Raises:
-            RepositoryError: If it begins with `-` (git would read an option) or
+            RepositoryError: If it is empty, begins with `-` (git would read an option), or
                 names no commit here.
         """
-        if not revision or revision.startswith("-"):
+        if not revision:
+            raise RepositoryError(
+                "An empty revision names no commit: give a tag, branch or commit."
+            )
+        if revision.startswith("-"):
             raise RepositoryError(
                 f"Refusing to use {revision!r} as a revision: a value beginning with '-' "
                 "is read by git as an option."
@@ -1733,7 +1811,7 @@ class GitReader:
         until: datetime.date | None,
     ) -> list[str]:
         """Do the work of `tags_in_range`, letting Git's errors through."""
-        rev = branch or self._resolve_active_branch()
+        rev = branch or self._active_revision()
         walk = f"{from_commit}..{rev}" if from_commit is not None else rev
         _, rev_list_args = _build_log_args(walk, since, until, self._supports_since_as_filter())
         order = {
@@ -1782,13 +1860,18 @@ class GitReader:
         remaining = {area for area in areas if area != ROOT_AREA}
         if not remaining:
             return found
-        args = ["--no-merges", "--no-renames", "--name-only", "-z", "--format=%x01%H %ct"]
+        # A path may hold any byte but NUL, so each header carries a value drawn
+        # now, which no path written before this read can spell.
+        marker = secrets.token_hex(16)
+        header_re = re.compile(rb"\x01" + marker.encode() + rb"[0-9a-f]{40} ([0-9]+)")
+        args = ["--no-merges", "--no-renames", "--name-only", "-z", f"--format=%x01{marker}%H %ct"]
         if before_commit is not None:
             args += ["--end-of-options", before_commit]
         else:
-            rev = branch or self._resolve_active_branch()
-            if before_date is not None:
-                args.append(f"--before={before_date.isoformat()}T00:00:00+00:00")
+            rev = branch or self._active_revision()
+            before = None if before_date is None else _git_before(before_date)
+            if before is not None:
+                args.append(f"--before={before}")
             args += ["--end-of-options", rev]
         try:
             process = self._git().log(*args, "--", as_process=True)
@@ -1802,7 +1885,7 @@ class GitReader:
                 silence.heard()
                 *tokens, pending = (pending + chunk).split(b"\0")
                 for token in tokens:
-                    header = _CHANGE_HEADER_RE.fullmatch(token)
+                    header = header_re.fullmatch(token)
                     if header is not None:
                         stamp = int(header.group(1))
                         when = datetime.datetime.fromtimestamp(stamp, tz=datetime.UTC).date()
@@ -1831,7 +1914,7 @@ class GitReader:
         Returns:
             The date, or None when the branch has no such commit.
         """
-        log_args, _ = _build_log_args(self._resolve_active_branch(), None, until, line_counts=False)
+        log_args, _ = _build_log_args(self._active_revision(), None, until, line_counts=False)
         log_args[log_args.index(_LOG_FORMAT)] = "--format=%ct"
         try:
             output = str(self._git().log(*log_args))
@@ -1852,14 +1935,20 @@ class GitReader:
         Args:
             branch: The ref to resolve; the active branch if None.
 
+        Asked of Git: GitPython reads ref files itself, and a reftable
+        repository has none, so it said every ref was unresolvable.
+
         Returns:
             The 40-character SHA, or None if the ref cannot be resolved.
         """
-        rev = branch or self._resolve_active_branch()
+        rev = branch or self._active_revision()
         try:
-            return str(self._repo.commit(rev).hexsha)
-        except Exception:
+            sha = self._git().rev_parse(
+                "--quiet", "--verify", "--end-of-options", f"{rev}^{{commit}}"
+            )
+        except GitCommandError:
             return None
+        return str(sha).strip()
 
     def _addresses_in_history(
         self, rev: str, mailmap: _Mailmap, exclude_set: set[str]
@@ -2130,7 +2219,7 @@ def _co_author_identities(
     exclude_set: set[str],
     matched: set[str],
     author: str,
-) -> tuple[tuple[str, str], ...]:
+) -> tuple[tuple[tuple[str, str], ...], int]:
     """Resolve one commit's `Co-authored-by` values like author identities.
 
     Args:
@@ -2141,7 +2230,8 @@ def _co_author_identities(
         author: The commit's own author address, lowercased.
 
     Returns:
-        Up to `_MAX_CO_AUTHORS` distinct `(name, address)` pairs.
+        Up to `_MAX_CO_AUTHORS` distinct `(name, address)` pairs, and how
+        many more distinct co-authors were ignored.
     """
     found: dict[str, str] = {}
     dropped = 0
@@ -2165,11 +2255,7 @@ def _co_author_identities(
             dropped += 1
             continue
         found[email] = name or email
-    if dropped:
-        _logger.warning(
-            "a commit names more than %d co-authors; %d ignored", _MAX_CO_AUTHORS, dropped
-        )
-    return tuple((name, email) for email, name in found.items())
+    return tuple((name, email) for email, name in found.items()), dropped
 
 
 def _count_commits(n: int) -> str:
@@ -2400,9 +2486,6 @@ def _state_wide_exclusions(reached: dict[str, set[str]]) -> None:
 _MAX_MAILMAP_BYTES = 1_048_576
 
 
-# A commit's line in `last_changes_before`: \x01, its hash, its commit time.
-_CHANGE_HEADER_RE = re.compile(rb"\x01[0-9a-f]{40} ([0-9]+)")
-
 #: How long `state` lets `git status` run before stopping it (a FIFO makes it wait for ever).
 STATUS_TIMEOUT_SECONDS = 120
 
@@ -2557,7 +2640,7 @@ def find_repositories(directory: Path, depth: int) -> tuple[list[Path], list[Pat
                 if entry.name == ".git" or entry.is_symlink() or not entry.is_dir():
                     continue
                 candidate = Path(entry.path)
-                if _is_repository(candidate):
+                if is_repository(candidate):
                     found.append(candidate)
                 else:
                     below.append(candidate)
@@ -2565,7 +2648,7 @@ def find_repositories(directory: Path, depth: int) -> tuple[list[Path], list[Pat
     return sorted(found), sorted(unreadable)
 
 
-def _is_repository(path: Path) -> bool:
+def is_repository(path: Path) -> bool:
     """Return whether `path` is a working tree or a bare repository, by its files alone."""
     try:
         if (path / ".git").exists() and not (path / ".git").is_symlink():
@@ -2636,6 +2719,10 @@ _GIT_DIR_FILES = (
 #: too, as GitPython reads the whole of one, includes and all.
 _MAX_GIT_FILE_BYTES = 8 * 1024 * 1024
 
+#: Files that grow with the repository (one line per ref, or per shallow boundary): only a
+#: pipe or a device there is refused, never a size.
+_UNBOUNDED_GIT_DIR_FILES = ("packed-refs", "shallow")
+
 #: Git follows `include.path` at most this deep.
 _MAX_INCLUDE_DEPTH = 10
 
@@ -2669,13 +2756,17 @@ def _refuse_git_files_that_block(start: Path, *, search_up: bool) -> None:
     configs: list[Path] = []
     for directory in directories:
         for name in _GIT_DIR_FILES:
-            if _checked(directory / name) and name.startswith("config"):
+            bounded = name not in _UNBOUNDED_GIT_DIR_FILES
+            if _checked(directory / name, bounded=bounded) and name.startswith("config"):
                 configs.append(directory / name)
     for config in configs:
         _check_includes(config, 0)
-    # GitPython reads refs and loose objects in Python, where no deadline reaches.
+    # GitPython reads refs and loose objects in Python, where no deadline reaches;
+    # `state` reads the index, the reflogs and every worktree's HEAD.
     for directory in dict.fromkeys(directories):
-        _refuse_special_files(directory / "refs")
+        _checked(directory / "index", bounded=False)
+        for name in ("refs", "logs", "worktrees"):
+            _refuse_special_files(directory / name)
         for objects in _object_directories(directory / "objects"):
             _refuse_special_files(objects)
 
@@ -2700,7 +2791,11 @@ def _object_directories(objects: Path) -> list[Path]:
     pending = [(objects, 0)]
     while pending:
         directory, depth = pending.pop(0)
-        if directory in found or not directory.is_dir():
+        try:
+            is_directory = directory.is_dir()
+        except OSError:
+            continue  # unreadable: Git cannot read objects there either, and the reader says why
+        if directory in found or not is_directory:
             continue
         found.append(directory)
         alternates = directory / "info" / "alternates"
@@ -2791,17 +2886,18 @@ def _git_dir_of(start: Path, *, search_up: bool) -> Path | None:
     return None
 
 
-def _checked(path: Path) -> bool:
+def _checked(path: Path, *, bounded: bool = True) -> bool:
     """Return whether a file Git reads is there, refusing one that would block.
 
     Args:
         path: The file; a symbolic link is followed, as Git follows it.
+        bounded: Whether a size past `_MAX_GIT_FILE_BYTES` is refused too.
 
     Returns:
         True for a regular file of a plausible size, False when it is absent.
 
     Raises:
-        RepositoryError: If it is not a regular file, or is too large.
+        RepositoryError: If it is not a regular file, or is bounded and too large.
     """
     try:
         status = path.stat()
@@ -2811,11 +2907,11 @@ def _checked(path: Path) -> bool:
         if stat.S_ISDIR(status.st_mode):
             return False
         raise RepositoryError(
-            f"'{path}' is not a regular file (a named pipe or a device). Git reads it "
-            "before anything else, and would wait on it for ever or read it without end. "
+            f"'{path}' is not a regular file (a named pipe or a device). Git reads it, "
+            "and would wait on it for ever or read it without end. "
             "Remove it, or run Reveille on a fresh clone."
         )
-    if status.st_size > _MAX_GIT_FILE_BYTES:
+    if bounded and status.st_size > _MAX_GIT_FILE_BYTES:
         raise RepositoryError(
             f"'{path}' is {status.st_size:,} bytes, larger than any configuration a person "
             f"writes (the limit is {_MAX_GIT_FILE_BYTES:,}). Reveille does not read it."
@@ -2867,18 +2963,24 @@ def _include_paths(config: Path) -> list[str]:
         RepositoryError: If Git cannot read the file as configuration.
     """
     try:
-        raw = _TimedGit().execute(
-            [
-                "git",
-                "config",
-                "--file",
-                str(config),
-                "--no-includes",
-                "-z",
-                "--get-regexp",
-                r"^include(if\..*)?\.path$",
-            ]
-        )
+        # Git reads the configuration of the repository it starts in, includes and all,
+        # before `--file` applies: started inside this one, or with GIT_DIR naming it, it
+        # would open the pipe this check exists to refuse. Every variable that names a
+        # repository points at an empty directory instead.
+        with tempfile.TemporaryDirectory() as nowhere:
+            raw = _TimedGit(nowhere).execute(
+                [
+                    "git",
+                    "config",
+                    "--file",
+                    str(config),
+                    "--no-includes",
+                    "-z",
+                    "--get-regexp",
+                    r"^include(if\..*)?\.path$",
+                ],
+                env=dict.fromkeys(_REPOSITORY_VARIABLES, nowhere),
+            )
     except GitCommandError as exc:
         if exc.status == 1:  # no such key
             return []
@@ -2900,9 +3002,14 @@ def _absolute_git_dir(path: Path) -> str | None:
 
 
 def _git_error(exc: GitCommandError) -> str:
-    """Return the first line Git wrote to stderr, or its exit status."""
-    lines = str(exc.stderr or "").strip().splitlines()
-    return lines[0].strip().removeprefix("stderr: ").strip("'") if lines else f"exit {exc.status}"
+    """Return the first line Git wrote to stderr that is not a hint, or its exit status.
+
+    Hints come first: Reveille's own `GIT_GRAFT_FILE` makes Git print one.
+    """
+    text = str(exc.stderr or "").strip().removeprefix("stderr: ").strip("'")
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    said = [line for line in lines if not line.startswith("hint:")] or lines
+    return said[0] if said else f"exit {exc.status}"
 
 
 def _is_partial_clone(repo: Repo) -> bool:
@@ -3132,6 +3239,29 @@ def _selection(log_args: list[str]) -> list[str]:
     return [a for a in log_args if a not in ("--numstat", "--name-status", _LOG_FORMAT)]
 
 
+# Git reads a date only from 1970 through 2099 (Git 2.55, measured with
+# `git rev-parse --since=`): past 2099 `--before` matched no commit and `--since`
+# every one, and `@<seconds>` past it is read as another date. A bound outside
+# those years is dropped where nothing Git can date lies beyond it, and moved to
+# the nearest day Git reads where something could.
+_GIT_FIRST_DAY = datetime.date(1970, 1, 1)
+_GIT_LAST_DAY = datetime.date(2099, 12, 31)
+
+
+def _git_after(day: datetime.date) -> str | None:
+    """Return a lower date bound as Git reads it, or None when no dated commit is earlier."""
+    if day <= _GIT_FIRST_DAY:
+        return None
+    return f"{min(day, _GIT_LAST_DAY).isoformat()}T00:00:00+00:00"
+
+
+def _git_before(day: datetime.date) -> str | None:
+    """Return an exclusive upper date bound as Git reads it, or None when none is later."""
+    if day > _GIT_LAST_DAY:
+        return None
+    return f"{max(day, _GIT_FIRST_DAY).isoformat()}T00:00:00+00:00"
+
+
 def _build_log_args(
     rev: str,
     since: datetime.date | None,
@@ -3168,18 +3298,19 @@ def _build_log_args(
 
     # Boundaries are pinned to UTC: git reads a bare date in local time, so the
     # answer would depend on the machine (and `--deterministic` would not hold).
-    if since is not None:
-        boundary = f"{since.isoformat()}T00:00:00+00:00"
+    after = None if since is None else _git_after(since)
+    if after is not None:
+        boundary = after
         # `--since` stops the walk at the first older commit, silently losing
         # in-window commits behind it on non-chronological history; the filter
         # does not. `--before` needs no equivalent: the walk starts newest.
         flag = "--since-as-filter" if supports_since_as_filter else "--after"
         log_args.append(f"{flag}={boundary}")
         rev_list_args.append(f"{flag}={boundary}")
-    if until is not None:
-        # One day past the boundary, so `--until` is inclusive of its own date.
-        inclusive_until = (until + datetime.timedelta(days=1)).isoformat()
-        boundary = f"{inclusive_until}T00:00:00+00:00"
+    # One day past the boundary, so `--until` is inclusive of its own date.
+    before = None if until is None else _git_before(until + datetime.timedelta(days=1))
+    if before is not None:
+        boundary = before
         log_args.append(f"--before={boundary}")
         rev_list_args.append(f"--before={boundary}")
 

@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import cast
 
 from reveille import __version__
-from reveille.adapters.git_reader import GitReader, find_repositories
+from reveille.adapters.git_reader import GitReader, find_repositories, is_repository
 from reveille.adapters.renderer import Renderer
 from reveille.config import ReportConfig
 from reveille.domain.areas import who_changed
@@ -234,18 +234,29 @@ def repositories_text(
         EmptyRepositoryError: If no repository is found.
     """
     end = until if until is not None else _today()
-    start = end - datetime.timedelta(days=days - 1)
+    try:
+        start = end - datetime.timedelta(days=days - 1)
+    except OverflowError:
+        start = datetime.date.min  # a window reaching past the calendar's first day
     found, unreadable = find_repositories(directory, depth)
     if unreadable:
         _notify(
             on_notice,
-            f"{len(unreadable):,} {'directory' if len(unreadable) == 1 else 'directories'} "
-            "could not be listed and were not searched.",
+            "1 directory could not be listed and was not searched."
+            if len(unreadable) == 1
+            else f"{len(unreadable):,} directories could not be listed and were not searched.",
         )
     if not found:
+        # `repos` searches below the directory, so a repository given is not a row.
+        hint = (
+            " It is a repository itself: give the directory that holds it, or run "
+            "`reveille state` on it."
+            if is_repository(directory)
+            else " A larger --depth searches deeper."
+        )
         raise EmptyRepositoryError(
             f"No Git repository found in '{directory}' within {depth} "
-            f"{'level' if depth == 1 else 'levels'}. A larger --depth searches deeper."
+            f"{'level' if depth == 1 else 'levels'}.{hint}"
         )
     rows: list[RepositoryActivity] = []
     matched: set[str] = set()
@@ -338,7 +349,7 @@ class _HeldWarnings(logging.Filter):
         records: list[logging.LogRecord] | None = getattr(self._local, "records", None)
         if records is None:
             return True
-        if record not in records:  # each handler sees it; hold it once
+        if not records or records[-1] is not record:  # each handler sees it in turn; hold it once
             records.append(record)
         return False
 

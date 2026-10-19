@@ -9,18 +9,20 @@ Exit codes are a contract: see `ExitCode` and docs/USER_GUIDE.md.
 
 from __future__ import annotations
 
+import contextlib
 import datetime
 import enum
 import itertools
 import json
 import logging
 import os
+import stat
 import sys
 import threading
 import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Annotated, Any, ClassVar, TextIO, cast
+from typing import Annotated, Any, ClassVar, NoReturn, TextIO, cast
 
 import typer
 
@@ -69,6 +71,7 @@ _TERMINAL_UNSAFE: dict[int, str] = {
         range(0x0B, 0x20),  # C0 controls after newline, CR and ESC among them
         range(0x7F, 0xA0),  # DEL and the C1 controls
         (0x061C, 0x200E, 0x200F),  # ALM, LRM, RLM: implicit direction marks
+        (0x2028, 0x2029),  # line and paragraph separators: a line break to many readers
         range(0x202A, 0x202F),  # LRE, RLE, PDF, LRO, RLO: embeddings and overrides
         range(0x2066, 0x206A),  # LRI, RLI, FSI, PDI: direction isolates
     )
@@ -102,19 +105,61 @@ def _err(message: str) -> None:
     """Write one message to stderr, with terminal control characters escaped.
 
     Under `--format json` the message is one JSON object on its own line,
-    `{"level": "error" | "warning" | "note" | "message", "message": ...}`.
+    `{"level": "error" | "warning" | "note", "message": ...}`: a configuration
+    error is an error, and any other message without a prefix is a note.
 
     Args:
         message: The message to print, starting "Error: ", "Warning: " or "Note: ".
     """
     if _stderr_json["on"]:
-        level, text = "message", message
+        level = "error" if message.startswith("Configuration error: ") else "note"
+        text = message
         for prefix, name in _LEVELS.items():
             if message.startswith(prefix):
                 level, text = name, message.removeprefix(prefix)
         typer.echo(json.dumps({"level": level, "message": text}), err=True)
         return
     typer.echo(_printable(message), err=True)
+
+
+def _say(text: str, *, nl: bool = True, answer: bool = True) -> None:
+    """Write to stdout, and say so when it cannot be done.
+
+    A reader that stopped early (`| head`) ends the run quietly with exit 0, as
+    it chose. A full disk, or a closed stdout for an answer, cannot deliver the
+    answer, so it exits 2 rather than 0 or Click's 1. Stdout is then pointed at
+    the null device, so the interpreter's last flush cannot fail again.
+
+    Args:
+        text: What to write.
+        nl: Whether to end it with a newline.
+        answer: False for a confirmation, such as a written file's path, which is
+            left out, not an error, when stdout is closed.
+
+    Raises:
+        typer.Exit: SUCCESS for a reader that stopped, CANNOT_RUN otherwise.
+    """
+    if sys.stdout is None:
+        if not answer:
+            return
+        _err("Error: standard output is closed, so the answer has nowhere to go.")
+        raise typer.Exit(code=ExitCode.CANNOT_RUN)
+    try:
+        typer.echo(text, nl=nl)
+        sys.stdout.flush()
+    except BrokenPipeError as exc:
+        _discard_stdout()
+        raise typer.Exit(code=ExitCode.SUCCESS) from exc
+    except OSError as exc:
+        _discard_stdout()
+        _err(f"Error: the output could not be written to standard output: {exc.strerror}.")
+        raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
+
+
+def _discard_stdout() -> None:
+    """Point stdout's descriptor at the null device, dropping what is buffered."""
+    with contextlib.suppress(OSError, ValueError):
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
 
 
 _EXCLUDE_PATH_HELP = (
@@ -246,6 +291,32 @@ def _configure_logging(verbose: bool) -> None:
     package_logger.setLevel(level)
 
 
+def _why_git_cannot_start(message: str) -> str:
+    """Return Git's own reason from GitPython's import-time failure, or a plain one.
+
+    Args:
+        message: The ImportError text GitPython raises when `git version` fails.
+
+    Returns:
+        Git's first error line, or a sentence saying no Git was found on PATH.
+    """
+    _, found, stderr = message.partition("stderr: '")
+    lines = [line.strip() for line in stderr.rstrip("'").splitlines()] if found else []
+    reasons = [line for line in lines if line and not line.startswith("hint:")]
+    return reasons[0] if reasons else "no working `git` program was found on PATH"
+
+
+def _exit_as_defect(exc: Exception) -> NoReturn:
+    """Say an error nobody anticipated is a defect, and exit 2, never 1.
+
+    Args:
+        exc: The error.
+    """
+    _logger.debug("Unexpected error", exc_info=True)
+    _err(f"Error: {type(exc).__name__}: {exc}. This is a defect in Reveille; please report it.")
+    sys.exit(ExitCode.CANNOT_RUN)
+
+
 class _App(typer.Typer):
     """The Typer application, with an exit code for errors nobody anticipated."""
 
@@ -256,13 +327,26 @@ class _App(typer.Typer):
         a negative answer. The traceback goes to the debug log (`--verbose`).
         """
         try:
-            return super().__call__(*args, **kwargs)
-        except Exception as exc:
-            _logger.debug("Unexpected error", exc_info=True)
+            os.getcwd()
+        except FileNotFoundError:
             _err(
-                f"Error: {type(exc).__name__}: {exc}. This is a defect in Reveille; please report it."
+                "Error: the current directory no longer exists (it was deleted or moved). "
+                "Change to a directory that exists, and run Reveille again."
             )
             sys.exit(ExitCode.CANNOT_RUN)
+        try:
+            return super().__call__(*args, **kwargs)
+        except ImportError as exc:
+            if not str(exc).startswith("Failed to initialize"):
+                _exit_as_defect(exc)  # a bare `raise` would pass the handler below, and exit 1
+            _logger.debug("GitPython could not start Git", exc_info=True)
+            _err(
+                f"Error: Git could not be started: {_why_git_cannot_start(str(exc))}. Install "
+                "Git 2.24 or later, put it on PATH, and check your Git configuration."
+            )
+            sys.exit(ExitCode.CANNOT_RUN)
+        except Exception as exc:
+            _exit_as_defect(exc)
 
 
 app = _App(
@@ -446,7 +530,7 @@ def _make_progress_callback(spinner: _StageSpinner) -> Callable[[ProgressEvent],
 
 def _version_callback(value: bool) -> None:
     if value:
-        typer.echo(f"reveille {__version__}")
+        _say(f"reveille {__version__}")
         raise typer.Exit()
 
 
@@ -529,15 +613,54 @@ def _git_directories(repo_path: Path) -> list[Path]:
     return directories
 
 
-def _validate_output_path(output: Path, repo_path: Path, *, from_config: bool = False) -> None:
+def _refuse_what_is_not_a_file(output: Path, example: str) -> None:
+    """Refuse an output path that is a directory, a device, a pipe or a socket, or unusable.
+
+    Args:
+        output: The output path as given.
+        example: A file name to suggest when it is a directory.
+
+    Raises:
+        typer.Exit: ExitCode.CANNOT_RUN if the path is refused.
+    """
+    try:
+        mode = output.stat().st_mode
+    except FileNotFoundError:
+        return
+    except OSError as exc:  # a name too long, a loop of links
+        _err(f"Error: output path '{output}' cannot be used: {exc.strerror}.")
+        raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
+    if stat.S_ISDIR(mode):
+        _err(
+            f"Error: output path '{output}' is a directory. Give a file name, "
+            f"for example '{output / example}'."
+        )
+        raise typer.Exit(code=ExitCode.CANNOT_RUN)
+    if not stat.S_ISREG(mode):
+        _err(
+            f"Error: output path '{output}' is not a regular file (a device, a named pipe "
+            "or a socket). Give a file name; `-o -` writes to standard output."
+        )
+        raise typer.Exit(code=ExitCode.CANNOT_RUN)
+
+
+def _validate_output_path(
+    output: Path,
+    repo_path: Path,
+    *,
+    from_config: bool = False,
+    example: str = "reveille-report.html",
+) -> None:
     """Validate the output path for traversal and the repository boundary.
 
-    Refuses `..`, a Git directory or a directory; warns outside the repository.
+    Refuses `..`, a Git directory, a directory, a device, a pipe or a socket, and a
+    path the system cannot use; warns outside the repository.
 
     Args:
         output: The output path as given, before resolution.
         repo_path: The resolved repository root.
         from_config: An auto-discovered (untrusted) file supplied the path.
+        example: A file name to suggest when the path is a directory.
 
     Raises:
         typer.Exit: ExitCode.CANNOT_RUN if the path is refused.
@@ -575,12 +698,7 @@ def _validate_output_path(output: Path, repo_path: Path, *, from_config: bool = 
         )
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
-    if output.is_dir():
-        _err(
-            f"Error: output path '{output}' is a directory. Give a file name, "
-            f"for example '{output / 'reveille-report.html'}'."
-        )
-        raise typer.Exit(code=ExitCode.CANNOT_RUN)
+    _refuse_what_is_not_a_file(output, example)
 
     if ".." in output.parts:
         _err(
@@ -730,10 +848,10 @@ def _run_report(report_config: ReportConfig, *, to_stdout: bool, quiet: bool = F
     spinner.complete()
     _print_notices(notices)
     if to_stdout:
-        typer.echo(text, nl=not text.endswith("\n"))
+        _say(text, nl=not text.endswith("\n"))
         return
     for path in written:
-        typer.echo(_printable(f"Report written to: {path}"))
+        _say(_printable(f"Report written to: {path}"), answer=False)
 
 
 def _apply_area_flags(
@@ -1041,7 +1159,7 @@ def _run_query(produce: Callable[[Callable[[str], None]], str]) -> None:
     # The text carries repository-chosen names, so it is escaped like
     # stderr; json.dumps already escapes control characters.
     text = _printable(text)
-    typer.echo(text, nl=not text.endswith("\n"))
+    _say(text, nl=not text.endswith("\n"))
 
 
 def _check_query_format(output_format: str, allowed: tuple[str, ...] = ("text", "json")) -> None:
@@ -1104,10 +1222,10 @@ def summary(
 
     Small counts can identify someone.
     """
-    from reveille.services.report import summary_text
-
     _configure_logging(verbose)
     _check_query_format(output_format, ("text", "json", "markdown"))
+    from reveille.services.report import summary_text
+
     config = _query_config(repo, since, until, branch, exclude_author, deterministic, exclude_path)
     _run_query(lambda notice: summary_text(config, output_format, on_notice=notice))
 
@@ -1138,10 +1256,10 @@ def brief(
 
     Small counts can identify someone.
     """
-    from reveille.services.report import brief_text
-
     _configure_logging(verbose)
     _check_query_format(output_format, ("text", "json", "markdown", "line"))
+    from reveille.services.report import brief_text
+
     if from_revision is not None and since is not None:
         _err("Error: give --from <revision> or --since <date>, not both.")
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
@@ -1166,10 +1284,10 @@ def state(
     directories, which can contain your login name), the current branch, its
     upstream and the branches checked out in worktrees.
     """
-    from reveille.services.report import state_text
-
     _configure_logging(verbose)
     _check_query_format(output_format, ("text", "json", "markdown", "line"))
+    from reveille.services.report import state_text
+
     _run_query(lambda _notice: state_text(_root(repo), output_format, limit))
 
 
@@ -1208,10 +1326,10 @@ def repos(
 
     One row per repository, in counts. Nobody is counted across repositories.
     """
-    from reveille.services.report import repositories_text
-
     _configure_logging(verbose)
     _check_query_format(output_format, ("text", "json", "markdown", "csv"))
+    from reveille.services.report import repositories_text
+
     if not directory.is_dir():
         _err(f"Error: '{directory}' is not a directory.")
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
@@ -1286,10 +1404,10 @@ def who_changed(
     verbose: _VerboseOption = False,
 ) -> None:
     """Say who changed a file or directory, and who changed it most recently."""
-    from reveille.services.report import who_changed_text
-
     _configure_logging(verbose)
     _check_query_format(output_format)
+    from reveille.services.report import who_changed_text
+
     relative = _repository_path(path, _root(repo))
     config = _query_config(repo, since, until, branch, exclude_author, deterministic)
     _run_query(
@@ -1331,7 +1449,7 @@ def validate(
         _err(f"Error: {exc}")
         raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
 
-    typer.echo(_printable(f"Repository at {resolved} is valid."))
+    _say(_printable(f"Repository at {resolved} is valid."), answer=False)
 
 
 @app.command()
@@ -1375,13 +1493,15 @@ def init(
         )
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
-    _validate_output_path(output, cwd)
+    _validate_output_path(output, cwd, example="reveille.toml")
 
-    from reveille.init import write_init_config, write_mailmap_template
+    from reveille.init import refuse_symlink, write_init_config, write_mailmap_template
 
     try:
+        if mailmap:
+            refuse_symlink(cwd / ".mailmap")  # first, so a refusal writes neither file
         written_path = write_init_config(output, force=force)
-        typer.echo(f"Configuration file written to: {written_path}")
+        _say(f"Configuration file written to: {written_path}", answer=False)
     except ReveilleError as exc:
         _err(f"Error: {exc}")
         raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
@@ -1393,9 +1513,9 @@ def init(
             _err(f"Error: {exc}")
             raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
         if mailmap_result is not None:
-            typer.echo(f".mailmap template written to: {mailmap_result}")
+            _say(f".mailmap template written to: {mailmap_result}", answer=False)
         else:
-            typer.echo(".mailmap already exists; skipped.")
+            _say(".mailmap already exists; skipped.", answer=False)
 
 
 @app.command()
@@ -1432,16 +1552,16 @@ def capabilities(
             known = ", ".join(c["name"] for c in document["commands"])
             _err(f"Error: no command {command!r}; the commands are {known}.")
             raise typer.Exit(code=ExitCode.CANNOT_RUN)
-        typer.echo(
+        _say(
             json.dumps(narrowed, indent=2)
             if output_format == "json"
             else render_command_text(narrowed)
         )
         return
     if output_format == "json":
-        typer.echo(json.dumps(document, indent=2))
+        _say(json.dumps(document, indent=2))
     else:
-        typer.echo(render_text(document))
+        _say(render_text(document))
 
 
 @app.command()
@@ -1463,7 +1583,7 @@ def skill(
     if output_format not in {"markdown", "skill"}:
         _err(f"Error: unsupported format '{output_format}'. Accepted values: markdown, skill.")
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
-    typer.echo(guide(output_format), nl=False)
+    _say(guide(output_format), nl=False)
 
 
 @app.command()

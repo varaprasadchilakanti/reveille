@@ -17,6 +17,7 @@ import json
 
 import pytest
 import typer.main
+from typer.testing import CliRunner
 
 from reveille import __version__
 from reveille.capabilities import (
@@ -104,6 +105,38 @@ class TestDerivedFactsCannotDrift:
         flags = {flag for option in generate["options"] for flag in option["flags"]}
 
         assert {"--repo", "--output", "--format", "--deterministic"} <= flags
+
+    def test_each_default_and_bound_is_the_parsers(self, document: dict) -> None:
+        """An agent reads the limits before it calls, so they come from the parser."""
+        click_app = typer.main.get_command(app)
+        assert isinstance(click_app, typer.core.TyperGroup)
+        for described in document["commands"]:
+            params = {p.opts[0]: p for p in click_app.commands[described["name"]].params}
+            for option in described["options"]:
+                param = params[option["flags"][0]]
+                default = param.default
+                if default is None or callable(default):
+                    assert "default" not in option, option
+                else:
+                    assert str(option["default"]) == str(default), option
+                assert option.get("minimum") == getattr(param.type, "min", None), option
+                assert option.get("maximum") == getattr(param.type, "max", None), option
+
+    def test_repos_says_its_bounds(self, document: dict) -> None:
+        """Positive control: the bounds an agent most needs are there."""
+        repos = next(c for c in document["commands"] if c["name"] == "repos")
+        depth = next(o for o in repos["options"] if o["flags"][0] == "--depth")
+
+        assert (depth["default"], depth["minimum"], depth["maximum"]) == (1, 1, 3)
+
+    def test_a_json_reader_is_told_the_guarantees_are_not_a_warranty(self, document: dict) -> None:
+        assert "not a warranty" in document["guarantees_are"]
+
+    def test_a_text_reader_is_told_so_too(self) -> None:
+        result = CliRunner().invoke(app, ["capabilities"])
+
+        assert result.exit_code == ExitCode.SUCCESS, result.stderr
+        assert "not a warranty" in result.stdout
 
 
 @pytest.mark.unit

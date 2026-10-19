@@ -80,6 +80,16 @@ def _plural(count: int, singular: str, plural: str | None = None) -> str:
     return f"{count:,} {plural or singular + 's'}"
 
 
+def _percent(share: float) -> str:
+    """Return a share as a whole percentage that never rounds to none or to all."""
+    text = f"{share:.0%}"
+    if text == "0%" and share > 0:
+        return "under 1%"
+    if text == "100%" and share < 1:
+        return "over 99%"
+    return text
+
+
 def _span_finding(commits: list[Commit]) -> Finding:
     """State the size and span of the history that was read."""
     first = min(c.timestamp for c in commits).date()
@@ -123,7 +133,7 @@ def _distribution_finding(contributors: list[ContributorStats]) -> Finding | Non
 
     if leading_share > 0.50:
         headline = (
-            f"One contributor authored {leading_share:.0%} of commits, of "
+            f"One contributor authored {_percent(leading_share)} of commits, of "
             f"{_plural(len(counts), 'contributor')} in total."
         )
         detail = (
@@ -135,7 +145,7 @@ def _distribution_finding(contributors: list[ContributorStats]) -> Finding | Non
         headline = (
             f"Commits are concentrated among "
             f"{_plural(len(counts), 'contributor')}, the busiest holding "
-            f"{leading_share:.0%}."
+            f"{_percent(leading_share)}."
         )
         detail = (
             "Concentration is comparable against this repository over time, "
@@ -145,7 +155,7 @@ def _distribution_finding(contributors: list[ContributorStats]) -> Finding | Non
         headline = (
             f"Commits are spread across "
             f"{_plural(len(counts), 'contributor')} with no single majority; "
-            f"the busiest holds {leading_share:.0%}."
+            f"the busiest holds {_percent(leading_share)}."
         )
         detail = "An even spread is a description, not an achievement."
     return Finding(headline=headline, detail=detail, evidence=f"Gini {gini:.2f}")
@@ -194,7 +204,7 @@ def _weekend_finding(
     if share < _WEEKEND_SHARE_THRESHOLD:
         return None
     return Finding(
-        headline=f"{share:.0%} of commits were authored at a weekend.",
+        headline=f"{_percent(share).capitalize()} of commits were authored at a weekend.",
         detail=(
             "Author timestamps carry the committer's own time zone, and this "
             "report normalises to it. Distributed contributors, release "

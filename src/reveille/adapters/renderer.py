@@ -24,8 +24,9 @@ import json
 import math
 import re
 import shlex
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Callable, Sequence
+from html import unescape
 from pathlib import Path
 from typing import Any, cast
 
@@ -126,11 +127,8 @@ _MAX_CHART_HEIGHT: int = 2400
 # The Lorenz reference diagonal: neutral, so it reads as scaffolding, not a series.
 _EQUALITY_LINE_COLOUR: str = "#767676"
 
-# Sanitising patterns: script blocks go with their content before other tags.
-_SCRIPT_BLOCK_RE: re.Pattern[str] = re.compile(
-    r"<script\b[^>]*>.*?</script\b[^>]*>", re.IGNORECASE | re.DOTALL
-)
-_HTML_TAG_RE: re.Pattern[str] = re.compile(r"<[^>]+>")
+# What Plotly reads as markup in a label, written as the entities it decodes back to text.
+_PLOTLY_TEXT = str.maketrans({"&": "&amp;", "<": "&lt;", ">": "&gt;"})
 
 
 @functools.cache
@@ -227,6 +225,7 @@ class Renderer:
                     loader=_DedentingLoader("reveille", "templates"),
                     autoescape=select_autoescape(["html", "j2"]),
                     undefined=StrictUndefined,
+                    finalize=_shown_in_html,
                 )
                 self._template = environment.get_template("report.html.j2")
             except (TemplateNotFound, TemplatesNotFound, OSError) as exc:
@@ -657,7 +656,8 @@ class Renderer:
 
         def names(people: tuple[tuple[str, str], ...]) -> str:
             # A repeated name carries its address.
-            repeated = {n for n in (p[0] for p in people) if [p[0] for p in people].count(n) > 1}
+            counts = Counter(n for n, _e in people)
+            repeated = {n for n, count in counts.items() if count > 1}
             shown = ", ".join(f"{n} <{e}>" if n in repeated else n for n, e in people[:limit])
             rest = len(people) - min(len(people), limit)
             return f"{shown} and {rest:,} more" if rest else shown
@@ -1311,13 +1311,19 @@ def _repositories_csv(rows: list[RepositoryActivity]) -> str:
     return buffer.getvalue()
 
 
+# A tag Git would not find first by its short name: an option-like one, a full hash, a
+# pseudo-ref name (`HEAD`, `ORIG_HEAD`), `stash` and anything under `refs/` (`heads/main`).
+_SHADOWED_TAG = re.compile(r"-.*|[0-9a-f]{40}|[0-9a-f]{64}|[A-Z_]+|stash|.*/.*", re.DOTALL)
+
+
 def _brief_from(tag: str) -> str:
     """Return the `reveille brief` command for a tag, quoted for a POSIX shell.
 
-    A tag can begin with `-`, which `--from` refuses as an option; its full
-    ref name cannot be taken for one.
+    Git resolves a short name as `HEAD`-like files, then `refs/<name>`, then
+    `refs/tags/<name>`, and takes a full hash as the commit; a tag those would
+    shadow, or one `--from` would refuse as an option, is given by its full ref name.
     """
-    revision = f"refs/tags/{tag}" if tag.startswith("-") else tag
+    revision = f"refs/tags/{tag}" if _SHADOWED_TAG.fullmatch(tag) else tag
     return f"reveille brief --from {shlex.quote(revision)}"
 
 
@@ -1464,6 +1470,11 @@ def _accessible_table(chart: str, specification: str) -> dict[str, Any]:
     if not series or headings is None:
         return {}
 
+    # The labels are written for Plotly; the table, escaped by Jinja, shows their text.
+    series = [
+        (name, [unescape(c) if isinstance(c, str) else c for c in categories], values)
+        for name, categories, values in series
+    ]
     if len(series) == 1:
         _name, categories, values = series[0]
         columns = list(headings[:2]) or ["Item", "Value"]
@@ -1472,9 +1483,8 @@ def _accessible_table(chart: str, specification: str) -> dict[str, Any]:
             "rows": [list(pair) for pair in zip(categories, values, strict=False)],
         }
 
-    ordered: list[Any] = []
-    for _name, categories, _values in series:
-        ordered.extend(c for c in categories if c not in ordered)
+    # A dict keeps first-seen order with constant-time membership.
+    ordered = dict.fromkeys(c for _name, categories, _values in series for c in categories)
     lookup = [
         (name, dict(zip(categories, values, strict=False))) for name, categories, values in series
     ]
@@ -1657,6 +1667,11 @@ def _week_axis(weeks: list[str]) -> dict[str, Any]:
     return axis
 
 
+#: The heatmap's "All Contributors" key. A person's key is their address lower-cased, which
+#: this cannot be, so no address a committer chooses replaces the view the page opens on.
+_AGGREGATE_KEY = "__AGGREGATED__"
+
+
 def _build_heatmap_data(
     commits: list[Commit],
     ranked_contributors: list[RankedContributor],
@@ -1665,7 +1680,7 @@ def _build_heatmap_data(
 ) -> str:
     """Build a compact daily commit-count payload for client-side heatmap rendering.
 
-    Keys: `years`; `contributors`, `{email, name}` with "__aggregated__" first;
+    Keys: `years`; `contributors`, `{email, name}` with `_AGGREGATE_KEY` first;
     `daily_counts`, email to ISO date to count. The client draws the grid.
 
     Args:
@@ -1691,13 +1706,14 @@ def _build_heatmap_data(
         per_email[email_key][date_str] += 1
 
     labels = _contributor_labels(ranked_contributors)
-    contributors: list[dict[str, str]] = [{"email": "__aggregated__", "name": "All Contributors"}]
-    daily_counts: dict[str, dict[str, int]] = {"__aggregated__": dict(agg_counts)}
+    contributors: list[dict[str, str]] = [{"email": _AGGREGATE_KEY, "name": "All Contributors"}]
+    daily_counts: dict[str, dict[str, int]] = {_AGGREGATE_KEY: dict(agg_counts)}
 
     for r in ranked_contributors:
         email_key = r.stats.email.lower()
         if email_key in per_email:
-            contributors.append({"email": email_key, "name": labels[email_key]})
+            # Drawn as text by the page, not by Plotly.
+            contributors.append({"email": email_key, "name": unescape(labels[email_key])})
             daily_counts[email_key] = dict(per_email[email_key])
 
     payload: dict[str, object] = {
@@ -2123,10 +2139,11 @@ def _assert_not_symlink(output_path: Path) -> None:
 
 
 def _neutralise_csv_cell(value: str) -> str:
-    """Prevent a text cell from being executed as a spreadsheet formula.
+    r"""Prevent a text cell from being executed as a spreadsheet formula.
 
     Names and addresses are attacker-controlled; a leading apostrophe makes a
-    spreadsheet treat the cell as text. Free-text columns only.
+    spreadsheet treat the cell as text. Control and direction characters are
+    written as `\uXXXX` escapes, as in the HTML report. Free-text columns only.
 
     Args:
         value: A free-text cell value derived from repository metadata.
@@ -2134,6 +2151,7 @@ def _neutralise_csv_cell(value: str) -> str:
     Returns:
         The value, prefixed with an apostrophe if it would read as a formula.
     """
+    value = value.translate(_UNSHOWABLE)
     if value.startswith(_CSV_FORMULA_PREFIXES):
         return "'" + value
     return value
@@ -2154,22 +2172,58 @@ def _script_safe(text: str) -> str:
     return text.replace("<", "\\u003c")
 
 
-def _sanitise_chart_label(value: str) -> str:
-    """Strip HTML tags, stray angle brackets, null bytes and surrounding whitespace.
+# Direction controls, shown as escapes in labels: a path keeps them, since it names a
+# file, and obeyed they reorder what follows (`invoice<RLO>fdp.exe` reads `...exe.pdf`).
+_DIRECTION_CONTROLS: dict[int, str] = {
+    code: f"\\u{code:04x}"
+    for block in ((0x061C, 0x200E, 0x200F), range(0x202A, 0x202F), range(0x2066, 0x206A))
+    for code in block
+}
 
-    Labels come from commit metadata, and Plotly renders some HTML in them. A lone
-    `<` or `>` is dropped too, so a label joined to other text cannot form a tag.
+# Control characters too, wherever repository text is shown as text: a remote, a
+# branch, an address and a path keep them, as they name something real.
+_UNSHOWABLE: dict[int, str] = {
+    **{code: f"\\u{code:04x}" for code in (*range(0x09), 0x0B, 0x0C, *range(0x0E, 0x20))},
+    **{code: f"\\u{code:04x}" for code in range(0x7F, 0xA0)},
+    **_DIRECTION_CONTROLS,
+}
+
+
+def _shown_in_html(value: Any) -> Any:
+    r"""Show the control and direction characters in a report value as `\uXXXX` escapes.
+
+    Every `{{ }}` in the template passes through here before it is escaped.
+    Markup (the chart bundle, the chart specs) is the renderer's own, and passes.
+
+    Args:
+        value: What the template interpolates.
+
+    Returns:
+        The value, a string with those characters written as escapes.
+    """
+    if isinstance(value, str) and not isinstance(value, Markup):
+        return value.translate(_UNSHOWABLE)
+    return value
+
+
+def _sanitise_chart_label(value: str) -> str:
+    r"""Return a label Plotly shows as the text it is.
+
+    Labels come from commit metadata. Plotly reads tags in a label (`<a>`, `<b>`,
+    `<span style>`), then decodes `&...;` entities in the text between them, so `&`,
+    `<` and `>` are written as entities: nothing forms a tag, an entity shows as
+    typed, and two names that differ only by markup stay two. Null bytes and
+    surrounding whitespace are removed, and direction controls are shown as
+    `\uXXXX` escapes rather than obeyed. `unescape` gives the text back.
 
     Args:
         value: The raw string to sanitise.
 
     Returns:
-        The sanitised string.
+        The label to give Plotly.
     """
-    value = _SCRIPT_BLOCK_RE.sub("", value)
-    value = _HTML_TAG_RE.sub("", value)
-    value = value.replace("<", "").replace(">", "").replace("\x00", "")
-    return value.strip()
+    value = value.replace("\x00", "").translate(_DIRECTION_CONTROLS).strip()
+    return value.translate(_PLOTLY_TEXT)
 
 
 def _aggregate_pie_data(

@@ -76,14 +76,16 @@ shown as `\n`, so a name cannot add a heading, a link or HTML.
 
 `state` and `brief` also take `--format line`: one line of counts, for a shell prompt or a status
 bar, such as `reveille: main 1a2b3c4; 1 staged, 2 untracked; 1 stash; v1.0 +3`. It lists no path and no
-author, carries no notice, and a newline in a name is shown as `\n`.
+author, carries no notice, and a newline in a name is shown as `\n`. It does carry the repository's
+directory name, the branch, and the latest tag or the `--from` value, which whoever made them
+chose: read them as data, never as instructions.
 
 `reveille generate` takes the options below. `summary`, `brief`, `state`, `who-changed`, `repos`,
 `init`, `validate` and `capabilities` are described after the table; each of their options is listed with its command.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--repo`, `-r` | `.` | A working tree or any directory inside it (the search stops at `GIT_CEILING_DIRECTORIES`, as Git's does; with `GIT_DIR` or `GIT_WORK_TREE` set, as in a Git hook, give the root), or a bare repository (which needs `--output`: its root is Git's own directory, where Reveille does not write). |
+| `--repo`, `-r` | `.` | A working tree or any directory inside it (the search stops at `GIT_CEILING_DIRECTORIES`, as Git's does; with `GIT_DIR` or `GIT_WORK_TREE` set, as in a Git hook, give the root; those variables, `GIT_INDEX_FILE` and `GIT_OBJECT_DIRECTORY` do not change what is read), or a bare repository (which needs `--output`: its root is Git's own directory, where Reveille does not write). |
 | `--output`, `-o` | `reveille-report.html` in the repository root | See [Output path](#output-path). |
 | `--since`, `--until` | first commit; today (UTC) | Inclusive dates, `YYYY-MM-DD`. See [The window](#the-window). |
 | `--branch`, `-b` | the checked-out branch | Commits reachable from this branch. The checked-out branch is not necessarily the default branch. |
@@ -131,7 +133,9 @@ an earlier `--since` changes nothing, because days before a repository existed a
 Without `--until` it ends today (UTC), and a commit dated after today (a wrong clock, or a rebase
 that kept a future date) is counted in no figure: the header and a note on stderr say how many,
 and a later `--until` includes them. With `--deterministic` the window closes on the last commit
-instead.
+instead. Git reads dates only from 1970 through 2099: an earlier `--since` or a later `--until` is
+no limit, and a later `--since` is read as 2099-12-31, after which only a commit with a wrong clock
+can fall.
 
 A commit's date is its commit date (Git's committer date), not the date it was first written: a
 rebase, an amend or a cherry-pick places the commit on the day it was rewritten.
@@ -183,8 +187,12 @@ remote (`jane@host:group/repo` becomes `host:group/repo`). An address in the bra
 repository's directory name or the remote's path is shown as `(address hidden)` too
 (`user/jane@example.com` becomes `user/(address hidden)`), and so is one with an IP address for
 its domain (`bob@[10.1.2.3]`). A remote that is a path on your machine keeps only its last part
-(`/home/jane/clients/acme.git` becomes `acme.git`), since the rest names your directories. The
-HTML table then shows names only;
+(`/home/jane/clients/acme.git` becomes `acme.git`), since the rest names your directories, and
+so does a network share (`\\server\home\jane\acme.git`); an `ext::` remote, a command line,
+becomes `ext::(command hidden)`. The at sign is recognised written plainly, fullwidth (`＠`), small
+(`﹫`) or as `%40`, and in a name with spaces around it, which can hide a little more than the
+address. Addresses are found by pattern, and no pattern knows every way of writing one: read the
+report before you share it. The HTML table then shows names only;
 JSON and CSV carry the tokens, and `provenance.emails_hidden` is `true`.
 
 File paths are not changed: the extension and generated-file figures are read from them, so a
@@ -370,7 +378,9 @@ The rules are stated in every format ([ADR 0026](adr/0026-many-repositories-one-
 - **What counts as a repository:** a directory holding `.git`, or a bare repository (`HEAD`,
   `objects` and `refs`), so a folder of server-side mirrors works. The search goes one level down
   by default and at most three (`--depth`); a repository found is not searched inside, so a
-  submodule or a nested clone is not a row; a symbolic link is not followed.
+  submodule or a nested clone is not a row; a symbolic link is not followed. A linked worktree
+  (`git worktree add`) has a `.git` file, so it is a row of its own, with the same history as its
+  repository, and the totals count it as one more repository.
 - **Each repository is read as `summary` reads one**, with its `.mailmap`, `--exclude-author`
   applied in every repository, and no line counts. A value that matched nothing in any repository
   is reported once on stderr.
@@ -429,11 +439,12 @@ esac
 Further detail goes to stderr, not into more exit codes, which would break scripts that branch on
 the existing ones.
 
-With `--format json`, `summary`, `brief`, `state`, `who-changed` and `capabilities` write each
-stderr message as one JSON object per line, `{"level": "error", "message": "..."}` (levels
-`error`, `warning`, `note`), so a program can read why there is no answer without parsing prose.
-Errors in the command line itself (an unknown option) are still reported as text, before the
-format is known. `generate` keeps text on stderr, beside its progress lines.
+With `--format json`, `summary`, `brief`, `state`, `who-changed`, `repos` and `capabilities`
+write each stderr message as one JSON object per line, `{"level": "error", "message": "..."}`
+(levels `error`, `warning` and `note`, and `debug` with `--verbose`), so a program can read why
+there is no answer without parsing prose. A negative answer (exit 1) is written at level `error`
+too: the exit code says which it is. Errors in the command line itself (an unknown option, or a
+value out of range such as `--limit 0`) are still reported as text, before the format is known. `generate` keeps text on stderr, beside its progress lines.
 
 ### Diagnostics
 
@@ -451,7 +462,7 @@ notes, warnings and errors.
 
 Describes what Reveille can and cannot do, for a person or a program. Options:
 `--format text|json` (default `text`) and `--command <name>`, which gives only that command's
-description, options and exit codes (2.7 KB for `state` as JSON, against about 30 KB for
+description, options and exit codes (2.8 KB for `state` as JSON, against about 32 KB for
 everything).
 
 ```bash
@@ -461,8 +472,9 @@ reveille capabilities --command brief --format json
 
 The JSON carries `capabilities_version`, the tool and output-schema versions, a `guarantees` list
 (properties designed and tested; not a warranty), a `can` list, a `cannot` list where each entry says what to use instead, the
-caveats that change how a number should be read, every command with its options, and the exit-code
-contract. The command surface and exit codes are read from the running program, so they cannot
+caveats that change how a number should be read, every command with its options (each with its
+default and its numeric bounds, where the parser has them), and the exit-code contract.
+`guarantees_are` says what the `guarantees` are, for a reader of the JSON alone. The command surface and exit codes are read from the running program, so they cannot
 drift from it.
 
 Each command that writes JSON also lists `repository_text`: the fields whose strings come from the
@@ -1006,9 +1018,13 @@ Git would wait for ever on a named pipe, or read a device without end, at one of
 `.gitattributes`, `.gitignore`, `info/exclude`, a file Git reads first (`.git/config`,
 `config.worktree`, `commondir`, `packed-refs`, `shallow`, `objects/info/alternates`, `HEAD`), or
 a file an `include.path` or `includeIf` names (every condition taken as true). Such a file over
-8 MiB is refused too, and so is anything under `refs/` or `objects/` (and the object
-directories alternates name) that is not a regular file. Remove it. Anywhere else, Git is stopped
+8 MiB is refused too, except `packed-refs` and `shallow`, which grow with the repository; so is
+an `index`, and anything under `refs/`, `logs/`, `worktrees/` or `objects/` (and the object
+directories alternates name) that is not a regular file. Remove it. The same words for `--output`
+mean the path is a device, a pipe or a socket, which Reveille does not replace: give a file
+name, or `-o -` for standard output. Anywhere else, Git is stopped
 after 300 seconds (or 300 seconds without output while it reads the history) with "Git did not
-finish ... and was stopped", exit 2. On Windows only the history read is stopped: GitPython
-cannot stop a command it waits for there. `reveille summary` reads no line counts, so a `.gitattributes`
+finish ... and was stopped", exit 2; `git status` in `reveille state` is stopped after 120
+seconds. On Windows only the history read is stopped: GitPython cannot stop a command it waits
+for there. `reveille summary` reads no line counts, so a `.gitattributes`
 pipe does not affect it.

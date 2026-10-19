@@ -98,3 +98,19 @@ def test_warnings_and_diagnostics_are_json_too(repo: Path, extra: list[str]) -> 
     lines = _lines(result.stderr)
     assert lines, "the run should have written something to stderr"
     assert {line["level"] for line in lines} <= {"warning", "note", "debug", "info", "error"}
+
+
+def test_a_configuration_error_has_the_error_level(repo: Path) -> None:
+    """`level == "error"` finds every failure; there is no fourth, unlisted level."""
+    result = CliRunner().invoke(
+        app,
+        [
+            *("summary", "--repo", str(repo), "--format", "json"),
+            *("--since", "2024-06-01", "--until", "2024-01-01"),
+        ],
+    )
+
+    assert result.exit_code == ExitCode.CANNOT_RUN
+    [line] = _lines(result.stderr)
+    assert line["level"] == "error", line
+    assert line["message"].startswith("Configuration error: "), line

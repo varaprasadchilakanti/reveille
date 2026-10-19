@@ -121,6 +121,41 @@ class TestTheDistributionSentenceMatchesTheNumbers:
         headline = next(f.headline for f in findings if "contributor" in f.headline)
         assert "no single majority" in headline, headline
 
+    @pytest.mark.parametrize(
+        ("counts", "said", "not_said"),
+        [
+            ([1] * 300, "under 1%", "holds 0%"),
+            ([999, 1, 1], "over 99%", "100%"),
+        ],
+    )
+    def test_a_share_is_never_rounded_to_none_or_all(
+        self, counts: list[int], said: str, not_said: str
+    ) -> None:
+        """0.3% is not "0%", and 99.8% is not "100%" while others committed."""
+        findings = summarise(_commits(40), _stats(counts))
+        headline = next(f.headline for f in findings if "contributor" in f.headline)
+        assert said in headline and not_said not in headline, headline
+
+    def test_a_weekend_share_short_of_all_is_not_all(self) -> None:
+        saturday = _START + datetime.timedelta(days=2)
+        commits = [
+            Commit(
+                sha=f"{index:040d}",
+                author_name="A",
+                author_email="a@example.com",
+                timestamp=saturday + datetime.timedelta(days=7 * index - 5 * (index == 0)),
+                lines_added=1,
+                lines_deleted=0,
+            )
+            for index in range(300)
+        ]
+        assert sum(c.timestamp.weekday() < 5 for c in commits) == 1, "positive control"
+
+        findings = summarise(commits, _stats([100, 100, 100]))
+
+        headline = next(f.headline for f in findings if "weekend" in f.headline)
+        assert headline.startswith("Over 99% of commits"), headline
+
     def test_a_dominant_share_is_stated_plainly(self) -> None:
         findings = summarise(_commits(40), _stats([202, 40, 38]))
         headline = next(f.headline for f in findings if "contributor" in f.headline)

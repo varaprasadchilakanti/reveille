@@ -18,6 +18,8 @@ _ESCAPED = {
     0x061C,
     0x200E,
     0x200F,
+    0x2028,
+    0x2029,
     *range(0x202A, 0x202F),
     *range(0x2066, 0x206A),
 }
@@ -47,3 +49,9 @@ def test_an_escape_sequence_is_shown_not_obeyed() -> None:
 def test_an_undecodable_byte_is_shown_not_raised() -> None:
     """Git output read with surrogateescape holds lone surrogates; printing one raised."""
     assert _printable("a\udcffb") == "a\\xffb"
+
+
+@pytest.mark.unit
+def test_unicode_line_and_paragraph_separators_are_escaped() -> None:
+    """Many readers break a line at U+2028 and U+2029, so one would add a line."""
+    assert _printable(f"a{chr(0x2028)}b{chr(0x2029)}c") == "a\\u2028b\\u2029c"
