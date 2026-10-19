@@ -426,6 +426,8 @@ def _repository_row(
 
 
 # An absolute path, POSIX or Windows, starting a word or after a quote or bracket.
+# Reveille's messages quote paths, so a quoted one is taken whole, spaces and all.
+_QUOTED_ABSOLUTE_PATH = re.compile(r"'(?:/|[A-Za-z]:[\\/])[^']*'")
 _ABSOLUTE_PATH = re.compile(r"""(?:(?<=^)|(?<=[\s'"(]))(?:/|[A-Za-z]:[\\/])[^\s'")]*""")
 
 
@@ -436,6 +438,7 @@ def _without_local_paths(reason: str, directory: Path) -> str:
     """
     for root in {str(directory.resolve()), str(directory)}:
         reason = reason.replace(root + os.sep, "")
+    reason = _QUOTED_ABSOLUTE_PATH.sub("'(a path outside the directory)'", reason)
     return _ABSOLUTE_PATH.sub("(a path outside the directory)", reason)
 
 

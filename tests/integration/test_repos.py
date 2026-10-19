@@ -130,7 +130,7 @@ def test_a_reason_names_no_path_outside_the_directory(tmp_path: Path) -> None:
     inside = _repo(root / "inside", ("2026-10-01", "Ana", "ana@corp.test"))
     subprocess.run(["git", "config", "core.worktree", str(root / "tree")], cwd=inside, check=True)
     away = _repo(root / "away", ("2026-10-01", "Ana", "ana@corp.test"))
-    elsewhere = tmp_path / "home-of-jane" / "tree"
+    elsewhere = tmp_path / "home of jane" / "tree"  # a space, which ends no quoted path
     subprocess.run(["git", "config", "core.worktree", str(elsewhere)], cwd=away, check=True)
 
     rows = _rows(root)
@@ -139,7 +139,8 @@ def test_a_reason_names_no_path_outside_the_directory(tmp_path: Path) -> None:
     assert "(a path outside the directory)" in str(rows["away"]["reason"]), rows["away"]
     for row in rows.values():
         assert str(tmp_path) not in str(row["reason"])
-        assert "home-of-jane" not in str(row["reason"])
+        assert "jane" not in str(row["reason"])
+    assert "tree'" not in str(rows["away"]["reason"])
 
 
 def test_a_nested_repository_is_not_a_row(workspace: Path) -> None:
