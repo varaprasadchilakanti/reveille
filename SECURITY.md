@@ -189,7 +189,8 @@ entries are in [CHANGELOG.md](CHANGELOG.md) under Unreleased, Security; by class
   reads (config, includes, attributes, ignore files, `.mailmap`, `diff.orderFile`), an
   empty filter name in `state`, and `i18n.logOutputEncoding`. Every other Git command is
   stopped after 300 seconds (on a timeout GitPython runs `pgrep` or `ps` to find Git's
-  children). Refs and objects, alternates followed, are checked before Git runs, because
+  children); on Windows, where GitPython cannot stop a command, only a history read that
+  writes nothing for 300 seconds is. Refs and objects, alternates followed, are checked before Git runs, because
   GitPython reads them itself.
 - **Stalls:** `.mailmap` and `Co-authored-by` patterns that backtracked.
 - **Reading the wrong data:** separators in author names, `core.worktree` pointing at

@@ -199,8 +199,9 @@ Each entry has a test that fails without the fix.
   mailmap is off and `diff.orderFile` is pinned to the null device. Commands that read no line
   counts ignore attribute files. Include paths are listed by Git itself, so no spelling of one
   escapes the check, and every file under `refs/` and `objects/`, alternates followed, must be a
-  regular file. Beyond those, every Git command Reveille waits for is stopped after 300 seconds,
-  and a history read after 300 seconds without output, with exit 2. 0.9.0's `generate` is affected by
+  regular file. Beyond those, a history read is stopped after 300 seconds without output, and
+  every other Git command Reveille waits for after 300 seconds, with exit 2; on Windows only the
+  history read is, as GitPython cannot stop a command there. 0.9.0's `generate` is affected by
   attribute files.
 - **A long `.mailmap` line or a `Co-authored-by` line of spaces could stall a run for minutes**, as
   their patterns backtracked. Both are read in one pass; a working-tree `.mailmap` is bounded at

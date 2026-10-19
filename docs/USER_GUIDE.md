@@ -1003,5 +1003,6 @@ a file an `include.path` or `includeIf` names (every condition taken as true). S
 8 MiB is refused too, and so is anything under `refs/` or `objects/` (and the object
 directories alternates name) that is not a regular file. Remove it. Anywhere else, Git is stopped
 after 300 seconds (or 300 seconds without output while it reads the history) with "Git did not
-finish ... and was stopped", exit 2. `reveille summary` reads no line counts, so a `.gitattributes`
+finish ... and was stopped", exit 2. On Windows only the history read is stopped: GitPython
+cannot stop a command it waits for there. `reveille summary` reads no line counts, so a `.gitattributes`
 pipe does not affect it.
