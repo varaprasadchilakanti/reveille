@@ -1224,9 +1224,9 @@ class GitReader:
             merges = ["--merges" if a == "--no-merges" else a for a in rev_list_args]
             self.merges_excluded = int(str(self._git().rev_list("--count", *merges)).strip() or 0)
         except GitCommandError as exc:
+            # The revision was resolved already, so the cause is elsewhere: say Git's.
             raise RepositoryError(
-                f"Failed to enumerate commits on branch '{rev}'. "
-                "Verify the branch exists in this repository."
+                f"Git could not list the commits on '{rev}': {_git_error(exc)}"
             ) from exc
 
         # Once the branch is known to exist: an exclusion names a person, through the mailmap.
@@ -1241,8 +1241,7 @@ class GitReader:
             records = stream.raw_records()
         except GitCommandError as exc:
             raise RepositoryError(
-                f"Failed to read commits from branch '{rev}'. "
-                f"Verify the branch name is correct. Detail: {exc}"
+                f"Git could not read the commits on '{rev}': {_git_error(exc)}"
             ) from exc
         return records, authentic_order, mailmap, requests, reached
 
