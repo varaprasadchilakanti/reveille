@@ -15,9 +15,13 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
+
+from reveille.adapters import git_reader
+from reveille.exceptions import RepositoryError
 
 pytestmark = [
     pytest.mark.integration,
@@ -82,56 +86,41 @@ def _replace_with_pipe(path: Path) -> None:
     os.mkfifo(path)
 
 
-def _stopped(done: subprocess.CompletedProcess[str]) -> None:
+def _refused(done: subprocess.CompletedProcess[str], name: str) -> None:
     assert done.returncode == 2, done.stderr
-    assert "did not finish" in done.stderr and "within 3 seconds" in done.stderr, done.stderr
+    assert name in done.stderr and "not a regular file" in done.stderr, done.stderr
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="known gap: GitPython reads this through its long-running cat-file process or in "
-    "Python, which the deadline does not cover yet",
-)
 def test_a_pipe_at_the_branchs_loose_ref(repo: Path) -> None:
     _replace_with_pipe(repo / ".git" / "refs" / "heads" / "main")
 
     assert _git_waits(repo, "log", "--numstat")
-    _stopped(_run(repo, "summary"))
+    _refused(_run(repo, "summary"), "refs/heads/main")
 
 
 def test_a_pipe_at_the_commit_graph(repo: Path) -> None:
     os.mkfifo(repo / ".git" / "objects" / "info" / "commit-graph")
 
     assert _git_waits(repo, "log", "--numstat")
-    _stopped(_run(repo, "generate", "--format", "json", "--output", "-"))
+    _refused(_run(repo, "generate", "--format", "json", "--output", "-"), "commit-graph")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="known gap: GitPython reads this through its long-running cat-file process or in "
-    "Python, which the deadline does not cover yet",
-)
-def test_a_pipe_at_an_alternates_file_an_alternate_names(repo: Path) -> None:
-    nested = repo / ".git" / "objects" / "nested"
+def test_a_pipe_at_an_alternates_file_an_alternate_names(repo: Path, tmp_path: Path) -> None:
+    nested = tmp_path / "shared-objects"  # outside the repository, found only through alternates
     (nested / "info").mkdir(parents=True)
     (repo / ".git" / "objects" / "info" / "alternates").write_text(f"{nested}\n", encoding="utf-8")
     os.mkfifo(nested / "info" / "alternates")
 
     assert _git_waits(repo, "log", "--numstat")
-    _stopped(_run(repo, "summary"))
+    _refused(_run(repo, "summary"), "shared-objects/info/alternates")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="known gap: GitPython reads this through its long-running cat-file process or in "
-    "Python, which the deadline does not cover yet",
-)
 def test_a_pipe_at_a_loose_object_the_history_read_needs(repo: Path) -> None:
     head = _git(repo, "rev-parse", "HEAD")
     _replace_with_pipe(repo / ".git" / "objects" / head[:2] / head[2:])
 
     assert _git_waits(repo, "log", "--numstat")
-    _stopped(_run(repo, "generate", "--format", "json", "--output", "-"))
+    _refused(_run(repo, "generate", "--format", "json", "--output", "-"), head[2:])
 
 
 def test_a_pipe_behind_a_link_to_a_directory_is_refused(repo: Path, tmp_path: Path) -> None:
@@ -165,3 +154,32 @@ def test_a_relative_attributes_file_is_found_from_another_directory(
 
     assert done.returncode == 2, done.stderr
     assert "attrs" in done.stderr and "not a regular file" in done.stderr
+
+
+class TestTheDeadline:
+    """Where no check reaches, the deadline stops Git: `hash-object` reads a pipe for ever."""
+
+    def test_a_command_waited_for_is_stopped(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        os.mkfifo(tmp_path / "pipe")
+        monkeypatch.setattr(git_reader, "GIT_TIMEOUT_SECONDS", 2)
+        started = time.monotonic()
+
+        with pytest.raises(RepositoryError, match="within 2 seconds"):
+            git_reader._TimedGit().execute(["git", "hash-object", str(tmp_path / "pipe")])
+        assert time.monotonic() - started < 15
+
+    def test_a_read_that_writes_nothing_is_stopped(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        os.mkfifo(tmp_path / "pipe")
+        monkeypatch.setattr(git_reader, "GIT_TIMEOUT_SECONDS", 2)
+        process = git_reader._TimedGit().execute(
+            ["git", "hash-object", str(tmp_path / "pipe")], as_process=True
+        )
+        started = time.monotonic()
+
+        with pytest.raises(RepositoryError, match="within 2 seconds"):
+            git_reader._LogStream(process).raw_records()
+        assert time.monotonic() - started < 15

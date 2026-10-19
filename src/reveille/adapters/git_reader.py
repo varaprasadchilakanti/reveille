@@ -2667,6 +2667,81 @@ def _refuse_git_files_that_block(start: Path, *, search_up: bool) -> None:
                 configs.append(directory / name)
     for config in configs:
         _check_includes(config, 0)
+    # GitPython reads refs and loose objects in Python, where no deadline reaches.
+    for directory in dict.fromkeys(directories):
+        _refuse_special_files(directory / "refs")
+        for objects in _object_directories(directory / "objects"):
+            _refuse_special_files(objects)
+
+
+#: Git follows alternates at most this deep.
+_MAX_ALTERNATES_DEPTH = 5
+
+
+def _object_directories(objects: Path) -> list[Path]:
+    """Return an object directory and every one its alternates name, as Git follows them.
+
+    Args:
+        objects: The repository's `objects` directory.
+
+    Returns:
+        The directories, the repository's own first.
+
+    Raises:
+        RepositoryError: If an alternates file is not a regular file, or is too large.
+    """
+    found: list[Path] = []
+    pending = [(objects, 0)]
+    while pending:
+        directory, depth = pending.pop(0)
+        if directory in found or not directory.is_dir():
+            continue
+        found.append(directory)
+        alternates = directory / "info" / "alternates"
+        if depth >= _MAX_ALTERNATES_DEPTH or not _checked(alternates):
+            continue
+        for line in alternates.read_text("utf-8", "replace").splitlines():
+            line = line.strip()
+            if line and not line.startswith("#"):
+                target = Path(line.strip('"'))
+                pending.append((target if target.is_absolute() else directory / target, depth + 1))
+    return found
+
+
+def _refuse_special_files(root: Path) -> None:
+    """Refuse a named pipe, a device or a socket anywhere under `root`.
+
+    Only the type is checked, not the size: a pack can rightly be gigabytes. A
+    link to a directory is not followed, so a loop cannot hold the walk.
+
+    Args:
+        root: A directory Git or GitPython reads files from, such as `refs`.
+
+    Raises:
+        RepositoryError: If a file under it is not a regular file.
+    """
+    pending = [root]
+    while pending:
+        try:
+            entries = list(os.scandir(pending.pop()))
+        except OSError:
+            continue
+        for entry in entries:
+            if entry.is_dir(follow_symlinks=False):
+                pending.append(Path(entry.path))
+                continue
+            if entry.is_file(follow_symlinks=False):
+                continue  # the directory listing says so; no stat needed
+            try:
+                mode = entry.stat().st_mode  # through a link, as Git reads it
+            except OSError:
+                continue  # a broken link, which Git ignores
+            if not stat.S_ISREG(mode) and not stat.S_ISDIR(mode):
+                raise RepositoryError(
+                    f"'{entry.path}' is not a regular file (a named pipe or a device). Git "
+                    "reads it, and would wait on it for ever or read it without end. "
+                    "Remove it, or run Reveille on a fresh clone."
+                )
 
 
 def _git_dir_of(start: Path, *, search_up: bool) -> Path | None:

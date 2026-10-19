@@ -198,9 +198,9 @@ Each entry has a test that fails without the fix.
   `diff.orderFile`. Such files, and any over 8 MiB, are refused (exit 2) before Git runs; Git's own
   mailmap is off and `diff.orderFile` is pinned to the null device. Commands that read no line
   counts ignore attribute files. Include paths are listed by Git itself, so no spelling of one
-  escapes the check. Beyond those files, every Git command Reveille waits for is stopped after
-  300 seconds, and a history read after 300 seconds without output, with exit 2; a pipe at a loose
-  ref or object, or at a nested alternates file, still hangs. 0.9.0's `generate` is affected by
+  escapes the check, and every file under `refs/` and `objects/`, alternates followed, must be a
+  regular file. Beyond those, every Git command Reveille waits for is stopped after 300 seconds,
+  and a history read after 300 seconds without output, with exit 2. 0.9.0's `generate` is affected by
   attribute files.
 - **A long `.mailmap` line or a `Co-authored-by` line of spaces could stall a run for minutes**, as
   their patterns backtracked. Both are read in one pass; a working-tree `.mailmap` is bounded at
