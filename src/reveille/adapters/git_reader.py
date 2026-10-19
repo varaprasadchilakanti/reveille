@@ -20,6 +20,7 @@ import logging
 import os
 import re
 import secrets
+import shlex
 import stat
 import sys
 import tempfile
@@ -671,7 +672,14 @@ class GitReader:
             # An unreadable `.git` raises the same exception as a missing one;
             # the fixes differ, so tell them apart.
             git_dir = repo_path / ".git"
-            if git_dir.exists() and not os.access(git_dir, os.R_OK | os.X_OK):
+            named = _git_dir_of(repo_path, search_up=False) if git_dir.is_file() else None
+            if named is not None and not named.exists():
+                raise RepositoryError(
+                    f"'{repo_path}' has a .git file naming '{named}', which does not exist: "
+                    "the repository it belongs to was moved or deleted. If it was moved, run "
+                    f"`git worktree repair {shlex.quote(str(repo_path))}` in its new place."
+                ) from exc
+            if git_dir.is_dir() and not os.access(git_dir, os.R_OK | os.X_OK):
                 raise RepositoryError(
                     f"'{repo_path}' is a Git repository, but its .git directory "
                     "cannot be read. Check the permissions on it."
