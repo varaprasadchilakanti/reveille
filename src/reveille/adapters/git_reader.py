@@ -1114,7 +1114,7 @@ class GitReader:
                 is not one branch, tag or commit (a range would narrow the history
                 while the report still says "branch").
         """
-        rev = branch or self._resolve_active_branch()
+        rev = branch or self._active_revision()
         if rev.startswith("-"):
             raise RepositoryError(
                 f"Refusing to use {rev!r} as a revision: a value beginning with "
@@ -1151,20 +1151,29 @@ class GitReader:
         )
 
     def _resolve_active_branch(self) -> str:
-        """Return the active branch name, or 'HEAD' when detached.
-
-        Git's answer, asked once: GitPython splits HEAD at U+2028, U+2029 and
-        U+0085, which a branch name may hold, and stops on one that is not UTF-8.
+        """Return the active branch name, as shown, or 'HEAD' when detached.
 
         Returns:
             The branch name, or 'HEAD'.
+        """
+        return self._active_revision().removeprefix("refs/heads/")
+
+    def _active_revision(self) -> str:
+        """Return the active branch's full ref, as read, or 'HEAD' when detached.
+
+        Git's answer, asked once: GitPython splits HEAD at U+2028, U+2029 and
+        U+0085, which a branch name may hold, and stops on one that is not UTF-8.
+        The full ref, because Git reads a tag before a branch of the same name.
+
+        Returns:
+            The ref, such as `refs/heads/main`, or 'HEAD'.
         """
         if self._active_branch is None:
             try:
                 ref = str(self._git().symbolic_ref("--quiet", "HEAD")).rstrip("\n")
             except GitCommandError:
                 ref = "HEAD"
-            self._active_branch = ref.removeprefix("refs/heads/")
+            self._active_branch = ref
         return self._active_branch
 
     def _read_alongside(
@@ -1768,7 +1777,7 @@ class GitReader:
         until: datetime.date | None,
     ) -> list[str]:
         """Do the work of `tags_in_range`, letting Git's errors through."""
-        rev = branch or self._resolve_active_branch()
+        rev = branch or self._active_revision()
         walk = f"{from_commit}..{rev}" if from_commit is not None else rev
         _, rev_list_args = _build_log_args(walk, since, until, self._supports_since_as_filter())
         order = {
@@ -1821,7 +1830,7 @@ class GitReader:
         if before_commit is not None:
             args += ["--end-of-options", before_commit]
         else:
-            rev = branch or self._resolve_active_branch()
+            rev = branch or self._active_revision()
             before = None if before_date is None else _git_before(before_date)
             if before is not None:
                 args.append(f"--before={before}")
@@ -1867,7 +1876,7 @@ class GitReader:
         Returns:
             The date, or None when the branch has no such commit.
         """
-        log_args, _ = _build_log_args(self._resolve_active_branch(), None, until, line_counts=False)
+        log_args, _ = _build_log_args(self._active_revision(), None, until, line_counts=False)
         log_args[log_args.index(_LOG_FORMAT)] = "--format=%ct"
         try:
             output = str(self._git().log(*log_args))
@@ -1894,7 +1903,7 @@ class GitReader:
         Returns:
             The 40-character SHA, or None if the ref cannot be resolved.
         """
-        rev = branch or self._resolve_active_branch()
+        rev = branch or self._active_revision()
         try:
             sha = self._git().rev_parse(
                 "--quiet", "--verify", "--end-of-options", f"{rev}^{{commit}}"
