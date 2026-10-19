@@ -384,3 +384,26 @@ def test_a_dormant_repository_is_not_read_whole_for_one_date(
 
     assert rows["legacy"]["last_commit"] == "2024-01-10"
     assert whole == []
+
+
+@pytest.mark.skipif(
+    not hasattr(os, "geteuid") or os.geteuid() == 0, reason="root reads any directory"
+)
+def test_an_unreadable_git_directory_is_one_row_not_the_end_of_the_run(tmp_path: Path) -> None:
+    """Its check raised PermissionError, reported as a defect, and no row was given."""
+    root = tmp_path / "team"
+    _repo(root / "fine", ("2026-10-01", "Ana", "ana@corp.test"))
+    locked = _repo(root / "locked", ("2026-10-01", "Ben", "ben@corp.test"))
+    (locked / ".git").chmod(0)
+    try:
+        rows = _rows(root)
+        validated = CliRunner().invoke(app, ["validate", "--repo", str(locked)])
+    finally:
+        (locked / ".git").chmod(0o755)
+
+    assert rows["fine"]["status"] == "active"
+    assert rows["locked"]["status"] == "not_read"
+    assert "cannot be read" in str(rows["locked"]["reason"])
+    assert validated.exit_code == ExitCode.CANNOT_RUN
+    assert "its .git directory cannot be read" in validated.stderr
+    assert "defect" not in validated.stderr

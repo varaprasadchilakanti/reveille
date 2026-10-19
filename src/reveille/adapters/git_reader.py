@@ -2701,7 +2701,11 @@ def _object_directories(objects: Path) -> list[Path]:
     pending = [(objects, 0)]
     while pending:
         directory, depth = pending.pop(0)
-        if directory in found or not directory.is_dir():
+        try:
+            is_directory = directory.is_dir()
+        except OSError:
+            continue  # unreadable: Git cannot read objects there either, and the reader says why
+        if directory in found or not is_directory:
             continue
         found.append(directory)
         alternates = directory / "info" / "alternates"
