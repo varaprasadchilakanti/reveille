@@ -185,8 +185,12 @@ remote (`jane@host:group/repo` becomes `host:group/repo`). An address in the bra
 repository's directory name or the remote's path is shown as `(address hidden)` too
 (`user/jane@example.com` becomes `user/(address hidden)`), and so is one with an IP address for
 its domain (`bob@[10.1.2.3]`). A remote that is a path on your machine keeps only its last part
-(`/home/jane/clients/acme.git` becomes `acme.git`), since the rest names your directories. The
-HTML table then shows names only;
+(`/home/jane/clients/acme.git` becomes `acme.git`), since the rest names your directories, and
+so does a network share (`\\server\home\jane\acme.git`); an `ext::` remote, a command line,
+becomes `ext::(command hidden)`. The at sign is recognised written plainly, fullwidth (`＠`), small
+(`﹫`) or as `%40`, and in a name with spaces around it, which can hide a little more than the
+address. Addresses are found by pattern, and no pattern knows every way of writing one: read the
+report before you share it. The HTML table then shows names only;
 JSON and CSV carry the tokens, and `provenance.emails_hidden` is `true`.
 
 File paths are not changed: the extension and generated-file figures are read from them, so a
