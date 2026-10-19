@@ -86,6 +86,9 @@ before release.
   built in a job that cannot obtain the PyPI token.
 - **Documentation** was corrected by running each statement. SECURITY.md no longer promises a
   response time.
+- **A key or table in `reveille.toml` that Reveille does not read is named in a note.** A
+  misspelt `[report] tittle` used to be ignored without a word. The run continues and the exit code
+  is unchanged.
 - **With two people, the distribution sentence's evidence is "2 contributors", not the Gini.** With
   two people the Gini fixes each share. The Gini itself is still shown, as the repository's measure,
   and the contributor table shows each share.

@@ -1017,7 +1017,7 @@ def generate(
     ] = False,
 ) -> None:
     """Generate an HTML activity report for the target repository."""
-    from reveille.config import load_config_from_toml
+    from reveille.config import describe_unknown_keys, read_config_file
 
     _configure_logging(verbose)
 
@@ -1026,7 +1026,7 @@ def generate(
     _config_path = config if config is not None else _discover_config()
     if _config_path is not None:
         try:
-            config_kwargs = load_config_from_toml(_config_path)
+            config_kwargs, unknown_keys = read_config_file(_config_path)
         except ConfigurationError as exc:
             if _auto_discovered:
                 _err(
@@ -1038,6 +1038,8 @@ def generate(
             else:
                 _err(f"Configuration error: {_describe_config_error(exc)}")
             raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
+        if unknown_keys:
+            _err(f"Note: {_config_path}: {describe_unknown_keys(unknown_keys)}")
         if _auto_discovered and config_kwargs:
             _announce_discovered_settings(_config_path, config_kwargs)
 

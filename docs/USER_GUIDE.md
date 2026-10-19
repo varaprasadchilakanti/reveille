@@ -620,7 +620,9 @@ name the file `reveille.toml` in the directory you run from, where it is loaded 
 asked for. That is announced on stderr with every setting applied, because the directory may
 belong to someone else. An output path inside the Git directory is refused (exit 2), whether it
 comes from the file or a flag. All sections and keys are optional; an absent key takes the
-default, and a flag beats the file.
+default, and a flag beats the file. A table or key Reveille does not read, such as a misspelling,
+has no effect and is named in one note on stderr (the first ten, then a count); the run continues
+and the exit code is unchanged, so a file written for another version still works.
 
 ```toml
 [report]

@@ -10,6 +10,7 @@ and an optional TOML file; flags always take precedence.
 from __future__ import annotations
 
 import datetime
+import json
 import os
 import stat
 import tomllib
@@ -187,6 +188,71 @@ def _read_config_bytes(path: Path) -> bytes:
     return data
 
 
+#: Every key Reveille reads, by table. Anything else in the file has no effect.
+_KNOWN_KEYS: dict[str, frozenset[str]] = {
+    "report": frozenset(
+        {"title", "output", "branch", "since", "until", "format"}
+        | {"deterministic", "hide_emails", "limit"}
+    ),
+    "filters": frozenset({"min_commits", "exclude_authors", "exclude_paths"}),
+    "ranking": frozenset({"enabled", "weights"}),
+    "ranking.weights": frozenset({"commits", "lines", "consistency", "recency"}),
+    "areas": frozenset({"enabled", "depth"}),
+}
+
+#: Unknown keys named in full before the rest are counted, so the note stays one line.
+_UNKNOWN_KEYS_NAMED = 10
+
+
+def _toml_key(key: str) -> str:
+    """Return a key as TOML would write it: bare when it can be, quoted otherwise."""
+    if key and all(c.isascii() and (c.isalnum() or c in "_-") for c in key):
+        return key
+    return json.dumps(key)
+
+
+def _unknown_keys(raw: dict[str, Any]) -> list[str]:
+    """Return each table and key in the file that Reveille does not read.
+
+    Args:
+        raw: The parsed document, its four tables already checked to be tables.
+
+    Returns:
+        Each unknown table as `[name]` and key as `[table] key`, in file order.
+    """
+    unknown: list[str] = []
+    for section, table in raw.items():
+        if section not in _KNOWN_KEYS:
+            unknown.append(f"[{_toml_key(section)}]")
+            continue
+        for key, value in table.items():
+            if key not in _KNOWN_KEYS[section]:
+                unknown.append(f"[{section}] {_toml_key(key)}")
+            elif section == "ranking" and key == "weights" and isinstance(value, dict):
+                unknown.extend(
+                    f"[ranking.weights] {_toml_key(name)}"
+                    for name in value
+                    if name not in _KNOWN_KEYS["ranking.weights"]
+                )
+    return unknown
+
+
+def describe_unknown_keys(unknown: list[str]) -> str:
+    """Return one sentence naming the keys a configuration sets that have no effect.
+
+    Args:
+        unknown: The keys, as `read_config_file` returns them; not empty.
+
+    Returns:
+        The sentence, naming at most ten keys and counting the rest.
+    """
+    named = ", ".join(unknown[:_UNKNOWN_KEYS_NAMED])
+    rest = len(unknown) - _UNKNOWN_KEYS_NAMED
+    if rest > 0:
+        named += f" and {rest:,} more"
+    return f"Reveille does not read {named}, so {'it has' if len(unknown) == 1 else 'they have'} no effect. Check the spelling."
+
+
 def load_config_from_toml(path: Path) -> ReportConfigKwargs:
     """Load and flatten configuration values from a Reveille TOML file.
 
@@ -197,6 +263,22 @@ def load_config_from_toml(path: Path) -> ReportConfigKwargs:
 
     Returns:
         ReportConfig keyword arguments.
+
+    Raises:
+        ConfigurationError: If the file is missing, unreadable, not TOML, or invalid.
+    """
+    return read_config_file(path)[0]
+
+
+def read_config_file(path: Path) -> tuple[ReportConfigKwargs, list[str]]:
+    """Load a Reveille TOML file, and say which of its keys Reveille does not read.
+
+    Args:
+        path: Path to the TOML configuration file.
+
+    Returns:
+        ReportConfig keyword arguments, and each unknown table and key. An unknown
+        key is not an error, so a file written for another version still runs.
 
     Raises:
         ConfigurationError: If the file is missing, unreadable, not TOML, or invalid.
@@ -230,7 +312,7 @@ def load_config_from_toml(path: Path) -> ReportConfigKwargs:
     parts.update(_parse_filters_section(raw.get("filters", {})))
     parts.update(_parse_ranking_section(raw.get("ranking", {})))
     parts.update(_parse_areas_section(raw.get("areas", {})))
-    return cast(ReportConfigKwargs, parts)
+    return cast(ReportConfigKwargs, parts), _unknown_keys(raw)
 
 
 def _parse_report_section(report: dict[str, Any]) -> dict[str, Any]:
