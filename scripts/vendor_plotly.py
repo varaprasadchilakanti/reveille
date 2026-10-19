@@ -78,8 +78,11 @@ def _fetch(url: str) -> bytes:
 def _verified(url: str, integrity: str) -> bytes:
     """Download a tarball and check it against its `sha512-...` integrity value."""
     data = _fetch(url)
-    algorithm, expected = integrity.split("-", 1)
-    actual = base64.b64encode(hashlib.new(algorithm, data).digest()).decode()
+    algorithm, _, expected = integrity.partition("-")
+    if algorithm != "sha512":
+        # The registry's value chooses the algorithm; a weaker one is not accepted.
+        sys.exit(f"{url}: integrity {integrity[:16]}... is not sha512")
+    actual = base64.b64encode(hashlib.sha512(data).digest()).decode()
     if actual != expected:
         sys.exit(f"{url}: integrity mismatch")
     return data
@@ -117,6 +120,8 @@ def _required_packages(source: Path) -> dict[str, set[str]]:
             spec = next(group for group in match.groups() if group)
             if spec.startswith("."):
                 base = Path(os.path.normpath(path.parent / spec))
+                if not base.is_relative_to(source):
+                    sys.exit(f"{path}: requires {spec!r}, outside the plotly.js source")
                 for candidate in (base, Path(f"{base}.js"), base / "index.js"):
                     if candidate.is_file():
                         stack.append(candidate)
