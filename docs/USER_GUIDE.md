@@ -386,7 +386,10 @@ The rules are stated in every format ([ADR 0026](adr/0026-many-repositories-one-
   by default and at most three (`--depth`); a repository found is not searched inside, so a
   submodule or a nested clone is not a row; a symbolic link is not followed. A linked worktree
   (`git worktree add`) has a `.git` file, so it is a row of its own, with the same history as its
-  repository, and the totals count it as one more repository.
+  repository, and the totals count it as one more repository. A `.git` that is a symbolic link
+  makes a row too, as a `.git` file does. A Git directory that a working tree in the search uses
+  (made by `git init --separate-git-dir`) is not a row of its own; one that nothing there uses is
+  a `not_read` row saying so ([ADR 0030](adr/0030-repos-reads-a-git-link-and-no-store-twice.md)).
 - **Each repository is read as `summary` reads one**, with its `.mailmap`, `--exclude-author`
   applied in every repository, and no line counts. A value that matched nothing in any repository
   is reported once on stderr.
@@ -1000,6 +1003,10 @@ configuration is broken; the message says which. Reveille runs the first `git` o
 as Git's own tools do, and asks it for its version before any deadline applies, so a `git` that
 never answers (a wrapper waiting on a network drive, for example) makes Reveille wait with it. Run
 `git version` to check, and give a caller that cannot wait a timeout of its own.
+
+**"holds a Git directory but no working tree", exit 2.** The path is a Git directory whose
+configuration does not say it is bare, such as the one `git init --separate-git-dir` makes. Git
+opens it only through its working tree: give the directory whose `.git` names it.
 
 **The report says the repository is a shallow clone.** Only the fetched history was read. `git
 fetch --unshallow` fetches the rest.

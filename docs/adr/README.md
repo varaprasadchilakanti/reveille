@@ -49,10 +49,11 @@ in part), or Deprecated.
 | [0023](0023-noreply-addresses-fold-on-the-account-number.md) | GitHub noreply addresses fold on the account number | Proposed |
 | [0024](0024-the-state-of-a-repository-now.md) | The state of a repository now: `reveille state` | Proposed |
 | [0025](0025-brief-starts-at-the-latest-tag.md) | `brief` starts at the latest tag when no point is given | Proposed |
-| [0026](0026-many-repositories-one-row-each.md) | Many repositories, one row each: `reveille repos` | Proposed; exit-code consequence superseded by 0028 |
+| [0026](0026-many-repositories-one-row-each.md) | Many repositories, one row each: `reveille repos` | Proposed; exit-code consequence superseded by 0028, what counts as a working tree by 0030 |
 | [0027](0027-the-report-embeds-a-pinned-cartesian-bundle.md) | The report embeds a pinned plotly.js cartesian bundle, with its licences | Proposed |
 | [0028](0028-repos-exits-2-when-nothing-was-read.md) | `repos` exits 2 when no repository it found could be read | Proposed |
 | [0029](0029-the-html-names-a-bounded-list.md) | The HTML report names at most 1,000 people, or `--limit` | Proposed |
+| [0030](0030-repos-reads-a-git-link-and-no-store-twice.md) | `repos` reads a `.git` link, and gives a used Git directory no row of its own | Proposed |
 
 ## Drift since acceptance
 

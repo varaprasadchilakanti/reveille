@@ -117,6 +117,12 @@ before release.
 
 ### Fixed
 
+- **`repos` skipped a working tree whose `.git` is a symbolic link, and listed a separate Git
+  directory twice.** The link now makes a row, as a `.git` file does, and a Git directory a working
+  tree in the search uses is not a row of its own; one nothing uses is a row that says what it is
+  ([ADR 0030](docs/adr/0030-repos-reads-a-git-link-and-no-store-twice.md)).
+- **A Git directory not configured as bare** gave Git's raw "not a git repository". It is now told
+  that it holds a Git directory but no working tree, and to give its working tree.
 - **`--branch main` read a tag named `main`.** Git reads `refs/tags/<name>` before
   `refs/heads/<name>`, and its documentation advises naming the ref in full when both exist. A name
   that is a branch is now read as `refs/heads/<name>`, with a warning when a tag shares it; any other
