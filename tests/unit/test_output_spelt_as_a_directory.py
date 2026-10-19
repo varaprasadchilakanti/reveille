@@ -10,6 +10,7 @@ standard output.
 
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -53,7 +54,9 @@ def test_a_trailing_slash_is_refused_and_nothing_is_written(root: Path, command:
     result = CliRunner().invoke(app, [command, "-o", "made/"])
 
     assert result.exit_code == ExitCode.CANNOT_RUN, result.stderr
-    unboxed = " ".join(result.stderr.replace("│", " ").split())  # Click wraps it in a box
+    # Click boxes the message, and colours it where Rich detects CI (GITHUB_ACTIONS).
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", result.stderr)
+    unboxed = " ".join(plain.replace("│", " ").split())
     assert "names a directory, not a file" in unboxed, result.stderr
     assert sorted(p.name for p in root.iterdir()) == before
 
