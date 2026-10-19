@@ -86,6 +86,9 @@ before release.
   built in a job that cannot obtain the PyPI token.
 - **Documentation** was corrected by running each statement. SECURITY.md no longer promises a
   response time.
+- **Under `--format json`, a command-line mistake is a JSON line too.** An unknown option, a missing
+  argument or an out-of-range value gave Click's boxed text to a caller reading JSON lines. It is now
+  one `{"level": "error", ...}` line, exit 2, naming the `capabilities` call that lists the options.
 - **`--min-commits` above everyone's count says so.** The report is still written with an empty
   contributor table and exit 0, and a note gives the highest count.
 - **`repos` exits 2 when it found repositories and could read none of them.** It used to exit 0,

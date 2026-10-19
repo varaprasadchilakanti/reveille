@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Annotated, Any, ClassVar, NoReturn, TextIO, cast
 
 import typer
+from typer.core import TyperGroup
 
 from reveille import __version__
 from reveille.config import OutputFormat, ReportConfig, ReportConfigKwargs
@@ -322,6 +323,77 @@ def _exit_as_defect(exc: Exception) -> NoReturn:
     sys.exit(ExitCode.CANNOT_RUN)
 
 
+#: The commands whose stderr is JSON lines under `--format json`.
+_JSON_STDERR_COMMANDS = frozenset(
+    {"summary", "brief", "state", "repos", "who-changed", "capabilities"}
+)
+
+
+def _asks_for_json(words: list[str]) -> bool:
+    """Return whether the last `--format` in a command line is `json`."""
+    asked = None
+    for word, following in zip(words, [*words[1:], None], strict=True):
+        if word == "--format":
+            asked = following
+        elif word.startswith("--format="):
+            asked = word.removeprefix("--format=")
+        elif word == "--":
+            break
+    return asked == "json"
+
+
+#: Click's usage error, from the Click that Typer runs on: Typer 0.27 carries its own.
+_UsageError: type[Exception] = next(
+    c for c in typer.BadParameter.__mro__ if c.__name__ == "UsageError"
+)
+
+
+class _Group(TyperGroup):
+    """The command group: a usage error is a JSON line where the command's messages are."""
+
+    def parse_args(self, ctx: Any, args: list[str]) -> list[str]:
+        """Keep the command line, which Click consumes before a subcommand fails on it.
+
+        Args:
+            ctx: The group's context.
+            args: The words after the program name.
+
+        Returns:
+            What Click's parser leaves for the subcommand.
+        """
+        ctx.meta["reveille.words"] = list(args)
+        return super().parse_args(ctx, args)
+
+    def invoke(self, ctx: Any) -> Any:
+        """Run the subcommand; under `--format json`, its usage errors are JSON too.
+
+        Args:
+            ctx: The group's context.
+
+        Returns:
+            What the subcommand returns.
+
+        Raises:
+            typer.Exit: CANNOT_RUN, after the JSON error line.
+        """
+        try:
+            return super().invoke(ctx)
+        except _UsageError as exc:
+            words = [w for w in ctx.meta.get("reveille.words", []) if not w.startswith("-")]
+            command = words[0] if words else ""
+            if command not in _JSON_STDERR_COMMANDS or not _asks_for_json(
+                ctx.meta["reveille.words"]
+            ):
+                raise
+            _stderr_json["on"] = True
+            message = cast(Any, exc).format_message().rstrip(".")
+            _err(
+                f"Error: {message}. Run `reveille capabilities --command {command} "
+                "--format json` for its options."
+            )
+            raise typer.Exit(ExitCode.CANNOT_RUN) from exc
+
+
 class _App(typer.Typer):
     """The Typer application, with an exit code for errors nobody anticipated."""
 
@@ -355,6 +427,7 @@ class _App(typer.Typer):
 
 
 app = _App(
+    cls=_Group,
     name="reveille",
     help=(
         "Offline reports and summaries of a local Git repository: HTML, JSON, CSV "
