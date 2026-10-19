@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import subprocess
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
@@ -58,10 +58,41 @@ def _report(repo: Path, output_format: str) -> str:
     return out.read_text(encoding="utf-8")
 
 
+class _OutsideScripts(HTMLParser):
+    """Collects what a browser shows: text and attribute values, never a script's body.
+
+    A parser, not a pattern: it ends a script where a browser does, whatever the
+    case or spacing of the end tag. The vendored chart bundle holds its own bytes.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self._in_script = False
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self._in_script = tag == "script"
+        self.parts.extend(value for _name, value in attrs if value)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "script":
+            self._in_script = False
+
+    def handle_data(self, data: str) -> None:
+        if not self._in_script:
+            self.parts.append(data)
+
+
+def _shown_text(page: str) -> str:
+    parser = _OutsideScripts()
+    parser.feed(page)
+    parser.close()
+    return "\n".join(parser.parts)
+
+
 def test_the_html_report_shows_them_as_escapes(repo: Path) -> None:
     page = _report(repo, "html")
-    # The vendored chart bundle holds its own bytes.
-    text = re.sub(r"<script\b.*?</script>", "", page, flags=re.DOTALL | re.IGNORECASE)
+    text = _shown_text(page)
     assert "Remote:" in text and "contributor-email" in text, "positive control"
 
     assert _RLO not in text and _ESC not in text
