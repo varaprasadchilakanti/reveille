@@ -10,13 +10,14 @@ and an optional TOML file; flags always take precedence.
 from __future__ import annotations
 
 import datetime
+import json
 import os
 import stat
 import tomllib
 from pathlib import Path
 from typing import Any, Literal, TypedDict, cast
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 from reveille.exceptions import ConfigurationError
 
@@ -187,6 +188,71 @@ def _read_config_bytes(path: Path) -> bytes:
     return data
 
 
+#: Every key Reveille reads, by table. Anything else in the file has no effect.
+_KNOWN_KEYS: dict[str, frozenset[str]] = {
+    "report": frozenset(
+        {"title", "output", "branch", "since", "until", "format"}
+        | {"deterministic", "hide_emails", "limit"}
+    ),
+    "filters": frozenset({"min_commits", "exclude_authors", "exclude_paths"}),
+    "ranking": frozenset({"enabled", "weights"}),
+    "ranking.weights": frozenset({"commits", "lines", "consistency", "recency"}),
+    "areas": frozenset({"enabled", "depth"}),
+}
+
+#: Unknown keys named in full before the rest are counted, so the note stays one line.
+_UNKNOWN_KEYS_NAMED = 10
+
+
+def _toml_key(key: str) -> str:
+    """Return a key as TOML would write it: bare when it can be, quoted otherwise."""
+    if key and all(c.isascii() and (c.isalnum() or c in "_-") for c in key):
+        return key
+    return json.dumps(key)
+
+
+def _unknown_keys(raw: dict[str, Any]) -> list[str]:
+    """Return each table and key in the file that Reveille does not read.
+
+    Args:
+        raw: The parsed document, its four tables already checked to be tables.
+
+    Returns:
+        Each unknown table as `[name]` and key as `[table] key`, in file order.
+    """
+    unknown: list[str] = []
+    for section, table in raw.items():
+        if section not in _KNOWN_KEYS:
+            unknown.append(f"[{_toml_key(section)}]")
+            continue
+        for key, value in table.items():
+            if key not in _KNOWN_KEYS[section]:
+                unknown.append(f"[{section}] {_toml_key(key)}")
+            elif section == "ranking" and key == "weights" and isinstance(value, dict):
+                unknown.extend(
+                    f"[ranking.weights] {_toml_key(name)}"
+                    for name in value
+                    if name not in _KNOWN_KEYS["ranking.weights"]
+                )
+    return unknown
+
+
+def describe_unknown_keys(unknown: list[str]) -> str:
+    """Return one sentence naming the keys a configuration sets that have no effect.
+
+    Args:
+        unknown: The keys, as `read_config_file` returns them; not empty.
+
+    Returns:
+        The sentence, naming at most ten keys and counting the rest.
+    """
+    named = ", ".join(unknown[:_UNKNOWN_KEYS_NAMED])
+    rest = len(unknown) - _UNKNOWN_KEYS_NAMED
+    if rest > 0:
+        named += f" and {rest:,} more"
+    return f"Reveille does not read {named}, so {'it has' if len(unknown) == 1 else 'they have'} no effect. Check the spelling."
+
+
 def load_config_from_toml(path: Path) -> ReportConfigKwargs:
     """Load and flatten configuration values from a Reveille TOML file.
 
@@ -201,8 +267,25 @@ def load_config_from_toml(path: Path) -> ReportConfigKwargs:
     Raises:
         ConfigurationError: If the file is missing, unreadable, not TOML, or invalid.
     """
+    return read_config_file(path)[0]
+
+
+def read_config_file(path: Path) -> tuple[ReportConfigKwargs, list[str]]:
+    """Load a Reveille TOML file, and say which of its keys Reveille does not read.
+
+    Args:
+        path: Path to the TOML configuration file.
+
+    Returns:
+        ReportConfig keyword arguments, and each unknown table and key. An unknown
+        key is not an error, so a file written for another version still runs.
+
+    Raises:
+        ConfigurationError: If the file is missing, unreadable, not TOML, or invalid.
+    """
     try:
-        raw = tomllib.loads(_read_config_bytes(path).decode("utf-8"))
+        # "utf-8-sig": an editor that writes a byte-order mark still wrote UTF-8.
+        raw = tomllib.loads(_read_config_bytes(path).decode("utf-8-sig"))
     except FileNotFoundError as exc:
         raise ConfigurationError(f"Configuration file not found: '{path}'.") from exc
     except tomllib.TOMLDecodeError as exc:
@@ -230,7 +313,7 @@ def load_config_from_toml(path: Path) -> ReportConfigKwargs:
     parts.update(_parse_filters_section(raw.get("filters", {})))
     parts.update(_parse_ranking_section(raw.get("ranking", {})))
     parts.update(_parse_areas_section(raw.get("areas", {})))
-    return cast(ReportConfigKwargs, parts)
+    return cast(ReportConfigKwargs, parts), _unknown_keys(raw)
 
 
 def _parse_report_section(report: dict[str, Any]) -> dict[str, Any]:
@@ -255,6 +338,11 @@ def _parse_report_section(report: dict[str, Any]) -> dict[str, Any]:
             raise ConfigurationError(
                 f"Invalid '{key}' in the [report] section of the configuration "
                 f"file: expected a string, got {type(value).__name__}."
+            )
+        if field == "output_path" and value.endswith(("/", os.sep)):
+            # `Path` drops the separator, and the report would take the directory's name.
+            raise ConfigurationError(
+                f"[report] output {value!r} names a directory, not a file. Give a file name in it."
             )
         kwargs[field] = Path(value) if field == "output_path" else value
     for field in ("since", "until"):
@@ -430,19 +518,34 @@ def _parse_ranking_section(ranking: dict[str, Any]) -> dict[str, Any]:
             raise ConfigurationError(
                 f"[ranking] weights must be a table of named weights, not {w!r}."
             )
-        # Catches `float()`'s ValueError and pydantic's ValidationError (a
-        # ValueError), so a bad weight is a configuration error, not a traceback.
-
+        for name in ("commits", "lines", "consistency", "recency"):
+            # A number, as TOML writes one: `float(True)` is 1.0, and a quoted
+            # value is a string, refused as `enabled = "false"` is.
+            if name in w and (isinstance(w[name], bool) or not isinstance(w[name], int | float)):
+                raise ConfigurationError(
+                    f"[ranking] weights {name} must be a number, not {w[name]!r}."
+                )
         try:
             kwargs["ranking_weights"] = RankingWeights(
-                commits=float(w.get("commits", 0.30)),
-                lines=float(w.get("lines", 0.25)),
-                consistency=float(w.get("consistency", 0.25)),
-                recency=float(w.get("recency", 0.20)),
+                **{
+                    name: w[name]
+                    for name in ("commits", "lines", "consistency", "recency")
+                    if name in w
+                }
             )
-        except (TypeError, ValueError) as exc:
-            raise ConfigurationError(
-                f"[ranking] weights is not valid: {exc}. Each weight must be a "
-                "number between 0 and 1, and the four must sum to 1.0."
-            ) from exc
+        except ValidationError as exc:
+            # Pydantic's own text carries its input dump and a link to its site.
+            errors = exc.errors()
+            reasons = " ".join(
+                f"{error['loc'][0]}: {error['msg']}."
+                if error["loc"]
+                else error["msg"].removeprefix("Value error, ")
+                for error in errors
+            )
+            tail = (
+                " Each weight must be a number between 0 and 1, and the four must sum to 1.0."
+                if any(error["loc"] for error in errors)
+                else ""
+            )
+            raise ConfigurationError(f"[ranking] weights is not valid: {reasons}{tail}") from exc
     return kwargs

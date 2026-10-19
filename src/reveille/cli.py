@@ -25,12 +25,18 @@ from pathlib import Path
 from typing import Annotated, Any, ClassVar, NoReturn, TextIO, cast
 
 import typer
+from typer.core import TyperGroup
 
 from reveille import __version__
 from reveille.config import OutputFormat, ReportConfig, ReportConfigKwargs
 from reveille.domain.models import ProgressEvent
 from reveille.domain.repositories import MAX_SEARCH_DEPTH
-from reveille.exceptions import ConfigurationError, EmptyRepositoryError, ReveilleError
+from reveille.exceptions import (
+    ConfigurationError,
+    EmptyRepositoryError,
+    NoRepositoryReadError,
+    ReveilleError,
+)
 
 _logger = logging.getLogger("reveille.cli")
 
@@ -317,6 +323,101 @@ def _exit_as_defect(exc: Exception) -> NoReturn:
     sys.exit(ExitCode.CANNOT_RUN)
 
 
+def _file_path(value: str | Path) -> Path:
+    """Read `--output` as a file's path, refusing one spelt as a directory.
+
+    `Path` drops a trailing slash, so `-o reports/` would have written a file
+    named `reports`.
+
+    Args:
+        value: The option as given, or its default.
+
+    Returns:
+        The path.
+
+    Raises:
+        typer.BadParameter: If the path ends with a separator.
+    """
+    text = str(value)
+    if text.endswith(("/", os.sep)) and text != os.sep:
+        raise typer.BadParameter(
+            f"{text!r} ends with {text[-1]!r}, so it names a directory, not a file. "
+            "Give a file name in it."
+        )
+    return Path(text)
+
+
+#: The commands whose stderr is JSON lines under `--format json`.
+_JSON_STDERR_COMMANDS = frozenset(
+    {"summary", "brief", "state", "repos", "who-changed", "capabilities"}
+)
+
+
+def _asks_for_json(words: list[str]) -> bool:
+    """Return whether the last `--format` in a command line is `json`."""
+    asked = None
+    for word, following in zip(words, [*words[1:], None], strict=True):
+        if word == "--format":
+            asked = following
+        elif word.startswith("--format="):
+            asked = word.removeprefix("--format=")
+        elif word == "--":
+            break
+    return asked == "json"
+
+
+#: Click's usage error, from the Click that Typer runs on: Typer 0.27 carries its own.
+_UsageError: type[Exception] = next(
+    c for c in typer.BadParameter.__mro__ if c.__name__ == "UsageError"
+)
+
+
+class _Group(TyperGroup):
+    """The command group: a usage error is a JSON line where the command's messages are."""
+
+    def parse_args(self, ctx: Any, args: list[str]) -> list[str]:
+        """Keep the command line, which Click consumes before a subcommand fails on it.
+
+        Args:
+            ctx: The group's context.
+            args: The words after the program name.
+
+        Returns:
+            What Click's parser leaves for the subcommand.
+        """
+        ctx.meta["reveille.words"] = list(args)
+        return super().parse_args(ctx, args)
+
+    def invoke(self, ctx: Any) -> Any:
+        """Run the subcommand; under `--format json`, its usage errors are JSON too.
+
+        Args:
+            ctx: The group's context.
+
+        Returns:
+            What the subcommand returns.
+
+        Raises:
+            typer.Exit: CANNOT_RUN, after the JSON error line.
+        """
+        try:
+            return super().invoke(ctx)
+        except _UsageError as exc:
+            words = [w for w in ctx.meta.get("reveille.words", []) if not w.startswith("-")]
+            command = words[0] if words else ""
+            if command not in _JSON_STDERR_COMMANDS or not _asks_for_json(
+                ctx.meta["reveille.words"]
+            ):
+                raise
+            _stderr_json["on"] = True
+            message = cast(Any, exc).format_message().rstrip(".")
+            _err(
+                f"Error: {message}. Run `reveille capabilities --command {command} "
+                "--format json` for its options."
+            )
+            raise typer.Exit(ExitCode.CANNOT_RUN) from exc
+
+
 class _App(typer.Typer):
     """The Typer application, with an exit code for errors nobody anticipated."""
 
@@ -350,6 +451,7 @@ class _App(typer.Typer):
 
 
 app = _App(
+    cls=_Group,
     name="reveille",
     help=(
         "Offline reports and summaries of a local Git repository: HTML, JSON, CSV "
@@ -880,7 +982,7 @@ def generate(
     ] = Path("."),
     output: Annotated[
         Path,
-        typer.Option("--output", "-o", help="Output path for the HTML report."),
+        typer.Option("--output", "-o", help="Output path for the HTML report.", parser=_file_path),
     ] = Path("reveille-report.html"),
     since: Annotated[
         str | None,
@@ -1017,7 +1119,7 @@ def generate(
     ] = False,
 ) -> None:
     """Generate an HTML activity report for the target repository."""
-    from reveille.config import load_config_from_toml
+    from reveille.config import describe_unknown_keys, read_config_file
 
     _configure_logging(verbose)
 
@@ -1026,7 +1128,7 @@ def generate(
     _config_path = config if config is not None else _discover_config()
     if _config_path is not None:
         try:
-            config_kwargs = load_config_from_toml(_config_path)
+            config_kwargs, unknown_keys = read_config_file(_config_path)
         except ConfigurationError as exc:
             if _auto_discovered:
                 _err(
@@ -1038,6 +1140,8 @@ def generate(
             else:
                 _err(f"Configuration error: {_describe_config_error(exc)}")
             raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
+        if unknown_keys:
+            _err(f"Note: {_config_path}: {describe_unknown_keys(unknown_keys)}")
         if _auto_discovered and config_kwargs:
             _announce_discovered_settings(_config_path, config_kwargs)
 
@@ -1152,6 +1256,15 @@ def _run_query(produce: Callable[[Callable[[str], None]], str]) -> None:
     except EmptyRepositoryError as exc:
         _err(f"Error: {exc}")
         raise typer.Exit(code=ExitCode.NEGATIVE) from exc
+    except NoRepositoryReadError as exc:
+        # The rows are the diagnosis, so they are given before the exit says
+        # that nothing was read.
+        _print_notices(notices)
+        answer = _printable(exc.answer)
+        with contextlib.suppress(typer.Exit):  # delivered or not, nothing was read
+            _say(answer, nl=not answer.endswith("\n"), answer=False)
+        _err(f"Error: {exc}")
+        raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
     except ReveilleError as exc:
         _err(f"Error: {exc}")
         raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
@@ -1459,7 +1572,8 @@ def init(
         typer.Option(
             "--output",
             "-o",
-            help="Destination path for the generated configuration file.",
+            help="Destination path for the generated configuration file, or - for stdout.",
+            parser=_file_path,
         ),
     ] = Path("reveille.toml"),
     force: Annotated[
@@ -1480,11 +1594,25 @@ def init(
     """Scaffold an annotated reveille.toml configuration file.
 
     Writes a configuration file to the current directory (or the path given
-    by --output) with every key present and commented out, showing its
-    default. Uncomment and edit only the keys you want to override. Pass
+    by --output; `-o -` prints it instead) with every key present and
+    commented out, showing its default. Uncomment and edit only the keys you want to override. Pass
     --mailmap to also generate an annotated .mailmap template at the
     repository root.
     """
+    from reveille.init import (
+        DEFAULT_CONFIG_TEMPLATE,
+        refuse_symlink,
+        write_init_config,
+        write_mailmap_template,
+    )
+
+    if str(output) == "-":
+        # As for `generate --output -`: the file's text, to look at or to pipe.
+        if mailmap:
+            _err("Error: --mailmap writes a file, so it is not used with --output -.")
+            raise typer.Exit(code=ExitCode.CANNOT_RUN)
+        _say(DEFAULT_CONFIG_TEMPLATE, nl=False)
+        return
     cwd = Path(".").resolve()
     if not (cwd / ".git").exists():
         _err(
@@ -1494,8 +1622,6 @@ def init(
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
     _validate_output_path(output, cwd, example="reveille.toml")
-
-    from reveille.init import refuse_symlink, write_init_config, write_mailmap_template
 
     try:
         if mailmap:

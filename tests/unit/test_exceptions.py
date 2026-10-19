@@ -15,6 +15,7 @@ import reveille.exceptions as exc_module
 from reveille.exceptions import (
     ConfigurationError,
     EmptyRepositoryError,
+    NoRepositoryReadError,
     OutputPathError,
     RenderError,
     RepositoryError,
@@ -24,6 +25,7 @@ from reveille.exceptions import (
 _SUBCLASSES = [
     RepositoryError,
     EmptyRepositoryError,
+    NoRepositoryReadError,
     ConfigurationError,
     RenderError,
     OutputPathError,

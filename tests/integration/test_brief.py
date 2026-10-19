@@ -108,6 +108,25 @@ class TestFromARevision:
         assert code == ExitCode.NEGATIVE, "nothing changed since the tip"
         assert "No commits since" in err
 
+    @pytest.mark.parametrize(
+        ("args", "names"),
+        [
+            (("--until", "2000-01-01"), "up to 2000-01-01 (--until)."),
+            (("--exclude-path", "a"), "with --exclude-path applied."),
+            (("--until", "2000-01-01", "--exclude-author", "x"), "(--until) with --exclude-author"),
+        ],
+    )
+    def test_an_empty_brief_names_the_limits_that_emptied_it(
+        self, released: _Repo, args: tuple[str, ...], names: str
+    ) -> None:
+        """ "No commits since v1.0." alone sent the reader to the tag, not to --until."""
+        tip = released.git("rev-parse", "HEAD").strip()
+        start = tip if "--exclude-path" in args else "v1.0"
+        code, _, err = _brief(released.path, "--from", start, *args)
+
+        assert code == ExitCode.NEGATIVE, err
+        assert f"No commits since {start}" in err and names in err, err
+
     def test_areas_and_types_are_counted(self, released: _Repo) -> None:
         brief = _json(released.path, "--from", "v1.0")
 

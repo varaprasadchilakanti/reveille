@@ -86,6 +86,23 @@ before release.
   built in a job that cannot obtain the PyPI token.
 - **Documentation** was corrected by running each statement. SECURITY.md no longer promises a
   response time.
+- **`--min-commits` above everyone's count says so.** The report is still written with an empty
+  contributor table and exit 0, and a note gives the highest count.
+- **`repos` exits 2 when it found repositories and could read none of them.** It used to exit 0,
+  the affirmative answer, over a table of `not_read` rows. The rows are still written, since each
+  says why; one readable repository, even an empty one, keeps exit 0
+  ([ADR 0028](docs/adr/0028-repos-exits-2-when-nothing-was-read.md)).
+- **`init -o -` prints the file on stdout**, as `generate -o -` does, instead of writing a file
+  named `-`.
+- **A key or table in `reveille.toml` that Reveille does not read is named in a note.** A
+  misspelt `[report] tittle` used to be ignored without a word. The run continues and the exit code
+  is unchanged.
+- **A ranking weight must be a TOML number.** A quoted `"0.30"` was converted, and `commits = true`
+  counted as 1.0. Both are now refused, as a quoted `enabled = "false"` already was. A weight error
+  is one sentence, without Pydantic's input dump and link.
+- **With two people, the distribution sentence's evidence is "2 contributors", not the Gini.** With
+  two people the Gini fixes each share. The Gini itself is still shown, as the repository's measure,
+  and the contributor table shows each share.
 
 ### Removed
 
@@ -95,6 +112,15 @@ before release.
 
 ### Fixed
 
+- **Under `--format json`, a command-line mistake is a JSON line too.** An unknown option, a missing
+  argument or an out-of-range value gave Click's boxed text to a caller reading JSON lines. It is now
+  one `{"level": "error", ...}` line, exit 2, naming the `capabilities` call that lists the options.
+- **An empty `brief` names the limits that applied.** `brief --until 2000-01-01` said only "No
+  commits since v1.0."; it now adds "up to 2000-01-01 (--until)", and names `--exclude-author` and
+  `--exclude-path` when given.
+- **An output path ending in `/` is refused.** `-o reports/` wrote a file named `reports`.
+- **A `reveille.toml` that starts with a byte-order mark is read.** It was reported as "Invalid
+  statement" at line 1.
 - **Names and dates.** A name that is not UTF-8 stopped the HTML and CSV reports; it is shown as
   U+FFFD, and a directory or file name as `\xNN` in text output. A commit dated year 10000 is
   counted as unreadable, not dropped without a word, and `--since` or `--until 9999-12-31` exits 2.

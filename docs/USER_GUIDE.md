@@ -118,7 +118,8 @@ file is found automatically and may come from a repository you do not control. A
 needs an explicit path.
 
 `--output -` writes the report to stdout, in any format, and nothing else goes there: progress,
-notes and errors are on stderr. CSV on stdout carries no byte-order mark.
+notes and errors are on stderr. CSV on stdout carries no byte-order mark. An output path ending in
+`/` names a directory and is refused (exit 2), from a flag or from `reveille.toml`.
 
 ```bash
 reveille generate --format json --output - | jq .derived
@@ -220,6 +221,8 @@ reveille generate --hide-emails --output shared-report.html
 Chooses who is *listed*, not who is counted: every figure still describes everyone, and the
 header says how many are listed
 ([ADR 0011](adr/0011-filters-choose-the-listing-not-the-analysis.md)). It is not a privacy control.
+A value above everyone's count writes the report with an empty table, exit 0, and a note on stderr
+giving the highest count, so a better value can be chosen.
 
 ### `--limit`
 
@@ -386,7 +389,10 @@ The rules are stated in every format ([ADR 0026](adr/0026-many-repositories-one-
   is reported once on stderr.
 - **A repository that cannot be read** (a partial clone, a SHA-256 repository, a corrupt one) is a
   row with status `not_read` and the reason; the others are still read, and the exit code is 0.
-  No repository found is a negative answer (exit 1).
+  When none of the repositories found could be read, the rows are still written and the exit code
+  is 2, because there is no answer about any of them
+  ([ADR 0028](adr/0028-repos-exits-2-when-nothing-was-read.md)). A repository with no commits was
+  read. No repository found is a negative answer (exit 1).
 - **It names nobody and counts nobody across repositories.** The people column describes one
   repository each; adding it up does not give a number of people.
 - **Formats:** `text` (default), `json`, `markdown` and `csv`. CSV cells that a spreadsheet would
@@ -443,8 +449,10 @@ With `--format json`, `summary`, `brief`, `state`, `who-changed`, `repos` and `c
 write each stderr message as one JSON object per line, `{"level": "error", "message": "..."}`
 (levels `error`, `warning` and `note`, and `debug` with `--verbose`), so a program can read why
 there is no answer without parsing prose. A negative answer (exit 1) is written at level `error`
-too: the exit code says which it is. Errors in the command line itself (an unknown option, or a
-value out of range such as `--limit 0`) are still reported as text, before the format is known. `generate` keeps text on stderr, beside its progress lines.
+too: the exit code says which it is. An error in the command line itself (an unknown option, a
+missing argument, or a value out of range such as `who-changed --limit 0`) is a JSON line too, exit 2, when
+`--format json` is on that command line; it names the `capabilities` call that lists the command's
+options. `generate` keeps text on stderr, beside its progress lines.
 
 ### Diagnostics
 
@@ -595,7 +603,8 @@ The file has no effect until you uncomment keys. Its structure is the
 [TOML Configuration Reference](#toml-configuration-reference). Options:
 
 - **`--output`, `-o`** (default `./reveille.toml`) writes the file elsewhere. The parent directory
-  must exist.
+  must exist, and a path ending in `/` is refused, as it names a directory. `-o -` prints the file
+  on stdout instead and writes nothing; it needs no repository, and is not used with `--mailmap`.
 - **`--force`** replaces an existing file. Without it, an existing file is an error.
 - **`--mailmap`** also writes an annotated `.mailmap` template at the repository root, covering
   all four `gitmailmap(5)` forms with examples and the matching precedence. An
@@ -620,7 +629,9 @@ name the file `reveille.toml` in the directory you run from, where it is loaded 
 asked for. That is announced on stderr with every setting applied, because the directory may
 belong to someone else. An output path inside the Git directory is refused (exit 2), whether it
 comes from the file or a flag. All sections and keys are optional; an absent key takes the
-default, and a flag beats the file.
+default, and a flag beats the file. A table or key Reveille does not read, such as a misspelling,
+has no effect and is named in one note on stderr (the first ten, then a count); the run continues
+and the exit code is unchanged, so a file written for another version still works.
 
 ```toml
 [report]
@@ -644,7 +655,7 @@ exclude_paths = ["vendor"]                 # repeated --exclude-path
 
 [ranking]
 enabled = false                            # --ranking; read "The Ranking Algorithm" first
-# Four weights; they must sum to 1.0. These are the documented defaults.
+# Four weights, as numbers (not quoted); they must sum to 1.0. These are the documented defaults.
 weights = { commits = 0.30, lines = 0.25, consistency = 0.25, recency = 0.20 }
 
 [areas]
@@ -707,7 +718,10 @@ risk.
 A few sentences generated from the report's figures by fixed rules, without a language model: the
 same history always gives the same sentences. They name nobody. With fewer than three people, a
 sentence that would in effect describe one identifiable person, such as a share of commits or a
-weekend-working pattern, is left out.
+weekend-working pattern, is left out. With two people the Gini fixes each share, so the distribution
+sentence gives the number of people as its evidence, not the Gini. The Gini itself is still shown,
+in the Distribution card, the Contribution Distribution section and `summary`, because it is the
+repository's measure; the contributor table shows each share in any case.
 
 ### Contribution Distribution
 
@@ -977,6 +991,12 @@ stderr say how many. `--exclude-author` removes an author's commits from every f
 
 **"No commits found", exit 1.** No non-merge commit falls in the window on the analysed branch.
 Check `--since`, `--until` and `--branch`; the branch defaults to the one checked out.
+
+**"Git could not be started", exit 2.** No `git` is on `PATH`, it cannot run, or Git's own
+configuration is broken; the message says which. Reveille runs the first `git` on `PATH`,
+as Git's own tools do, and asks it for its version before any deadline applies, so a `git` that
+never answers (a wrapper waiting on a network drive, for example) makes Reveille wait with it. Run
+`git version` to check, and give a caller that cannot wait a timeout of its own.
 
 **The report says the repository is a shallow clone.** Only the fetched history was read. `git
 fetch --unshallow` fetches the rest.

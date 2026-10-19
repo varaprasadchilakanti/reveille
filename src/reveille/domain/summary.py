@@ -119,16 +119,18 @@ def _distribution_finding(contributors: list[ContributorStats]) -> Finding | Non
     # Gini is capped at (n-1)/n, so the leading share decides the wording and
     # the coefficient is the evidence.
     if len(counts) < _MINIMUM_CONTRIBUTORS_FOR_BEHAVIOUR:
-        # A share would single out an identifiable person; the Gini does not.
+        # A share would single out an identifiable person, and with two people
+        # the Gini fixes each share, so neither is this sentence's evidence.
         # `reveille summary` prints no table, so the sentence names it.
         return Finding(
             headline=(f"Commits are distributed across {_plural(len(counts), 'contributor')}."),
             detail=(
                 "Each share is in the full report's contributor table. With so "
                 "few contributors a share is a statement about an identifiable "
-                "person, so it is not restated here."
+                "person, and the Gini fixes each share, so neither is restated "
+                "as evidence here."
             ),
-            evidence=f"Gini {gini:.2f}",
+            evidence=_plural(len(counts), "contributor"),
         )
 
     if leading_share > 0.50:
