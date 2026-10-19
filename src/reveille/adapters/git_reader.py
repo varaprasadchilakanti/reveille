@@ -846,6 +846,11 @@ class GitReader:
         except GitCommandError:
             return  # No such setting, or a bare repository: no working tree elsewhere.
         if top and Path(top).resolve() != self._repo_path:
+            if Path(self._repo.git_dir).resolve() == self._repo_path:
+                raise RepositoryError(
+                    f"'{repo_path}' is the Git directory of the working tree '{top}'. "
+                    "Give the working tree instead."
+                )
             raise RepositoryError(
                 f"'{repo_path}' sets its working tree to '{top}' (core.worktree in its "
                 "Git configuration). Reveille reads only the repository it is given, and "
@@ -1732,10 +1737,14 @@ class GitReader:
             The 40-character SHA of the commit it names.
 
         Raises:
-            RepositoryError: If it begins with `-` (git would read an option) or
+            RepositoryError: If it is empty, begins with `-` (git would read an option), or
                 names no commit here.
         """
-        if not revision or revision.startswith("-"):
+        if not revision:
+            raise RepositoryError(
+                "An empty revision names no commit: give a tag, branch or commit."
+            )
+        if revision.startswith("-"):
             raise RepositoryError(
                 f"Refusing to use {revision!r} as a revision: a value beginning with '-' "
                 "is read by git as an option."
@@ -2631,7 +2640,7 @@ def find_repositories(directory: Path, depth: int) -> tuple[list[Path], list[Pat
                 if entry.name == ".git" or entry.is_symlink() or not entry.is_dir():
                     continue
                 candidate = Path(entry.path)
-                if _is_repository(candidate):
+                if is_repository(candidate):
                     found.append(candidate)
                 else:
                     below.append(candidate)
@@ -2639,7 +2648,7 @@ def find_repositories(directory: Path, depth: int) -> tuple[list[Path], list[Pat
     return sorted(found), sorted(unreadable)
 
 
-def _is_repository(path: Path) -> bool:
+def is_repository(path: Path) -> bool:
     """Return whether `path` is a working tree or a bare repository, by its files alone."""
     try:
         if (path / ".git").exists() and not (path / ".git").is_symlink():

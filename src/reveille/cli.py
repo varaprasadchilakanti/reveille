@@ -16,6 +16,7 @@ import itertools
 import json
 import logging
 import os
+import stat
 import sys
 import threading
 import time
@@ -315,6 +316,14 @@ class _App(typer.Typer):
         a negative answer. The traceback goes to the debug log (`--verbose`).
         """
         try:
+            os.getcwd()
+        except FileNotFoundError:
+            _err(
+                "Error: the current directory no longer exists (it was deleted or moved). "
+                "Change to a directory that exists, and run Reveille again."
+            )
+            sys.exit(ExitCode.CANNOT_RUN)
+        try:
             return super().__call__(*args, **kwargs)
         except ImportError as exc:
             if not str(exc).startswith("Failed to initialize"):
@@ -597,15 +606,54 @@ def _git_directories(repo_path: Path) -> list[Path]:
     return directories
 
 
-def _validate_output_path(output: Path, repo_path: Path, *, from_config: bool = False) -> None:
+def _refuse_what_is_not_a_file(output: Path, example: str) -> None:
+    """Refuse an output path that is a directory, a device, a pipe or a socket, or unusable.
+
+    Args:
+        output: The output path as given.
+        example: A file name to suggest when it is a directory.
+
+    Raises:
+        typer.Exit: ExitCode.CANNOT_RUN if the path is refused.
+    """
+    try:
+        mode = output.stat().st_mode
+    except FileNotFoundError:
+        return
+    except OSError as exc:  # a name too long, a loop of links
+        _err(f"Error: output path '{output}' cannot be used: {exc.strerror}.")
+        raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
+    if stat.S_ISDIR(mode):
+        _err(
+            f"Error: output path '{output}' is a directory. Give a file name, "
+            f"for example '{output / example}'."
+        )
+        raise typer.Exit(code=ExitCode.CANNOT_RUN)
+    if not stat.S_ISREG(mode):
+        _err(
+            f"Error: output path '{output}' is not a regular file (a device, a named pipe "
+            "or a socket). Give a file name; `-o -` writes to standard output."
+        )
+        raise typer.Exit(code=ExitCode.CANNOT_RUN)
+
+
+def _validate_output_path(
+    output: Path,
+    repo_path: Path,
+    *,
+    from_config: bool = False,
+    example: str = "reveille-report.html",
+) -> None:
     """Validate the output path for traversal and the repository boundary.
 
-    Refuses `..`, a Git directory or a directory; warns outside the repository.
+    Refuses `..`, a Git directory, a directory, a device, a pipe or a socket, and a
+    path the system cannot use; warns outside the repository.
 
     Args:
         output: The output path as given, before resolution.
         repo_path: The resolved repository root.
         from_config: An auto-discovered (untrusted) file supplied the path.
+        example: A file name to suggest when the path is a directory.
 
     Raises:
         typer.Exit: ExitCode.CANNOT_RUN if the path is refused.
@@ -643,12 +691,7 @@ def _validate_output_path(output: Path, repo_path: Path, *, from_config: bool = 
         )
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
-    if output.is_dir():
-        _err(
-            f"Error: output path '{output}' is a directory. Give a file name, "
-            f"for example '{output / 'reveille-report.html'}'."
-        )
-        raise typer.Exit(code=ExitCode.CANNOT_RUN)
+    _refuse_what_is_not_a_file(output, example)
 
     if ".." in output.parts:
         _err(
@@ -1443,7 +1486,7 @@ def init(
         )
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
-    _validate_output_path(output, cwd)
+    _validate_output_path(output, cwd, example="reveille.toml")
 
     from reveille.init import refuse_symlink, write_init_config, write_mailmap_template
 

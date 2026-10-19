@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import cast
 
 from reveille import __version__
-from reveille.adapters.git_reader import GitReader, find_repositories
+from reveille.adapters.git_reader import GitReader, find_repositories, is_repository
 from reveille.adapters.renderer import Renderer
 from reveille.config import ReportConfig
 from reveille.domain.areas import who_changed
@@ -247,9 +247,16 @@ def repositories_text(
             else f"{len(unreadable):,} directories could not be listed and were not searched.",
         )
     if not found:
+        # `repos` searches below the directory, so a repository given is not a row.
+        hint = (
+            " It is a repository itself: give the directory that holds it, or run "
+            "`reveille state` on it."
+            if is_repository(directory)
+            else " A larger --depth searches deeper."
+        )
         raise EmptyRepositoryError(
             f"No Git repository found in '{directory}' within {depth} "
-            f"{'level' if depth == 1 else 'levels'}. A larger --depth searches deeper."
+            f"{'level' if depth == 1 else 'levels'}.{hint}"
         )
     rows: list[RepositoryActivity] = []
     matched: set[str] = set()
