@@ -1311,6 +1311,16 @@ def _repositories_csv(rows: list[RepositoryActivity]) -> str:
     return buffer.getvalue()
 
 
+def _brief_from(tag: str) -> str:
+    """Return the `reveille brief` command for a tag, quoted for a POSIX shell.
+
+    A tag can begin with `-`, which `--from` refuses as an option; its full
+    ref name cannot be taken for one.
+    """
+    revision = f"refs/tags/{tag}" if tag.startswith("-") else tag
+    return f"reveille brief --from {shlex.quote(revision)}"
+
+
 def _counted(n: int, singular: str) -> str:
     """Return "1 thing" or "N things"."""
     return f"{n:,} {singular}" if n == 1 else f"{n:,} {singular}s"
@@ -2403,8 +2413,9 @@ def _state_lines(
     )
     if state.latest_tag:
         lines.append(
-            f"Latest tag: {state.latest_tag}, {state.commits_since_tag or 0:,} commits since. "
-            f"Next: reveille brief --from {shlex.quote(state.latest_tag)}"
+            f"Latest tag: {state.latest_tag}, "
+            f"{_counted(state.commits_since_tag or 0, 'commit')} since. "
+            f"Next: {_brief_from(state.latest_tag)}"
         )
     if state.shallow:
         lines.append("Shallow clone: only part of the history is present.")
@@ -2577,8 +2588,9 @@ def _state_markdown(state: RepositoryState, name: str, history_replaced: bool, l
     )
     if state.latest_tag:
         lines.append(
-            f"- **Latest tag:** {_md(state.latest_tag)}, {state.commits_since_tag or 0:,} commits "
-            f"since; next: {_md(f'reveille brief --from {shlex.quote(state.latest_tag)}')}"
+            f"- **Latest tag:** {_md(state.latest_tag)}, "
+            f"{_counted(state.commits_since_tag or 0, 'commit')} since; "
+            f"next: {_md(_brief_from(state.latest_tag))}"
         )
     lines += [*_state_markdown_notes(state, history_replaced, limit), "", f"> {_STATE_NOTICE}"]
     return _joined(lines)
