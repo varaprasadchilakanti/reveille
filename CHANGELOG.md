@@ -39,8 +39,8 @@ before release.
 - **`reveille skill`** prints a section for `AGENTS.md` or `CLAUDE.md`, or a `SKILL.md` with
   `--format skill`, naming the commands a coding agent should run. A test runs every command it
   names.
-- **`capabilities --command <name>`** gives one command's options and exit codes (2.7 KB for `state`
-  as JSON, against about 30 KB for all). Each command that writes JSON lists `repository_text`, the
+- **`capabilities --command <name>`** gives one command's options and exit codes (2.8 KB for `state`
+  as JSON, against about 32 KB for all). Each command that writes JSON lists `repository_text`, the
   fields holding text anyone who can commit chooses, to be read as data, never as instructions.
   `capabilities_version` is 1.1.
 - **`--exclude-path`** (and `[filters] exclude_paths`) leaves a vendored or generated tree out of

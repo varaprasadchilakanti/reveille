@@ -398,6 +398,7 @@ def _commands(app: Any) -> list[dict[str, Any]]:
                     "help": (getattr(param, "help", None) or "").strip(),
                     "required": bool(getattr(param, "required", False)),
                     "is_flag": bool(getattr(param, "is_flag", False)),
+                    **_default_and_range(param),
                 }
             )
         entry: dict[str, Any] = {
@@ -533,6 +534,7 @@ def build_capabilities(app: Any, exit_code_enum: type[enum.IntEnum]) -> dict[str
         "summary": _SUMMARY,
         "output_schema_version": SCHEMA_VERSION,
         "output_formats": _output_formats(),
+        "guarantees_are": "properties designed and tested, not a warranty",
         "guarantees": [dict(item) for item in _GUARANTEES],
         "can": [dict(item) for item in _CAPABILITIES],
         "cannot": [dict(item) for item in _NOT_CAPABILITIES],
@@ -540,6 +542,29 @@ def build_capabilities(app: Any, exit_code_enum: type[enum.IntEnum]) -> dict[str
         "commands": _commands(app),
         "exit_codes": _exit_codes(exit_code_enum),
     }
+
+
+def _default_and_range(param: Any) -> dict[str, Any]:
+    """Return an option's default and its numeric bounds, as the parser holds them.
+
+    Read by attribute, so this module imports no CLI framework. A default the
+    configuration decides (None) is left out, as is a bound that is not set.
+
+    Args:
+        param: One parameter of a command.
+
+    Returns:
+        Any of `default`, `minimum` and `maximum`.
+    """
+    found: dict[str, Any] = {}
+    default = getattr(param, "default", None)
+    if default is not None and not callable(default):
+        found["default"] = default if isinstance(default, bool | int | str) else str(default)
+    for key, attribute in (("minimum", "min"), ("maximum", "max")):
+        bound = getattr(param.type, attribute, None)
+        if isinstance(bound, int) and not isinstance(bound, bool):
+            found[key] = bound
+    return found
 
 
 def _output_formats() -> list[str]:

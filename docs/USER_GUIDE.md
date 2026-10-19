@@ -458,7 +458,7 @@ notes, warnings and errors.
 
 Describes what Reveille can and cannot do, for a person or a program. Options:
 `--format text|json` (default `text`) and `--command <name>`, which gives only that command's
-description, options and exit codes (2.7 KB for `state` as JSON, against about 30 KB for
+description, options and exit codes (2.8 KB for `state` as JSON, against about 32 KB for
 everything).
 
 ```bash
@@ -468,8 +468,9 @@ reveille capabilities --command brief --format json
 
 The JSON carries `capabilities_version`, the tool and output-schema versions, a `guarantees` list
 (properties designed and tested; not a warranty), a `can` list, a `cannot` list where each entry says what to use instead, the
-caveats that change how a number should be read, every command with its options, and the exit-code
-contract. The command surface and exit codes are read from the running program, so they cannot
+caveats that change how a number should be read, every command with its options (each with its
+default and its numeric bounds, where the parser has them), and the exit-code contract.
+`guarantees_are` says what the `guarantees` are, for a reader of the JSON alone. The command surface and exit codes are read from the running program, so they cannot
 drift from it.
 
 Each command that writes JSON also lists `repository_text`: the fields whose strings come from the
