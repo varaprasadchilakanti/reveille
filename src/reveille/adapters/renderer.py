@@ -13,33 +13,35 @@ is a daily-count payload the client turns into a calendar grid.
 
 from __future__ import annotations
 
+import base64
 import csv
 import datetime
+import functools
+import hashlib
 import io
 import itertools
 import json
 import math
-import os
 import re
-import secrets
 import shlex
-import stat
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, cast
 
 import plotly.graph_objects as go
-import plotly.offline
 from jinja2 import (
     Environment,
     PackageLoader,
     StrictUndefined,
+    Template,
     TemplateNotFound,
     TemplatesNotFound,
     select_autoescape,
 )
+from markupsafe import Markup
 
+from reveille import __version__
 from reveille.domain.areas import AreaStatement, PathAnswer, describe_areas, is_automated
 from reveille.domain.brief import QUIET_DAYS, Brief
 from reveille.domain.coauthors import commits_with_co_authors
@@ -55,9 +57,17 @@ from reveille.domain.models import (
     ReportData,
 )
 from reveille.domain.profile import ProfileAxis, repository_profile
+from reveille.domain.pseudonyms import HIDDEN_DOMAIN
+from reveille.domain.repositories import (
+    QUIET_UNTIL_DAYS,
+    STATUSES,
+    RepositoryActivity,
+    status_counts,
+)
 from reveille.domain.state import QUIET_BRANCH_DAYS, RepositoryState
 from reveille.domain.summary import Finding, longest_quiet_run, summarise
 from reveille.exceptions import OutputPathError, RenderError
+from reveille.replacing import write_replacing
 
 # Label of the aggregated residual slice, referenced where its colour is chosen.
 _OTHER_LABEL: str = "Other Contributors"
@@ -122,32 +132,110 @@ _SCRIPT_BLOCK_RE: re.Pattern[str] = re.compile(
 )
 _HTML_TAG_RE: re.Pattern[str] = re.compile(r"<[^>]+>")
 
-# The ~4.8 MB Plotly bundle, read once per process rather than per report.
-_PLOTLY_JS_BUNDLE: str = plotly.offline.get_plotlyjs()
+
+@functools.cache
+def _vendored(name: str) -> str:
+    """Return a file from `reveille/vendor/`, read once per process and only for HTML.
+
+    The report embeds the plotly.js cartesian bundle Reveille ships, not the full
+    bundle in the installed plotly package, and the licences of what it carries
+    (ADR 0027).
+
+    Args:
+        name: The file's name.
+
+    Returns:
+        The file's text.
+    """
+    return (_VENDOR / name).read_text(encoding="utf-8")
+
+
+_VENDOR: Path = Path(__file__).resolve().parents[1] / "vendor"
+
+
+def _script_sources(*scripts: str) -> Markup:
+    """Return the Content-Security-Policy sources that let exactly these scripts run.
+
+    Each is hashed from the text Reveille supplies, never found in the page: a
+    script repository data put into the page would be hashed and allowed too.
+
+    Args:
+        scripts: Each script, exactly as it stands between its tags.
+
+    Returns:
+        One `'sha256-...'` source per script, space-separated.
+    """
+    return Markup(
+        " ".join(
+            f"'sha256-{base64.b64encode(hashlib.sha256(str(script).encode()).digest()).decode()}'"
+            for script in scripts
+        )
+    )
+
+
+class _DedentingLoader(PackageLoader):
+    """Load templates without their leading indentation.
+
+    Indentation is about a quarter of the markup, styles and scripts the report
+    carries, and the template has nothing it changes the meaning of: no `<pre>`
+    or `<textarea>` holding template text, no multi-line JavaScript string (a
+    test checks each). Stripped from the template source, so the Plotly bundle,
+    the licence texts and the chart data rendered into it are untouched.
+    """
+
+    def get_source(
+        self, environment: Environment, template: str
+    ) -> tuple[str, str, Callable[[], bool] | None]:
+        """Return the template's source with each line's leading spaces and tabs removed.
+
+        Args:
+            environment: The Jinja environment.
+            template: The template's name.
+
+        Returns:
+            The source, its file name and an up-to-date check, as `PackageLoader` gives.
+        """
+        source, filename, uptodate = super().get_source(environment, template)
+        return _LEADING_INDENT.sub("", source), filename, uptodate
+
+
+_LEADING_INDENT = re.compile(r"^[ \t]+", re.MULTILINE)
 
 
 class Renderer:
     """Renders a ReportData instance into a self-contained HTML file."""
 
     def __init__(self) -> None:
-        """Load the Jinja2 environment and validate the template is present.
+        """Create a renderer; the HTML template is compiled when first needed."""
+        self._template: Template | None = None
+
+    def _report_template(self) -> Template:
+        """Return the compiled HTML template, compiling it on first use.
+
+        JSON, CSV and the text answers never need it, and compiling it is the
+        larger part of a small report's run time.
+
+        Returns:
+            The report template.
 
         Raises:
             RenderError: If the report template is missing from the package.
         """
-        try:
-            self._env = Environment(
-                loader=PackageLoader("reveille", "templates"),
-                autoescape=select_autoescape(["html", "j2"]),
-                undefined=StrictUndefined,
-            )
-            self._template = self._env.get_template("report.html.j2")
-        except (TemplateNotFound, TemplatesNotFound, OSError) as exc:
-            raise RenderError(
-                "Failed to load the report template. "
-                "Verify the package was installed correctly and that "
-                "src/reveille/templates/report.html.j2 exists."
-            ) from exc
+        if self._template is None:
+            try:
+                environment = Environment(
+                    loader=_DedentingLoader("reveille", "templates"),
+                    autoescape=select_autoescape(["html", "j2"]),
+                    undefined=StrictUndefined,
+                )
+                self._template = environment.get_template("report.html.j2")
+            except (TemplateNotFound, TemplatesNotFound, OSError) as exc:
+                raise RenderError(
+                    "Failed to load the report template. "
+                    "Verify the package was installed correctly and that "
+                    "src/reveille/templates/report.html.j2 exists."
+                ) from exc
+        return self._template
 
     def render(
         self,
@@ -177,7 +265,7 @@ class Renderer:
             )
         html = self.html_text(data)
         try:
-            _write_replacing(resolved, html, encoding="utf-8")
+            write_replacing(resolved, html, encoding="utf-8")
         except OSError as exc:
             raise OutputPathError(f"Failed to write report to '{resolved}': {exc}") from exc
 
@@ -204,9 +292,9 @@ class Renderer:
             )
             charts = self._build_charts(data)
             derived = self._compute_derived_stats(data)
-            plotly_js = _PLOTLY_JS_BUNDLE
+            plotly_js = _vendored("plotly-cartesian.min.js")
             generated_at = data.metadata.generated_at.strftime("%Y-%m-%d %H:%M UTC")
-            html = self._template.render(
+            html = self._report_template().render(
                 data=data,
                 charts=charts,
                 # Rendered by the template in HTML, CSS and SVG (ADR 0012, 0016).
@@ -217,8 +305,11 @@ class Renderer:
                     for name, specification in charts.items()
                 },
                 derived=derived,
+                co_authored=commits_with_co_authors(data.commits),
                 notice=_NOTICE,
                 plotly_js=plotly_js,
+                third_party_notices=_vendored("THIRD-PARTY-NOTICES.txt"),
+                script_sources=_script_sources,
                 generated_at=generated_at,
             )
         except RenderError:
@@ -254,7 +345,7 @@ class Renderer:
             )
         text = self.json_text(data)
         try:
-            _write_replacing(resolved, text, encoding="utf-8")
+            write_replacing(resolved, text, encoding="utf-8")
         except OSError as exc:
             raise OutputPathError(f"Failed to write JSON report to '{resolved}': {exc}") from exc
         return resolved
@@ -297,6 +388,7 @@ class Renderer:
                 "replace_refs_not_followed": data.provenance.replace_refs_not_followed,
                 "graft_file_not_followed": data.provenance.graft_file_not_followed,
                 "limit": data.provenance.limit,
+                "emails_hidden": data.provenance.emails_hidden,
                 "areas": {
                     "enabled": data.provenance.area_authors_enabled,
                     "depth": data.provenance.area_depth,
@@ -314,6 +406,7 @@ class Renderer:
                         else None
                     ),
                     "exclude_authors_count": data.provenance.exclude_authors_count,
+                    "exclude_paths": list(data.provenance.exclude_paths),
                     "min_commits": data.provenance.min_commits,
                 },
                 "ranking": {
@@ -432,6 +525,7 @@ class Renderer:
         return {
             "schema_version": data.provenance.schema_version,
             "document": "summary",
+            "reveille_version": __version__,
             "repository": {
                 "name": data.metadata.name,
                 "analysed_branch": data.metadata.analysed_branch,
@@ -444,6 +538,7 @@ class Renderer:
                 "merge_commits_excluded": data.provenance.merge_commits_excluded,
                 "replace_refs_not_followed": data.provenance.replace_refs_not_followed,
                 "graft_file_not_followed": data.provenance.graft_file_not_followed,
+                "exclude_paths": list(data.provenance.exclude_paths),
             },
             "totals": {
                 "commits": data.metadata.total_commits,
@@ -503,6 +598,8 @@ class Renderer:
                 if merges == 1
                 else f"{merges:,} merge commits are not counted."
             )
+        if repo["exclude_paths"]:
+            lines.append(f"Not counted, by request: {', '.join(repo['exclude_paths'])}.")
         lines.append(document["notice"])
         return _joined(lines)
 
@@ -512,6 +609,7 @@ class Renderer:
         window: tuple[datetime.date, datetime.date],
         output_format: str,
         limit: int,
+        analysed_commit: str | None = None,
     ) -> str:
         """Render who changed a path, as JSON or plain lines (ADR 0015).
 
@@ -522,6 +620,7 @@ class Renderer:
             window: The analysis window.
             output_format: "json" or "text".
             limit: The most names any list carries.
+            analysed_commit: The commit the history was read from, if resolved.
 
         Returns:
             The answer.
@@ -539,7 +638,9 @@ class Renderer:
                 {
                     "schema_version": SCHEMA_VERSION,
                     "document": "who-changed",
+                    "reveille_version": __version__,
                     "path": answer.path,
+                    "analysed_commit": analysed_commit,
                     "analysis_since": window[0].isoformat(),
                     "analysis_until": window[1].isoformat(),
                     "commits": answer.commits,
@@ -619,6 +720,7 @@ class Renderer:
                 {
                     "schema_version": SCHEMA_VERSION,
                     "document": "brief",
+                    "reveille_version": __version__,
                     "repository": {"name": repository[0], "analysed_branch": repository[1]},
                     "point": {"from": named, "commit": commit}
                     if commit is not None
@@ -680,6 +782,85 @@ class Renderer:
         return _joined(lines)
 
     @staticmethod
+    def repositories_text(
+        rows: list[RepositoryActivity],
+        directory: str,
+        window: tuple[datetime.date, datetime.date],
+        days: int,
+        depth: int,
+        output_format: str,
+    ) -> str:
+        """Render one row per repository, as text, JSON, Markdown or CSV (ADR 0026).
+
+        Args:
+            rows: The repositories, in path order.
+            directory: The searched directory's name, not its full path.
+            window: The activity window's first and last days.
+            days: The window's length.
+            depth: How deep the search went.
+            output_format: "text", "json", "markdown" or "csv".
+
+        Returns:
+            The answer.
+        """
+        counts = status_counts(rows)
+        rule = (
+            f"Status by days since the last commit: active within {days}, quiet within "
+            f"{max(days, QUIET_UNTIL_DAYS)}, dormant beyond; empty has no commit, or none left "
+            "after --exclude-author. People are counted per repository, so the column does "
+            "not add up to a number of people."
+        )
+        if output_format == "json":
+            return json.dumps(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "document": "repos",
+                    "reveille_version": __version__,
+                    "directory": directory,
+                    "search_depth": depth,
+                    "window": {
+                        "since": window[0].isoformat(),
+                        "until": window[1].isoformat(),
+                        "days": days,
+                    },
+                    "rules": {
+                        "active_within_days": days,
+                        "quiet_within_days": max(days, QUIET_UNTIL_DAYS),
+                    },
+                    "totals": {"repositories": len(rows), **counts},
+                    "repositories": [_repository_json(row) for row in rows],
+                    "notice": f"{_NOTICE} {rule}",
+                },
+                indent=2,
+            )
+        if output_format == "csv":
+            return _repositories_csv(rows)
+        tally = ", ".join(
+            f"{counts[s]:,} {s.replace('_', ' ')}" for s in STATUSES if counts[s] or s != "not_read"
+        )
+        head = (
+            f"{len(rows):,} {'repository' if len(rows) == 1 else 'repositories'} in "
+            f"{directory}, {window[0].isoformat()} to {window[1].isoformat()} ({days} days): "
+            f"{tally}."
+        )
+        if output_format == "markdown":
+            lines = [
+                f"### Repositories: {_md(directory)}",
+                "",
+                head,
+                "",
+                "| Repository | Status | Last commit | Days since | Commits | People | Automated |",
+                "|---|---|---|---:|---:|---:|---:|",
+                *(_repository_markdown_row(row) for row in rows),
+                "",
+                f"> {rule}",
+                ">",
+                f"> {_NOTICE}",
+            ]
+            return _joined(lines)
+        return _joined([head, *(_repository_line(row) for row in rows), rule, _NOTICE])
+
+    @staticmethod
     def state_text(
         state: RepositoryState,
         *,
@@ -734,7 +915,7 @@ class Renderer:
         text = self.csv_text(data)
         try:
             # BOM for spreadsheets; stdout output (csv_text) carries none.
-            _write_replacing(resolved, text, encoding="utf-8-sig")
+            write_replacing(resolved, text, encoding="utf-8-sig")
         except OSError as exc:
             raise OutputPathError(f"Failed to write CSV report to '{resolved}': {exc}") from exc
         return resolved
@@ -1037,6 +1218,109 @@ def _population(data: ReportData) -> list[ContributorStats]:
     )
 
 
+def _repository_json(row: RepositoryActivity) -> dict[str, Any]:
+    """One repository's row as JSON; counts only, no identity."""
+    return {
+        "path": row.path,
+        "status": row.status,
+        "branch": row.branch,
+        "last_commit": row.last_commit.isoformat() if row.last_commit else None,
+        "days_since_last_commit": row.days_since_last_commit,
+        "commits": row.commits,
+        "people": row.people,
+        "automated_accounts": row.automated_accounts,
+        "shallow_clone": row.shallow,
+        "reason": row.reason,
+    }
+
+
+def _repository_line(row: RepositoryActivity) -> str:
+    """One repository's row as a plain line."""
+    if row.status == "not_read":
+        return f"- {row.path}: not read ({row.reason})"
+    if row.last_commit is None:
+        return f"- {row.path}: empty"
+    automated = (
+        f" and {_counted(row.automated_accounts, 'automated account')}"
+        if row.automated_accounts
+        else ""
+    )
+    activity = (
+        f"; {_counted(row.commits, 'commit')} by "
+        f"{row.people:,} {'person' if row.people == 1 else 'people'}{automated} in the window"
+        if row.commits
+        else ""
+    )
+    shallow = "; shallow clone" if row.shallow else ""
+    return (
+        f"- {row.path}: {row.status}, last commit {row.last_commit.isoformat()} "
+        f"({_counted(row.days_since_last_commit or 0, 'day')} ago){activity}{shallow}"
+    )
+
+
+def _repository_markdown_row(row: RepositoryActivity) -> str:
+    """One repository's row in a Markdown table."""
+    status = f"not read: {row.reason}" if row.status == "not_read" else row.status
+    last = row.last_commit.isoformat() if row.last_commit else ""
+    days = "" if row.days_since_last_commit is None else f"{row.days_since_last_commit:,}"
+    cells = [
+        _md(row.path),
+        _md(status) if row.status == "not_read" else status,
+        last,
+        days,
+        f"{row.commits:,}",
+        f"{row.people:,}",
+        f"{row.automated_accounts:,}",
+    ]
+    return "| " + " | ".join(cell.replace("|", "\\|") for cell in cells) + " |"
+
+
+def _repositories_csv(rows: list[RepositoryActivity]) -> str:
+    """The rows as CSV; repository text cannot become a spreadsheet formula."""
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\n")
+    writer.writerow(
+        [
+            "path",
+            "status",
+            "branch",
+            "last_commit",
+            "days_since_last_commit",
+            "commits",
+            "people",
+            "automated_accounts",
+            "shallow_clone",
+            "reason",
+        ]
+    )
+    for row in rows:
+        writer.writerow(
+            [
+                _neutralise_csv_cell(row.path),
+                row.status,
+                _neutralise_csv_cell(row.branch or ""),
+                row.last_commit.isoformat() if row.last_commit else "",
+                "" if row.days_since_last_commit is None else row.days_since_last_commit,
+                row.commits,
+                row.people,
+                row.automated_accounts,
+                "true" if row.shallow else "false",
+                _neutralise_csv_cell(row.reason or ""),
+            ]
+        )
+    return buffer.getvalue()
+
+
+def _brief_from(tag: str) -> str:
+    """Return the `reveille brief` command for a tag, quoted for a POSIX shell.
+
+    A tag can begin with `-`, which `--from` refuses as an option; its full
+    ref name cannot be taken for one.
+    """
+    revision = f"refs/tags/{tag}" if tag.startswith("-") else tag
+    return f"reveille brief --from {shlex.quote(revision)}"
+
+
 def _counted(n: int, singular: str) -> str:
     """Return "1 thing" or "N things"."""
     return f"{n:,} {singular}" if n == 1 else f"{n:,} {singular}s"
@@ -1060,7 +1344,9 @@ def _contributor_labels(ranked: list[RankedContributor]) -> dict[str, str]:
     """Map each contributor's email to a label unique within the report.
 
     Names are not unique (ADR 0002), and Plotly merges repeated category labels.
-    A repeated name carries its address; a unique one is used as it is.
+    A repeated name carries its address in parentheses, not angle brackets: Plotly
+    renders `<a>`, `<b>` and `<span style>` in labels, and a Git address cannot hold
+    `>`, so a label built from one cannot form a tag such as `<span style='...' x>`.
 
     Args:
         ranked: Every contributor in the report.
@@ -1074,9 +1360,15 @@ def _contributor_labels(ranked: list[RankedContributor]) -> dict[str, str]:
         occurrences[label] += 1
 
     return {
-        email: (label if occurrences[label] == 1 else f"{label} <{_sanitise_chart_label(email)}>")
+        email: (label if occurrences[label] == 1 else f"{label} ({_label_key(email)})")
         for email, label in sanitised.items()
     }
+
+
+def _label_key(email: str) -> str:
+    """Return what tells two people of one name apart: the address, or a hidden one's token."""
+    local, _, domain = email.rpartition("@")
+    return _sanitise_chart_label(local if domain == HIDDEN_DOMAIN else email)
 
 
 #: Axis pairs to read a table from, per trace type, so the table cannot drift.
@@ -1410,6 +1702,9 @@ def _build_heatmap_data(
 
     payload: dict[str, object] = {
         "years": years,
+        # The year shown first: the latest with a commit, since the window can end
+        # in a year with none.
+        "default_year": max((int(day[:4]) for day in agg_counts), default=years[-1]),
         # The grid draws these bounds, so days outside the window are not zeros.
         "since": analysis_since.isoformat(),
         "until": analysis_until.isoformat(),
@@ -1807,38 +2102,6 @@ def _compute_commit_concentration(counts: list[int]) -> int:
 _CSV_FORMULA_PREFIXES: tuple[str, ...] = ("=", "+", "-", "@", "\t", "\r")
 
 
-def _write_replacing(path: Path, text: str, *, encoding: str) -> None:
-    """Write `text` to a new file and move it over `path`.
-
-    Replacing the name, not writing in place, leaves other hard links to the
-    old file untouched. A new report is 0o600 on POSIX systems
-    (tested on Linux), since it names people; an existing one keeps its mode. The temporary file is removed on failure.
-
-    Args:
-        path: The resolved output path.
-        text: What to write. Newlines are written as given.
-        encoding: The text encoding, `utf-8-sig` for a CSV with a BOM.
-
-    Raises:
-        OSError: If the file cannot be created, written or moved.
-    """
-    try:
-        kept_mode: int | None = stat.S_IMODE(path.stat().st_mode)
-    except FileNotFoundError:
-        kept_mode = None
-    temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
-    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    try:
-        with os.fdopen(descriptor, "w", encoding=encoding, newline="") as handle:
-            handle.write(text)
-        if kept_mode is not None:
-            temporary.chmod(kept_mode)
-        os.replace(temporary, path)
-    except BaseException:
-        temporary.unlink(missing_ok=True)
-        raise
-
-
 def _assert_not_symlink(output_path: Path) -> None:
     """Refuse to write a report through a symbolic link.
 
@@ -1892,9 +2155,10 @@ def _script_safe(text: str) -> str:
 
 
 def _sanitise_chart_label(value: str) -> str:
-    """Strip HTML tags, null bytes, and surrounding whitespace from a chart label.
+    """Strip HTML tags, stray angle brackets, null bytes and surrounding whitespace.
 
-    Labels come from commit metadata, and Plotly renders some HTML in them.
+    Labels come from commit metadata, and Plotly renders some HTML in them. A lone
+    `<` or `>` is dropped too, so a label joined to other text cannot form a tag.
 
     Args:
         value: The raw string to sanitise.
@@ -1904,7 +2168,7 @@ def _sanitise_chart_label(value: str) -> str:
     """
     value = _SCRIPT_BLOCK_RE.sub("", value)
     value = _HTML_TAG_RE.sub("", value)
-    value = value.replace("\x00", "")
+    value = value.replace("<", "").replace(">", "").replace("\x00", "")
     return value.strip()
 
 
@@ -2081,6 +2345,7 @@ def _state_document(
     return {
         "schema_version": SCHEMA_VERSION,
         "document": "state",
+        "reveille_version": __version__,
         "repository": {"name": name, "bare": state.bare, "shallow": state.shallow},
         "branch": state.branch,
         "head": state.head,
@@ -2148,17 +2413,20 @@ def _state_lines(
     )
     if state.latest_tag:
         lines.append(
-            f"Latest tag: {state.latest_tag}, {state.commits_since_tag or 0:,} commits since. "
-            f"Next: reveille brief --from {shlex.quote(state.latest_tag)}"
+            f"Latest tag: {state.latest_tag}, "
+            f"{_counted(state.commits_since_tag or 0, 'commit')} since. "
+            f"Next: {_brief_from(state.latest_tag)}"
         )
     if state.shallow:
         lines.append("Shallow clone: only part of the history is present.")
     if history_replaced:
         lines.append("Replace refs or a graft file are present and not followed.")
     if state.filters_not_run:
+        # `filter=` names a driver with no name; show it, not an empty list.
+        named = tuple(name or '""' for name in state.filters_not_run)
         lines.append(
             f"Not run: the content filters this repository's own config names "
-            f"({_listed(state.filters_not_run, limit)}); files they cover may show as modified."
+            f"({_listed(named, limit)}); files they cover may show as modified."
         )
     lines.append(_STATE_NOTICE)
     return lines
@@ -2236,6 +2504,11 @@ def _summary_markdown(document: dict[str, Any]) -> str:
         f"- **Gini:** {measures['gini_coefficient']:.2f}; longest quiet run "
         f"{_counted(measures['longest_quiet_run_days'], 'day')}",
         *(f"- {finding['headline']}" for finding in document["findings"]),
+        *(
+            [f"- **Not counted, by request:** {', '.join(_md(p) for p in repo['exclude_paths'])}"]
+            if repo["exclude_paths"]
+            else []
+        ),
         "",
         f"> {document['notice']}",
     ]
@@ -2315,8 +2588,9 @@ def _state_markdown(state: RepositoryState, name: str, history_replaced: bool, l
     )
     if state.latest_tag:
         lines.append(
-            f"- **Latest tag:** {_md(state.latest_tag)}, {state.commits_since_tag or 0:,} commits "
-            f"since; next: {_md(f'reveille brief --from {shlex.quote(state.latest_tag)}')}"
+            f"- **Latest tag:** {_md(state.latest_tag)}, "
+            f"{_counted(state.commits_since_tag or 0, 'commit')} since; "
+            f"next: {_md(_brief_from(state.latest_tag))}"
         )
     lines += [*_state_markdown_notes(state, history_replaced, limit), "", f"> {_STATE_NOTICE}"]
     return _joined(lines)

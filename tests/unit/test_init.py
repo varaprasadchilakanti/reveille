@@ -6,6 +6,8 @@ via --force, conflict guard when force=False, and missing parent directory.
 
 from __future__ import annotations
 
+import os
+import stat
 from pathlib import Path
 
 import pytest
@@ -179,3 +181,43 @@ class TestWriteMailmapTemplate:
         dest = tmp_path / "nonexistent_dir" / ".mailmap"
         with pytest.raises(OutputPathError, match="does not exist"):
             write_mailmap_template(dest)
+
+
+class TestWritesReplaceTheFile:
+    """`--force` replaces the name, so a hard link's other file is never written."""
+
+    @pytest.mark.parametrize("writer", [write_init_config, write_mailmap_template])
+    def test_force_does_not_write_through_a_hard_link(self, tmp_path: Path, writer) -> None:
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.write_text("not yours\n", encoding="utf-8")
+        dest = tmp_path / "scaffold"
+        os.link(elsewhere, dest)
+
+        writer(dest, force=True)
+
+        assert elsewhere.read_text(encoding="utf-8") == "not yours\n"
+        assert dest.read_text(encoding="utf-8") != "not yours\n"
+
+    @pytest.mark.skipif(os.name != "posix", reason="POSIX file modes")
+    @pytest.mark.parametrize("umask", [0o022, 0])
+    @pytest.mark.parametrize("writer", [write_init_config, write_mailmap_template])
+    def test_a_new_scaffold_is_owner_only(self, tmp_path: Path, writer, umask: int) -> None:
+        """A filled-in `.mailmap` names people; Git does not record read bits, so commits are unchanged."""
+        previous = os.umask(umask)
+        try:
+            writer(tmp_path / "scaffold")
+        finally:
+            os.umask(previous)
+
+        assert stat.S_IMODE((tmp_path / "scaffold").stat().st_mode) == 0o600
+
+    @pytest.mark.skipif(os.name != "posix", reason="POSIX file modes")
+    @pytest.mark.parametrize("writer", [write_init_config, write_mailmap_template])
+    def test_a_mode_the_owner_widened_survives_force(self, tmp_path: Path, writer) -> None:
+        dest = tmp_path / "scaffold"
+        writer(dest)
+        dest.chmod(0o644)
+
+        writer(dest, force=True)
+
+        assert stat.S_IMODE(dest.stat().st_mode) == 0o644

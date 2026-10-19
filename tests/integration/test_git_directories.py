@@ -15,8 +15,8 @@ from pathlib import Path
 
 import pytest
 
-from reveille.adapters.renderer import _write_replacing
 from reveille.cli import _git_directories
+from reveille.replacing import write_replacing
 
 pytestmark = pytest.mark.integration
 
@@ -116,7 +116,7 @@ def test_a_failed_move_leaves_no_temporary_and_the_old_file(tmp_path: Path) -> N
     target.mkdir()
 
     with pytest.raises(OSError):
-        _write_replacing(target, "<html></html>", encoding="utf-8")
+        write_replacing(target, "<html></html>", encoding="utf-8")
 
     assert target.is_dir(), "the old entry is untouched"
     assert sorted(p.name for p in tmp_path.iterdir()) == ["report.html"], "no temporary left"

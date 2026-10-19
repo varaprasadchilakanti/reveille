@@ -63,6 +63,10 @@ _MODULE_RULES: dict[str, frozenset[str]] = {
     "reveille.config": _IO_AND_PRESENTATION,
     "reveille.exceptions": _IO_AND_PRESENTATION,
     "reveille.init": _IO_AND_PRESENTATION,
+    # Writes a file by replacing its name; the standard library only.
+    "reveille.replacing": _IO_AND_PRESENTATION,
+    # The text `reveille skill` prints; nothing to read or render.
+    "reveille.agent_guide": _IO_AND_PRESENTATION,
     # The outermost layer. Typer and Click are its job.
     "reveille.cli": frozenset(),
     # Loads the CLI only when run as `python -m reveille`; importing it loads nothing.

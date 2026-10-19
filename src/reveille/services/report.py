@@ -11,15 +11,21 @@ JSON or CSV. Imports no GitPython, Jinja2, Plotly or Typer; progress goes to a
 
 from __future__ import annotations
 
+import contextlib
 import datetime
 import logging
+import os
+import re
+import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
+from typing import cast
 
 from reveille import __version__
-from reveille.adapters.git_reader import GitReader
+from reveille.adapters.git_reader import GitReader, find_repositories
 from reveille.adapters.renderer import Renderer
 from reveille.config import ReportConfig
 from reveille.domain.areas import who_changed
@@ -33,8 +39,10 @@ from reveille.domain.models import (
     RankedContributor,
     ReportData,
 )
+from reveille.domain.pseudonyms import hide_emails
 from reveille.domain.ranking import rank_contributors
-from reveille.exceptions import EmptyRepositoryError, RepositoryError
+from reveille.domain.repositories import RepositoryActivity, describe_repository
+from reveille.exceptions import EmptyRepositoryError, RepositoryError, ReveilleError
 
 _logger = logging.getLogger(__name__)
 
@@ -145,6 +153,7 @@ def who_changed_text(
         EmptyRepositoryError: If no commit in the window changed the path.
     """
     reader = GitReader(config.repo_path)
+    tip = reader.resolve_head_sha(config.branch)
     cutoff = _today() if config.until is None and not config.deterministic else None
     try:
         commits = reader.read_commits(
@@ -152,6 +161,7 @@ def who_changed_text(
             since=config.since,
             until=config.until,
             exclude_authors=config.exclude_authors,
+            exclude_paths=config.exclude_paths,
             dated_until=cutoff,
             line_counts=False,
             path=path,
@@ -168,7 +178,9 @@ def who_changed_text(
     first = min(c.timestamp.date() for c in commits)
     window_end = cutoff if cutoff is not None else _resolve_window_end(config, commits)
     window = (max(config.since, first) if config.since else first, window_end)
-    return Renderer.who_changed_text(who_changed(path, commits), window, output_format, limit)
+    return Renderer.who_changed_text(
+        who_changed(path, commits), window, output_format, limit, analysed_commit=tip
+    )
 
 
 def state_text(repo_path: Path, output_format: str, limit: int) -> str:
@@ -194,7 +206,258 @@ def state_text(repo_path: Path, output_format: str, limit: int) -> str:
     )
 
 
-#: Areas whose earlier history is looked up for "active again": one `git log -1` each.
+def repositories_text(
+    directory: Path,
+    *,
+    depth: int,
+    days: int,
+    until: datetime.date | None,
+    exclude_authors: list[str],
+    output_format: str,
+    on_notice: Callable[[str], None] | None = None,
+) -> str:
+    """Give one row per repository under a directory, naming no one (ADR 0026).
+
+    Args:
+        directory: Where to search.
+        depth: How many levels below it to search.
+        days: The activity window's length, ending on `until`.
+        until: The window's last day; today (UTC) if None.
+        exclude_authors: Applied in every repository, as `summary` applies them.
+        output_format: "text", "json", "markdown" or "csv".
+        on_notice: As for generate_report.
+
+    Returns:
+        The answer.
+
+    Raises:
+        EmptyRepositoryError: If no repository is found.
+    """
+    end = until if until is not None else _today()
+    start = end - datetime.timedelta(days=days - 1)
+    found, unreadable = find_repositories(directory, depth)
+    if unreadable:
+        _notify(
+            on_notice,
+            f"{len(unreadable):,} {'directory' if len(unreadable) == 1 else 'directories'} "
+            "could not be listed and were not searched.",
+        )
+    if not found:
+        raise EmptyRepositoryError(
+            f"No Git repository found in '{directory}' within {depth} "
+            f"{'level' if depth == 1 else 'levels'}. A larger --depth searches deeper."
+        )
+    rows: list[RepositoryActivity] = []
+    matched: set[str] = set()
+    # Most of a row's time is spent waiting for Git, so rows are read side by
+    # side. Each has its own reader, and so its own Git runner; rows, and the
+    # warnings each gives, keep the order the repositories were found in.
+    held = _HeldWarnings()
+
+    def read_row(path: Path) -> tuple[RepositoryActivity, set[str], list[logging.LogRecord]]:
+        with held.on_this_thread() as records:
+            row, matched_here = _repository_row(
+                path, path.relative_to(directory).as_posix(), start, end, days, exclude_authors
+            )
+        if row.reason is not None:
+            row = replace(row, reason=_without_local_paths(row.reason, directory))
+        return row, matched_here, records
+
+    with held.installed(), ThreadPoolExecutor(max_workers=_repository_workers()) as pool:
+        for row, matched_here, records in pool.map(read_row, found):
+            rows.append(row)
+            matched |= matched_here
+            for record in records:
+                logging.getLogger(record.name).handle(record)
+    unmatched = [value for value in exclude_authors if value not in matched]
+    if unmatched:
+        _notify(
+            on_notice,
+            f"--exclude-author matched no commits in any repository for: {', '.join(unmatched)}",
+        )
+    return Renderer.repositories_text(
+        rows, directory.name, (start, end), days, depth, output_format
+    )
+
+
+class _HeldWarnings(logging.Filter):
+    """Holds back what a thread logs, so it can be given out later, in order.
+
+    The warnings name no repository, so the order of the rows is what tells a
+    reader which one each came from.
+    """
+
+    def __init__(self) -> None:
+        """Hold nothing until a thread asks."""
+        super().__init__()
+        self._local = threading.local()
+
+    @contextlib.contextmanager
+    def installed(self) -> Iterator[None]:
+        """Filter every handler a `reveille` record reaches, until the block ends.
+
+        Yields:
+            Nothing.
+        """
+        handlers: list[logging.Handler] = []
+        logger: logging.Logger | None = logging.getLogger("reveille")
+        while logger is not None:
+            handlers.extend(logger.handlers)
+            logger = logger.parent if logger.propagate else None
+        for handler in handlers:
+            handler.addFilter(self)
+        try:
+            yield
+        finally:
+            for handler in handlers:
+                handler.removeFilter(self)
+
+    @contextlib.contextmanager
+    def on_this_thread(self) -> Iterator[list[logging.LogRecord]]:
+        """Hold what this thread logs in the block.
+
+        Yields:
+            The records held, in the order they were logged.
+        """
+        records: list[logging.LogRecord] = []
+        self._local.records = records
+        try:
+            yield records
+        finally:
+            self._local.records = None
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Hold the record if its thread asked; pass it on otherwise.
+
+        Args:
+            record: What was logged.
+
+        Returns:
+            False for a record held, True for one to emit now.
+        """
+        records: list[logging.LogRecord] | None = getattr(self._local, "records", None)
+        if records is None:
+            return True
+        if record not in records:  # each handler sees it; hold it once
+            records.append(record)
+        return False
+
+
+def _repository_workers() -> int:
+    """Return how many repositories `repos` reads at once.
+
+    Returns:
+        One per CPU, at most 4: each read in flight holds its own history in
+        memory, and 8 or 16 were measured slower than 4 (commit a9ead3b).
+    """
+    return max(1, min(4, _usable_cpus() or 1))
+
+
+def _usable_cpus() -> int | None:
+    """Return how many CPUs this process may run on, not how many the machine has.
+
+    A container or a CI job pinned to one CPU still sees every CPU in
+    `os.cpu_count()`. The affinity mask is what the process may use; Python
+    3.13 reads it as `os.process_cpu_count()`.
+
+    Returns:
+        The count, or None if it cannot be known.
+    """
+    counted = getattr(os, "process_cpu_count", None)
+    if counted is not None:
+        return cast("int | None", counted())
+    if hasattr(os, "sched_getaffinity"):
+        return len(os.sched_getaffinity(0))
+    return os.cpu_count()
+
+
+def _repository_row(
+    path: Path,
+    relative: str,
+    start: datetime.date,
+    end: datetime.date,
+    days: int,
+    exclude_authors: list[str],
+) -> tuple[RepositoryActivity, set[str]]:
+    """Read one repository's row, or say why it could not be read.
+
+    Args:
+        path: The repository.
+        relative: Its path relative to the directory searched.
+        start: The window's first day.
+        end: The window's last day.
+        days: The window's length.
+        exclude_authors: The exclusion values.
+
+    Returns:
+        The row, and the exclusion values that matched something in it.
+    """
+    try:
+        reader = GitReader(path)
+        branch = reader.read_metadata(0, 0, start, end).analysed_branch
+        in_window = _read_or_empty(reader, start, end, exclude_authors)
+        last_commit: datetime.date | None
+        if in_window:
+            last_commit = max(c.timestamp.date() for c in in_window)
+        elif exclude_authors:
+            # Which earlier commit is the last one counted turns on who made it.
+            history = _read_or_empty(reader, None, end, exclude_authors)
+            last_commit = max((c.timestamp.date() for c in history), default=None)
+        else:
+            # Only a date is needed from the history before the window.
+            last_commit = reader.last_commit_date(end)
+        matched = set(reader.matched_exclusions)
+        return (
+            describe_repository(
+                relative,
+                None if branch == "HEAD" else branch,
+                last_commit,
+                in_window,
+                end,
+                days,
+                shallow=reader.is_shallow(),
+            ),
+            matched,
+        )
+    except ReveilleError as exc:
+        # The first sentence, with the repository's own path made relative.
+        reason = str(exc).replace(str(path), relative).split(". ")[0].rstrip(".")
+        return RepositoryActivity(relative, "not_read", reason=reason), set()
+
+
+# An absolute path, POSIX or Windows, starting a word or after a quote or bracket.
+# Reveille's messages quote paths, so a quoted one is taken whole, spaces and all.
+_QUOTED_ABSOLUTE_PATH = re.compile(r"'(?:/|[A-Za-z]:[\\/])[^']*'")
+_ABSOLUTE_PATH = re.compile(r"""(?:(?<=^)|(?<=[\s'"(]))(?:/|[A-Za-z]:[\\/])[^\s'")]*""")
+
+
+def _without_local_paths(reason: str, directory: Path) -> str:
+    """Return `reason` with paths under `directory` relative and any other absolute path hidden.
+
+    A path on this machine can hold a login name, and the row is meant to be shared.
+    """
+    for root in {str(directory.resolve()), str(directory)}:
+        reason = reason.replace(root + os.sep, "")
+    reason = _QUOTED_ABSOLUTE_PATH.sub("'(a path outside the directory)'", reason)
+    return _ABSOLUTE_PATH.sub("(a path outside the directory)", reason)
+
+
+def _read_or_empty(
+    reader: GitReader,
+    since: datetime.date | None,
+    until: datetime.date,
+    exclude_authors: list[str],
+) -> list[Commit]:
+    """Read a window's commits without line counts, or none if it holds none."""
+    try:
+        return reader.read_commits(
+            None, since, until, exclude_authors, line_counts=False, report_unmatched=False
+        )
+    except EmptyRepositoryError:
+        return []
+
+
+#: Areas whose earlier history is looked up for "active again", in one pass.
 _MAX_AREAS_LOOKED_UP = 50
 
 
@@ -253,6 +516,7 @@ def brief_text(
             since=None if from_commit is not None else config.since,
             until=config.until,
             exclude_authors=config.exclude_authors,
+            exclude_paths=config.exclude_paths,
             dated_until=cutoff,
             area_depth=config.area_depth,
             line_counts=False,
@@ -276,15 +540,12 @@ def brief_text(
             "branch's commits not reachable from it.",
         )
     areas = sorted(reader.area_activity, key=lambda a: (-a.commits, a.area))
-    previous = {
-        a.area: reader.last_change_before(
-            a.area,
-            config.branch,
-            from_commit,
-            config.since if from_commit is None else None,
-        )
-        for a in areas[:_MAX_AREAS_LOOKED_UP]
-    }
+    previous = reader.last_changes_before(
+        [a.area for a in areas[:_MAX_AREAS_LOOKED_UP]],
+        config.branch,
+        from_commit,
+        config.since if from_commit is None else None,
+    )
     facts = describe_range(commits, list(reader.file_stats), areas, reader.files_added, previous)
     tags = reader.tags_in_range(
         config.branch,
@@ -343,6 +604,7 @@ def build_report_data(
         since=config.since,
         until=config.until,
         exclude_authors=config.exclude_authors,
+        exclude_paths=config.exclude_paths,
         dated_until=cutoff,
         # Collected only when enabled: the section names people (ADR 0013).
         area_depth=config.area_depth if config.area_authors_enabled else None,
@@ -472,6 +734,8 @@ def build_report_data(
         areas=list(reader.area_activity) if config.area_authors_enabled else [],
         co_authors_only=co_authors_only(commits),
     )
+    if config.hide_emails:
+        report_data = hide_emails(report_data)
 
     _logger.debug(
         "assembled report data: %d commits, %d contributors",
@@ -601,6 +865,7 @@ def _build_provenance(
         requested_since=config.since,
         requested_until=config.until,
         exclude_authors_count=len(config.exclude_authors),
+        exclude_paths=tuple(config.exclude_paths),
         min_commits=config.min_commits,
         ranking_enabled=config.ranking_enabled,
         # Reporting weights that were never applied would be a false statement.

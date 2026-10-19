@@ -16,9 +16,13 @@ from dataclasses import dataclass, field
 SCHEMA_VERSION = "1.2"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Commit:
-    """A single Git commit reduced to the fields relevant for analysis."""
+    """A single Git commit reduced to the fields relevant for analysis.
+
+    Slotted: a read holds one per commit, and without a `__dict__` each is about
+    half the size.
+    """
 
     sha: str
     author_name: str
@@ -153,6 +157,10 @@ class AnalysisProvenance:
     area_depth: int | None = None
     # Cap on any list of people in JSON or CSV (ADR 0015); None for no cap.
     limit: int | None = None
+    # Paths left out of every figure, as given; paths name no one.
+    exclude_paths: tuple[str, ...] = ()
+    # Every address replaced by a per-report token (`--hide-emails`).
+    emails_hidden: bool = False
 
 
 @dataclass(frozen=True)

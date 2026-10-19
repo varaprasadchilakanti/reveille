@@ -27,6 +27,7 @@ import typer
 from reveille import __version__
 from reveille.config import OutputFormat, ReportConfig, ReportConfigKwargs
 from reveille.domain.models import ProgressEvent
+from reveille.domain.repositories import MAX_SEARCH_DEPTH
 from reveille.exceptions import ConfigurationError, EmptyRepositoryError, ReveilleError
 
 _logger = logging.getLogger("reveille.cli")
@@ -116,6 +117,11 @@ def _err(message: str) -> None:
     typer.echo(_printable(message), err=True)
 
 
+_EXCLUDE_PATH_HELP = (
+    "Leave a path out of every figure, relative to the repository root and matched "
+    "literally; a directory takes everything under it. Repeatable."
+)
+
 # Command-line spelling of the configuration fields a user can get wrong.
 _OPTION_NAMES = {
     "since": "--since",
@@ -127,6 +133,7 @@ _OPTION_NAMES = {
     "output_path": "--output",
     "repo_path": "--repo",
     "exclude_authors": "--exclude-author",
+    "exclude_paths": "--exclude-path",
     "area_depth": "--area-depth",
     "limit": "--limit",
 }
@@ -295,11 +302,13 @@ _TOML_KEYS: dict[str, str] = {
     "deterministic": "report.deterministic",
     "min_commits": "filters.min_commits",
     "exclude_authors": "filters.exclude_authors",
+    "exclude_paths": "filters.exclude_paths",
     "ranking_enabled": "ranking.enabled",
     "ranking_weights": "ranking.weights",
     "area_authors_enabled": "areas.enabled",
     "area_depth": "areas.depth",
     "limit": "report.limit",
+    "hide_emails": "report.hide_emails",
 }
 
 
@@ -626,6 +635,8 @@ def _merge_cli_flags(
     area_authors: bool = False,
     area_depth: int | None = None,
     limit: int | None = None,
+    exclude_path: list[str] | None = None,
+    hide_emails: bool = False,
 ) -> ReportConfigKwargs:
     """Merge CLI flag values over the configuration file's values.
 
@@ -649,6 +660,8 @@ def _merge_cli_flags(
         area_authors: Whether --area-authors was given; it only switches on.
         area_depth: Area depth, or None if the flag was not given.
         limit: The most entries per list of people in JSON and CSV, or None.
+        exclude_path: Paths to leave out of every figure, or None.
+        hide_emails: Whether --hide-emails was given; it only switches on.
 
     Returns:
         A merged ReportConfigKwargs ready for ReportConfig construction.
@@ -671,6 +684,8 @@ def _merge_cli_flags(
         merged["title"] = title
     if exclude_author:
         merged["exclude_authors"] = exclude_author
+    merged.update({"exclude_paths": exclude_path} if exclude_path else {})
+    merged.update({"hide_emails": True} if hide_emails else {})
     if min_commits is not None:
         merged["min_commits"] = min_commits
     _apply_ranking_flags(merged, ranking=ranking, no_ranking=no_ranking)
@@ -768,6 +783,13 @@ def generate(
             help="Exclude a contributor by name or email. Repeatable.",
         ),
     ] = None,
+    exclude_path: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--exclude-path",
+            help=_EXCLUDE_PATH_HELP,
+        ),
+    ] = None,
     min_commits: Annotated[
         int | None,
         typer.Option(
@@ -797,7 +819,7 @@ def generate(
         bool,
         typer.Option(
             "--no-ranking",
-            help="Explicitly omit the ranking table. Ranking is already off by default.",
+            help="Omit the ranking even if the configuration file enables it.",
         ),
     ] = False,
     output_format: Annotated[
@@ -807,6 +829,17 @@ def generate(
             help="Output format. Accepted values: html, json, csv. [default: html]",
         ),
     ] = None,
+    hide_emails: Annotated[
+        bool,
+        typer.Option(
+            "--hide-emails",
+            help=(
+                "Replace people's email addresses with per-report tokens, for a report "
+                "you share. Names, file paths and the licence notices of the bundled chart "
+                "library stay; every figure is unchanged."
+            ),
+        ),
+    ] = False,
     deterministic: Annotated[
         bool,
         typer.Option(
@@ -841,7 +874,7 @@ def generate(
             "--limit",
             help=(
                 "Bound every list of people in JSON and CSV to this many, with "
-                "the full total beside it. Default: every one."
+                "the full total beside it; the HTML report is not bounded. Default: every one."
             ),
         ),
     ] = None,
@@ -907,6 +940,8 @@ def generate(
         area_authors,
         area_depth,
         limit,
+        exclude_path,
+        hide_emails,
     )
 
     # Validate the effective path, which a reveille.toml may have supplied.
@@ -957,8 +992,9 @@ def _query_config(
     branch: str | None,
     exclude_author: list[str] | None,
     deterministic: bool,
+    exclude_path: list[str] | None = None,
 ) -> ReportConfig:
-    """Build the configuration for `summary` and `who-changed` from options.
+    """Build the configuration for `summary`, `brief` and `who-changed` from options.
 
     No reveille.toml is read, so the answer depends only on the options passed.
 
@@ -974,6 +1010,8 @@ def _query_config(
         kwargs["branch"] = branch
     if exclude_author:
         kwargs["exclude_authors"] = exclude_author
+    if exclude_path:
+        kwargs["exclude_paths"] = exclude_path
     try:
         return ReportConfig(**kwargs)
     except ValueError as exc:
@@ -1031,6 +1069,9 @@ _ExcludeOption = Annotated[
     list[str] | None,
     typer.Option("--exclude-author", help="Exclude a contributor by name or email. Repeatable."),
 ]
+_ExcludePathOption = Annotated[
+    list[str] | None, typer.Option("--exclude-path", help=_EXCLUDE_PATH_HELP)
+]
 _DeterministicOption = Annotated[
     bool,
     typer.Option("--deterministic", help="Close the window on the last commit, not today."),
@@ -1054,6 +1095,7 @@ def summary(
     until: _UntilOption = None,
     branch: _BranchOption = None,
     exclude_author: _ExcludeOption = None,
+    exclude_path: _ExcludePathOption = None,
     deterministic: _DeterministicOption = False,
     output_format: _ShareFormatOption = "text",
     verbose: _VerboseOption = False,
@@ -1066,7 +1108,7 @@ def summary(
 
     _configure_logging(verbose)
     _check_query_format(output_format, ("text", "json", "markdown"))
-    config = _query_config(repo, since, until, branch, exclude_author, deterministic)
+    config = _query_config(repo, since, until, branch, exclude_author, deterministic, exclude_path)
     _run_query(lambda notice: summary_text(config, output_format, on_notice=notice))
 
 
@@ -1084,6 +1126,7 @@ def brief(
     until: _UntilOption = None,
     branch: _BranchOption = None,
     exclude_author: _ExcludeOption = None,
+    exclude_path: _ExcludePathOption = None,
     deterministic: _DeterministicOption = False,
     output_format: _StatusFormatOption = "text",
     limit: Annotated[
@@ -1102,7 +1145,7 @@ def brief(
     if from_revision is not None and since is not None:
         _err("Error: give --from <revision> or --since <date>, not both.")
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
-    config = _query_config(repo, since, until, branch, exclude_author, deterministic)
+    config = _query_config(repo, since, until, branch, exclude_author, deterministic, exclude_path)
     _run_query(
         lambda notice: brief_text(config, from_revision, output_format, limit, on_notice=notice)
     )
@@ -1128,6 +1171,62 @@ def state(
     _configure_logging(verbose)
     _check_query_format(output_format, ("text", "json", "markdown", "line"))
     _run_query(lambda _notice: state_text(_root(repo), output_format, limit))
+
+
+@app.command()
+def repos(
+    directory: Annotated[
+        Path,
+        typer.Argument(help="The directory holding the repositories."),
+    ] = Path("."),
+    depth: Annotated[
+        int,
+        typer.Option(
+            "--depth",
+            min=1,
+            max=MAX_SEARCH_DEPTH,
+            help="How many directory levels below it to search for repositories.",
+        ),
+    ] = 1,
+    days: Annotated[
+        int,
+        typer.Option(
+            "--days",
+            min=1,
+            max=3650,
+            help="The activity window, in days, ending on --until.",
+        ),
+    ] = 90,
+    until: _UntilOption = None,
+    exclude_author: _ExcludeOption = None,
+    output_format: Annotated[
+        str, typer.Option("--format", help="Output format: text, json, markdown or csv.")
+    ] = "text",
+    verbose: _VerboseOption = False,
+) -> None:
+    """Say which repositories in a directory are active, quiet or dormant, naming no one.
+
+    One row per repository, in counts. Nobody is counted across repositories.
+    """
+    from reveille.services.report import repositories_text
+
+    _configure_logging(verbose)
+    _check_query_format(output_format, ("text", "json", "markdown", "csv"))
+    if not directory.is_dir():
+        _err(f"Error: '{directory}' is not a directory.")
+        raise typer.Exit(code=ExitCode.CANNOT_RUN)
+    end = _parse_date(until, "--until") if until is not None else None
+    _run_query(
+        lambda notice: repositories_text(
+            directory.resolve(),
+            depth=depth,
+            days=days,
+            until=end,
+            exclude_authors=list(exclude_author or []),
+            output_format=output_format,
+            on_notice=notice,
+        )
+    )
 
 
 def _repository_path(path: str, repo: Path) -> str:
@@ -1343,6 +1442,28 @@ def capabilities(
         typer.echo(json.dumps(document, indent=2))
     else:
         typer.echo(render_text(document))
+
+
+@app.command()
+def skill(
+    output_format: Annotated[
+        str,
+        typer.Option(
+            "--format",
+            help="markdown: a section for AGENTS.md or CLAUDE.md; skill: a SKILL.md.",
+        ),
+    ] = "markdown",
+) -> None:
+    """Print what to tell a coding agent about Reveille, for its instructions file.
+
+    Reads no repository.
+    """
+    from reveille.agent_guide import guide
+
+    if output_format not in {"markdown", "skill"}:
+        _err(f"Error: unsupported format '{output_format}'. Accepted values: markdown, skill.")
+        raise typer.Exit(code=ExitCode.CANNOT_RUN)
+    typer.echo(guide(output_format), nl=False)
 
 
 @app.command()

@@ -123,6 +123,17 @@ class TestTheChartToolbarCoversNothing:
         assert top and int(top.group(1)) >= _TOOLBAR_CLEARANCE
 
 
+def _function(rendered: str, name: str) -> str:
+    """Return a script function's body by matching braces, whatever its indentation."""
+    start = rendered.index("{", rendered.index(f"function {name}("))
+    depth = 0
+    for end in range(start, len(rendered)):
+        depth += {"{": 1, "}": -1}.get(rendered[end], 0)
+        if depth == 0:
+            return rendered[start : end + 1]
+    raise AssertionError(f"function {name} is not closed")
+
+
 def _print_rules(rendered: str) -> str:
     """The body of the stylesheet's `@media print` block, comments removed."""
     own = re.search(r"<style>(.*?)</style>", rendered, flags=re.DOTALL)
@@ -173,20 +184,17 @@ class TestPrintingToPdf:
         charts. The print media query's change event is the moment the
         containers have their printed width."""
         assert "matchMedia('print')" in rendered
-        handler = rendered[rendered.index("function fitChartsTo(") :]
-        handler = handler[: handler.index("\n    }\n")]
+        handler = _function(rendered, "fitChartsTo")
         assert "initChart(id, theme)" in handler, "redrawn through the first-paint path"
         assert "renderHeatmap(" in handler
-        for builder in ("function initChart(", "function renderHeatmap("):
-            body = rendered[rendered.index(builder) :]
-            body = body[: body.index("\n    }\n")]
+        for builder in ("initChart", "renderHeatmap"):
+            body = _function(rendered, builder)
             assert "if (printing) layout.width = divEl.clientWidth;" in body, builder
 
     def test_charts_print_in_the_light_theme(self, rendered: str) -> None:
         """The page prints light whatever theme it is in; the charts kept the
         reader's dark theme, and printed as dark panels on white paper."""
-        handler = rendered[rendered.index("function fitChartsTo(") :]
-        handler = handler[: handler.index("\n    }\n")]
+        handler = _function(rendered, "fitChartsTo")
         assert "var theme = printing ? 'light' : readTheme();" in handler
 
 
@@ -230,3 +238,73 @@ class TestTheContributorTableScrollsInItsOwnPanel:
 
     def test_paper_gets_every_row(self, rendered: str) -> None:
         assert "max-height: none !important" in _print_rule(rendered, ".table-wrapper")
+
+
+@pytest.mark.unit
+def test_the_report_carries_no_template_indentation(rendered: str) -> None:
+    """Indentation was a quarter of the markup, styles and scripts Reveille writes."""
+    from markupsafe import escape
+
+    from reveille.adapters import renderer
+
+    authored = rendered.replace(renderer._vendored("plotly-cartesian.min.js"), "").replace(
+        str(escape(renderer._vendored("THIRD-PARTY-NOTICES.txt"))), ""
+    )
+    indented = [line for line in authored.splitlines() if line[:1] in (" ", "\t")]
+
+    assert indented == [], f"{len(indented)} indented lines, first {indented[0]!r}"
+
+
+@pytest.mark.unit
+def test_the_template_holds_nothing_indentation_means_something_in() -> None:
+    """The loader strips leading whitespace from every template line (`_DedentingLoader`)."""
+    from html.parser import HTMLParser
+    from pathlib import Path
+
+    from reveille.adapters import renderer
+
+    template = (Path(renderer.__file__).parents[1] / "templates" / "report.html.j2").read_text(
+        encoding="utf-8"
+    )
+
+    class _ScriptCollector(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__()
+            self._in_script = False
+            self.scripts: list[str] = []
+
+        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+            if tag.lower() == "script":
+                self._in_script = True
+                self.scripts.append("")
+
+        def handle_endtag(self, tag: str) -> None:
+            if tag.lower() == "script":
+                self._in_script = False
+
+        def handle_data(self, data: str) -> None:
+            if self._in_script and self.scripts:
+                self.scripts[-1] += data
+
+    collector = _ScriptCollector()
+    collector.feed(template)
+    scripts = collector.scripts
+
+    assert scripts, "positive control: the template has scripts"
+    assert "<textarea" not in template
+    assert not any("`" in script for script in scripts), "a template literal can span lines"
+    # Text rendered into a <pre> keeps its indentation; template text in one would not.
+    for body in re.findall(r"<pre[^>]*>(.*?)</pre>", template, re.S):
+        assert re.fullmatch(r"\{\{[^{}]*\}\}", body), f"template text in a <pre>: {body!r}"
+
+
+@pytest.mark.unit
+def test_the_theme_is_set_before_the_first_paint(rendered: str) -> None:
+    """Set only after the chart library was parsed, a dark-mode reader saw the light page first."""
+    head = rendered[: rendered.index("</head>")]
+    first_style = head.index("<style>")
+    setter = head.find("document.documentElement.setAttribute('data-theme'")
+
+    assert 0 <= setter < first_style, "no theme is set in <head> before the styles"
+    assert "prefers-color-scheme: dark" in head[:first_style]
+    assert "localStorage.getItem('reveille-theme')" in head[:first_style]

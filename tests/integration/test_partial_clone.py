@@ -133,6 +133,10 @@ def test_a_promisor_set_outside_git_config_is_refused_too(tmp_path: Path, scope:
         ("extensions.partialClone", "origin", True),
         ("extensions.partialClone", "", False),
         ("remote.origin.promisor", "false", False),
+        # Git reads any non-zero number as true.
+        ("remote.origin.promisor", "2", True),
+        ("remote.origin.promisor", "1k", True),
+        ("remote.origin.promisor", "off", False),
     ],
 )
 def test_worktree_config_is_read_for_what_it_says(

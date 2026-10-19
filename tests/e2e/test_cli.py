@@ -36,34 +36,20 @@ runner = CliRunner()
 _FETCHING_ATTRIBUTES = frozenset({"src", "srcset", "poster", "data", "xlink:href"})
 
 # Remote hosts appearing as string literals inside the vendored Plotly
-# bundle, measured from `plotly.offline.get_plotlyjs()`. Every one belongs
-# to a trace type Reveille never emits -- map tiles, basemap attribution,
-# WebGL diagnostics, and the library's own documentation. None is fetched.
+# bundle, measured from `src/reveille/vendor/plotly-cartesian.min.js`: the
+# library's own documentation and licence pages. None is fetched.
 # The set is frozen so that a Plotly upgrade adding an endpoint is a
 # decision someone takes, not a change nobody notices: the 7.0.0 -> 7.1.0
 # bump added 522,418 bytes to this file with no test remarking on it.
 _BUNDLE_HOSTS = frozenset(
     {
-        "basemaps.cartocdn.com",
-        "cdn.jsdelivr.net",
         "cdn.plot.ly",
         "cloud.plotly.com",
         "feross.org",
-        "fonts.openmaptiles.org",
-        "geoserveis.icgc.cat",
-        "get.webgl.org",
         "getify.mit-license.org",
         "github.com",
-        "maplibre.org",
         "plotly.com",
-        "server.arcgisonline.com",
         "syntheti.cc",
-        "tile.openstreetmap.org",
-        "tilemaps.icgc.cat",
-        "tiles.basemaps.cartocdn.com",
-        "wiki.openstreetmap.org",
-        "www.esri.com",
-        "www.openstreetmap.org",
         "www.w3.org",
     }
 )
@@ -85,24 +71,25 @@ _ALLOWED_TRACE_TYPES = frozenset({"bar", "pie", "scatter"})
 # every report and the whole suite stayed green.
 #
 # Three budgets rather than one, so a breach says which term grew: the
-# vendored bundle (98% of the artefact, and not ours), the content
-# Reveille authors, and the total the reader actually receives.
-# Measured on 2026-09-30 with Plotly 7.1.0: the bundle is 4,815,814 bytes,
-# the authored content 74,811, the whole artefact 4,890,625 -- and the two
-# terms sum to the total exactly, so a breach is always attributable.
+# vendored bundle (not ours), the content Reveille authors, and the total
+# the reader actually receives. Since ADR 0027 the bundle is the pinned
+# plotly.js cartesian bundle, 1,500,041 bytes at 4.1.1; measured on
+# 2026-10-18 on a one-commit repository, the third-party notices are
+# 118,439 bytes escaped, the authored content 70,154, the whole artefact
+# 1,688,634 -- the three terms sum to the total exactly.
 #
 # The headroom is a documented judgement, not a derived limit. The bundle
 # budget absorbs patch-level drift and fires on anything like the 12.2%
-# jump of 7.0.0 -> 7.1.0, because a jump that size should be a decision
-# someone takes. The authored budget allows real growth -- new charts,
+# jump of Plotly 7.0.0 -> 7.1.0, because a jump that size should be a
+# decision someone takes. The authored budget allows real growth -- new charts,
 # new tables -- while catching a doubling.
 #
 # These are drift tripwires, not a claim about what any mail gateway or
 # wiki accepts. Nobody has measured that yet; until someone does, no
 # document may state a supported attachment size.
-_BUNDLE_BUDGET_BYTES = 5_000_000
+_BUNDLE_BUDGET_BYTES = 1_550_000
 _AUTHORED_BUDGET_BYTES = 100_000
-_ARTEFACT_BUDGET_BYTES = 5_100_000
+_ARTEFACT_BUDGET_BYTES = 1_800_000
 
 
 class _RemoteReferenceCollector(HTMLParser):
@@ -1428,11 +1415,11 @@ class TestOfflineGuarantee:
         Asserting the bundle is byte-identical to what Plotly ships is the
         other half: hosts read from a modified bundle prove nothing.
         """
-        import plotly.offline
+        from reveille.adapters import renderer
 
-        bundle = plotly.offline.get_plotlyjs()
+        bundle = renderer._vendored("plotly-cartesian.min.js")
         assert bundle in default_report_content, (
-            "the embedded bundle is not the one Plotly ships; "
+            "the embedded bundle is not the one Reveille vendors; "
             "the host inventory below cannot be trusted"
         )
         hosts = set(re.findall(r"https?://([A-Za-z0-9._-]+)", bundle))
@@ -1497,9 +1484,9 @@ class TestArtefactBudget:
 
     def test_the_vendored_bundle_stays_within_its_budget(self) -> None:
         """The term that is 98% of the artefact, and is not ours."""
-        import plotly.offline
+        from reveille.adapters import renderer
 
-        measured = len(plotly.offline.get_plotlyjs().encode("utf-8"))
+        measured = len(renderer._vendored("plotly-cartesian.min.js").encode("utf-8"))
         assert measured <= _BUNDLE_BUDGET_BYTES, (
             f"the vendored Plotly bundle is {measured:,} bytes, over the "
             f"{_BUNDLE_BUDGET_BYTES:,} byte budget. It is not ours to shrink, so "
@@ -1512,9 +1499,13 @@ class TestArtefactBudget:
         pinned_report_content: str,
     ) -> None:
         """The term that is ours: markup, styles, chart specifications."""
-        import plotly.offline
+        from markupsafe import escape
 
-        authored = pinned_report_content.replace(plotly.offline.get_plotlyjs(), "")
+        from reveille.adapters import renderer
+
+        authored = pinned_report_content.replace(
+            renderer._vendored("plotly-cartesian.min.js"), ""
+        ).replace(str(escape(renderer._vendored("THIRD-PARTY-NOTICES.txt"))), "")
         measured = len(authored.encode("utf-8"))
         assert measured <= _AUTHORED_BUDGET_BYTES, (
             f"the content Reveille authors is {measured:,} bytes, over the "

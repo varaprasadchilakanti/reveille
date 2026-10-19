@@ -12,6 +12,7 @@ committed `.mailmap`, so the pattern cost must be linear. And the working-tree
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -70,6 +71,23 @@ class TestReadingIsBounded:
         assert code == ExitCode.SUCCESS
         assert payload["totals"]["authors"] == 2, "the file was read"
         assert "over the 1,048,576-byte limit" in stderr
+
+    @pytest.mark.skipif(
+        not hasattr(os, "geteuid") or os.geteuid() == 0, reason="root reads any file"
+    )
+    def test_an_unreadable_mailmap_is_said_not_skipped_in_silence(self, tmp_path: Path) -> None:
+        """New files are owner-only, so another user of a shared checkout cannot read one."""
+        repo = _repo(tmp_path / "r", "Ana <new@e.test> <old@e.test>\n")
+        (repo / ".mailmap").chmod(0)
+        try:
+            code, payload, stderr = _summary(repo)
+        finally:
+            (repo / ".mailmap").chmod(0o600)
+
+        assert code == ExitCode.SUCCESS
+        assert payload["totals"]["authors"] == 2, "nothing was merged"
+        assert ".mailmap could not be read" in stderr and "not applied" in stderr
+        assert str(tmp_path) not in stderr, "the message names no local path"
 
     def test_a_working_tree_mailmap_at_the_limit_is_read(self, tmp_path: Path) -> None:
         line = b"Ana <new@e.test> <old@e.test>\n"

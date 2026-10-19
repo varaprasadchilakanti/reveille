@@ -13,19 +13,26 @@ spawn one `git diff` per commit.
 
 from __future__ import annotations
 
+import contextlib
 import datetime
+import functools
 import logging
 import os
 import re
+import stat
+import sys
+import threading
+import time
 import unicodedata
 from collections import defaultdict
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
 from git import Git, InvalidGitRepositoryError, NoSuchPathError, Repo
+from git.compat import safe_decode
 from git.exc import GitCommandError
 
 from reveille.domain.areas import ROOT_AREA, area_of
@@ -37,6 +44,7 @@ from reveille.domain.models import (
     FileStats,
     RepositoryMetadata,
 )
+from reveille.domain.repositories import MAX_SEARCH_DEPTH
 from reveille.domain.state import RepositoryState, Worktree, quiet_branches
 from reveille.exceptions import EmptyRepositoryError, RepositoryError
 
@@ -46,6 +54,7 @@ from reveille.exceptions import EmptyRepositoryError, RepositoryError
 _logger = logging.getLogger(__name__)
 
 _RECORD_SEP = "\x1e"
+_RECORD_SEP_BYTES = _RECORD_SEP.encode()
 _FIELD_SEP = "\x1f"
 
 # The hash closes the record as well as opening it: a commit cannot carry its
@@ -67,6 +76,9 @@ _MIN_GIT = (2, 24)
 # C0, DEL and C1: some terminals obey a C1 control (U+009B is CSI) given as UTF-8.
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 
+# A byte that is not UTF-8 decodes to a lone surrogate, which no output can encode.
+_UNDECODED_RE = re.compile(r"[\ud800-\udfff]")
+
 # Bidi overrides, embeddings and isolates, zero-width space and BOM: they change
 # how a name displays. ZWJ, ZWNJ, LRM and RLM are kept; real names use them.
 _INVISIBLE_IN_NAMES_RE = re.compile("[\u202a-\u202e\u2066-\u2069\u200b\ufeff]")
@@ -76,6 +88,9 @@ _INVISIBLE_IN_NAMES_RE = re.compile("[\u202a-\u202e\u2066-\u2069\u200b\ufeff]")
 _MAX_NAME_LENGTH = 256
 _MAX_EMAIL_LENGTH = 320
 _TRUNCATION_MARKER = "\u2026"
+# Exclusions match on more than is shown, but not on everything: both sides are
+# cut alike, so two names sharing this much are one name to an exclusion.
+_MAX_MATCH_LENGTH = 4096
 
 # GitHub's noreply addresses: `ID+username@` (an account number never reused) and the
 # legacy `username@` (a name that can change hands). ADR 0023 folds on the number.
@@ -565,6 +580,19 @@ def _without_credentials(url: str) -> str:
     """
     scheme, separator, rest = url.partition("://")
     if not separator:
+        # scp-like `user@host:path`; a `user:secret@` written there keeps only its
+        # login. The user part ends at the last `@` followed by `host:`, so an `@`
+        # in the secret or in the path is not taken for the end of it.
+        cut = len(url)
+        while (cut := url.rfind("@", 0, cut)) != -1:
+            host, colon, _ = url[cut + 1 :].partition(":")
+            if colon and host and not any(c in host for c in "@/\\"):
+                break
+        else:
+            return url
+        userinfo = url[:cut]
+        if ":" in userinfo and not any(c in userinfo for c in "/\\"):
+            return f"{userinfo.partition(':')[0]}{url[cut:]}"
         return url
     authority, slash, path = rest.partition("/")
     # The user part ends at the last `@` before the path, so a raw `#` or `?`
@@ -579,6 +607,23 @@ def _without_credentials(url: str) -> str:
         else:
             authority = f"{userinfo.partition(':')[0]}@{host}"
     return f"{scheme}://{authority}{slash}{path}"
+
+
+def _exclusion_unreadable(rev: str, exc: GitCommandError) -> RepositoryError:
+    """Build the error for history an exclusion needs but Git would not give.
+
+    Args:
+        rev: The analysed revision.
+        exc: Git's failure.
+
+    Returns:
+        The error to raise.
+    """
+    return RepositoryError(
+        f"Failed to read the history on '{rev}' that --exclude-author is checked against, "
+        "so the exclusion cannot be applied in full. "
+        f"Detail: {exc}"
+    )
 
 
 class GitReader:
@@ -613,8 +658,12 @@ class GitReader:
         #: Files added in the last `read_commits` with `name_status`.
         self.files_added: int = 0
         self.unmatched_exclusions: tuple[str, ...] = ()
+        #: The `--exclude-author` values, as given, that matched something.
+        self.matched_exclusions: tuple[str, ...] = ()
+        self.unmatched_path_exclusions: tuple[str, ...] = ()
+        _refuse_git_files_that_block(repo_path, search_up=False)
         try:
-            self._repo = Repo(str(repo_path), search_parent_directories=False)
+            self._repo = _TimedRepo(str(repo_path), search_parent_directories=False)
         except InvalidGitRepositoryError as exc:
             # An unreadable `.git` raises the same exception as a missing one;
             # the fixes differ, so tell them apart.
@@ -640,6 +689,9 @@ class GitReader:
             GIT_NO_REPLACE_OBJECTS="1",
             GIT_GRAFT_FILE=os.devnull,
             GIT_OPTIONAL_LOCKS="0",
+            # To a pipe, Git flushes after every record unless GIT_FLUSH=0: a write, and a
+            # wake-up of the reader, per commit. At 0 it writes in blocks.
+            GIT_FLUSH="0",
         )
         version = self._git_version()
         if version is not None and version < _MIN_GIT:
@@ -665,12 +717,112 @@ class GitReader:
             raise RepositoryError(
                 f"'{repo_path}' uses SHA-256 object names, which Reveille cannot read yet."
             )
+        self._refuse_a_working_tree_elsewhere(repo_path)
         if _is_partial_clone(self._repo) or self._promisor_in_any_scope():
             raise RepositoryError(
                 f"'{repo_path}' is a partial clone (made with --filter): some of its "
                 "objects are still on the server, and reading them would make Git "
                 "fetch them. Reveille makes no network call and changes no Git data, "
                 "so it does not read a partial clone. Run it on a full clone."
+            )
+
+    def _refuse_attribute_files_that_block(self, *, counts_lines: bool) -> None:
+        """Refuse when a file Git reads attributes from is not a regular file.
+
+        Counting lines (`--numstat`) makes Git read attributes, to tell binary files
+        apart: `.gitattributes` in the working tree, `info/attributes`, and
+        `core.attributesFile`. A named pipe there blocks the read for ever, and a
+        device can feed it without end. A copied directory or an archive can carry
+        one; `git clone` cannot. Every directory of the working tree is checked,
+        tracked or not, apart from `.git`; symbolic links are not followed.
+
+        Args:
+            counts_lines: Whether the read counts lines; only then are attributes read.
+
+        Raises:
+            RepositoryError: If one is a named pipe, a device or a socket.
+        """
+        if not counts_lines:
+            return
+        candidates = self._attribute_files()
+        for candidate in candidates:
+            try:
+                mode = candidate.stat().st_mode
+            except OSError:
+                continue
+            if not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
+                raise RepositoryError(
+                    f"'{candidate}' is not a regular file (a named pipe or a device). Git "
+                    "reads attributes from it to count lines, and would wait on it for ever. "
+                    "Remove it, or read without line counts (`reveille summary`)."
+                )
+
+    def _attribute_files(self) -> list[Path]:
+        """Return the files Git may read attributes from when it counts lines.
+
+        Returns:
+            `info/attributes` in the Git and common directories, `core.attributesFile`,
+            and `.gitattributes` in every directory of the working tree.
+        """
+        candidates: list[Path] = []
+        for flag in ("--git-dir", "--git-common-dir"):
+            try:
+                found = str(self._git().rev_parse(flag)).strip()
+            except GitCommandError:
+                continue
+            git_dir = Path(found) if Path(found).is_absolute() else self._repo_path / found
+            candidates.append(git_dir / "info" / "attributes")
+        try:
+            configured = str(self._git().config("--get", "core.attributesFile")).strip()
+        except GitCommandError:
+            configured = ""
+        if configured:
+            # Git runs where GitPython starts it, so a relative path is relative to that.
+            candidates.append(self._repo_path / os.path.expanduser(configured))
+        if not self._repo.bare:
+            # Every directory on disk, not only HEAD's: a path in older history is
+            # looked up where it was, and that directory may exist untracked.
+            for directory, subdirectories, _ in os.walk(self._repo_path):
+                subdirectories[:] = [d for d in subdirectories if d != ".git"]
+                candidates.append(Path(directory) / ".gitattributes")
+                # Git follows a link to a directory; the walk does not. One level is
+                # checked, and the deadline on every read covers what lies deeper.
+                candidates.extend(
+                    Path(directory) / d / ".gitattributes"
+                    for d in subdirectories
+                    if os.path.islink(os.path.join(directory, d))
+                )
+        return candidates
+
+    def _refuse_a_working_tree_elsewhere(self, repo_path: Path) -> None:
+        """Refuse a repository whose configuration puts its working tree somewhere else.
+
+        `core.worktree` in a repository's own `.git/config`, which an archive or a
+        copied directory carries, can name another repository's directory. The
+        report would then describe that one's files and be written into it, under
+        the name of the repository given. A linked worktree and a submodule keep
+        their working tree where they are, so they pass.
+
+        Args:
+            repo_path: The repository as given, for the message.
+
+        Raises:
+            RepositoryError: If Git puts the working tree elsewhere.
+        """
+        # GIT_WORK_TREE is the caller's own setting, as a hook sets it, not one a
+        # repository can carry; Git's answer here would follow it.
+        if "GIT_WORK_TREE" in os.environ:
+            return
+        try:
+            top = str(self._git().rev_parse("--show-toplevel")).strip()
+        except GitCommandError:
+            return  # A bare repository has no working tree to put elsewhere.
+        if top and Path(top).resolve() != self._repo_path:
+            raise RepositoryError(
+                f"'{repo_path}' sets its working tree to '{top}' (core.worktree in its "
+                "Git configuration). Reveille reads only the repository it is given, and "
+                "that setting would make the report describe, and be written into, another "
+                "directory. Remove the setting, or run Reveille in the other repository."
             )
 
     def read_commits(
@@ -685,6 +837,8 @@ class GitReader:
         path: str | None = None,
         from_commit: str | None = None,
         name_status: bool = False,
+        exclude_paths: Sequence[str] = (),
+        report_unmatched: bool = True,
     ) -> list[Commit]:
         """Read all non-merge commits in the analysis window, in one `git log`.
 
@@ -704,6 +858,10 @@ class GitReader:
             from_commit: A full SHA from `resolve_commit`; read `<sha>..<branch>` only.
             name_status: Read files without line counts (`--name-status`), and
                 count the files added in `files_added`; overrides `line_counts`.
+            exclude_paths: Literal repository paths left out of every figure. A
+                commit that changed only these is not read.
+            report_unmatched: Log a warning for a value or path that matched
+                nothing. A caller reading many repositories reports it once instead.
 
         Returns:
             Commits sorted most recent first.
@@ -714,6 +872,8 @@ class GitReader:
         """
         # Cleared at entry so a call that raises leaves no stale result.
         self.unmatched_exclusions = ()
+        self.matched_exclusions = ()
+        self.unmatched_path_exclusions = ()
 
         rev = self._walked_revision(branch)
 
@@ -727,73 +887,69 @@ class GitReader:
             line_counts=line_counts and not name_status,
             path=path,
             name_status=name_status,
+            exclude_paths=exclude_paths,
         )
-
-        # Read first: an exclusion names a person, expanded through the mailmap.
-        mailmap = self._read_mailmap()
-        self._mailmap_applied = bool(mailmap.by_email or mailmap.by_name_and_email)
-        accounts, usernames = self._noreply_accounts(rev)
-        mailmap = replace(mailmap, noreply_accounts=accounts, noreply_usernames=usernames)
-
-        exclude_set = _expand_exclusions(exclude_authors, mailmap)
 
         # An unborn HEAD is a negative answer, not a read failure; a named branch
         # is read even then, and a missing one fails below.
-        if branch is None and not self._repo.head.is_valid():
+        # GitPython's check also says no for a branch whose name is not UTF-8,
+        # so a no is checked again before it is taken as the answer.
+        if branch is None and not self._repo.head.is_valid() and self.resolve_head_sha() is None:
             raise EmptyRepositoryError(
                 f"Repository at '{self._repo_path}' contains no commits. "
                 "Make at least one commit before generating a report."
             )
 
-        # A crafted author name can inject a whole record, so authentic SHAs
-        # come from `rev-list`, which computes them; a record whose SHA is not
-        # in this set did not come from a commit.
-        _logger.debug("git rev-list %s", " ".join(rev_list_args))
-        try:
-            # Ordered too: the co-author pass must line up one for one (ADR 0014).
-            authentic_order = [
-                line.strip()
-                for line in str(self._git().rev_list(*rev_list_args)).splitlines()
-                if line.strip()
-            ]
-            authentic_shas = set(authentic_order)
-            # The same selection's merges: left out of every figure (ADR 0001), and counted.
-            merges = ["--merges" if a == "--no-merges" else a for a in rev_list_args]
-            self.merges_excluded = int(str(self._git().rev_list("--count", *merges)).strip() or 0)
-        except GitCommandError as exc:
-            raise RepositoryError(
-                f"Failed to enumerate commits on branch '{rev}'. "
-                "Verify the branch exists in this repository."
-            ) from exc
-
+        self._refuse_attribute_files_that_block(counts_lines=line_counts and not name_status)
         _logger.debug("git log %s", " ".join(log_args))
+        # Started first: Git writes both logs while the queries below run. The
+        # co-author read covers the same selection (ADR 0014).
+        stream = _LogStream(self._git().log(*log_args, as_process=True))
+        trailers: _LogStream | None = None
         try:
-            raw_log = self._git().log(*log_args)
-        except GitCommandError as exc:
-            raise RepositoryError(
-                f"Failed to read commits from branch '{rev}'. "
-                f"Verify the branch name is correct. Detail: {exc}"
-            ) from exc
+            trailers = _LogStream(
+                self._git().log("-z", _TRAILER_FORMAT, *_selection(log_args), as_process=True),
+                separator=b"\0",
+            )
+            records, authentic_order, mailmap, requests, reached = self._read_alongside(
+                stream, rev, rev_list_args, exclude_authors
+            )
+            co_author_records = self._trailer_records(trailers)
+        finally:
+            stream.close()
+            if trailers is not None:
+                trailers.close()
+        # One string per hash, shared by every structure that names it, so each hash
+        # is held once.
+        canonical = {sha: sha for sha in authentic_order}
+        authentic_shas = canonical.keys()
+        co_author_records = _shared_trailer_records(co_author_records, canonical)
+        exclude_set = set().union(*requests.values())
 
+        trusted = _well_formed_shas(records, canonical)
+        undatable: set[str] = set()
         # An identity is its address (ADR 0002): excluding one name drops every
         # commit under the addresses it reaches.
-        records = raw_log.split(_RECORD_SEP)
-        trusted = _well_formed_shas(records, authentic_shas)
-        undatable: set[str] = set()
-        requested = set(exclude_set)
-        reached = self._addresses_in_history(rev, mailmap, exclude_set)
         exclude_set |= {address for addresses in reached.values() for address in addresses}
         _state_wide_exclusions(reached)
 
         commits: list[Commit] = []
         matched: set[str] = set()
+        # One resolution per author, not per commit: the same strings are shared.
+        identities: dict[tuple[str, str], tuple[str, str, set[str]]] = {}
         # Accumulated while streaming: memory is bounded by distinct paths.
         file_totals: dict[str, list[int]] = {}
         area_totals: dict[str, _AreaTotal] = {}
         added_paths: set[str] = set()
         dated_after = 0
-        for record in records:
-            commit = _parse_log_record(record, mailmap, exclude_set, trusted, matched, undatable)
+        # Not freed one by one: at 100,000 commits that lowers the JSON peak but
+        # raises the heap left once the HTML report is rendered.
+        for raw in records:
+            # Decoded one at a time: the read holds Git's bytes, not a copy as text.
+            record = safe_decode(raw)
+            commit = _parse_log_record(
+                record, mailmap, exclude_set, trusted, matched, undatable, identities
+            )
             if commit is None:
                 continue
             if dated_until is not None and commit.timestamp.date() > dated_until:
@@ -812,7 +968,10 @@ class GitReader:
         )
         self.commits_dated_after = dated_after
         self.files_added = len(added_paths)
-        self.commits_unreadable = _unreadable(records, authentic_shas, undatable)
+        self.commits_unreadable = _unreadable(trusted.keys(), authentic_shas, undatable)
+        # Not needed past here: freed before the co-authors are credited.
+        record_count = len(records)
+        del records
         self.area_activity = tuple(
             AreaActivity(
                 area=area,
@@ -825,24 +984,34 @@ class GitReader:
         )
 
         commits = self._credit_co_authors(
-            log_args, authentic_order, commits, mailmap, exclude_set, matched
+            co_author_records, authentic_order, commits, mailmap, exclude_set, matched
         )
 
-        # A filter that matched nothing is almost always a typo; say so.
+        # A filter that matched nothing is almost always a typo; say so. A value
+        # matched when any form it expanded to did, and only values given are named.
         # Assigned unconditionally so a reused reader never reports stale values.
-        unmatched = sorted(requested - matched - set(reached))
+        found = matched | set(reached)
+        unmatched = sorted(value for value, forms in requests.items() if not forms & found)
         self.unmatched_exclusions = tuple(unmatched)
-        if unmatched:
+        self.matched_exclusions = tuple(
+            value for value in exclude_authors if _match_key(value) not in unmatched
+        )
+        if unmatched and report_unmatched:
             _logger.warning("--exclude-author matched no commits for: %s", ", ".join(unmatched))
+
+        self.unmatched_path_exclusions = self._paths_never_changed(rev, exclude_paths)
+        if self.unmatched_path_exclusions and report_unmatched:
+            _logger.warning(
+                "--exclude-path matched no file in the history of %s: %s",
+                rev,
+                ", ".join(self.unmatched_path_exclusions),
+            )
 
         if not commits:
             raise _empty_window(dated_after, dated_until)
 
         _logger.debug(
-            "read %d commits from %s (%d bytes of git log output)",
-            len(commits),
-            rev,
-            len(raw_log),
+            "read %d commits from %s (%d git log records)", len(commits), rev, record_count
         )
         return sorted(commits, key=lambda c: c.timestamp, reverse=True)
 
@@ -919,7 +1088,7 @@ class GitReader:
         return RepositoryMetadata(
             name=self._repo_path.name,
             remote_url=remote_url,
-            analysed_branch=branch or self._resolve_active_branch(),
+            analysed_branch=_shown(branch or self._resolve_active_branch()),
             total_commits=total_commits,
             unique_contributors=unique_contributors,
             analysis_since=analysis_since,
@@ -966,10 +1135,81 @@ class GitReader:
             return self._repo.active_branch.name
         except TypeError:
             return "HEAD"
+        except UnicodeDecodeError:
+            pass
+        # GitPython stops on a name that is not UTF-8. Git's answer keeps such
+        # bytes, so the name can be passed back; asked only then, it costs a
+        # process no other read pays.
+        try:
+            ref = str(self._git().symbolic_ref("--quiet", "HEAD")).strip()
+        except GitCommandError:
+            return "HEAD"
+        return ref.removeprefix("refs/heads/")
+
+    def _read_alongside(
+        self,
+        stream: _LogStream,
+        rev: str,
+        rev_list_args: list[str],
+        exclude_authors: list[str],
+    ) -> tuple[list[bytes], list[str], _Mailmap, dict[str, set[str]], dict[str, set[str]]]:
+        """Run the queries the main read needs while Git writes the log, then take it.
+
+        Args:
+            stream: The main `git log`, already started.
+            rev: The analysed revision.
+            rev_list_args: The `rev-list` arguments matching the log's selection.
+            exclude_authors: The `--exclude-author` values.
+
+        Returns:
+            The log's records as Git wrote them, the authentic hashes in log order, the mailmap with
+            the noreply accounts folded in, each exclusion's forms, and the
+            addresses each exclusion reaches in the branch's history.
+
+        Raises:
+            RepositoryError: If the branch cannot be enumerated, the history an
+                exclusion is checked against cannot be read, or the log not read.
+        """
+        # A crafted author name can inject a whole record, so authentic SHAs
+        # come from `rev-list`, which computes them; a record whose SHA is not
+        # in this set did not come from a commit.
+        _logger.debug("git rev-list %s", " ".join(rev_list_args))
+        try:
+            # Ordered too: the co-author pass must line up one for one (ADR 0014).
+            authentic_order = [
+                line.strip()
+                for line in str(self._git().rev_list(*rev_list_args)).splitlines()
+                if line.strip()
+            ]
+            # The same selection's merges: left out of every figure (ADR 0001), and counted.
+            merges = ["--merges" if a == "--no-merges" else a for a in rev_list_args]
+            self.merges_excluded = int(str(self._git().rev_list("--count", *merges)).strip() or 0)
+        except GitCommandError as exc:
+            raise RepositoryError(
+                f"Failed to enumerate commits on branch '{rev}'. "
+                "Verify the branch exists in this repository."
+            ) from exc
+
+        # Once the branch is known to exist: an exclusion names a person, through the mailmap.
+        mailmap = self._read_mailmap()
+        self._mailmap_applied = bool(mailmap.by_email or mailmap.by_name_and_email)
+        accounts, usernames = self._noreply_accounts(rev)
+        mailmap = replace(mailmap, noreply_accounts=accounts, noreply_usernames=usernames)
+        requests = _exclusion_requests(exclude_authors, mailmap)
+        reached = self._addresses_in_history(rev, mailmap, set().union(*requests.values()))
+
+        try:
+            records = stream.raw_records()
+        except GitCommandError as exc:
+            raise RepositoryError(
+                f"Failed to read commits from branch '{rev}'. "
+                f"Verify the branch name is correct. Detail: {exc}"
+            ) from exc
+        return records, authentic_order, mailmap, requests, reached
 
     def _credit_co_authors(
         self,
-        log_args: list[str],
+        co_author_records: list[str] | GitCommandError,
         authentic_order: list[str],
         commits: list[Commit],
         mailmap: _Mailmap,
@@ -978,12 +1218,12 @@ class GitReader:
     ) -> list[Commit]:
         """Attach the identities each commit's `Co-authored-by` trailers credit.
 
-        A second NUL-separated `git log` over the same selection (ADR 0014).
+        From a second NUL-separated `git log` over the same selection (ADR 0014).
         Records must line up one for one with `rev-list`, or a crafted trailer
         could forge another commit's record; otherwise nobody is credited.
 
         Args:
-            log_args: The main read's arguments, whose selection is reused.
+            co_author_records: That log's records, or Git's failure to give them.
             authentic_order: Hashes from `rev-list`, in log order.
             commits: The commits being counted.
             mailmap: Parsed `.mailmap`, applied as for authors.
@@ -995,13 +1235,10 @@ class GitReader:
         """
         if not commits:
             return commits
-        selection = [a for a in log_args if a not in ("--numstat", "--name-status", _LOG_FORMAT)]
-        try:
-            raw = self._trailer_log(selection)
-        except GitCommandError as exc:
-            _logger.warning("co-author trailers could not be read: %s", exc)
+        if isinstance(co_author_records, GitCommandError):
+            _logger.warning("co-author trailers could not be read: %s", co_author_records)
             return commits
-        records = [r for r in raw.split("\0") if r.strip()]
+        records = [r for r in co_author_records if r.strip()]
         hashes = [r.split(_FIELD_SEP, 1)[0].strip() for r in records]
         if hashes != authentic_order:
             _logger.warning(
@@ -1043,7 +1280,9 @@ class GitReader:
         for line in out.splitlines():
             key, _, value = line.partition(" ")
             if key.endswith(".promisor"):
-                if value.strip().lower() in ("", "true", "yes", "on", "1"):
+                # Git reads any non-zero number as true (`2`, `1k`); only what it
+                # reads as false is false, so an unknown spelling refuses.
+                if value.strip().lower() not in ("false", "no", "off", "0"):
                     return True
             elif value.strip():
                 return True
@@ -1075,25 +1314,68 @@ class GitReader:
                 "diff.algorithm=myers",
                 "core.bigFileThreshold=512m",
                 "trailer.separators=:",
+                # Reveille decodes Git's output as UTF-8; a repository must not re-encode it.
+                "i18n.logOutputEncoding=UTF-8",
                 # Reveille reads `.mailmap` itself; Git's own would open whatever the
                 # repository names, and block on a FIFO.
                 "log.mailmap=false",
                 "mailmap.file=",
                 "mailmap.blob=",
+                # Read by every diff Git prints, numstat included: a FIFO named here
+                # blocks the read for ever. An empty value is refused, so the null file.
+                f"diff.orderFile={os.devnull}",
                 *extra,
             ]
         )
 
-    def _trailer_log(self, selection: list[str]) -> str:
-        """Run the co-author read: NUL-separated hashes and trailer values.
+    def _trailer_records(self, trailers: _LogStream) -> list[str] | GitCommandError:
+        """Take the co-author read: one record per commit, its hash and trailer values.
 
         Args:
-            selection: The main read's arguments without format and line counts.
+            trailers: The NUL-separated `git log`, already started.
 
         Returns:
-            Git's output.
+            The records, or Git's failure, which leaves co-authors uncredited.
         """
-        return str(self._git().log("-z", _TRAILER_FORMAT, *selection))
+        try:
+            return trailers.records()
+        except GitCommandError as exc:
+            return exc
+
+    def _paths_never_changed(self, rev: str, paths: Sequence[str]) -> tuple[str, ...]:
+        """Return the excluded paths no commit on `rev` ever changed: almost always a typo.
+
+        Args:
+            rev: The analysed revision.
+            paths: The excluded paths, already normalised.
+
+        Returns:
+            The paths that matched nothing, in the order given.
+
+        Raises:
+            RepositoryError: If Git cannot answer.
+        """
+        unmatched: list[str] = []
+        for path in paths:
+            try:
+                found = str(
+                    self._git().log(
+                        "-1",
+                        "--full-history",
+                        "--format=%H",
+                        "--end-of-options",
+                        rev,
+                        "--",
+                        f":(top,literal){path}",
+                    )
+                ).strip()
+            except GitCommandError as exc:
+                raise RepositoryError(
+                    f"Failed to check the excluded path '{path}' on '{rev}'. Detail: {exc}"
+                ) from exc
+            if not found:
+                unmatched.append(path)
+        return tuple(unmatched)
 
     def _noreply_accounts(self, rev: str) -> tuple[dict[str, str], dict[str, str]]:
         """Read which GitHub accounts committed, for folding noreply addresses (ADR 0023).
@@ -1107,11 +1389,17 @@ class GitReader:
         Returns:
             Account number to canonical address, and legacy username to that address
             for usernames only one account used.
+
+        Raises:
+            RepositoryError: If Git cannot list the addresses. Going on without them
+                would split accounts and narrow an exclusion without a word.
         """
         try:
             out = str(self._git().log("--no-merges", "--format=%ae", "--end-of-options", rev, "--"))
-        except GitCommandError:
-            return {}, {}
+        except GitCommandError as exc:
+            raise RepositoryError(
+                f"Failed to read the author addresses on '{rev}'. Detail: {exc}"
+            ) from exc
         current: dict[str, str] = {}
         accounts_of: dict[str, set[str]] = defaultdict(set)
         for line in out.splitlines():
@@ -1169,15 +1457,29 @@ class GitReader:
                     f"filter.{name}.required=false",
                 )
             ]
-            raw = str(
-                self._git(overrides).status(
-                    "--porcelain=v2",
-                    "--branch",
-                    "-z",
-                    "--untracked-files=normal",
-                    "--ignore-submodules=all",
+            try:
+                raw = str(
+                    self._git(overrides).status(
+                        "--porcelain=v2",
+                        "--branch",
+                        "-z",
+                        "--untracked-files=normal",
+                        "--ignore-submodules=all",
+                        kill_after_timeout=STATUS_TIMEOUT_SECONDS,
+                    )
                 )
-            )
+            except GitCommandError as exc:
+                # GitPython's own marker when it stopped the command; any other
+                # failure is Git's, and is reported as Git's.
+                if "Timeout:" not in str(exc.stderr):
+                    raise
+                # A FIFO where Git reads ignore rules (`.gitignore`, `info/exclude`)
+                # blocks the read until something writes to it: forever.
+                raise RepositoryError(
+                    f"`git status` did not finish within {STATUS_TIMEOUT_SECONDS} seconds and "
+                    "was stopped. A named pipe (FIFO) where Git reads ignore rules, such as "
+                    "a .gitignore, makes it wait for ever; so can a very large working tree."
+                ) from exc
             status = _parse_status(raw)
         else:
             # Bare, or filters unknown: read where HEAD is, compare no files.
@@ -1233,7 +1535,8 @@ class GitReader:
                     "--show-scope",
                     "-z",
                     "--get-regexp",
-                    r"^filter\..+\.(clean|smudge|process)$",
+                    # `.*`, not `.+`: `filter=` selects the driver named "".
+                    r"^filter\..*\.(clean|smudge|process)$",
                 )
             )
         except GitCommandError as exc:
@@ -1452,29 +1755,34 @@ class GitReader:
                 found.append((order[commit], name))
         return [name for _, name in sorted(found)]
 
-    def last_change_before(
+    def last_changes_before(
         self,
-        area: str,
+        areas: Sequence[str],
         branch: str | None,
         before_commit: str | None,
         before_date: datetime.date | None,
-    ) -> datetime.date | None:
-        """Return when a directory last changed before a point, or None.
+    ) -> dict[str, datetime.date | None]:
+        """Return when each directory last changed before a point, in one pass.
 
-        Exclusions do not apply: this is about the directory, not a person.
+        Exclusions do not apply: this is about the directories, not a person. One
+        `git log`, newest first, read until every directory has its answer.
+        Renames count on both sides, as a path lookup does.
 
         Args:
-            area: A directory path; the root area is not looked up.
+            areas: Directory paths; the root area is never looked up.
             branch: The analysed branch; the active branch if None.
             before_commit: Look at this commit's history (inclusive).
             before_date: Or look at the branch's history before this date.
 
         Returns:
-            The date (UTC) of the latest non-merge commit that changed it, if any.
+            Each area and the date (UTC) of the latest non-merge commit before the
+            point that changed a file in it, or None.
         """
-        if area == ROOT_AREA:
-            return None
-        args = ["-1", "--no-merges", "--format=%ct"]
+        found: dict[str, datetime.date | None] = dict.fromkeys(areas)
+        remaining = {area for area in areas if area != ROOT_AREA}
+        if not remaining:
+            return found
+        args = ["--no-merges", "--no-renames", "--name-only", "-z", "--format=%x01%H %ct"]
         if before_commit is not None:
             args += ["--end-of-options", before_commit]
         else:
@@ -1483,12 +1791,60 @@ class GitReader:
                 args.append(f"--before={before_date.isoformat()}T00:00:00+00:00")
             args += ["--end-of-options", rev]
         try:
-            out = str(self._git().log(*args, "--", f":(literal){area}")).strip()
+            process = self._git().log(*args, "--", as_process=True)
+        except GitCommandError:
+            return found
+        silence = _Silence(process.proc)
+        try:
+            when: datetime.date | None = None
+            pending = b""
+            for chunk in iter(lambda: process.stdout.read(1 << 16), b""):
+                silence.heard()
+                *tokens, pending = (pending + chunk).split(b"\0")
+                for token in tokens:
+                    header = _CHANGE_HEADER_RE.fullmatch(token)
+                    if header is not None:
+                        stamp = int(header.group(1))
+                        when = datetime.datetime.fromtimestamp(stamp, tz=datetime.UTC).date()
+                        continue
+                    path = token.lstrip(b"\n").decode("utf-8", "replace")
+                    for area in [a for a in remaining if path.startswith(a + "/") or path == a]:
+                        found[area] = when
+                        remaining.discard(area)
+                if not remaining:
+                    break
+        finally:
+            # Stop Git once every area is answered; reading on would only cost time.
+            silence.stop()
+        return found
+
+    def last_commit_date(self, until: datetime.date) -> datetime.date | None:
+        """Return the date of the last non-merge commit on or before `until`.
+
+        Only the commit dates are read: what `read_commits` with no window would
+        give as its latest commit's date, without the names, the trust check or
+        the exclusions.
+
+        Args:
+            until: The last day counted, in UTC.
+
+        Returns:
+            The date, or None when the branch has no such commit.
+        """
+        log_args, _ = _build_log_args(self._resolve_active_branch(), None, until, line_counts=False)
+        log_args[log_args.index(_LOG_FORMAT)] = "--format=%ct"
+        try:
+            output = str(self._git().log(*log_args))
         except GitCommandError:
             return None
-        if not out.isdigit():
-            return None
-        return datetime.datetime.fromtimestamp(int(out), tz=datetime.UTC).date()
+        latest: datetime.date | None = None
+        for value in set(output.split()):
+            try:
+                day = datetime.datetime.fromtimestamp(int(value), tz=datetime.UTC).date()
+            except (ValueError, OverflowError, OSError):
+                continue  # skipped as read_commits skips it
+            latest = day if latest is None else max(latest, day)
+        return latest
 
     def resolve_head_sha(self, branch: str | None = None) -> str | None:
         """Return the full SHA at the tip of the analysed ref, pinning the report.
@@ -1520,14 +1876,19 @@ class GitReader:
 
         Returns:
             Each matching value and its addresses; empty when nothing is excluded.
+
+        Raises:
+            RepositoryError: If Git cannot read either part of the history. An
+                exclusion that cannot be checked in full is refused, not applied
+                to part of it.
         """
         reached: dict[str, set[str]] = {}
         if not exclude_set:
             return reached
         try:
             raw = str(self._git().log("-z", "--format=%an%x1f%ae", "--end-of-options", rev, "--"))
-        except GitCommandError:
-            return reached
+        except GitCommandError as exc:
+            raise _exclusion_unreadable(rev, exc) from exc
         for record in raw.split("\0"):
             fields = record.split(_FIELD_SEP)
             if len(fields) != 2:
@@ -1547,8 +1908,8 @@ class GitReader:
                     "--",
                 )
             )
-        except GitCommandError:
-            return reached
+        except GitCommandError as exc:
+            raise _exclusion_unreadable(rev, exc) from exc
         for value in trailers.replace("\0", _FIELD_SEP).split(_FIELD_SEP):
             parsed = _co_author_value(_strip_control_chars(value[: _MAX_TRAILER_VALUE + 1]))
             if parsed is None:
@@ -1608,12 +1969,7 @@ class GitReader:
 
     def _git_version(self) -> tuple[int, int] | None:
         """Return the installed Git's major and minor version, or None if unreadable."""
-        try:
-            raw = str(self._git().version())
-        except Exception:  # a missing or broken git binary is reported by the first read
-            return None
-        match = re.search(r"(\d+)\.(\d+)", raw)
-        return (int(match.group(1)), int(match.group(2))) if match else None
+        return _installed_git_version()
 
     def _supports_since_as_filter(self) -> bool:
         """Whether the installed git (2.37 or newer) understands `--since-as-filter`.
@@ -1655,7 +2011,13 @@ class GitReader:
             # Read one byte past the limit: the file can grow after a size check.
             with mailmap_path.open("rb") as handle:
                 raw = handle.read(_MAX_MAILMAP_BYTES + 1)
-        except OSError:
+        except OSError as exc:
+            # Said, not skipped: unmerged identities change every count. No path, which can
+            # hold a login name.
+            _logger.warning(
+                "The working-tree .mailmap could not be read (%s) and was not applied.",
+                exc.strerror or type(exc).__name__,
+            )
             return None
         if len(raw) > _MAX_MAILMAP_BYTES:
             _logger.warning(
@@ -1787,15 +2149,16 @@ def _co_author_identities(
         parsed = _co_author_value(_strip_control_chars(value[: _MAX_TRAILER_VALUE + 1]))
         if parsed is None:
             continue
-        raw_name = _truncate(parsed[0], _MAX_NAME_LENGTH)
-        raw_email = _truncate(parsed[1].strip(), _MAX_EMAIL_LENGTH)
+        raw_name, raw_email = parsed[0], parsed[1].strip()
         name, email = _resolve_identity(raw_name, raw_email, mailmap)
-        name = _truncate(_strip_invisible(_strip_control_chars(name)), _MAX_NAME_LENGTH)
-        email = _truncate(_strip_control_chars(email), _MAX_EMAIL_LENGTH).lower()
+        name = _strip_invisible(_strip_control_chars(name))
+        email = _strip_control_chars(email).lower()
         hits = exclude_set & {_match_key(v) for v in (name, email, raw_name, raw_email)}
         if hits:
             matched.update(hits)
             continue
+        name = _truncate(name, _MAX_NAME_LENGTH)
+        email = _truncate(email, _MAX_EMAIL_LENGTH)
         if email == author or email in found:
             continue
         if len(found) == _MAX_CO_AUTHORS:
@@ -1815,19 +2178,21 @@ def _count_commits(n: int) -> str:
 
 
 def _unreadable(
-    records: list[str], authentic_shas: set[str], undatable: AbstractSet[str] = frozenset()
+    well_formed: AbstractSet[str],
+    authentic_shas: AbstractSet[str],
+    undatable: AbstractSet[str] = frozenset(),
 ) -> int:
     """Count the commits whose record could not be read, and say so (ADR 0019).
 
     Args:
-        records: The main read's records.
+        well_formed: The names `_well_formed_shas` gave for the main read's records.
         authentic_shas: Object names git reported for this revision.
         undatable: Commits whose timestamp no date can hold.
 
     Returns:
         How many authentic commits had no well-formed record or no usable date.
     """
-    unreadable = len((authentic_shas - _well_formed_shas(records, authentic_shas)) | undatable)
+    unreadable = len((authentic_shas - well_formed) | undatable)
     if unreadable:
         _logger.warning(
             "%s could not be read and %s not counted: an author field held "
@@ -1838,14 +2203,137 @@ def _unreadable(
     return unreadable
 
 
-def _well_formed_shas(records: list[str], authentic_shas: set[str]) -> set[str]:
+class _LogStream:
+    """One `git log` read in the background, split into records as it arrives.
+
+    Git writes the log while the reader runs its other queries, and the output is
+    never held whole: the records are kept as bytes until they are taken, so one
+    non-ASCII name cannot double the size of every other record in memory.
+
+    The threads only read pipes. GitPython's runner keeps the pinned `-c`
+    settings on one shared object between calls, so a Git call from a second
+    thread could run without them.
+    """
+
+    def __init__(self, process: Any, separator: bytes = _RECORD_SEP_BYTES) -> None:
+        """Start reading the process's output.
+
+        Args:
+            process: GitPython's handle on a running `git log`.
+            separator: The byte between records.
+        """
+        self._process = process
+        self._silence = _Silence(process.proc)
+        self._separator = separator
+        self._records: list[bytes] = []
+        self._stderr: list[bytes] = []
+        self._failure: BaseException | None = None
+        self._threads = [
+            threading.Thread(target=self._reading, args=(self._split,), daemon=True),
+            # Read too, so warnings Git writes cannot fill the pipe and stop it.
+            threading.Thread(target=self._reading, args=(self._drain_stderr,), daemon=True),
+        ]
+        try:
+            for thread in self._threads:
+                thread.start()
+        except BaseException:
+            self._stop()
+            raise
+
+    def _reading(self, read: Callable[[], None]) -> None:
+        """Run one reader; if it fails, keep the failure and stop Git.
+
+        Stopped, Git cannot wait for ever on a pipe nobody reads, and the
+        failure is raised where the records are taken, not lost with the thread.
+
+        Args:
+            read: The reader to run.
+        """
+        try:
+            read()
+        except BaseException as exc:  # raised again by raw_records
+            self._failure = self._failure or exc
+            self._stop()
+
+    def _stop(self) -> None:
+        """Stop Git if it is still running."""
+        if self._process.proc.poll() is None:
+            with contextlib.suppress(OSError):
+                self._process.proc.kill()
+
+    def _split(self) -> None:
+        """Read the output to its end, one record per separator."""
+        pieces: list[bytes] = []
+        for chunk in iter(lambda: self._process.proc.stdout.read(1 << 16), b""):
+            self._silence.heard()
+            parts = chunk.split(self._separator)
+            pieces.append(parts[0])
+            if len(parts) > 1:
+                self._records.append(b"".join(pieces))
+                self._records.extend(parts[1:-1])
+                pieces = [parts[-1]]
+        self._records.append(b"".join(pieces))
+
+    def _drain_stderr(self) -> None:
+        """Read Git's error output to its end."""
+        self._stderr.append(self._process.proc.stderr.read())
+
+    def raw_records(self) -> list[bytes]:
+        """Wait for Git and return the records as Git wrote them.
+
+        Returns:
+            The records, the bytes before the first separator first.
+
+        Raises:
+            GitCommandError: If Git exits with an error, or its output could not
+                be read to the end.
+            RepositoryError: If Git wrote nothing for `GIT_TIMEOUT_SECONDS` and
+                was stopped; not a GitCommandError, so no caller takes it for a
+                failure it can read past.
+        """
+        for thread in self._threads:
+            thread.join()
+        status = self._process.proc.wait()
+        if self._silence.expired:
+            raise _timed_out("git log")
+        if self._failure is not None:
+            raise GitCommandError(
+                self._process.args, status, f"its output could not be read: {self._failure!r}"
+            ) from self._failure
+        if status != 0:
+            raise GitCommandError(self._process.args, status, b"".join(self._stderr))
+        records, self._records = self._records, []
+        return records
+
+    def records(self) -> list[str]:
+        """Wait for Git and return the records, decoded as GitPython decodes output.
+
+        Returns:
+            The records, the text before the first separator first.
+
+        Raises:
+            GitCommandError: If Git exits with an error.
+        """
+        return [safe_decode(record) for record in self.raw_records()]
+
+    def close(self) -> None:
+        """Stop Git if it is still running, and wait for the readers."""
+        self._stop()
+        self._process.proc.wait()
+        for thread in self._threads:
+            thread.join()
+
+
+def _well_formed_shas(
+    records: Sequence[bytes], authentic_shas: Mapping[str, str]
+) -> dict[str, str]:
     """Return the object names whose log record has the expected shape.
 
     A record split by injected separators fails this check, so its commit is
     counted as unreadable rather than lost silently (ADR 0019).
 
     Args:
-        records: The main read's records.
+        records: The main read's records, as Git wrote them.
         authentic_shas: Object names git reported for this revision.
 
     Returns:
@@ -1854,12 +2342,39 @@ def _well_formed_shas(records: list[str], authentic_shas: set[str]) -> set[str]:
     """
     seen: dict[str, int] = {}
     for record in records:
-        fields = record.partition("\n")[0].split(_FIELD_SEP)
+        # Only the header is decoded: a newline is one byte in UTF-8, never part of another.
+        fields = safe_decode(record.partition(b"\n")[0]).split(_FIELD_SEP)
         if len(fields) == 5 and fields[0] == fields[4] and fields[0] in authentic_shas:
             seen[fields[0]] = seen.get(fields[0], 0) + 1
     # A hash with two well-formed records has one forged copy, and nothing says
     # which: neither is trusted, and the commit is counted as unreadable.
-    return {sha for sha, count in seen.items() if count == 1}
+    return {sha: authentic_shas[sha] for sha, count in seen.items() if count == 1}
+
+
+def _shared_trailer_records(
+    records: list[str] | GitCommandError, canonical: Mapping[str, str]
+) -> list[str] | GitCommandError:
+    """Keep a co-author record that credits nobody as its hash alone, the shared string.
+
+    Almost every commit has no trailer; otherwise its record is a second copy of
+    its hash, held for the whole read. The order, which `_credit_co_authors` checks
+    against `rev-list`, is kept, and a record whose hash Git did not list is kept
+    whole, so it still fails that check.
+
+    Args:
+        records: The co-author log's records, or Git's failure to give them.
+        canonical: Each hash `rev-list` listed, to the string the read shares.
+
+    Returns:
+        The records, the same in number and order.
+    """
+    if isinstance(records, GitCommandError):
+        return records
+    for index, record in enumerate(records):
+        sha, separator, values = record.partition(_FIELD_SEP)
+        if separator and not values.strip():
+            records[index] = canonical.get(sha.strip(), record)
+    return records
 
 
 def _state_wide_exclusions(reached: dict[str, set[str]]) -> None:
@@ -1885,6 +2400,183 @@ def _state_wide_exclusions(reached: dict[str, set[str]]) -> None:
 _MAX_MAILMAP_BYTES = 1_048_576
 
 
+# A commit's line in `last_changes_before`: \x01, its hash, its commit time.
+_CHANGE_HEADER_RE = re.compile(rb"\x01[0-9a-f]{40} ([0-9]+)")
+
+#: How long `state` lets `git status` run before stopping it (a FIFO makes it wait for ever).
+STATUS_TIMEOUT_SECONDS = 120
+
+#: How long any other Git command may run, or a history read go without output, before it
+#: is stopped. A named pipe or a device anywhere Git opens a file makes it wait for ever, and
+#: no list of such files is complete; this bounds the wait whatever the file.
+GIT_TIMEOUT_SECONDS = 300
+
+
+def _timed_out(command: object) -> RepositoryError:
+    """The error for a Git command stopped at its deadline."""
+    return RepositoryError(
+        f"Git did not finish ({command}) within {GIT_TIMEOUT_SECONDS} seconds and was "
+        "stopped. A named pipe (FIFO) or a device where Git reads a file makes it wait for "
+        "ever. Remove it, or run Reveille on a fresh clone."
+    )
+
+
+class _TimedGit(Git):
+    """GitPython's runner, with a deadline on every command it waits for.
+
+    GitPython stops a command at its deadline with SIGKILL, and first lists the
+    command's children with `pgrep` (or `ps`) to stop them too. It cannot do
+    this on Windows, where the deadline is not set.
+    """
+
+    def execute(self, *args: Any, **kwargs: Any) -> Any:
+        """Run a command as `Git.execute` does, stopping it at `GIT_TIMEOUT_SECONDS`.
+
+        A command started as a process is not waited for here; its reader keeps
+        the deadline (`_Silence`). A caller's own deadline is kept, and so is the
+        error it gets.
+        """
+        timed = (
+            sys.platform != "win32"
+            and not kwargs.get("as_process")
+            and kwargs.get("kill_after_timeout") is None
+        )
+        if not timed:
+            return super().execute(*args, **kwargs)
+        try:
+            return super().execute(*args, kill_after_timeout=GIT_TIMEOUT_SECONDS, **kwargs)
+        except GitCommandError as exc:
+            if "Timeout:" in str(exc.stderr):
+                raise _timed_out(" ".join(map(str, exc.command))) from exc
+            raise
+
+
+class _TimedRepo(Repo):
+    """A repository whose Git commands run with a deadline."""
+
+    GitCommandWrapperType = _TimedGit
+
+
+class _Silence:
+    """Stop a Git process that has written nothing for `GIT_TIMEOUT_SECONDS`.
+
+    A history read can rightly run for minutes on a long history, but it writes
+    as it goes; one that writes nothing for that long is waiting on a file.
+    """
+
+    def __init__(self, process: Any) -> None:
+        """Start watching.
+
+        Args:
+            process: The `subprocess.Popen` of a running Git command.
+        """
+        self._process = process
+        self._last = time.monotonic()
+        self.expired = False
+        threading.Thread(target=self._watch, daemon=True).start()
+
+    def heard(self) -> None:
+        """Note that the process wrote something."""
+        self._last = time.monotonic()
+
+    def stop(self) -> None:
+        """Stop the process, read or not, and raise if it was stopped for its silence.
+
+        Raises:
+            RepositoryError: If it wrote nothing for `GIT_TIMEOUT_SECONDS`.
+        """
+        with contextlib.suppress(OSError):
+            self._process.kill()
+        self._process.wait()
+        if self.expired:
+            raise _timed_out("git log")
+
+    def _watch(self) -> None:
+        while self._process.poll() is None:
+            idle = time.monotonic() - self._last
+            if idle >= GIT_TIMEOUT_SECONDS:
+                self.expired = True
+                with contextlib.suppress(OSError):
+                    self._process.kill()
+                return
+            time.sleep(min(1.0, GIT_TIMEOUT_SECONDS - idle))
+
+
+_GIT_VERSION_LOCK = threading.Lock()
+
+
+def _installed_git_version() -> tuple[int, int] | None:
+    """Return the installed Git's major and minor version, or None if unreadable.
+
+    Read once per process, since it depends on no repository. Locked, because
+    `repos` opens readers on several threads, and each would otherwise ask
+    before the first answer is cached.
+    """
+    with _GIT_VERSION_LOCK:
+        return _read_git_version()
+
+
+@functools.cache
+def _read_git_version() -> tuple[int, int] | None:
+    """Ask Git its version; called only by `_installed_git_version`."""
+    try:
+        raw = str(_TimedGit().version())
+    except Exception:  # a missing or broken git binary is reported by the first read
+        return None
+    match = re.search(r"(\d+)\.(\d+)", raw)
+    return (int(match.group(1)), int(match.group(2))) if match else None
+
+
+def find_repositories(directory: Path, depth: int) -> tuple[list[Path], list[Path]]:
+    """Find the Git repositories under `directory`, to `depth` levels (ADR 0026).
+
+    A working tree holds `.git` (a directory, or the file a linked worktree or
+    submodule has); a bare repository holds `HEAD`, `objects` and `refs`. A
+    repository found is not searched further, and a symbolic link is not
+    followed, so the search stays inside `directory`. No Git command runs.
+
+    Args:
+        directory: Where to search; not itself a candidate.
+        depth: How many levels below it, 1 to `MAX_SEARCH_DEPTH`.
+
+    Returns:
+        The repositories, and the directories that could not be listed, each sorted.
+    """
+    found: list[Path] = []
+    unreadable: list[Path] = []
+    level = [directory]
+    for _ in range(min(max(depth, 1), MAX_SEARCH_DEPTH)):
+        below: list[Path] = []
+        for parent in level:
+            try:
+                entries = sorted(os.scandir(parent), key=lambda e: e.name)
+            except OSError:
+                unreadable.append(parent)
+                continue
+            for entry in entries:
+                if entry.name == ".git" or entry.is_symlink() or not entry.is_dir():
+                    continue
+                candidate = Path(entry.path)
+                if _is_repository(candidate):
+                    found.append(candidate)
+                else:
+                    below.append(candidate)
+        level = below
+    return sorted(found), sorted(unreadable)
+
+
+def _is_repository(path: Path) -> bool:
+    """Return whether `path` is a working tree or a bare repository, by its files alone."""
+    try:
+        if (path / ".git").exists() and not (path / ".git").is_symlink():
+            return True
+        return (
+            (path / "HEAD").is_file() and (path / "objects").is_dir() and (path / "refs").is_dir()
+        )
+    except OSError:
+        return False
+
+
 def repository_root(path: Path) -> Path:
     """Return the top of the working tree `path` lies in, as Git finds it.
 
@@ -1907,12 +2599,304 @@ def repository_root(path: Path) -> Path:
     if _REPOSITORY_VARIABLES & os.environ.keys():
         return path.resolve()
     try:
+        _refuse_git_files_that_block(path, search_up=True)
+    except RepositoryError:
+        return path.resolve()  # the reader opens it, and says why it refuses
+    try:
         # `-C`, not a working directory: GitPython runs Git in the process's own
         # directory when the one it is given cannot be entered.
-        top = str(Git().execute(["git", "-C", str(path), "rev-parse", "--show-toplevel"])).strip()
+        top = str(
+            _TimedGit().execute(["git", "-C", str(path), "rev-parse", "--show-toplevel"])
+        ).strip()
+        git_dir = _absolute_git_dir(path)
     except (GitCommandError, OSError):
         return path.resolve()
-    return Path(top).resolve() if top else path.resolve()
+    if not top or git_dir is None:
+        return path.resolve()
+    # `core.worktree` can name another repository's directory: from there, Git
+    # finds that one's Git directory, not this one's. Return the repository the
+    # path is in, so the reader refuses it, rather than the other repository.
+    if _absolute_git_dir(Path(top)) != git_dir:
+        return Path(git_dir).parent.resolve() if Path(git_dir).name == ".git" else path.resolve()
+    return Path(top).resolve()
+
+
+#: Files Git, or GitPython, reads in a Git directory before anything else.
+_GIT_DIR_FILES = (
+    "HEAD",
+    "config",
+    "config.worktree",
+    "commondir",
+    "packed-refs",
+    "shallow",
+    "objects/info/alternates",
+)
+
+#: Larger than any configuration a person writes: a regular file this size is refused
+#: too, as GitPython reads the whole of one, includes and all.
+_MAX_GIT_FILE_BYTES = 8 * 1024 * 1024
+
+#: Git follows `include.path` at most this deep.
+_MAX_INCLUDE_DEPTH = 10
+
+
+def _refuse_git_files_that_block(start: Path, *, search_up: bool) -> None:
+    """Refuse a repository whose Git directory would make a read wait or grow for ever.
+
+    Git and GitPython read these files before anything else. A named pipe makes
+    them wait for ever; a device such as `/dev/zero` feeds GitPython's config
+    reader without end; an `include.path` can name either, `/dev/stdin` included.
+    A copied directory or an archive can carry one; `git clone` cannot. Checked
+    before Git runs at all, so nothing here starts a read that could block.
+
+    Args:
+        start: The directory given.
+        search_up: Whether to look for the Git directory in its parents too, as
+            Git's own search does.
+
+    Raises:
+        RepositoryError: If one of those files is not a regular file, or is larger
+            than any configuration a person writes.
+    """
+    # Absolute, so the search can go up from a relative path such as `.`.
+    git_dir = _git_dir_of(Path(os.path.abspath(start)), search_up=search_up)
+    if git_dir is None:
+        return
+    directories = [git_dir]
+    if _checked(git_dir / "commondir"):
+        common = git_dir / (git_dir / "commondir").read_text("utf-8", "replace").strip()
+        directories.append(common)
+    configs: list[Path] = []
+    for directory in directories:
+        for name in _GIT_DIR_FILES:
+            if _checked(directory / name) and name.startswith("config"):
+                configs.append(directory / name)
+    for config in configs:
+        _check_includes(config, 0)
+    # GitPython reads refs and loose objects in Python, where no deadline reaches.
+    for directory in dict.fromkeys(directories):
+        _refuse_special_files(directory / "refs")
+        for objects in _object_directories(directory / "objects"):
+            _refuse_special_files(objects)
+
+
+#: Git follows alternates at most this deep.
+_MAX_ALTERNATES_DEPTH = 5
+
+
+def _object_directories(objects: Path) -> list[Path]:
+    """Return an object directory and every one its alternates name, as Git follows them.
+
+    Args:
+        objects: The repository's `objects` directory.
+
+    Returns:
+        The directories, the repository's own first.
+
+    Raises:
+        RepositoryError: If an alternates file is not a regular file, or is too large.
+    """
+    found: list[Path] = []
+    pending = [(objects, 0)]
+    while pending:
+        directory, depth = pending.pop(0)
+        if directory in found or not directory.is_dir():
+            continue
+        found.append(directory)
+        alternates = directory / "info" / "alternates"
+        if depth >= _MAX_ALTERNATES_DEPTH or not _checked(alternates):
+            continue
+        for line in alternates.read_text("utf-8", "replace").splitlines():
+            line = line.strip()
+            if line and not line.startswith("#"):
+                target = Path(line.strip('"'))
+                pending.append((target if target.is_absolute() else directory / target, depth + 1))
+    return found
+
+
+def _refuse_special_files(root: Path) -> None:
+    """Refuse a named pipe, a device or a socket anywhere under `root`.
+
+    Only the type is checked, not the size: a pack can rightly be gigabytes. A
+    link to a directory is followed, as Git follows it; each directory is
+    walked once, so a loop of links cannot hold the walk.
+
+    Args:
+        root: A directory Git or GitPython reads files from, such as `refs`.
+
+    Raises:
+        RepositoryError: If a file under it is not a regular file.
+    """
+    pending = [root]
+    walked: set[tuple[int, int]] = set()
+    while pending:
+        directory = pending.pop()
+        try:
+            identity = directory.stat()
+            entries = list(os.scandir(directory))
+        except OSError:
+            continue
+        if (identity.st_dev, identity.st_ino) in walked:
+            continue
+        walked.add((identity.st_dev, identity.st_ino))
+        for entry in entries:
+            try:
+                is_directory = entry.is_dir()  # through a link, as Git reads it
+            except OSError:
+                continue  # a link Git cannot resolve either, such as one to itself
+            if is_directory:
+                pending.append(Path(entry.path))
+                continue
+            if entry.is_file(follow_symlinks=False):
+                continue  # the directory listing says so; no stat needed
+            try:
+                mode = entry.stat().st_mode  # through a link, as Git reads it
+            except OSError:
+                continue  # a broken link, which Git ignores
+            if not stat.S_ISREG(mode) and not stat.S_ISDIR(mode):
+                raise RepositoryError(
+                    f"'{entry.path}' is not a regular file (a named pipe or a device). Git "
+                    "reads it, and would wait on it for ever or read it without end. "
+                    "Remove it, or run Reveille on a fresh clone."
+                )
+
+
+def _git_dir_of(start: Path, *, search_up: bool) -> Path | None:
+    """Return the Git directory Git would find from `start`, without running Git.
+
+    Args:
+        start: Where to look.
+        search_up: Whether to look in its parents too.
+
+    Returns:
+        The `.git` directory, the directory a `.git` file names, `start` itself
+        when it is bare, or None when none is found.
+
+    Raises:
+        RepositoryError: If a `.git` file is not a regular file.
+    """
+    for directory in [start, *start.parents] if search_up else [start]:
+        dot_git = directory / ".git"
+        if os.path.lexists(dot_git):
+            if dot_git.is_dir():
+                return dot_git
+            if not _checked(dot_git):
+                return None
+            pointer = dot_git.read_text("utf-8", "replace").strip()
+            if not pointer.startswith("gitdir:"):
+                return None
+            return directory / pointer.removeprefix("gitdir:").strip()
+        if all((directory / name).exists() for name in ("HEAD", "objects", "refs")):
+            return directory
+    return None
+
+
+def _checked(path: Path) -> bool:
+    """Return whether a file Git reads is there, refusing one that would block.
+
+    Args:
+        path: The file; a symbolic link is followed, as Git follows it.
+
+    Returns:
+        True for a regular file of a plausible size, False when it is absent.
+
+    Raises:
+        RepositoryError: If it is not a regular file, or is too large.
+    """
+    try:
+        status = path.stat()
+    except OSError:
+        return False
+    if not stat.S_ISREG(status.st_mode):
+        if stat.S_ISDIR(status.st_mode):
+            return False
+        raise RepositoryError(
+            f"'{path}' is not a regular file (a named pipe or a device). Git reads it "
+            "before anything else, and would wait on it for ever or read it without end. "
+            "Remove it, or run Reveille on a fresh clone."
+        )
+    if status.st_size > _MAX_GIT_FILE_BYTES:
+        raise RepositoryError(
+            f"'{path}' is {status.st_size:,} bytes, larger than any configuration a person "
+            f"writes (the limit is {_MAX_GIT_FILE_BYTES:,}). Reveille does not read it."
+        )
+    return True
+
+
+def _check_includes(config: Path, depth: int) -> None:
+    """Check every file a configuration file includes, conditionally or not.
+
+    Args:
+        config: A configuration file already checked.
+        depth: How many includes led here.
+
+    Raises:
+        RepositoryError: If an included file is not a regular file, or is too large.
+    """
+    if depth >= _MAX_INCLUDE_DEPTH:
+        return
+    for value in _include_paths(config):
+        if value.startswith("%(prefix)/"):
+            # Git expands it to its install prefix, which Reveille cannot know for sure.
+            raise RepositoryError(
+                f"'{config}' includes '{value}', a path under Git's install prefix. "
+                "Reveille checks every file a configuration includes before Git reads it, "
+                "and cannot check this one."
+            )
+        target = Path(value).expanduser()
+        if not target.is_absolute():
+            target = config.parent / target
+        if _checked(target):
+            _check_includes(target, depth + 1)
+
+
+def _include_paths(config: Path) -> list[str]:
+    """Return the value of every `path` key in an `include` or `includeIf` section.
+
+    Git reads the file, with includes off, so its own grammar decides what is a
+    key (continuations, quoting, a byte-order mark), and nothing else is opened.
+    Every condition is taken as true: a file that is listed is checked.
+
+    Args:
+        config: A configuration file already checked to be a regular file.
+
+    Returns:
+        The paths, as Git reads them.
+
+    Raises:
+        RepositoryError: If Git cannot read the file as configuration.
+    """
+    try:
+        raw = _TimedGit().execute(
+            [
+                "git",
+                "config",
+                "--file",
+                str(config),
+                "--no-includes",
+                "-z",
+                "--get-regexp",
+                r"^include(if\..*)?\.path$",
+            ]
+        )
+    except GitCommandError as exc:
+        if exc.status == 1:  # no such key
+            return []
+        raise RepositoryError(
+            f"Git cannot read '{config}' as configuration: {_git_error(exc)}"
+        ) from exc
+    entries = str(raw).split("\0")
+    return [value for _, _, value in (e.partition("\n") for e in entries if e) if value]
+
+
+def _absolute_git_dir(path: Path) -> str | None:
+    """Return the Git directory Git finds from `path`, or None if it finds none."""
+    try:
+        return str(
+            _TimedGit().execute(["git", "-C", str(path), "rev-parse", "--absolute-git-dir"])
+        ).strip()
+    except (GitCommandError, OSError):
+        return None
 
 
 def _git_error(exc: GitCommandError) -> str:
@@ -1990,9 +2974,22 @@ def _strip_control_chars(value: str) -> str:
         value: A raw author name or address straight from `git log`.
 
     Returns:
-        The value with every C0 control character and DEL removed.
+        The value with every C0 control character and DEL removed, and each byte
+        that is not UTF-8 shown as U+FFFD, as a path's is.
     """
-    return _CONTROL_CHARS_RE.sub("", value)
+    return _shown(_CONTROL_CHARS_RE.sub("", value))
+
+
+def _shown(value: str) -> str:
+    """Show each byte Git gave that is not UTF-8 as U+FFFD, which every output can write.
+
+    Args:
+        value: Text decoded from Git's output, or a ref name.
+
+    Returns:
+        The value with each lone surrogate replaced.
+    """
+    return _UNDECODED_RE.sub("\ufffd", value)
 
 
 def _strip_invisible(name: str) -> str:
@@ -2024,24 +3021,27 @@ def _identity(
         The resolved name and address, and the exclusion values they match.
     """
     # Scrub before trusting: separators in a field can fabricate contributors.
-    raw_name = _truncate(_strip_control_chars(raw_name), _MAX_NAME_LENGTH)
-    raw_email = _truncate(_strip_control_chars(raw_email), _MAX_EMAIL_LENGTH)
+    raw_name = _strip_control_chars(raw_name)
+    raw_email = _strip_control_chars(raw_email)
 
     author_name, author_email = _resolve_identity(raw_name, raw_email, mailmap)
-    # A `.mailmap` is as untrusted as an author field: same scrub and bounds.
-    author_name = _truncate(_strip_invisible(_strip_control_chars(author_name)), _MAX_NAME_LENGTH)
-    author_email = _truncate(_strip_control_chars(author_email), _MAX_EMAIL_LENGTH)
-    # A name of only invisible characters is empty once cleaned; use the address.
-    author_name = author_name or author_email
+    # A `.mailmap` is as untrusted as an author field: same scrub.
+    author_name = _strip_invisible(_strip_control_chars(author_name))
+    author_email = _strip_control_chars(author_email)
 
     # Resolved and raw identity both match, so a value copied from `git log`
-    # (which shows pre-mailmap names) still excludes the person.
+    # (which shows pre-mailmap names) still excludes the person. Matched before
+    # the bounds below: a cut name is no longer the name an exclusion gives.
     hits = exclude_set & {
         _match_key(author_name),
         _match_key(author_email),
         _match_key(raw_name),
         _match_key(raw_email),
     }
+    author_name = _truncate(author_name, _MAX_NAME_LENGTH)
+    author_email = _truncate(author_email, _MAX_EMAIL_LENGTH)
+    # A name of only invisible characters is empty once cleaned; use the address.
+    author_name = author_name or author_email
     return author_name, author_email, hits
 
 
@@ -2049,9 +3049,10 @@ def _parse_log_record(
     record: str,
     mailmap: _Mailmap,
     exclude_set: set[str],
-    authentic_shas: set[str],
+    authentic_shas: Mapping[str, str],
     matched: set[str],
     undatable: set[str] | None = None,
+    identities: dict[tuple[str, str], tuple[str, str, set[str]]] | None = None,
 ) -> Commit | None:
     """Turn one `git log` record into a Commit, or reject it.
 
@@ -2067,6 +3068,9 @@ def _parse_log_record(
         matched: Mutated with every exclusion value that matched.
         undatable: Mutated with each commit whose timestamp no date can hold, so it
             is counted as unreadable rather than lost without a word.
+        identities: Each author already resolved in this read, filled as it goes:
+            the mailmap and the exclusions are fixed for the read, so one author
+            is resolved once and its commits share the same strings.
 
     Returns:
         The parsed Commit, or None if empty, malformed, excluded or undatable.
@@ -2085,7 +3089,12 @@ def _parse_log_record(
     if not _SHA_RE.fullmatch(sha) or sha not in authentic_shas:
         return None
 
-    author_name, author_email, hits = _identity(raw_name, raw_email, mailmap, exclude_set)
+    resolved = None if identities is None else identities.get((raw_name, raw_email))
+    if resolved is None:
+        resolved = _identity(raw_name, raw_email, mailmap, exclude_set)
+        if identities is not None:
+            identities[(raw_name, raw_email)] = resolved
+    author_name, author_email, hits = resolved
     if hits:
         matched |= hits
         return None
@@ -2101,13 +3110,26 @@ def _parse_log_record(
 
     lines_added, lines_deleted = _sum_numstat(numstat_block)
     return Commit(
-        sha=sha,
+        sha=authentic_shas[sha],  # a kept commit shares the string the rest of the read holds
         author_name=author_name,
         author_email=author_email,
         timestamp=timestamp,
         lines_added=lines_added,
         lines_deleted=lines_deleted,
     )
+
+
+def _selection(log_args: list[str]) -> list[str]:
+    """Return the main read's arguments without its format and per-file output.
+
+    Args:
+        log_args: As `_build_log_args` gives them.
+
+    Returns:
+        The revision, window and path arguments alone, for a second read of the
+        same commits.
+    """
+    return [a for a in log_args if a not in ("--numstat", "--name-status", _LOG_FORMAT)]
 
 
 def _build_log_args(
@@ -2119,6 +3141,7 @@ def _build_log_args(
     line_counts: bool = True,
     path: str | None = None,
     name_status: bool = False,
+    exclude_paths: Sequence[str] = (),
 ) -> tuple[list[str], list[str]]:
     """Build the argument lists for the numstat read and the SHA allowlist.
 
@@ -2133,6 +3156,8 @@ def _build_log_args(
         line_counts: Whether to ask for per-file line counts (`--numstat`).
         path: Only commits changing this path, as a `:(literal)` pathspec.
         name_status: Ask for `--name-status` instead: paths without line counts.
+        exclude_paths: Literal paths whose changes are left out; a commit that
+            changed nothing else is left out with them.
 
     Returns:
         A `(log_args, rev_list_args)` pair.
@@ -2159,52 +3184,71 @@ def _build_log_args(
         rev_list_args.append(f"--before={boundary}")
 
     # `--end-of-options` stops option parsing; `--` separates revision from path.
+    scoped = path is not None or bool(exclude_paths)
     for args in (log_args, rev_list_args):
+        if scoped:
+            # A pathspec turns on history simplification, which skips a merged
+            # branch whose changes the merge did not keep (`-s ours`): commits
+            # every other figure counts would vanish from this one.
+            args.append("--full-history")
         args.extend(["--end-of-options", rev, "--"])
         if path is not None:
             args.append(f":(literal){path}")
+        # With no other pathspec, Git subtracts an exclusion from the whole tree.
+        args.extend(f":(top,exclude,literal){excluded}" for excluded in exclude_paths)
 
     return log_args, rev_list_args
 
 
 def _match_key(value: str) -> str:
-    """Return the form an exclusion is compared in: NFC, spaces collapsed, lower case.
+    """Return the form an exclusion is compared in.
 
-    A trailing or doubled space, or a decomposed accent a paste can carry, must not
-    let an excluded person back in: for a privacy flag, matching too little is the
-    wrong way round.
+    NFC, invisible format characters (Unicode category Cf) removed, spaces
+    collapsed, lower case. A trailing or doubled space, a decomposed accent, or a
+    word joiner a crafted name carries must not let an excluded person back in:
+    for a privacy flag, matching too little is the wrong way round. Only the
+    comparison changes; names are shown and counted unchanged.
     """
-    return " ".join(unicodedata.normalize("NFC", value).split()).lower()
+    visible = "".join(
+        c
+        for c in unicodedata.normalize("NFC", value[:_MAX_MATCH_LENGTH])
+        if unicodedata.category(c) != "Cf"
+    )
+    return " ".join(visible.split()).lower()
 
 
-def _expand_exclusions(exclude_authors: list[str], mailmap: _Mailmap) -> set[str]:
-    """Expand each exclusion to every identity the `.mailmap` ties it to.
+def _exclusion_requests(exclude_authors: list[str], mailmap: _Mailmap) -> dict[str, set[str]]:
+    """Map each exclusion value to every form it reaches.
 
     `--exclude-author` removes a person, who may have several identities; for a
-    privacy flag, erring towards removing too little is the wrong way round.
+    privacy flag, erring towards removing too little is the wrong way round. A
+    GitHub noreply address reaches its account in either form (ADR 0023), and a
+    `.mailmap` entry reaches its canonical name and address.
 
     Args:
         exclude_authors: Raw values as supplied, by name or by address.
         mailmap: The parsed `.mailmap` for this repository.
 
     Returns:
-        A lowercased set of the values plus any canonical names and addresses.
+        Each value's match key, mapped to that key and every form it expands to.
     """
-    expanded = {_match_key(entry) for entry in exclude_authors}
+    requests: dict[str, set[str]] = {}
+    for value in exclude_authors:
+        key = _match_key(value)
+        forms = requests.setdefault(key, set())
+        forms |= {key, _match_key(_normalise_github_noreply(key, mailmap))}
+        for entry in list(forms):
+            canonical = mailmap.by_email.get(entry)
+            if canonical is not None:
+                canonical_name, canonical_email = canonical
+                if canonical_name:
+                    forms.add(_match_key(canonical_name))
+                forms.add(_match_key(canonical_email))
 
-    for entry in list(expanded):
-        canonical = mailmap.by_email.get(entry)
-        if canonical is not None:
-            canonical_name, canonical_email = canonical
-            if canonical_name:
-                expanded.add(canonical_name.lower())
-            expanded.add(canonical_email.lower())
-
-        # Four-field form: a value naming either half expands to the entry.
-        for (commit_name, commit_email), (name, email) in mailmap.by_name_and_email.items():
-            if entry in (_match_key(commit_name), _match_key(commit_email)):
-                if name:
-                    expanded.add(name.lower())
-                expanded.add(email.lower())
-
-    return expanded
+            # Four-field form: a value naming either half expands to the entry.
+            for (commit_name, commit_email), (name, email) in mailmap.by_name_and_email.items():
+                if entry in (_match_key(commit_name), _match_key(commit_email)):
+                    if name:
+                        forms.add(_match_key(name))
+                    forms.add(_match_key(email))
+    return requests

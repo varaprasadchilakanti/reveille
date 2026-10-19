@@ -137,7 +137,7 @@ The case that matters is a user running Reveille against a repository somebody
 else controls: a clone, a fork, a pull-request branch. Everything in git
 history is then attacker-supplied text: author names, email addresses,
 `.mailmap` contents, and ref names. So is any `reveille.toml` at the repository
-root, because the CLI discovers that file automatically from the working
+root, because `generate` discovers that file automatically from the working
 directory, and its values reach the same places the flags do.
 
 v0.8.0 closed five issues under that model, each reproduced against a real
@@ -182,36 +182,33 @@ v0.9.0 closed eleven more, each with a test that fails without the fix:
   another name. Every commit under an address the value reached, anywhere in
   the branch's history, is now removed.
 
-Fixed since 0.9.0, not yet released, each with a test that fails without the fix:
+Fixed since 0.9.0, not yet released, each with a test that fails without the fix. The
+entries are in [CHANGELOG.md](CHANGELOG.md) under Unreleased, Security; by class:
 
-- An author name holding the separators the history is read with could add commits and
-  people to every figure. Records are now framed by the commit hash at both ends, and a
-  hash with more than one record is counted as unreadable.
-- One `Co-authored-by` line could stall a run for minutes. It is read in one pass, bounded.
-- The HTML report's charts offered Plotly's "Share chart..." upload. It is switched off.
-- On Git older than 2.44, a promisor remote in worktree config was not refused, and a read
-  could fetch. Git is now asked whether any config it reads makes a partial clone.
-- A FIFO as `.mailmap`, or named by `mailmap.file`, hung every command. Git's own mailmap
-  is switched off.
-- `validate` and `generate` printed terminal control sequences from the repository path.
-- A `.mailmap` could stall a run for minutes, because its line patterns backtracked
-  quadratically and the working-tree file had no size bound. Lines are now parsed in
-  one pass and the file is bounded at 1 MiB.
-- A report path that was a hard link to a Git file was written through, and `--output`
-  could name a file in the Git directory of the repository a linked worktree belongs
-  to. Reports are now written to a new file and moved into place, and that Git
-  directory is refused.
-- A file extension could put a clickable link into a chart, and certain markup in a
-  path, extension or name blanked every chart. Labels are now sanitised and the
-  embedded chart data escapes every `<`. In tests, no script ran in either case.
-- `summary` and `who-changed` printed control characters from a directory name or a
-  `.mailmap` name on stdout. Their text output is now escaped.
-- A token in a remote URL with a transport prefix was printed in the report. The
-  scheme after the prefix now decides what is removed.
+- **Programs and hangs a repository could cause:** named pipes or devices at files Git
+  reads (config, includes, attributes, ignore files, `.mailmap`, `diff.orderFile`), an
+  empty filter name in `state`, and `i18n.logOutputEncoding`. Every other Git command is
+  stopped after 300 seconds (on a timeout GitPython runs `pgrep` or `ps` to find Git's
+  children); on Windows, where GitPython cannot stop a command, only a history read that
+  writes nothing for 300 seconds is. Refs and objects, alternates followed, are checked before Git runs, because
+  GitPython reads them itself.
+- **Stalls:** `.mailmap` and `Co-authored-by` patterns that backtracked.
+- **Reading the wrong data:** separators in author names, `core.worktree` pointing at
+  another repository, partial clones on Git older than 2.44.
+- **Text in output Reveille did not write:** control characters, newlines and markup
+  from paths, names and extensions; an unquoted tag in the command `state` suggests.
+- **Secrets in the remote URL:** tokens and passwords in scp-like, prefixed and
+  `#`/`?`-holding remotes.
+- **The offline property:** an author address could make the report request a URL when
+  opened, and the Content-Security-Policy allowed any inline script; Plotly's
+  "Share chart..." upload is switched off.
+- **Writing:** a report path hard-linked to a Git file, and a worktree's Git directory.
+- **Dependencies:** floors that allowed releases with published advisories.
 
-Tests found no script execution from repository text, no loading of remote resources by
-the report, and no problem in the CI workflows. The offline property was affected by the
-partial-clone fetch listed under 0.9.0 above.
+Before these fixes, the HTML report could request a URL when opened, and Git could fetch
+from the network during a read (the partial-clone entry under 0.9.0 above); both broke the
+offline property. A review on 2026-10-13 found no problem in the CI workflows; the later
+passes did not test them.
 
 Limit: Git honours the configuration in a repository's
 own `.git/config`, and some settings name a program for Git to run. Reveille
@@ -227,9 +224,13 @@ untrusted code.
 
 ## Scope
 
-Reveille is a local analysis tool. It reads only the Git repository
-it is explicitly pointed at, writes one output file (HTML, JSON or
-CSV), and does not transmit data over a network. It does not accept inbound
+Reveille is a local analysis tool. A command reads the Git repository it
+is pointed at; `repos` reads every repository it finds below the directory given
+(`--depth` levels, at most three), each with that repository's own `.git/config`. Git also
+reads your global and system Git configuration. `generate` writes one report
+file (HTML, JSON or CSV), `init` writes a configuration file and optionally a
+`.mailmap`, and the other commands write to standard output. Reveille does not
+transmit data over a network. It does not accept inbound
 connections and does not execute content from commit messages or file
 contents. Git, which Reveille runs, obeys the repository's own `.git/config`
 (see Threat Model above). The primary attack surface is maliciously crafted Git

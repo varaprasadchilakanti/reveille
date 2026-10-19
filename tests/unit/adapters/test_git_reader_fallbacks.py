@@ -6,13 +6,16 @@
 from __future__ import annotations
 
 import subprocess
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
 import pytest
 from git.exc import GitCommandError
 
-from reveille.adapters.git_reader import GitReader, _Mailmap
+from reveille.adapters import git_reader
+from reveille.adapters.git_reader import GitReader
 from reveille.exceptions import RepositoryError
 
 pytestmark = pytest.mark.unit
@@ -40,13 +43,13 @@ class _Runner:
         self._real, self._fail, self._worktrees = real, fail, worktrees
 
     def __getattr__(self, command: str) -> Any:
-        def call(*args: str) -> Any:
+        def call(*args: str, **options: Any) -> Any:
             key = command if command != "worktree" else f"worktree{'-z' if '-z' in args else ''}"
             if key in self._fail:
                 raise GitCommandError(command, self._fail[key])
             if command == "worktree":
                 return self._worktrees
-            return getattr(self._real, command)(*args)
+            return getattr(self._real, command)(*args, **options)
 
         return call
 
@@ -76,11 +79,40 @@ def test_worktrees_that_cannot_be_listed_are_none(
 
 def test_an_unreadable_git_version_is_none(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     reader = GitReader(repo)
-    real = reader._git()
-    monkeypatch.setattr(reader, "_git", lambda extra=(): _Runner(real, {"version": 1}))
 
-    assert reader._git_version() is None
-    assert reader._supports_since_as_filter() is False
+    class _NoVersion:
+        def version(self) -> str:
+            raise GitCommandError("version", 1)
+
+    monkeypatch.setattr(git_reader, "_TimedGit", _NoVersion)
+    git_reader._read_git_version.cache_clear()
+    try:
+        assert reader._git_version() is None
+        assert reader._supports_since_as_filter() is False
+    finally:
+        monkeypatch.undo()
+        git_reader._read_git_version.cache_clear()
+
+
+def test_the_version_is_asked_once_per_process(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    git_reader._read_git_version.cache_clear()
+    asked: list[str] = []
+    real = git_reader._TimedGit
+
+    class _Counting(real):  # type: ignore[misc, valid-type]
+        def version(self) -> str:
+            asked.append("version")
+            return str(super().version())
+
+    monkeypatch.setattr(git_reader, "_TimedGit", _Counting)
+    try:
+        for _ in range(3):
+            reader = GitReader(repo)
+            reader.read_commits(None, None, None, [])
+        assert asked == ["version"]
+    finally:
+        monkeypatch.undo()
+        git_reader._read_git_version.cache_clear()
 
 
 def test_a_rev_parse_failure_other_than_ownership_cannot_run(
@@ -119,22 +151,82 @@ def test_a_tag_listing_failure_is_reported_as_git_s(
         reader.tags_in_range(None, None, None, None)
 
 
-def test_unreadable_co_author_trailers_keep_the_authors_already_reached(
-    repo: Path, monkeypatch: pytest.MonkeyPatch
+class _LogFails:
+    """Stands in for `GitReader._git()`; a `git log` whose format matches raises.
+
+    Only a call that waits for Git: a started process fails when it is read.
+    """
+
+    def __init__(self, real: Any, marker: str) -> None:
+        self._real, self._marker = real, marker
+
+    def __getattr__(self, command: str) -> Any:
+        def call(*args: str, **kwargs: Any) -> Any:
+            if (
+                command == "log"
+                and not kwargs.get("as_process")
+                and any(self._marker in arg for arg in args)
+            ):
+                raise GitCommandError(command, 128)
+            return getattr(self._real, command)(*args, **kwargs)
+
+        return call
+
+
+@pytest.mark.parametrize("marker", ["%an%x1f%ae", "trailers:key=Co-authored-by"])
+def test_an_exclusion_whose_history_cannot_be_read_is_refused(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, marker: str
 ) -> None:
-    """The trailer query can fail on its own; the author query's answer stands."""
+    """Either query failing would apply the exclusion to part of the history."""
     reader = GitReader(repo)
     real = reader._git()
+    monkeypatch.setattr(reader, "_git", lambda extra=(): _LogFails(real, marker))
 
-    class _TrailersFail:
-        def __getattr__(self, command: str) -> Any:
-            def call(*args: str) -> Any:
-                if command == "log" and any("trailers:" in arg for arg in args):
-                    raise GitCommandError(command, 128)
-                return getattr(real, command)(*args)
+    with pytest.raises(RepositoryError, match="cannot be applied in full"):
+        reader.read_commits(None, None, None, ["a@e.test"])
 
-            return call
 
-    monkeypatch.setattr(reader, "_git", lambda extra=(): _TrailersFail())
+def test_without_an_exclusion_the_history_is_not_read_for_one(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reader = GitReader(repo)
+    real = reader._git()
+    monkeypatch.setattr(reader, "_git", lambda extra=(): _LogFails(real, "%an%x1f%ae"))
 
-    assert reader._addresses_in_history("HEAD", _Mailmap(), {"a"}) == {"a": {"a@e.test"}}
+    assert len(reader.read_commits(None, None, None, [])) == 1
+
+
+def test_unreadable_noreply_addresses_are_refused(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without them an account splits in two and a noreply exclusion misses one half."""
+    reader = GitReader(repo)
+    real = reader._git()
+    monkeypatch.setattr(reader, "_git", lambda extra=(): _LogFails(real, "--format=%ae"))
+
+    with pytest.raises(RepositoryError, match="author addresses"):
+        reader.read_commits(None, None, None, [])
+
+
+def test_the_version_is_asked_once_when_readers_open_together(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`repos` opens readers on four threads at once."""
+    git_reader._read_git_version.cache_clear()
+    asked: list[str] = []
+    real = git_reader._TimedGit
+
+    class _Slow(real):  # type: ignore[misc, valid-type]
+        def version(self) -> str:
+            asked.append("version")
+            time.sleep(0.2)  # long enough for every thread to ask before the answer
+            return str(super().version())
+
+    monkeypatch.setattr(git_reader, "_TimedGit", _Slow)
+    try:
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            list(pool.map(lambda _: GitReader(repo), range(4)))
+        assert asked == ["version"]
+    finally:
+        monkeypatch.undo()
+        git_reader._read_git_version.cache_clear()

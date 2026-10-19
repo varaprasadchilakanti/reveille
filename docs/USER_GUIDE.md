@@ -11,6 +11,7 @@ Install and first run: [README](../README.md).
 - [Commands and Outputs](#commands-and-outputs)
 - [Exit Codes](#exit-codes)
 - [The reveille capabilities Command](#the-reveille-capabilities-command)
+- [Starting a Session, and the reveille skill Command](#starting-a-session-and-the-reveille-skill-command)
 - [Structured Output](#structured-output)
 - [The reveille init Command](#the-reveille-init-command)
 - [TOML Configuration Reference](#toml-configuration-reference)
@@ -77,8 +78,8 @@ shown as `\n`, so a name cannot add a heading, a link or HTML.
 bar, such as `reveille: main 1a2b3c4; 1 staged, 2 untracked; 1 stash; v1.0 +3`. It lists no path and no
 author, carries no notice, and a newline in a name is shown as `\n`.
 
-`reveille generate` takes the options below. `summary`, `who-changed`, `init`, `validate` and
-`capabilities` are described after the table; each of their options is listed with its command.
+`reveille generate` takes the options below. `summary`, `brief`, `state`, `who-changed`, `repos`,
+`init`, `validate` and `capabilities` are described after the table; each of their options is listed with its command.
 
 | Option | Default | Meaning |
 |---|---|---|
@@ -87,6 +88,8 @@ author, carries no notice, and a newline in a name is shown as `\n`.
 | `--since`, `--until` | first commit; today (UTC) | Inclusive dates, `YYYY-MM-DD`. See [The window](#the-window). |
 | `--branch`, `-b` | the checked-out branch | Commits reachable from this branch. The checked-out branch is not necessarily the default branch. |
 | `--exclude-author` | none | Removes a person. Repeatable. See [below](#--exclude-author). |
+| `--exclude-path` | none | Leaves a path out of every figure. Repeatable. See [below](#--exclude-path). |
+| `--hide-emails` | off | Replaces people's email addresses with per-report tokens. See [below](#--hide-emails). |
 | `--min-commits` | `1` | Lists only contributors with at least this many commits. See [below](#--min-commits). |
 | `--title` | repository name | The report's title. |
 | `--ranking`, `--no-ranking` | ranking off | See [Ranking](#--ranking-and---no-ranking). |
@@ -106,9 +109,9 @@ flag, not a command: `reveille version` exits 2.
 The parent directory must exist. A path inside the Git directory, a path containing `..`, and a
 directory are refused (exit 2). The default path is inside the working tree, untracked, so
 `git add -A` would commit it; add it to `.gitignore` or choose another path. On POSIX systems a new
-report is readable and writable by its owner only, because it names people; a report written over
-an existing file keeps that file's permissions. A path outside the repository given with `--output` is written,
-with a warning on stderr; the same path set in `reveille.toml` is refused, because a configuration
+report is readable and writable by its owner only (mode 600, tested on Linux), because it names
+people; a report written over an existing file keeps that file's permissions. A path outside the
+repository given with `--output` is written, with a warning on stderr; the same path set in `reveille.toml` is refused, because a configuration
 file is found automatically and may come from a repository you do not control. A bare repository
 needs an explicit path.
 
@@ -119,9 +122,7 @@ notes and errors are on stderr. CSV on stdout carries no byte-order mark.
 reveille generate --format json --output - | jq .derived
 ```
 
-JSON and CSV are written at the `--output` stem with a `.json` or `.csv` extension. A new report
-file is readable only by you (mode 600, on POSIX systems; tested on Linux); regenerating it keeps any
-permissions you set.
+JSON and CSV are written at the `--output` stem with a `.json` or `.csv` extension.
 
 ### The window
 
@@ -132,16 +133,22 @@ that kept a future date) is counted in no figure: the header and a note on stder
 and a later `--until` includes them. With `--deterministic` the window closes on the last commit
 instead.
 
+A commit's date is its commit date (Git's committer date), not the date it was first written: a
+rebase, an amend or a cherry-pick places the commit on the day it was rewritten.
+
 In a shallow clone, which CI checkouts are by default, only the history the clone holds is
 analysed, and the header and stderr say so. `git fetch --unshallow` fetches the rest.
 
 ### `--exclude-author`
 
-Excludes a person by name or email, case-insensitively. An identity is its address, so every
-commit made under an address that the value matched anywhere in the branch's history (not only in
-the window) is removed, whatever name it carries, as is every address a `.mailmap` ties to it. A
-name that reaches several addresses removes them all, and stderr names the addresses so you can
-give one instead. A value that matches nothing is reported on stderr. See
+Excludes a person by name or email. Case, runs of spaces, Unicode normalisation form and invisible
+format characters (such as a zero-width joiner) are ignored in the comparison, and a GitHub noreply
+address in either form (`123+name@` or `name@`) names the account, the legacy form only when one
+account in the history used that name. An identity is its address, so every commit made under an
+address that the value matched anywhere in the branch's history (not only in the window) is
+removed, whatever name it carries, as is every address a `.mailmap` ties to it. A name that reaches
+several addresses removes them all, and stderr names the addresses so you can give one instead. A
+value that matches nothing is reported on stderr. See
 [ADR 0020](adr/0020-exclude-author-removes-a-person-by-address.md).
 
 ```bash
@@ -150,6 +157,55 @@ reveille generate --exclude-author "dependabot[bot]" --exclude-author "release-b
 
 Accounts with `[bot]` in the name or address are already kept out of the people figures (see
 [Summary cards](#summary-cards)); excluding one removes its commits from every figure too.
+
+### `--exclude-path`
+
+Leaves a file or directory out of every figure: commits, lines, hotspots, file types and areas.
+The path is relative to the repository root, whichever directory you run from, and is matched
+literally: `*.md` is a file of that name, not a pattern. A directory takes everything under it.
+A commit that changed only excluded paths is not counted at all; a commit that also changed
+something else is counted, without the excluded lines. A path no commit on the branch ever
+changed is reported on stderr, since it is almost always a typo. The paths are stated in the
+report header, the summary and the JSON `provenance.filters.exclude_paths`. `generate`,
+`summary` and `brief` accept it; in `reveille.toml` it is `[filters] exclude_paths`.
+
+```bash
+reveille generate --exclude-path vendor --exclude-path docs/generated
+```
+
+### `--hide-emails`
+
+Replaces people's email addresses in the report with a token, `contributor-1@hidden.invalid`,
+`contributor-2@hidden.invalid` and so on, numbered in the order the contributor table lists people.
+It covers authors, co-authors, people below `--min-commits`, area authors, the data the charts are
+drawn from, an address written into a name (shown as `(address hidden)`), and the login in an SSH
+remote (`jane@host:group/repo` becomes `host:group/repo`). An address in the branch name, the
+repository's directory name or the remote's path is shown as `(address hidden)` too
+(`user/jane@example.com` becomes `user/(address hidden)`), and so is one with an IP address for
+its domain (`bob@[10.1.2.3]`). A remote that is a path on your machine keeps only its last part
+(`/home/jane/clients/acme.git` becomes `acme.git`), since the rest names your directories. The
+HTML table then shows names only;
+JSON and CSV carry the tokens, and `provenance.emails_hidden` is `true`.
+
+File paths are not changed: the extension and generated-file figures are read from them, so a
+file or directory named after an address (`users/jane@example.com/`) stays in the report as it
+is. Check the file sections before sharing a report of such a repository.
+
+The "Third-party licences" section at the end of every HTML report is not changed either. It
+carries the copyright notices of the chart library and the packages it bundles as their authors
+published them, and those include the names and email addresses of some of those authors. They
+are about the library, not about your repository, and their licences require them in every copy.
+
+A token is a number, not derived from the address, so it cannot be reversed by trying addresses,
+and `.invalid` is a domain that can never receive mail. Tokens mean nothing across reports: the
+same person can have a different number in another report. An automated account keeps its `[bot]`
+marker, so every figure is the same as without the option. Names are not changed; to keep a person
+out of the report entirely, use `--exclude-author`. In `reveille.toml` it is `[report]
+hide_emails = true`.
+
+```bash
+reveille generate --hide-emails --output shared-report.html
+```
 
 ### `--min-commits`
 
@@ -200,7 +256,9 @@ repository's own `.git/config`, or yours, cannot change them: `diff.algorithm` (
 moved line counts), `diff.renames` (off, a renamed file counts as deleted and added),
 `core.bigFileThreshold` (a low value turns large files into binary, counted as no lines),
 `log.showRoot` (off, the first commit's lines vanish) and `trailer.separators` (another separator
-hides `Co-authored-by` trailers). Other settings are not pinned.
+hides `Co-authored-by` trailers). Settings that could make a read start a program or wait for
+ever, such as `core.fsmonitor`, `log.showSignature` or `diff.orderFile`, are pinned off too.
+Other settings are not pinned.
 
 It pins `generated_at` to the analysed commit's timestamp instead of the clock (the idea behind
 `SOURCE_DATE_EPOCH`), and closes the analysis window on the last commit instead of today.
@@ -215,7 +273,7 @@ The repository in a few lines, naming no contributor: window, commit and people 
 longest quiet run, the written findings and a notice that the figures need checking.
 `--format json` adds commit concentration and days since the last commit. It reads no line counts
 and no `reveille.toml`. Options: `--repo`, `--since`, `--until`, `--branch`, `--exclude-author`,
-`--deterministic`, `--verbose` and `--format text|json|markdown` (default `text`).
+`--exclude-path`, `--deterministic`, `--verbose` and `--format text|json|markdown` (default `text`).
 
 ```bash
 reveille summary --format json
@@ -248,7 +306,8 @@ stale, and runs the programs a repository's own config names as `core.fsmonitor`
 filter; Reveille switches all three off, and tests check each. A filter from your own global config
 runs as you set it; one the repository defines does not, so files it covers may show as modified,
 and the answer says so. It names no author. It lists local paths (changed files and worktree
-directories, which can contain your login name), the current branch, its upstream and the branches checked out in worktrees; no other branch is named.
+directories, which can contain your login name), the current branch, its upstream, the branches checked out in worktrees and the latest tag; no
+other branch is named. Branch, directory and tag names are printed as they are.
 
 ### `reveille brief`
 
@@ -260,7 +319,7 @@ reveille brief --since 2026-10-01 --format json
 What changed since a point, in counts. Give `--from <revision>` (a tag, branch or commit, read by
 ancestry as `git log <revision>..<branch>` is) or `--since <date>`; with neither, it starts at the
 latest tag reachable on the branch and names it, and with no tag it stops with exit 2. Other
-options: `--repo`, `--branch`, `--until`, `--exclude-author`, `--deterministic`, `--limit`
+options: `--repo`, `--branch`, `--until`, `--exclude-author`, `--exclude-path`, `--deterministic`, `--limit`
 (default 5), `--verbose` and `--format text|json|markdown|line`.
 
 It states commits (merges excluded), people and automated accounts as counts, commits crediting a
@@ -273,9 +332,10 @@ answer depends on nothing else, so it is reproducible without `--deterministic`.
 
 Area paths and tag names come from the repository and can name people (`users/jsmith/`). With one
 or two people, the counts can identify someone: "1 person" identifies them to a team that knows who
-it was. On llama.cpp, from
-its oldest tag (8,928 commits), it took about 2 seconds and printed 672 bytes (measured
-2026-10-12, Git 2.55, warm cache, one 20-core machine).
+it was.
+
+On llama.cpp, from its oldest tag (8,928 commits), it took about 2 seconds and printed 672 bytes
+(measured 2026-10-12, Git 2.55, warm cache, one 20-core machine).
 
 ### `reveille who-changed`
 
@@ -284,14 +344,44 @@ reveille who-changed src/parser/lexer.c --since 2026-01-01
 ```
 
 Takes a path (literal, inside the repository; relative to the current directory when you run it
-inside the repository, else to the repository's root) and the options of `summary`,
-plus `--limit` (default 20). The answer lists the path's authors alphabetically, the five who
+inside the repository, else to the repository's root) and the options of `summary` except
+`--exclude-path` and `--format markdown`, plus `--limit` (default 20). The answer lists the path's authors alphabetically, the five who
 changed it most recently (the people to ask first), automated accounts and co-authors apart, and
 when the path was last changed. It gives no count or date per person: who changed a file is a
 fact the history records, and "who did the most" is not what this is for. It says who changed the
 code, not who knows or owns it. It reads only the commits that changed the path, and no line
 counts. A path that no commit in the window changed is a negative answer (exit 1). Renames are
 not followed: history from before a rename belongs to the old path.
+
+### `reveille repos`
+
+```bash
+reveille repos ~/src
+reveille repos /srv/mirrors --depth 2 --format csv > repositories.csv
+```
+
+Finds the Git repositories in a directory and gives one row per repository: its path, branch, the
+date of the last non-merge commit and the days since, and the commits, people and automated
+accounts in the window (the last 90 days to today, UTC; `--days` and `--until` change it), with a
+status by fixed rules: **active** with a commit in the window, **quiet** with one in the last 365
+days, **dormant** beyond that, **empty** with no commit (or none left after `--exclude-author`).
+The rules are stated in every format ([ADR 0026](adr/0026-many-repositories-one-row-each.md)).
+
+- **What counts as a repository:** a directory holding `.git`, or a bare repository (`HEAD`,
+  `objects` and `refs`), so a folder of server-side mirrors works. The search goes one level down
+  by default and at most three (`--depth`); a repository found is not searched inside, so a
+  submodule or a nested clone is not a row; a symbolic link is not followed.
+- **Each repository is read as `summary` reads one**, with its `.mailmap`, `--exclude-author`
+  applied in every repository, and no line counts. A value that matched nothing in any repository
+  is reported once on stderr.
+- **A repository that cannot be read** (a partial clone, a SHA-256 repository, a corrupt one) is a
+  row with status `not_read` and the reason; the others are still read, and the exit code is 0.
+  No repository found is a negative answer (exit 1).
+- **It names nobody and counts nobody across repositories.** The people column describes one
+  repository each; adding it up does not give a number of people.
+- **Formats:** `text` (default), `json`, `markdown` and `csv`. CSV cells that a spreadsheet would
+  read as a formula are prefixed with `'`. Paths are relative to the directory given; the JSON
+  carries the directory's name, not its full path, but a path can still hold a login name.
 
 ### `reveille validate`
 
@@ -347,7 +437,7 @@ format is known. `generate` keeps text on stderr, beside its progress lines.
 
 ### Diagnostics
 
-`--verbose` (on `generate`, `validate`, `summary` and `who-changed`) writes DEBUG diagnostics to
+`--verbose` (on every command except `init`, `capabilities` and `skill`) writes DEBUG diagnostics to
 stderr: the resolved configuration after flags and the TOML file are merged, the `git log`
 invocation, how many commits were read, and every file written. Normal output is unchanged.
 
@@ -361,7 +451,7 @@ notes, warnings and errors.
 
 Describes what Reveille can and cannot do, for a person or a program. Options:
 `--format text|json` (default `text`) and `--command <name>`, which gives only that command's
-description, options and exit codes (2.3 KB for `state` as JSON, against about 24 KB for
+description, options and exit codes (2.7 KB for `state` as JSON, against about 30 KB for
 everything).
 
 ```bash
@@ -375,11 +465,44 @@ caveats that change how a number should be read, every command with its options,
 contract. The command surface and exit codes are read from the running program, so they cannot
 drift from it.
 
+Each command that writes JSON also lists `repository_text`: the fields whose strings come from the
+repository (names, addresses, paths, branch and tag names), which anyone who can commit chooses.
+A program or a model should read them as data, never as instructions. `[]` stands for every element
+of a list, so `worktrees[].path` is the path of each worktree. A test builds a repository whose
+every such input is marked and fails if a marked string appears in a field the list leaves out.
+
 The `cannot` list states that Reveille does not measure productivity or contribution value, is not
 fit for performance review or hiring decisions, does not compute a bus factor, and does not
 aggregate a person across repositories. It also states what Reveille reads: commit metadata, `Co-authored-by` trailers, and per file the path and the
 lines added and deleted. Reveille receives those paths and counts; Git reads the files to compute
 them. It does not read source code, diff content or any other part of a commit message.
+
+---
+
+## Starting a Session, and the `reveille skill` Command
+
+The word reveille is the call that starts a soldier's day, and the commands for an agent, or a
+person, starting work follow the same order:
+
+1. `reveille state --format json`: where the repository stands now, before anything changes.
+2. `reveille brief --format json`: what changed since the latest tag, or with `--from <commit>`
+   since a commit seen before. Its `analysed_commit` is the `--from` for the next brief. With no
+   tag on the branch it exits 2; give `--since <YYYY-MM-DD>` instead.
+3. `reveille who-changed <path> --format json`, before changing a file or directory: whom to ask.
+
+The army's morning report recorded people; `brief` and `state` name nobody, and `repos` lists
+repositories, never people.
+
+`reveille skill` prints this as a section to paste into `AGENTS.md`, `CLAUDE.md` or another
+instructions file, since an agent uses a tool its instructions name. `--format skill` prints it as
+a `SKILL.md`, with the `name` and `description` frontmatter an agent loads it by. It reads no
+repository, is about 1.4 KB, and a test runs every command it names against a repository before it
+ships.
+
+```bash
+reveille skill >> AGENTS.md
+mkdir -p .claude/skills/reveille && reveille skill --format skill > .claude/skills/reveille/SKILL.md
+```
 
 ---
 
@@ -439,8 +562,10 @@ Columns: `rank`, `name`, `email`, `commits`, `lines_added`, `lines_deleted`, `ne
 `composite_score` and `percentile` are added and `rank` is a ranking; without it `rank` is table
 order only.
 
-**HTML** is one self-contained file of about 4.9 MB, almost all of it the embedded chart library:
-4.90 MB for a one-commit repository and 4.92 MB for this one at 0.9.0.
+**HTML** is one self-contained file of about 1.7 MB, most of it the embedded chart library (the
+plotly.js cartesian bundle, pinned) and its third-party licences, which the report carries in a
+collapsed section after its footer: 1.69 MB for a one-commit repository and 1.70 MB for this one
+(measured 2026-10-18; 0.9.0's reports were 4.9 MB).
 
 ---
 
@@ -468,6 +593,12 @@ The file has no effect until you uncomment keys. Its structure is the
 reveille init --mailmap --force
 ```
 
+On POSIX systems a new `reveille.toml` or `.mailmap` is readable and writable by its owner only
+(mode 600), as a report is, because a filled-in `.mailmap` names people. Git records no read
+permissions, so committing, cloning and CI are unaffected. To let other accounts on the same
+machine read a shared checkout, run `chmod 644 reveille.toml .mailmap`; `--force` keeps a mode you
+set. A `.mailmap` Reveille cannot read is reported on stderr and not applied.
+
 ---
 
 ## TOML Configuration Reference
@@ -487,6 +618,7 @@ branch = "main"                            # --branch
 since = "2024-10-01"                       # --since
 until = "2024-12-31"                       # --until
 limit = 50                                 # --limit
+hide_emails = false                        # --hide-emails; a real boolean
 # format = "html"                          # --format: html (default), json, csv
 deterministic = false                      # --deterministic; a real boolean
 
@@ -496,6 +628,7 @@ exclude_authors = [                        # repeated --exclude-author
     "dependabot[bot]",
     "github-actions[bot]",
 ]
+exclude_paths = ["vendor"]                 # repeated --exclude-path
 
 [ranking]
 enabled = false                            # --ranking; read "The Ranking Algorithm" first
@@ -523,6 +656,15 @@ how many commits are dated after the window, how many could not be read, and tha
 is a shallow clone. One sentence states the report's limits: the figures are computed from Git
 history by fixed rules, offline, and history can be incomplete or wrong, so check before relying
 on them for a decision.
+
+### Read Before Using These Figures
+
+A panel under the summary cards states, with this report's own numbers, the rules that most
+change a reading: commits are counted, not weighed; how many merge commits were left out; a squash
+merge is one commit by one author, with others shown only through Co-authored-by trailers (and
+how many commits carry one); dates are commit dates; whether a `.mailmap` merged identities; and
+that concentration is not a bus factor. It is in the file because a report is forwarded without
+this guide.
 
 ### Summary cards
 
@@ -666,7 +808,8 @@ For each listed contributor, the HTML, JSON and CSV carry:
 - commits, lines added, lines deleted, net lines and active days;
 - the date of the last commit (and, in JSON, of the first);
 - how many commits credit the identity as a co-author;
-- with `--ranking`, a rank, a tier and a score.
+- in JSON and CSV, a `rank` in table order (by commits); with `--ranking`, the rank follows the
+  score, and the report adds a tier, a designation, a score and (in JSON) a percentile.
 
 The HTML also carries, for each listed contributor, commits per day (the heatmap selector) and up
 to four contributors' commits per week, and file paths with their line counts (Where Change
@@ -674,13 +817,21 @@ Concentrates). With `--area-authors`, the HTML names the authors of each of the 
 most-changed directories, and the JSON lists those directories with their authors' names and
 addresses and the date each was last changed.
 
-The HTML and JSON carry the repository's name, the analysed branch and its remote URL (any
-credential removed), and name the identities credited only by a `Co-authored-by` trailer; the JSON
+The HTML and JSON carry the repository's name, the analysed branch and its remote URL, and name the identities credited only by a `Co-authored-by` trailer; the JSON
 gives their addresses and the hash of the analysed commit. The CSV is the contributor table
 alone, with no file paths. The JSON carries directory paths only with `--area-authors`.
 
-`--exclude-author` values are recorded only as a count. `reveille summary` names nobody (with one or two people, its counts can identify someone).
+The remote URL loses any password, query string and fragment. An SSH login name and the path stay
+unless you pass `--hide-emails`, and a token written into the path is not recognised as one.
+
+`--exclude-author` values are recorded only as a count. `--exclude-path` values are recorded as
+written, in the report header and in `provenance.filters.exclude_paths`, so a path that names a
+client or a person names them in the report, with or without `--hide-emails`. `reveille summary` names nobody (with one or two people, its counts can identify someone).
 `reveille who-changed` names the authors of one path; its JSON adds their addresses.
+
+Every HTML report also ends with the licence notices of the chart library it embeds. They name
+that library's authors, some with an email address, and are the same in every report; the
+option `--hide-emails` leaves them as they are.
 
 Reveille sends none of this anywhere. The file goes where you write it, and anyone who receives it
 receives all of the above. Given to a hosted AI assistant, the JSON goes to that assistant's
@@ -689,18 +840,21 @@ provider.
 ## Before You Share a Report
 
 1. **Decide who needs it**, and send it only to them. The HTML is self-contained, so the recipient
-   needs only a browser. Whether a mail system accepts a 4.9 MB attachment has not been measured;
+   needs only a browser. Whether a mail system accepts a 1.7 MB attachment has not been measured;
    if one refuses it, compress the file or use a file store.
 2. **Remove anyone who should not appear** with `--exclude-author`. `--min-commits` is **not** a
    privacy control: it hides rows, while their commits stay in every figure and can be worked out
    from them.
-3. **Leave `--ranking` and `--area-authors` off** unless the question needs them.
-4. **For an assistant or a script, prefer `reveille summary`**, which names no contributor, or
+3. **Leave the addresses out** with `--hide-emails` when the recipient does not need them. Names
+   stay, so it reduces what the report gives away; it does not make anyone anonymous. With or without
+   it, the report is personal data about the people it names.
+4. **Leave `--ranking` and `--area-authors` off** unless the question needs them.
+5. **For an assistant or a script, prefer `reveille summary`**, which names no contributor, or
    bound the JSON with `--limit`.
-5. **Naming nobody does not hide anyone.** With few people, a figure traces to one person; the
-   repository name, branch, remote URL (an SSH login included), title and file paths can identify
-   someone too. A report already sent is not changed by a later `--exclude-author`.
-6. **Whether you may use a report about the people who work with you** is a question for the law
+6. **Naming nobody does not hide anyone.** With few people, a figure traces to one person; the
+   repository name, branch, remote URL (an SSH login, an address, or a local remote's
+   directories included, unless `--hide-emails`), title and file paths can identify someone too. A report already sent is not changed by a later `--exclude-author`.
+7. **Whether you may use a report about the people who work with you** is a question for the law
    and the agreements that apply to you. [COMPLIANCE.md](COMPLIANCE.md) sets out who is
    responsible for what. This guide is not legal advice.
 
@@ -842,3 +996,19 @@ which can name a program for Git to run. Reveille switches off the ones its read
 checking, fsmonitor, and content filters during `state`), but Git has many settings. `git clone`
 does not copy that file; a copied directory or an archive does. Run Reveille on a fresh clone of
 anything you do not trust. See [SECURITY.md](../SECURITY.md).
+
+**"sets its working tree to ...", exit 2.** The repository's `.git/config` sets `core.worktree`
+to another directory. Reveille would then read and write there, so it refuses. Remove the setting
+(`git config --unset core.worktree`) if it is not meant, or run Reveille in that other directory.
+
+**"is not a regular file (a named pipe or a device)", exit 2, or "`git status` did not finish".**
+Git would wait for ever on a named pipe, or read a device without end, at one of these:
+`.gitattributes`, `.gitignore`, `info/exclude`, a file Git reads first (`.git/config`,
+`config.worktree`, `commondir`, `packed-refs`, `shallow`, `objects/info/alternates`, `HEAD`), or
+a file an `include.path` or `includeIf` names (every condition taken as true). Such a file over
+8 MiB is refused too, and so is anything under `refs/` or `objects/` (and the object
+directories alternates name) that is not a regular file. Remove it. Anywhere else, Git is stopped
+after 300 seconds (or 300 seconds without output while it reads the history) with "Git did not
+finish ... and was stopped", exit 2. On Windows only the history read is stopped: GitPython
+cannot stop a command it waits for there. `reveille summary` reads no line counts, so a `.gitattributes`
+pipe does not affect it.

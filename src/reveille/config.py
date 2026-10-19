@@ -14,7 +14,7 @@ import tomllib
 from pathlib import Path
 from typing import Any, Literal, TypedDict, cast
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from reveille.exceptions import ConfigurationError
 
@@ -68,6 +68,8 @@ class ReportConfig(BaseModel):
     since: datetime.date | None = Field(default=None)
     until: datetime.date | None = Field(default=None)
     exclude_authors: list[str] = Field(default_factory=list)
+    # Repository-relative paths left out of every figure, matched literally.
+    exclude_paths: list[str] = Field(default_factory=list)
     min_commits: int = Field(default=1, ge=1)
     # Off by default: it scores named individuals, inviting the use the docs
     # forbid. Opt in with --ranking or `[ranking] enabled = true` (ADR 0010).
@@ -80,6 +82,41 @@ class ReportConfig(BaseModel):
     deterministic: bool = Field(default=False)
     # Bounds every list of people in JSON and CSV (ADR 0015); None keeps all.
     limit: int | None = Field(default=None, ge=1)
+    # Every address replaced by a per-report token, for a report that is shared.
+    hide_emails: bool = Field(default=False)
+
+    @field_validator("exclude_paths")
+    @classmethod
+    def exclude_paths_must_be_repository_relative(cls, paths: list[str]) -> list[str]:
+        """Normalise each excluded path and refuse one Git could not match as meant.
+
+        Args:
+            paths: The paths as given.
+
+        Returns:
+            The paths with surrounding spaces and trailing slashes removed.
+
+        Raises:
+            ValueError: If a path is empty, absolute, climbs out with `..`, or
+                carries a control character.
+        """
+        normalised: list[str] = []
+        for raw in paths:
+            path = raw.strip().rstrip("/")
+            while path.startswith("./"):
+                path = path[2:]
+            if not path or path == ".":
+                raise ValueError(f"an excluded path is empty: {raw!r}.")
+            if path.startswith("/") or (len(path) > 1 and path[1] == ":"):
+                raise ValueError(
+                    f"an excluded path must be relative to the repository root, not {raw!r}."
+                )
+            if ".." in path.split("/"):
+                raise ValueError(f"an excluded path must not contain '..': {raw!r}.")
+            if any(ord(c) < 0x20 or ord(c) == 0x7F for c in path):
+                raise ValueError(f"an excluded path carries a control character: {raw!r}.")
+            normalised.append(path)
+        return normalised
 
     @model_validator(mode="after")
     def since_must_precede_until(self) -> ReportConfig:
@@ -110,6 +147,7 @@ class ReportConfigKwargs(TypedDict, total=False):
     since: datetime.date
     until: datetime.date
     exclude_authors: list[str]
+    exclude_paths: list[str]
     min_commits: int
     ranking_enabled: bool
     ranking_weights: RankingWeights
@@ -118,6 +156,7 @@ class ReportConfigKwargs(TypedDict, total=False):
     output_format: OutputFormat
     deterministic: bool
     limit: int
+    hide_emails: bool
 
 
 def load_config_from_toml(path: Path) -> ReportConfigKwargs:
@@ -198,9 +237,27 @@ def _parse_report_section(report: dict[str, Any]) -> dict[str, Any]:
                 ) from exc
     if "format" in report:
         kwargs["output_format"] = cast(OutputFormat, str(report["format"]))
-    if "deterministic" in report:
-        # Strict, like [ranking] enabled: bool("false") is True.
-        kwargs["deterministic"] = _strict_bool("report", "deterministic", report["deterministic"])
+    kwargs.update(_parse_report_switches(report))
+    return kwargs
+
+
+def _parse_report_switches(report: dict[str, Any]) -> dict[str, Any]:
+    """Parse the [report] keys that are a boolean or a whole number, strictly.
+
+    Args:
+        report: The raw [report] table.
+
+    Returns:
+        The keys present, typed.
+
+    Raises:
+        ConfigurationError: If a value has the wrong type.
+    """
+    kwargs: dict[str, Any] = {}
+    # Strict, like [ranking] enabled: bool("false") is True.
+    for key in ("deterministic", "hide_emails"):
+        if key in report:
+            kwargs[key] = _strict_bool("report", key, report[key])
     if "limit" in report:
         kwargs["limit"] = _strict_int("report", "limit", report["limit"])
     return kwargs
@@ -272,6 +329,13 @@ def _parse_filters_section(filters: dict[str, Any]) -> dict[str, Any]:
                 f"[filters] exclude_authors must be a list of strings, not {authors!r}."
             )
         kwargs["exclude_authors"] = list(authors)
+    if "exclude_paths" in filters:
+        paths = filters["exclude_paths"]
+        if not isinstance(paths, list) or not all(isinstance(p, str) for p in paths):
+            raise ConfigurationError(
+                f"[filters] exclude_paths must be a list of strings, not {paths!r}."
+            )
+        kwargs["exclude_paths"] = list(paths)
     return kwargs
 
 

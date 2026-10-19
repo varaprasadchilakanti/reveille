@@ -272,7 +272,8 @@ class TestTheDefaultReportNamesNobodyInItsSummary:
         """
         html = _html(tmp_path, ranking=ranking)
         start = html.index('class="summary-grid"')
-        summary = html[start : html.index("</div>\n\n", start)]
+        # The cards end where the next block, the automated-accounts note or a section, begins.
+        summary = html[start : html.index('<div class="section">', start)]
         assert "Distribution (Gini)" in summary, "positive control: the row was found"
         for name in ("Alice", "Bob", "Carol"):
             assert name not in summary, f"{name} appears in the summary cards"

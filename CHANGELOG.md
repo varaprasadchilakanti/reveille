@@ -13,231 +13,238 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ## [Unreleased]
 
-### Security
-
-- **Dependency floors allowed releases with published advisories.** GitPython was declared
-  `^3.1.40`, which OSV lists 61 advisory records against, one of them repository content posing
-  as the Git directory and leading to code execution (GHSA-239g-whfq-7xj9, fixed in 3.1.60);
-  Jinja2 `^3.1.0` and Pydantic `^2.0` allowed releases with advisories too. pip keeps an older
-  release already installed if the floor allows it. The floors are now GitPython 3.1.62,
-  Jinja2 3.1.6 and Pydantic 2.4, releases no published advisory affected on
-  2026-10-13, and a test fails if one is lowered. The locked versions are unchanged.
-- **A `.mailmap` could stall a run for minutes.** Its line patterns could backtrack on a long
-  hostile line, and the working-tree file had no size bound. Lines are now parsed in one pass,
-  and the working-tree file is bounded at 1 MiB like the committed one, with a warning when it
-  is not read.
-- **A password containing `#` or `?` was partly printed.** The query and fragment were removed
-  before the credential, so such a character ended the credential early and the rest of it
-  stayed in the remote URL the report shows. The credential is now removed first.
-- **A file or directory name could add a line to text output.** A newline in a path, directory or
-  repository name was printed as it was, so a name could make `state` show a line such as
-  "Working tree: clean." that Reveille did not write. Text output now shows CR and LF inside a
-  value as `\r` and `\n`, as markdown and the one-line form already did.
-- **An author name could add commits and people to every figure.** A name holding the separators
-  Reveille reads `git log` with, and a real commit's hash, produced records Git does not have. Each
-  record is now framed by its commit's hash at both ends, and a hash with more than one record is
-  counted as unreadable, never credited.
-- **One `Co-authored-by` line could stall a run for minutes.** Its pattern backtracked on a long
-  run of spaces. It is now read in one pass, and a value over 4,096 characters is skipped.
-- **The HTML report's charts offered "Share chart...",** which sends the chart data, names
-  included, to Plotly's cloud after a click and a sign-in. Sharing is now switched off, and the
-  button removed; nothing was ever sent on load.
-- **On Git older than 2.44, a promisor remote set in worktree config was not refused**, and a read
-  could fetch from the network and write objects into `.git`. Git itself is now asked whether any
-  config it reads makes the repository a partial clone; if it cannot say, the repository is refused.
-- **A `.mailmap` that is a FIFO, or a `mailmap.file` naming one, hung every command.** Git's own
-  mailmap is now switched off (Reveille reads `.mailmap` itself).
-- **`validate` and `generate` printed the repository path with terminal control sequences in it.**
-  Both lines are now escaped, and C1 controls are removed from names as C0 controls already were.
-- **The command `state` suggests quoted the tag as it was.** A tag name may hold `;` and `$(...)`;
-  the "Next: reveille brief --from <tag>" line, which an assistant may run, now quotes it for
-  the shell.
-- **A report could still be written over Git's own files.** A report path that was a hard link
-  to a Git file, which a working tree delivered by someone else can carry, was written through
-  by a plain `generate`, and `--output` could name a file in the Git directory of the repository
-  a linked worktree belongs to. Every format is now written to a new file and moved into place, so other links to
-  the old file keep their content, and a worktree's common Git directory is refused like its own.
-  A new report file is readable and writable by its owner only, since it names people; a report
-  written over an existing one keeps that file's permissions.
-- **Text from a repository could change what a report shows.** A file extension reached the
-  extension chart unsanitised, and Plotly draws a subset of HTML in labels, so a file named
-  with markup in it put a clickable link into the report. And a path, extension or name holding
-  an unfinished HTML comment blanked every chart: the chart data escaped only `</`. Extension
-  labels are now sanitised like every other label, and every `<` in the embedded chart data is
-  escaped. In tests, no script ran in either case.
-- **`summary` and `who-changed` printed control characters a repository chose.** Escaping in
-  0.9.0 covered stderr only, so a directory name could put a terminal hyperlink, a bell or a
-  carriage return on stdout, the output an assistant reads, and a `.mailmap` name could carry a
-  C1 control or a direction mark. Their text output is now escaped like stderr, and the three
-  implicit direction marks (U+061C, U+200E, U+200F) are escaped everywhere. JSON output was
-  already escaped and is unchanged.
-- **A token in a transport-prefixed remote was printed.** 0.9.0 removed tokens from remote URLs,
-  but a URL with a transport prefix, a form Git accepts, was read as an unknown scheme and
-  printed whole in the HTML and JSON. The scheme after the prefix now decides.
+Compared with 0.9.0. A bug fixed before release in a command or flag 0.9.0 lacks is not listed apart.
+Security entries state 0.9.0's exposure only where it was recorded.
 
 ### Added
 
-- **`capabilities --command <name>`** gives one command's description, options and exit codes:
-  2.3 KB for `state` as JSON, against about 24 KB for everything.
-
-- **The merge commits left out are counted.** `provenance.merge_commits_excluded` in the full
-  JSON and `repository.merge_commits_excluded` in the summary give how many merges the branch and
-  window held, whoever made them (`--exclude-author` does not change it); the summary text says it
-  when it is not zero. Additive to schema 1.2.
-
-- **`brief` with no point starts at the latest tag** reachable on the branch and names it, so one
-  call answers "what changed since the last release" (ADR 0025, proposed). With no tag it stops
-  with exit 2.
-
-- **Errors as JSON.** With `--format json`, `summary`, `brief`, `state`, `who-changed` and
-  `capabilities` write each stderr message as a JSON line, `{"level": ..., "message": ...}`.
-  Exit codes are unchanged. Command-line usage errors are still text.
-
-- **Any directory inside a working tree** can be given as `--repo`, or be the current
-  directory: every command reads the repository it belongs to, found as Git finds it (stopping
-  at `GIT_CEILING_DIRECTORIES`). Inside the repository, `who-changed` takes a path relative to
-  the current directory. `init` still runs only at the root, since it writes files there.
-
 - **`reveille state`** says where a repository stands now: branch or detached commit, upstream
-  ahead/behind as of the last fetch, a merge, rebase, `git am`, cherry-pick, revert or bisect in
-  progress, conflicted paths, staged, modified, deleted, renamed and untracked files (bounded by
-  `--limit`), stashes, worktrees, local branches as counts, and the latest tag with the commits
-  since it (ADR 0024). It names no author and lists no branch beyond the current one and the
-  worktrees'. It does list local paths (changed files and worktree directories, which can contain
-  your login name), the current branch, its upstream and worktree branches. A plain `git status` rewrites `.git/index` and runs `core.fsmonitor` and content
-  filter programs the repository's own config names; Reveille switches all three off (filters
-  only where the repository itself defines them), and tests check that the index is
-  byte-identical and no such program runs.
-- **`python -m reveille`** runs Reveille where another tool already owns the `reveille` command.
-- **`--format markdown`** for `state`, `brief` and `summary`, to paste into an issue, a pull
-  request or a CI job summary. Paths, branch and tag names go in code spans sized to their own
-  backticks, with newlines shown as `\n`, so a name cannot add a heading, a link or HTML.
-- **`--format line`** for `state` and `brief`: one line of counts for a shell prompt or a
-  status bar. No path, no author; a CR or LF in a name is shown as an escape.
-- **`reile`**, a shorter name for the same command, installed beside `reveille`, for systems where
-  another package owns `reveille`.
+  ahead/behind as of the last fetch (Reveille never fetches), a merge, rebase, `git am`,
+  cherry-pick, revert or bisect in progress, conflicts, staged, modified, deleted, renamed and
+  untracked files (bounded by `--limit`), stashes, worktrees, branch counts, and the latest
+  tag with the commits since it (ADR 0024). It names no author, but lists local paths
+  (changed files and worktree directories, which can contain your login name), the current
+  branch, its upstream and worktree branches. A plain `git status` rewrites `.git/index` and runs
+  `core.fsmonitor` and content-filter programs the repository's config names; `state` switches all
+  three off (filters only where the repository defines them, `filter=` with an empty name
+  included), and tests check the index is byte-identical and no such program runs. It stops
+  `git status` after 120 seconds and says why, and quotes the tag in the `reveille brief --from`
+  command it suggests, since a tag name may hold `;` or `$(...)`.
 - **`reveille brief`** says what changed since a tag, a commit or a date (`--from <revision>` or
-  `--since <date>`), in counts, naming no author (with one or two people, counts can identify someone): commits, people and automated accounts, the most
-  changed areas and file types, files added, areas active again after 90 quiet days, and tags in
-  the range. A revision is read by ancestry; it reads paths without line counts (about 2 seconds
-  for 8,928 commits of llama.cpp), and prints the commit it reached so the next brief can start
-  there (ADR 0022). JSON output carries `"document": "brief"`.
-
-- **A GitHub Actions recipe** in the README: a weekly report kept as an artifact, the summary on
-  the run's page, `fetch-depth: 0` so the whole history is read, actions pinned by commit, and
-  what an artifact exposes. Checked with actionlint and zizmor; its commands were run on a full
-  and a one-commit clone (437 commits against 1).
-- **ADR 0022, proposed:** `reveille brief --from <revision>`, what changed since a point the caller
-  names, in counts, naming no author.
-- **`generate --quiet`** (`-q`) leaves the progress lines out of stderr. Notes, warnings and
-  errors are still written, so `--output - --quiet` gives a report on stdout and an empty
-  stderr when there is nothing to say.
+  `--since <date>`), in counts, naming no author (with one or two people, counts can identify
+  someone): commits, people and automated accounts, the most changed areas and file types, files
+  added, areas active again after 90 quiet days, and tags in the range. A revision is read by
+  ancestry. With neither option it starts at the latest tag reachable on the branch and names it;
+  with no tag it exits 2 (ADR 0022, ADR 0025). It reads no line counts (about 2 seconds for 8,928
+  commits of llama.cpp) and prints the commit it reached, so the next brief can start there. JSON
+  carries `"document": "brief"`.
+- **`reveille repos <directory>`**: which repositories in a directory are active, quiet or dormant,
+  one row each with its last commit and the commits, people and automated accounts in a window
+  (90 days by default) as counts. It finds working trees and bare mirrors to `--depth` levels
+  without following links, reads each as `summary` does, up to four at once (201 small
+  repositories in 8.3 s), gives one it cannot read a row with status `not_read` and the reason
+  (any path outside the directory hidden), and names nobody and counts nobody across
+  repositories (ADR 0026). Text, JSON, Markdown and CSV.
+- **`reveille skill`** prints a section for `AGENTS.md` or `CLAUDE.md` naming the commands a coding
+  agent should run at the start of a task and before changing a file, or, with `--format skill`, a
+  `SKILL.md`. It reads no repository; a test runs every command it names.
+- **`capabilities --command <name>`** gives one command's options and exit codes: 2.7 KB for
+  `state` as JSON, against about 30 KB for everything. Each command that writes JSON also lists
+  `repository_text`, the fields whose strings anyone who can commit chooses (names, addresses,
+  paths, branch and tag names), to be read as data, never as instructions; a test marks every such
+  input and fails on a marked string in an unlisted field, and on any listed field removed. A
+  caveat says an error message on stderr can quote such text too. `capabilities_version` is 1.1.
+- **`--exclude-path`** leaves a file or directory out of every figure, for vendored or generated
+  trees that dominate churn. Relative to the repository root, matched literally, repeatable;
+  `[filters] exclude_paths` in `reveille.toml`; accepted by `generate`, `summary` and `brief`. A
+  commit that changed only excluded paths is not counted, a path that matched nothing is reported,
+  and the paths are stated in the report, the summary and `provenance.filters.exclude_paths`.
+- **`generate --hide-emails`** replaces email addresses with a per-report token
+  (`contributor-N@hidden.invalid`, `contributor-N[bot]@hidden.invalid` for an automated account,
+  numbered in table order, never derived from the address). It covers authors, co-authors, people
+  below `--min-commits`, area authors, chart data, an address written as a name (an IP domain,
+  `bob@[10.1.2.3]`, included), an SSH remote's login, and an address in the branch, directory name
+  or remote path (shown as `(address hidden)`); a remote that is a local path keeps only its last
+  part. File paths are unchanged. Every figure is unchanged, and `provenance.emails_hidden`
+  records it. `[report] hide_emails` in `reveille.toml`.
+- **A "Read Before Using These Figures" panel** in the report states how the figures can mislead
+  (commits counted, not weighed; merges left out; squash merges; commit dates; `.mailmap`;
+  concentration is not a bus factor).
+- **The merge commits left out are counted:** `provenance.merge_commits_excluded` in the full JSON
+  and `repository.merge_commits_excluded` in the summary, whoever made them (`--exclude-author`
+  does not change it); the summary text says it when it is not zero.
+- **A "Third-party licences" section** after the report's footer (see Security).
+- **`reveille_version`** in `summary`, `state`, `brief`, `who-changed` and `repos` JSON, and
+  `analysed_commit` in `who-changed`, so an answer can be cited and checked against a rerun.
+- **Errors as JSON.** With `--format json`, `summary`, `brief`, `state`, `who-changed` and
+  `capabilities` write each stderr message as `{"level": ..., "message": ...}`. Exit codes are
+  unchanged; command-line usage errors are still text.
+- **Any directory inside a working tree** can be `--repo` or the current directory: the repository
+  is found as Git finds it (stopping at `GIT_CEILING_DIRECTORIES`), and `who-changed` takes a path
+  relative to the current directory. `init` still runs only at the root. A repository whose
+  `.git/config` sets `core.worktree` is refused (exit 2); a linked worktree and a submodule are
+  read as before.
+- **`--format markdown`** for `state`, `brief` and `summary` (names go in code spans, newlines
+  shown as `\n`, so a name cannot add a heading, link or HTML) and **`--format line`** for `state`
+  and `brief` (one line of counts, no path or author).
+- **`reile`**, a shorter name for the same command, and **`python -m reveille`**, for systems where
+  another package owns `reveille`. **`generate --quiet`** (`-q`) leaves the progress lines out of
+  stderr; notes, warnings and errors are still written.
+- **A GitHub Actions recipe** in the README (weekly report as an artifact, summary on the run's page,
+  `fetch-depth: 0`, actions pinned by commit), checked with actionlint and zizmor.
 
 ### Changed
 
-- **Release and contribution checks.** A tag is published only if its commit is on `main`. The
-  sign-off check reads `Signed-off-by` as Git's trailers, not any matching line in the body, and
-  the contributor-agreement check ignores code fences and unterminated comments, needs "I accept",
-  and matches the version exactly.
+- **The HTML report is 1.7 MB, down from 4.9 MB.** It embeds the plotly.js cartesian bundle,
+  pinned at 4.1.1 in `src/reveille/vendor/` with its notices, not the full bundle of whichever
+  plotly is installed ([ADR 0027](docs/adr/0027-the-report-embeds-a-pinned-cartesian-bundle.md)).
+  The size no longer changes with a plotly upgrade; the unused map traces and 44 of the bundle's
+  55 `https://` strings are gone (maplibre's stylesheet stays, as inert CSS). In headless Chromium
+  all 24 chart renderings (12 charts, light and dark) draw the same SVG as before. `scripts/vendor_plotly.py` is the only way the bundle
+  changes and checks every download against its published integrity hash.
+- **Faster, with less memory, on long histories.** On a synthetic history of 100,000 commits by
+  about 500 authors, against 0.9.0 (medians of three runs, 2026-10-18, Git 2.55; Reveille's own peak
+  memory, and Git's `git log --numstat` takes about 210 MB more): `generate` 6.0 s and 207 MB to 4.9
+  s and 115 MB, `summary` 2.4 s and 183 MB to 2.0 s and 107 MB, `who-changed` 5.0 s and 183 MB to
+  3.9 s and 107 MB. Authors and hashes are held once, Git's output is split as it arrives, and only
+  `generate` loads the chart library. Each of these changes was checked to leave the output
+  byte-identical.
+- **Progress off a terminal is one plain line per stage**, not carriage-return frames; it animates
+  only when stderr is a terminal. The theme is set in the page's head, so a dark-mode reader no
+  longer sees the report light first.
+- **`schema_version` is 1.2.** The brief is a new JSON document and the others gain fields
+  (`merge_commits_excluded`, `exclude_paths`, `emails_hidden`, `reveille_version`); every 1.1 field
+  is unchanged.
+- **Release checks.** A tag is published only if its commit is on `main` and names the version in
+  `pyproject.toml`, and packages are built in a job that cannot obtain the PyPI token.
+- **Documentation** was corrected after running each statement (for example, Reveille reads
+  `Co-authored-by` trailers, not commit messages; `--deterministic` is byte-identical only on the
+  same version, dependencies and Git settings). SECURITY.md no longer promises a response time.
 
-- **Repository tooling.** Codecov now checks each pull request's changed lines against a 90% target
-  (`.github/codecov.yml`). Dependabot also proposes updates to the pre-commit hooks. Issue forms ask
-  for the Reveille and Git versions and the command, and send security reports to the private form.
+### Removed
 
-- **Release path.** Packages are built in a job that cannot obtain the PyPI upload token, and the
-  build stops if the tag does not name the version in `pyproject.toml`. CI also checks formatting
-  and runs the repository-hygiene hooks. The Makefile's `publish` targets are gone: publishing is
-  done by the tagged workflow only.
-
-- **`schema_version` is 1.2.** The brief is a new JSON document; every 1.1 field is unchanged.
-- **SECURITY.md no longer promises a response time.** Reveille has one maintainer; reports are
-  normally acknowledged within a few days.
-
-- **Progress off a terminal is one plain line per stage.** The animation redraws its line with
-  carriage returns, which only a terminal interprets; a CI log, a pipe or an assistant received
-  every frame as text. It now animates only when stderr is a terminal.
+- **Four runtime packages no module imported:** `pydantic-settings`, `python-dateutil`, and with
+  them `python-dotenv` and `six`; also `types-python-dateutil` from the development tools. An
+  install declares six runtime requirements instead of eight; kept packages keep their locked
+  versions.
+- **The Makefile's `publish` targets.** Publishing is done by the tagged workflow only.
 
 ### Fixed
 
-- **`--exclude-author` missed a person when the value had a trailing or doubled space, or a
-  decomposed accent** (as a paste can carry). Values and identities are now compared
-  Unicode-normalised, spaces collapsed, case ignored.
-- **`--verbose` printed the excluded names** in its configuration line; it now gives their number.
-- **`--until 9999-12-31` stopped with an internal `OverflowError`.** The last representable date is
-  now refused as a bad value by `--until` and `--since` (exit 2).
+- **Names and dates.** An author or branch name that is not UTF-8 stopped the HTML and CSV reports
+  (and `generate`, `summary`, `brief`, `who-changed` for such a branch); such bytes are now shown as
+  U+FFFD, and as `\xNN` in text output of a directory or file name, which had exited 1. A commit
+  dated year 10000 was dropped without a word and is now counted as unreadable. `--until` and
+  `--since` refuse `9999-12-31` (exit 2) instead of raising `OverflowError`.
+- **`--exclude-author` missed a person** with a trailing or doubled space, a decomposed accent, a
+  legacy `name@` noreply address, a doubled space in a `.mailmap` name, a name past the 256
+  characters shown, an invisible format character, or a name used only on a `Co-authored-by`
+  trailer (ADR 0020). Values and identities are now compared Unicode-normalised, spaces collapsed,
+  case and format characters ignored, before the display cut (up to 4,096 characters). If Git
+  fails on the history it is checked against, the run stops with exit 2. `--verbose` prints the number excluded, not their names.
+- **GitHub accounts.** Two accounts with the same username were one person, and a renamed account
+  two. Noreply addresses fold on the account number; a legacy address joins an account only when
+  one account used its username (ADR 0023). Reports show the number.
+- **`.mailmap` lines Git honours were skipped or misread** (a name holding `#`, text after the last
+  address, a third address, no space before `<`, three spaces before the second address, a repeated
+  four-field line). Lines are read as Git reads them, checked against `git check-mailmap`; a name
+  holding an address (`<a@x> Old <b@x>`) is skipped as malformed.
+- **A repository's Git settings changed the figures.** `diff.renames=false` counted a rename as
+  delete and add, `core.bigFileThreshold` turned large files into binary with no lines,
+  `log.showRoot=false` dropped the first commit's lines, another `diff.algorithm` moved line
+  counts, another `trailer.separators` hid co-authors. Each is pinned to Git's default on every
+  read.
+- **`--branch`** accepted a range (`HEAD~1..main`) and must now name one branch, tag or commit; a
+  named branch with commits gave "no commits" when the checkout was an orphan, and is now read.
+- **`who-changed`** missed commits on a branch merged without its changes (`git merge -s ours`),
+  and now reads the full history for a path. Its line reads
+  `from <first change> to <last change>, in a window ending <date>`; JSON is unchanged.
+- **The heatmap opened on an empty year** when the history stopped before the window's end; it now
+  opens on the latest year with a commit.
+- **`reveille init --force`** wrote into the existing file, so a hard-linked `reveille.toml` or
+  `.mailmap` overwrote its other link; it now replaces the name. A new one is owner-only (mode
+  600), as a report is, since a filled-in `.mailmap` names people; under a umask of 0 it was
+  writable by every user. Git records no read permissions, so commits are unchanged, and a mode
+  the owner set is kept.
+- **A working-tree `.mailmap` Reveille could not read was skipped without a word**, so identities
+  were not merged and every count changed. It is now reported on stderr.
+- **Exit codes.** An unanticipated error exited 1, the negative-answer code; it exits 2 with one
+  line on stderr (traceback with `--verbose`). A repository another user owns and a SHA-256
+  repository were reported as having no commits (exit 1); both exit 2, the first naming
+  `safe.directory`. Git older than 2.24 (no `--end-of-options`) failed every read unclearly; it is
+  refused with exit 2, naming both versions.
+- **Text.** `summary` said "1 commits". `capabilities` gave `summary` as "about 2 KB", true of JSON
+  but not of the text (0.5 to 0.65 KB); it gives both.
 
-- **`--exclude-author` by name missed a person who appears only as a co-author** under another
-  name. The name now reaches the addresses it carries in `Co-authored-by` trailers too (ADR 0020).
-- **A commit with a date no calendar holds (year 10000) was dropped without a word.** It is now
-  counted as unreadable and stated.
-- **A repeated four-field `.mailmap` line updated the earlier one field by field**; Git replaces it.
-  Now as Git does.
-- **A tag named like a commit hash was read as that commit** by `state` and `brief`. Tags from the
-  tag list are now resolved as tags.
-- **`--branch` accepted a range** (`HEAD~1..main`, `main^!`), and the report still said "branch".
-  It must now name one branch, tag or commit.
+### Security
 
-- **`.mailmap` lines Git honours were skipped.** A name holding `#`, text after the last address,
-  a third address, or no space before `<` made Reveille drop a line that `git check-mailmap`
-  applies, so people were split or merged differently from `git shortlog`, and
-  `--exclude-author` could miss commits. Lines are now read exactly as Git reads them, including
-  a later line updating one field of an earlier one; a test compares each case with Git.
-- **`--branch` named a branch with commits, and the answer was "no commits"**, when the checkout
-  itself had none (an orphan branch). The named branch is now read.
-- **A Git failure during `state` or a tag listing was reported as a defect in Reveille.** It now
-  names Git's own error, such as a corrupt index or a lock, still with exit 2.
+Each entry has a test that fails without the fix.
 
-- **A repository's own Git settings could change the figures.** Set in `.git/config` (or the
-  user's config), `diff.renames=false` counted a renamed file as deleted and added,
-  `core.bigFileThreshold` turned large files into binary with no lines, `log.showRoot=false` dropped
-  the first commit's lines, another `diff.algorithm` moved line counts, and another
-  `trailer.separators` hid co-authors. Each is now pinned to Git's default on every read; a test
-  per setting failed before.
-
-- **A worktree path holding a newline was misread** by `state`: the path was cut short and the
-  rest could be read as a field, such as "locked". Worktrees are now listed with `-z` (Git 2.36
-  or later), falling back to the old format on older Git.
-- **Git older than 2.24 failed every read with an unclear error.** Every read passes
-  `--end-of-options`, added in 2.24; older Git is now refused with exit 2, naming both versions.
-- **Two GitHub accounts that used the same username were counted as one person, and a renamed
-  account as two.** Noreply addresses were folded on the username, which GitHub lets change and
-  be reused. They now fold on the account number; a legacy address without a number joins an
-  account only when one account used its username (ADR 0023). Noreply identities in reports
-  now carry their number.
-- **`summary` said "1 commits"** for a single commit. It now says "1 commit".
-
-- **An error nobody anticipated exited 1**, the code for a negative answer, so a script or an
-  assistant could take a crash for an answer. It now exits 2 with one line on stderr; the
-  traceback is written with `--verbose`.
-- **A repository another user owns was reported as having no commits** (exit 1). Git refuses
-  such a repository unless its `safe.directory` setting trusts it, and the library Reveille
-  reads with then saw no `HEAD`. It is now refused with exit 2, and the message names
-  `safe.directory`.
-- **A SHA-256 repository was reported as having no commits** (exit 1): the library cannot
-  parse its references. It is now refused with exit 2 until it can be read.
-- **A directory or file name that is not UTF-8 stopped text output** with exit 1. Such bytes
-  are now shown as `\xNN`.
-- **A `.mailmap` line with three or more spaces before the second address did nothing.** It
-  was misread as a four-field line whose commit name was a space, so the two addresses stayed
-  two people where Git counts one. A name holding an address, such as `<a@x> Old <b@x>`, is now
-  skipped as malformed, as Git's parser would not read it that way either.
-- **`capabilities` gave the size of `reveille summary` as "about 2 KB"**, which holds for
-  `--format json` (1.5 to 2.3 KB measured on three repositories) but not for the default text
-  (0.5 to 0.65 KB). It now gives both.
-- **`who-changed` gave one range from the path's first change to the end of the window**, with
-  the last change beside it, so the range read as the span of changes. The line now says
-  `from <first change> to <last change>, in a window ending <date>`. The JSON is unchanged.
-- **Documentation described behaviour the program does not have.** Corrected after running each:
-  `docs/COMPLIANCE.md` said Reveille reads no commit messages (it reads `Co-authored-by`
-  trailers); the README and User Guide said the `summary` text carries commit concentration and
-  days since the last commit (only its JSON does); `who-changed` was said to give addresses (only
-  its JSON does); the architecture guide put the default report in the current directory (it is
-  the repository root); `SECURITY.md` called the offline property unaffected beside the
-  partial-clone fetch it lists. Byte-identical output under `--deterministic` is now stated with
-  its conditions: the same Reveille version, installed dependencies and Git settings, since a
-  different `diff.algorithm` moves line counts. Stale lists and unsourced timings were removed or
-  re-measured, and the wording on what Reveille reads now separates what it receives (paths and
-  line counts) from what Git reads to compute them.
+- **The report carried third-party code without its licences.** The embedded plotly.js bundle kept
+  none of the MIT and BSD-3-Clause texts every copy must carry. Reports now carry every bundled
+  package's notice, and a test fails if a package's section is missing or lacks its licence text. The notices name some authors with email
+  addresses, which `--hide-emails` leaves as published. 0.9.0's reports are affected.
+- **An author address could make the report request a remote URL, or run a script, when opened.**
+  Plotly renders `<a>`, `<b>` and `<span style>` in chart labels, so an address such as
+  `span style='background-image:url(https://...)' x` made headless Chromium request the URL with no
+  click, telling a third party when and where it was read. 0.9.0 does the same. Addresses are now
+  drawn in parentheses, labels lose any `<` or `>`, and a Content-Security-Policy allows no
+  network source and only the report's three scripts, by SHA-256 hash.
+- **Text from a repository could change what a chart shows.** A file extension reached a chart
+  unsanitised and made a clickable link; an unfinished HTML comment in a path, extension or name
+  blanked every chart. Labels are sanitised and every `<` in the chart data is escaped.
+- **The charts offered "Share chart...",** which sends the chart data, names included, to Plotly's
+  cloud after a click and a sign-in. Sharing is switched off; nothing was sent on load.
+- **A named pipe, or `/dev/zero`, where Git or Reveille reads a file hung it or grew its memory
+  without limit.** Covered: `.gitattributes` (any directory), `info/attributes`,
+  `core.attributesFile`, `.gitignore`, `info/exclude`, `.git/config`, `config.worktree`,
+  `commondir`, `packed-refs`, `shallow`, `objects/info/alternates`, an `include.path` target (any
+  condition; `/dev/zero` took 1.5 GB in under two seconds), `.mailmap`, `mailmap.file` and
+  `diff.orderFile`. Such files, and any over 8 MiB, are refused (exit 2) before Git runs; Git's own
+  mailmap is off and `diff.orderFile` is pinned to the null device. Commands that read no line
+  counts ignore attribute files. Include paths are listed by Git itself, so no spelling of one
+  escapes the check, and every file under `refs/` and `objects/`, alternates followed, must be a
+  regular file. Beyond those, a history read is stopped after 300 seconds without output, and
+  every other Git command Reveille waits for after 300 seconds, with exit 2; on Windows only the
+  history read is, as GitPython cannot stop a command there. 0.9.0's `generate` is affected by
+  attribute files.
+- **A long `.mailmap` line or a `Co-authored-by` line of spaces could stall a run for minutes**, as
+  their patterns backtracked. Both are read in one pass; a working-tree `.mailmap` is bounded at
+  1 MiB with a warning, and a co-author value over 4,096 characters is skipped.
+- **A partial clone could be read.** `remote.<name>.promisor = 2` was treated as false (Git reads
+  any non-zero number as true), and below Git 2.44 a promisor remote in worktree config let a read
+  fetch and write into `.git`. Git is now asked whether any config makes the repository a partial
+  clone; if it cannot say, the repository is refused.
+- **`i18n.logOutputEncoding` in a repository's config changed how `git log` encoded names:**
+  `ISO-8859-1` garbled accents, so `--exclude-author` by name missed the person; `UTF-7` made every
+  commit unreadable. It is pinned to UTF-8. 0.9.0 does not pin it.
+- **A secret in a remote URL was printed:** a password containing `#` or `?` (partly), a token in an
+  scp-like remote (`git:SECRET@host:path`) and one behind a transport prefix. The credential is
+  removed first, the scheme after the prefix decides, and scp-like user parts are removed with or
+  without `--hide-emails`.
+- **A repository could put control characters or extra lines into output.** `summary` and
+  `who-changed` text printed terminal hyperlinks, bells and carriage returns from a directory or
+  `.mailmap` name on stdout (0.9.0's escaping covered stderr only); `validate` and `generate`
+  printed the repository path raw; a newline in a path could add a line Reveille did not write.
+  Text output now escapes CR, LF, C0 and C1 controls and U+061C, U+200E and U+200F.
+- **A report could be written over Git's own files.** A report path that was a hard link to a Git
+  file was written through, and `--output` could name a file in the Git directory of the
+  repository a linked worktree belongs to. Every format is now written to a new file and moved
+  into place, and the common Git directory is refused. A new report is owner-readable only; one
+  written over an existing file keeps its permissions.
+- **An author name could add commits and people to every figure** by holding the separators
+  `git log` is read with and a real commit's hash. Each record is framed by its commit's hash at
+  both ends, and a hash with more than one record is counted as unreadable, never credited.
+- **Dependency floors allowed releases with published advisories:** GitPython `^3.1.40` (OSV lists
+  61 records, one of them repository content posing as the Git directory, leading to code
+  execution, GHSA-239g-whfq-7xj9, fixed in 3.1.60), Jinja2 `^3.1.0` and Pydantic `^2.0`. The
+  floors are GitPython 3.1.62, Jinja2 3.1.6 and Pydantic 2.4, which no published advisory affected
+  on 2026-10-13; a test fails if one is lowered. Locked versions are unchanged.
+- **Closed before release, in what 0.9.0 lacks (0.9.0 is not affected):** `core.worktree` in a
+  repository's config could point `--repo`'s upward search at another repository, so Reveille read
+  its history and wrote the report there; `state` ran a content filter with an empty name and
+  suggested a `brief --from <tag>` command with the tag unquoted; `--hide-emails` missed an IP-domain
+  address and a local remote's directories. Each is refused, switched off, quoted or hidden.
 
 ---
 

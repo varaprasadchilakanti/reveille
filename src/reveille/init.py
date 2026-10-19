@@ -11,6 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from reveille.exceptions import ConfigurationError, OutputPathError
+from reveille.replacing import write_replacing
 
 _DEFAULT_CONFIG_TEMPLATE: str = """\
 # reveille.toml -- Configuration file for Reveille
@@ -75,6 +76,11 @@ _DEFAULT_CONFIG_TEMPLATE: str = """\
 # full total is written beside each list. Equivalent to --limit.
 # limit = 50
 
+# Replace every email address with a per-report token (contributor-1@hidden.invalid),
+# for a report you share. Names stay; every figure is unchanged. Equivalent to
+# --hide-emails.
+# hide_emails = false
+
 
 # ------------------------------------------------------------------------------
 # [filters] -- Contributor and commit filtering
@@ -93,6 +99,14 @@ _DEFAULT_CONFIG_TEMPLATE: str = """\
 # exclude_authors = [
 #     "dependabot[bot]",
 #     "github-actions[bot]",
+# ]
+
+# Leave paths out of every figure: commits, churn, hotspots, areas. Relative to
+# the repository root and matched literally (no wildcards); a directory takes
+# everything under it. A commit that changed only excluded paths is not counted.
+# exclude_paths = [
+#     "vendor",
+#     "docs/generated",
 # ]
 
 
@@ -181,7 +195,7 @@ _DEFAULT_MAILMAP_TEMPLATE: str = """\
 # Example:
 #
 #   Address change with no name change:
-#   <helen@newcorp.com> <helen@oldcorp.com>
+#   <helen@new.example> <helen@old.example>
 #
 #
 # ------------------------------------------------------------------------------
@@ -197,13 +211,13 @@ _DEFAULT_MAILMAP_TEMPLATE: str = """\
 # Examples:
 #
 #   Employer domain change:
-#   Alice Smith <alice@newcorp.com> <alice@oldcorp.com>
+#   Alice Smith <alice@new.example> <alice@old.example>
 #
 #   GitHub web-interface and merge-button commits (noreply form):
 #   Bob Jones <bob@example.com> <12345+bobjones@users.noreply.github.com>
 #
 #   Personal account used before work account was configured:
-#   Carol Chen <carol@corp.com> <carol.chen@gmail.com>
+#   Carol Chen <carol@example.com> <carol.chen@personal.example>
 #
 #
 # ------------------------------------------------------------------------------
@@ -221,11 +235,11 @@ _DEFAULT_MAILMAP_TEMPLATE: str = """\
 # Examples:
 #
 #   Both name and address changed at once:
-#   Dan Brown <dan@newcorp.com> Daniel Brown <daniel@oldcorp.com>
+#   Dan Brown <dan@new.example> Daniel Brown <daniel@old.example>
 #
 #   Disentangling two people who shared one address:
-#   Dan Brown <dan@corp.com> Dan <build@ci.corp.com>
-#   Erica Stone <erica@corp.com> Erica <build@ci.corp.com>
+#   Dan Brown <dan@example.com> Dan <build@ci.example.com>
+#   Erica Stone <erica@example.com> Erica <build@ci.example.com>
 #
 #
 # ------------------------------------------------------------------------------
@@ -269,7 +283,7 @@ def write_init_config(output_path: Path, *, force: bool = False) -> Path:
         )
 
     try:
-        resolved.write_text(_DEFAULT_CONFIG_TEMPLATE, encoding="utf-8")
+        write_replacing(resolved, _DEFAULT_CONFIG_TEMPLATE, encoding="utf-8")
     except OSError as exc:
         raise OutputPathError(f"Failed to write configuration file to '{resolved}': {exc}") from exc
 
@@ -304,7 +318,7 @@ def write_mailmap_template(output_path: Path, *, force: bool = False) -> Path | 
         return None
 
     try:
-        resolved.write_text(_DEFAULT_MAILMAP_TEMPLATE, encoding="utf-8")
+        write_replacing(resolved, _DEFAULT_MAILMAP_TEMPLATE, encoding="utf-8")
     except OSError as exc:
         raise OutputPathError(f"Failed to write .mailmap template to '{resolved}': {exc}") from exc
 

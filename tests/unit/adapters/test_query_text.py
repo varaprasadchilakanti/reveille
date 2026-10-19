@@ -10,6 +10,7 @@ shallow clone, filters not run. Here one state and one brief carry all of it.
 
 from __future__ import annotations
 
+import dataclasses
 import datetime
 import json
 
@@ -94,6 +95,24 @@ def test_state_markdown_states_everything() -> None:
         "- Replace refs or a graft file are present and not followed.",
     ):
         assert expected in out, expected
+
+
+@pytest.mark.parametrize("fmt", ["text", "markdown"])
+def test_state_counts_one_commit_in_the_singular(fmt: str) -> None:
+    state = dataclasses.replace(_FULL, commits_since_tag=1)
+
+    out = Renderer.state_text(state, name="r", history_replaced=False, output_format=fmt, limit=10)
+
+    assert "1 commit since" in out
+
+
+@pytest.mark.parametrize("fmt", ["text", "markdown"])
+def test_state_names_a_dash_tag_by_its_full_ref_so_the_suggestion_runs(fmt: str) -> None:
+    state = dataclasses.replace(_FULL, latest_tag="-v1")
+
+    out = Renderer.state_text(state, name="r", history_replaced=False, output_format=fmt, limit=10)
+
+    assert "reveille brief --from refs/tags/-v1" in out
 
 
 def test_state_line_states_everything() -> None:

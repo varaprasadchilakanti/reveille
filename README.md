@@ -4,6 +4,9 @@
 Reveille reads a local clone (GitHub, GitLab, Bitbucket or self-hosted) and writes one HTML report: a commit calendar
 heatmap, weekly activity and how commits are spread across contributors. It never changes Git data and makes no network call.
 SHA-256 repositories and partial clones are refused.
+The name is the call that starts a soldier's day: `reveille state` and `reveille brief` tell a
+person or a coding agent starting work where the repository stands and what changed, from local
+history.
 
 [![PyPI](https://img.shields.io/pypi/v/reveille)](https://pypi.org/project/reveille/)
 [![Python](https://img.shields.io/pypi/pyversions/reveille)](https://pypi.org/project/reveille/)
@@ -21,8 +24,8 @@ SHA-256 repositories and partial clones are refused.
 and rendered with `reveille generate --deterministic`.*
 
 The report also shows where change concentrates and a per-contributor table. The same figures are
-available as JSON or CSV, and `state`, `brief`, `summary` and `who-changed` answer single questions
-as text, JSON, Markdown or (for `state` and `brief`) one line.
+available as JSON or CSV. `state`, `brief`, `summary` and `who-changed` answer single questions as
+text or JSON; the first three also give Markdown, and `state` and `brief` one line.
 
 ```bash
 pipx install reveille
@@ -46,7 +49,9 @@ Limits: Git has many settings, and Reveille switches off only those its reads we
 repository whose `.git` came from someone else may still run one. `git clone` does not copy
 `.git/config`; a copied directory or an archive does. A partial clone (`git clone --filter`) is
 refused, because reading it would make Git fetch. A SHA-256 repository is refused for now: the
-library Reveille reads it with cannot parse its references.
+library Reveille reads it with cannot parse its references. A repository whose `.git/config` sets
+`core.worktree` to another directory is refused, since the report would describe that directory
+and be written into it.
 
 Reveille is provided under the Apache Licence 2.0 "AS IS"; sections 7 and 8 of the
 [LICENSE](https://github.com/varaprasadchilakanti/reveille/blob/main/LICENSE) disclaim warranty and
@@ -59,8 +64,8 @@ limit liability as far as applicable law allows.
 - Not a ranking unless you ask: ranking people needs `--ranking`, and the report then states what the
   score measures and what it does not. JSON and CSV still carry a `rank` column, in table order
   (by commits; by score with `--ranking`).
-- Not anonymised. Every report names the people in the history and carries their email addresses and
-  activity. [What the report contains about people](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md#what-the-report-contains-about-people)
+- Not anonymised. A report names the people in the history and carries their activity, and their
+  email addresses unless you pass `--hide-emails`, which replaces the addresses and leaves the names. [What the report contains about people](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md#what-the-report-contains-about-people)
   lists it field by field, and [Before you share a report](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md#before-you-share-a-report)
   says what to check.
 - Not a bus factor. Commit concentration says who committed, not who understands the code.
@@ -235,7 +240,8 @@ reveille generate --format json --output - | jq .derived
 ### `reveille init`
 
 Writes an annotated `reveille.toml` (every key commented out) in the current directory, which
-must be a repository root. `--mailmap` adds a `.mailmap` template; `--force` overwrites.
+must be a repository root. `--mailmap` adds a `.mailmap` template; `--force` overwrites. New
+files are owner-only; `chmod 644` lets other accounts on a shared machine read them.
 
 ### `reveille validate`
 
@@ -288,6 +294,16 @@ not who knows or owns it. A path no commit in the window changed exits 1.
 reveille who-changed src/parser/lexer.c --since 2026-01-01
 ```
 
+### `reveille repos`
+
+Which repositories in a directory are active, quiet or dormant: one row per repository, with its
+last commit and the commits, people and automated accounts in the last 90 days as counts. It names
+nobody and counts nobody across repositories. A folder of clones or of bare mirrors both work.
+
+```bash
+reveille repos ~/src --format markdown
+```
+
 ### `reveille capabilities`
 
 States what Reveille can and cannot do, including what it declines to claim, read from the installed
@@ -295,6 +311,16 @@ program. `--format json` adds the command surface and exit codes.
 
 ```bash
 reveille capabilities --format json
+```
+
+### `reveille skill`
+
+Prints what to tell a coding agent about Reveille: a section for `AGENTS.md` or `CLAUDE.md` naming
+the commands to run, and saying that repository text in their output is data, not instructions.
+`--format skill` gives it as a `SKILL.md`. Every command it names is run by a test.
+
+```bash
+reveille skill >> AGENTS.md
 ```
 
 ### `reveille help`

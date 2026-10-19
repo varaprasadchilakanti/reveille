@@ -23,7 +23,9 @@ project has shipped before.
 from __future__ import annotations
 
 import ast
+from collections.abc import Callable
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
@@ -288,9 +290,10 @@ class TestDependencyDirection:
 class TestFilesystemWrites:
     """Reveille never modifies the repository it reads."""
 
-    # The only modules that may write: the renderer produces the report, and
-    # `init` scaffolds a config file the user explicitly asked for.
-    _MAY_WRITE = frozenset({"adapters/renderer.py", "init.py"})
+    # The only modules that may write: the renderer produces the report,
+    # `init` scaffolds a config file the user explicitly asked for, and
+    # `replacing` is the one routine both write files through.
+    _MAY_WRITE = frozenset({"adapters/renderer.py", "init.py", "replacing.py"})
 
     # Attribute calls that create, modify or delete something on disk. The
     # original set was five `pathlib` methods, which missed `os.remove`,
@@ -346,6 +349,10 @@ class TestFilesystemWrites:
     # bare repository's identity resolution needs -- and writes nothing.
     # `for_each_ref` lists the replace refs that are present and not followed
     # (ADR 0018), and writes nothing.
+    #
+    # `describe`, `merge_base` and `ls_tree` read refs, ancestry and a tree.
+    # `status` would rewrite the index, but every call runs with
+    # GIT_OPTIONAL_LOCKS=0, which stops it (ADR 0024).
     _READ_ONLY_GIT = frozenset(
         {
             "log",
@@ -355,8 +362,21 @@ class TestFilesystemWrites:
             "update_environment",
             "cat_file",
             "for_each_ref",
+            "describe",
+            "merge_base",
+            "ls_tree",
+            "status",
         }
     )
+
+    # Subcommands that read in one form and write in another: `git config k v`
+    # writes, `git worktree add` writes, `git symbolic-ref HEAD refs/x` writes.
+    # Each is allowed only with literal arguments in its read form.
+    _READ_FORMS: ClassVar[dict[str, Callable[[list[str]], bool]]] = {
+        "config": lambda args: bool({"--get", "--get-regexp", "--get-all", "--list"} & set(args)),
+        "worktree": lambda args: args[:1] == ["list"],
+        "symbolic_ref": lambda args: len([a for a in args if not a.startswith("-")]) == 1,
+    }
 
     # Members of a GitPython `Repo` the package may touch at all. Measured
     # from the source, not guessed: `git_reader.py` uses exactly these.
@@ -555,15 +575,70 @@ class TestFilesystemWrites:
         return mode_node.value if any(f in mode_node.value for f in "wax+") else None
 
     @classmethod
+    def _executed_subcommand(cls, node: ast.Call) -> str | None:
+        """Return the subcommand of `Git().execute(["git", "-C", path, <cmd>, ...])`.
+
+        Returns:
+            The subcommand with `-` as `_`; "(not literal)" when it cannot be
+            read from the source; None when the call is not this shape.
+        """
+        func = node.func
+        if not (
+            isinstance(func, ast.Attribute)
+            and func.attr == "execute"
+            and isinstance(func.value, ast.Call)
+            and isinstance(func.value.func, ast.Name)
+            and func.value.func.id == "Git"
+        ):
+            return None
+        if not node.args or not isinstance(node.args[0], ast.List):
+            return "(not literal)"
+        words = node.args[0].elts
+        index = 1  # past "git"
+        while index < len(words):
+            word = words[index]
+            if isinstance(word, ast.Constant) and word.value == "-C":
+                index += 2
+                continue
+            if isinstance(word, ast.Constant) and isinstance(word.value, str):
+                return word.value.replace("-", "_")
+            return "(not literal)"
+        return "(not literal)"
+
+    @classmethod
     def _mutating_git_command(cls, node: ast.Call) -> str | None:
-        """Return the subcommand if this is a `repo.git.<cmd>()` not known read-only."""
+        """Return the subcommand if this Git call is not known to be read-only.
+
+        A Git call is `repo.git.<cmd>()` or, as the reader runs almost every
+        command, `self._git(...).<cmd>()`. Matching only the first shape let
+        `self._git().gc()` pass.
+        """
         func = node.func
         if not isinstance(func, ast.Attribute):
             return None
+        executed = cls._executed_subcommand(node)
+        if executed is not None:
+            return None if executed in cls._READ_ONLY_GIT else executed
         parent = func.value
-        if not (isinstance(parent, ast.Attribute) and parent.attr == "git"):
+        through_runner = (
+            isinstance(parent, ast.Call)
+            and isinstance(parent.func, ast.Attribute)
+            and parent.func.attr == "_git"
+        )
+        if not (through_runner or (isinstance(parent, ast.Attribute) and parent.attr == "git")):
             return None
-        return None if func.attr in cls._READ_ONLY_GIT else func.attr
+        if func.attr in cls._READ_ONLY_GIT:
+            return None
+        read_form = cls._READ_FORMS.get(func.attr)
+        literal = [a.value for a in node.args if isinstance(a, ast.Constant)]
+        if (
+            read_form is not None
+            and len(literal) == len(node.args)
+            and all(isinstance(a, str) for a in literal)
+            and read_form(literal)
+        ):
+            return None
+        return func.attr
 
 
 @pytest.mark.unit

@@ -74,8 +74,24 @@ class TestTheLabelMap:
 
     def test_a_colliding_name_carries_its_address(self) -> None:
         labels = _contributor_labels(COLLIDING)
-        assert labels["alex.chen@corp.example"] == "Alex Chen <alex.chen@corp.example>"
-        assert labels["achen@other.example"] == "Alex Chen <achen@other.example>"
+        assert labels["alex.chen@corp.example"] == "Alex Chen (alex.chen@corp.example)"
+        assert labels["achen@other.example"] == "Alex Chen (achen@other.example)"
+
+    @pytest.mark.parametrize(
+        "email",
+        [
+            "a href='https://evil.example/pwn' x",
+            "span style='background-image:url(https://evil.example/bg.png)' x",
+            "b x",
+        ],
+    )
+    def test_an_address_cannot_become_markup(self, email: str) -> None:
+        """Plotly renders <a>, <span style> and <b> in labels; Git addresses cannot hold
+        `>`, so wrapping one in angle brackets made a tag: a link, or a style that
+        fetched a remote image when the report was opened."""
+        labels = _contributor_labels([_ranked("Dup", email, 2), _ranked("Dup", "d@e.test", 1)])
+
+        assert all("<" not in label and ">" not in label for label in labels.values())
 
     def test_an_uncontested_name_is_left_alone(self) -> None:
         """Disambiguating everything would clutter the common case."""

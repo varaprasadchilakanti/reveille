@@ -23,8 +23,12 @@ repos:
     # same arbitrary-code seam, so it gets the same treatment.
     rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # v6.0.0
     hooks:
+      # The vendored chart library and its licence texts are kept exactly as
+      # scripts/vendor_plotly.py writes them; the bundle is checked by hash.
       - id: trailing-whitespace
+        exclude: ^src/reveille/vendor/
       - id: end-of-file-fixer
+        exclude: ^src/reveille/vendor/
       - id: check-yaml
       - id: check-case-conflict
       - id: check-merge-conflict
