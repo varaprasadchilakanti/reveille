@@ -225,6 +225,7 @@ class Renderer:
                     loader=_DedentingLoader("reveille", "templates"),
                     autoescape=select_autoescape(["html", "j2"]),
                     undefined=StrictUndefined,
+                    finalize=_shown_in_html,
                 )
                 self._template = environment.get_template("report.html.j2")
             except (TemplateNotFound, TemplatesNotFound, OSError) as exc:
@@ -2138,10 +2139,11 @@ def _assert_not_symlink(output_path: Path) -> None:
 
 
 def _neutralise_csv_cell(value: str) -> str:
-    """Prevent a text cell from being executed as a spreadsheet formula.
+    r"""Prevent a text cell from being executed as a spreadsheet formula.
 
     Names and addresses are attacker-controlled; a leading apostrophe makes a
-    spreadsheet treat the cell as text. Free-text columns only.
+    spreadsheet treat the cell as text. Control and direction characters are
+    written as `\uXXXX` escapes, as in the HTML report. Free-text columns only.
 
     Args:
         value: A free-text cell value derived from repository metadata.
@@ -2149,6 +2151,7 @@ def _neutralise_csv_cell(value: str) -> str:
     Returns:
         The value, prefixed with an apostrophe if it would read as a formula.
     """
+    value = value.translate(_UNSHOWABLE)
     if value.startswith(_CSV_FORMULA_PREFIXES):
         return "'" + value
     return value
@@ -2176,6 +2179,31 @@ _DIRECTION_CONTROLS: dict[int, str] = {
     for block in ((0x061C, 0x200E, 0x200F), range(0x202A, 0x202F), range(0x2066, 0x206A))
     for code in block
 }
+
+# Control characters too, wherever repository text is shown as text: a remote, a
+# branch, an address and a path keep them, as they name something real.
+_UNSHOWABLE: dict[int, str] = {
+    **{code: f"\\u{code:04x}" for code in (*range(0x09), 0x0B, 0x0C, *range(0x0E, 0x20))},
+    **{code: f"\\u{code:04x}" for code in range(0x7F, 0xA0)},
+    **_DIRECTION_CONTROLS,
+}
+
+
+def _shown_in_html(value: Any) -> Any:
+    r"""Show the control and direction characters in a report value as `\uXXXX` escapes.
+
+    Every `{{ }}` in the template passes through here before it is escaped.
+    Markup (the chart bundle, the chart specs) is the renderer's own, and passes.
+
+    Args:
+        value: What the template interpolates.
+
+    Returns:
+        The value, a string with those characters written as escapes.
+    """
+    if isinstance(value, str) and not isinstance(value, Markup):
+        return value.translate(_UNSHOWABLE)
+    return value
 
 
 def _sanitise_chart_label(value: str) -> str:
