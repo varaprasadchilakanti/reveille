@@ -19,6 +19,7 @@ import functools
 import logging
 import os
 import re
+import secrets
 import stat
 import sys
 import tempfile
@@ -1826,7 +1827,11 @@ class GitReader:
         remaining = {area for area in areas if area != ROOT_AREA}
         if not remaining:
             return found
-        args = ["--no-merges", "--no-renames", "--name-only", "-z", "--format=%x01%H %ct"]
+        # A path may hold any byte but NUL, so each header carries a value drawn
+        # now, which no path written before this read can spell.
+        marker = secrets.token_hex(16)
+        header_re = re.compile(rb"\x01" + marker.encode() + rb"[0-9a-f]{40} ([0-9]+)")
+        args = ["--no-merges", "--no-renames", "--name-only", "-z", f"--format=%x01{marker}%H %ct"]
         if before_commit is not None:
             args += ["--end-of-options", before_commit]
         else:
@@ -1847,7 +1852,7 @@ class GitReader:
                 silence.heard()
                 *tokens, pending = (pending + chunk).split(b"\0")
                 for token in tokens:
-                    header = _CHANGE_HEADER_RE.fullmatch(token)
+                    header = header_re.fullmatch(token)
                     if header is not None:
                         stamp = int(header.group(1))
                         when = datetime.datetime.fromtimestamp(stamp, tz=datetime.UTC).date()
@@ -2447,9 +2452,6 @@ def _state_wide_exclusions(reached: dict[str, set[str]]) -> None:
 #: The largest `.mailmap` read, in bytes; a real one is kilobytes.
 _MAX_MAILMAP_BYTES = 1_048_576
 
-
-# A commit's line in `last_changes_before`: \x01, its hash, its commit time.
-_CHANGE_HEADER_RE = re.compile(rb"\x01[0-9a-f]{40} ([0-9]+)")
 
 #: How long `state` lets `git status` run before stopping it (a FIFO makes it wait for ever).
 STATUS_TIMEOUT_SECONDS = 120
