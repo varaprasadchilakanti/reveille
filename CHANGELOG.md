@@ -240,6 +240,13 @@ Each entry has a test that fails without the fix. 0.9.0's exposure is stated whe
 - **An author name could add commits and people to every figure** by holding `git log`'s record
   separators and a real commit's hash. Each record is framed by its hash, and a hash with more than
   one record is counted as unreadable.
+- **The release workflow:** the SBOM job, which can mint a Sigstore identity, installed the
+  generator's dependencies without hashes; they are now installed by hash. The SBOM and Release
+  jobs check out `refs/tags/<tag>`, since a bare name is also read as a branch. The SBOM job checks
+  that the tagged commit is on `main`, as the build job does, because it also runs for a dispatched
+  tag and its output drafts the Release. The SBOM artifact is downloaded into a directory of its
+  own rather than over the checkout. Two runs for one tag queue rather than race. These checks live
+  in the workflow file, so a pushed tag on a commit that edits the workflow is not stopped by them.
 - **Dependency floors allowed versions with published advisories.** The floors are GitPython 3.1.62
   (GHSA-239g-whfq-7xj9, repository content posing as the Git directory), Jinja2 3.1.6 and Pydantic
   2.4; a test fails if one is lowered.

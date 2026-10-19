@@ -31,6 +31,14 @@ on:
         required: true
         type: string
 
+# One run per release at a time. Two runs for the same tag (a tag push and a
+# dispatched re-run, say) would otherwise race to create the same Release.
+# Nothing in progress is cancelled: a cancelled upload can leave a version
+# half-published.
+concurrency:
+  group: publish-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
 # No token rights unless a job asks for them: every job below declares its
 # own, and a job added later without a block starts with none.
 permissions: {}
@@ -202,9 +210,22 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The SBOM describes the lock file as it was at the tag, not as
-          # it is on the default branch.
-          ref: ${{ steps.release.outputs.tag }}
+          # it is on the default branch. The full ref, because a bare name
+          # is also read as a branch, and a branch may share a tag's name.
+          ref: refs/tags/${{ steps.release.outputs.tag }}
           persist-credentials: false
+          # All history, so the tagged commit can be checked against main.
+          fetch-depth: 0
+
+      # The same check as the build job's, made here too because this job
+      # also runs for a dispatched tag, and it is the one that drafts the
+      # Release. HEAD is the tag: GITHUB_SHA is not, on a dispatch.
+      - name: Check the described commit is on main
+        run: |
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::The tagged commit is not on main; only a reviewed, merged commit is described."
+            exit 1
+          fi
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -318,13 +339,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # CHANGELOG.md as it was at the tag, so the notes describe the
-          # release rather than whatever has landed since.
-          ref: ${{ needs.sbom.outputs.tag }}
+          # release rather than whatever has landed since. The full ref, as
+          # in the sbom job.
+          ref: refs/tags/${{ needs.sbom.outputs.tag }}
           persist-credentials: false
 
+      # Into a directory of its own, so nothing in the artifact can land on
+      # the checkout, and on the script the next step runs.
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: sbom
+          path: sbom-artifact/
 
       # The title and body come from the CHANGELOG heading, which carries
       # the version, the date and the theme for exactly this reason. Nothing
@@ -351,6 +376,10 @@ jobs:
         run: |
           set -uo pipefail
           TITLE="$(cat release-title.txt)"
+          NOTES="$PWD/release-body.md"
+          # The assets are named from the file names `gh` is given, so it is
+          # given bare names, from inside the directory they were downloaded to.
+          cd sbom-artifact || exit 1
           # Two globs, because they are disjoint: `*-sbom.cdx.json` does
           # NOT match `*-sbom.cdx.json.sigstore.json`, since the literal
           # tail has to reach the end of the name. Checked rather than
@@ -369,7 +398,7 @@ jobs:
             gh release create "$TAG" "${ASSETS[@]}" \
               --repo "$GITHUB_REPOSITORY" \
               --title "$TITLE" \
-              --notes-file release-body.md \
+              --notes-file "$NOTES" \
               --draft
             echo "Draft Release created for $TAG with the SBOM and its attestation attached."
             echo "Review the notes and press Publish."

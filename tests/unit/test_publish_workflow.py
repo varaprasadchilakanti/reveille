@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import textwrap
 from pathlib import Path
@@ -241,12 +242,19 @@ class TestBothReleaseAssetsMustExist:
 
     @classmethod
     def _release(
-        cls, tmp_path: Path, *, assets: list[str], view_rc: int = 1, upload_rc: int = 0
+        cls,
+        tmp_path: Path,
+        *,
+        assets: list[str],
+        view_rc: int = 1,
+        upload_rc: int = 0,
+        into: str = "sbom-artifact",
     ) -> tuple[subprocess.CompletedProcess[str], str]:
         (tmp_path / "release-title.txt").write_text("0.9.0 — A Theme", encoding="utf-8")
         (tmp_path / "release-body.md").write_text("notes", encoding="utf-8")
+        (tmp_path / "sbom-artifact").mkdir(exist_ok=True)
         for name in assets:
-            (tmp_path / name).write_text("{}", encoding="utf-8")
+            (tmp_path / into / name).write_text("{}", encoding="utf-8")
         env = cls._stub_gh(tmp_path, view_rc, upload_rc)
         env.update({"TAG": "v0.9.0", "GITHUB_REPOSITORY": "owner/repo", "GH_TOKEN": "x"})
         result = _run(
@@ -276,7 +284,10 @@ class TestBothReleaseAssetsMustExist:
 
     def test_an_empty_asset_stops_the_release(self, tmp_path: Path) -> None:
         """`-s`, not `-f`: a zero-byte SBOM is a failure that looks like success."""
-        (tmp_path / "reveille-0.9.0-sbom.cdx.json.sigstore.json").write_text("", encoding="utf-8")
+        (tmp_path / "sbom-artifact").mkdir()
+        (tmp_path / "sbom-artifact" / "reveille-0.9.0-sbom.cdx.json.sigstore.json").write_text(
+            "", encoding="utf-8"
+        )
         result, _ = self._release(tmp_path, assets=self._BOTH[:1])
         assert result.returncode != 0
         assert "expected release asset is missing" in result.stdout
@@ -288,8 +299,16 @@ class TestBothReleaseAssetsMustExist:
         assert result.returncode == 0, result.stderr
         assert "release create v0.9.0" in calls
         assert "--draft" in calls
+        assert f"--notes-file {tmp_path / 'release-body.md'}" in calls
         for asset in self._BOTH:
-            assert asset in calls, f"{asset} was not attached"
+            assert f" {asset} " in calls, f"{asset} was not attached by its bare name"
+
+    def test_assets_are_read_from_the_download_directory_only(self, tmp_path: Path) -> None:
+        """The artifact is downloaded beside the checkout, not over it."""
+        result, calls = self._release(tmp_path, assets=self._BOTH, into=".")
+        assert result.returncode != 0
+        assert "expected release asset is missing" in result.stdout
+        assert calls == ""
 
     def test_an_existing_release_is_uploaded_to_rather_than_recreated(self, tmp_path: Path) -> None:
         result, calls = self._release(tmp_path, assets=self._BOTH, view_rc=0)
@@ -387,3 +406,56 @@ class TestOnlyACommitOnMainIsBuilt:
 
         assert result.returncode != 0
         assert "not on main" in result.stdout + result.stderr
+
+    @pytest.mark.parametrize(("on", "passes"), [("main", True), ("side", False)])
+    def test_the_sbom_job_checks_the_commit_it_checked_out(
+        self, tmp_path: Path, on: str, passes: bool
+    ) -> None:
+        """A dispatched run's GITHUB_SHA is not the tag, so the check reads HEAD."""
+        repo, on_main, side = self._repo(tmp_path)
+        subprocess.run(["git", "switch", "-q", "--detach", on], cwd=repo, check=True)
+        result = _run(
+            _step_script("Check the described commit is on main"),
+            repo,
+            {"GITHUB_SHA": side if passes else on_main},
+        )
+
+        assert (result.returncode == 0) is passes, result.stdout + result.stderr
+        if not passes:
+            assert "not on main" in result.stdout
+
+
+def _job(name: str) -> str:
+    """Return one job's text, from its key to the next job's key."""
+    workflow = _WORKFLOW.read_text(encoding="utf-8")
+    start = workflow.index(f"\n  {name}:\n")
+    following = re.search(r"\n  [a-z-]+:\n", workflow[start + 1 :])
+    return workflow[start : start + 1 + following.start()] if following else workflow[start:]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("job", ["sbom", "release"])
+def test_a_job_checking_out_the_tag_names_it_as_a_tag(job: str) -> None:
+    """A bare name is also read as a branch, and a branch may share a tag's name."""
+    refs = re.findall(r"^ +ref: (.+)$", _job(job), re.M)
+
+    assert refs, f"positive control: the {job} job checks out a ref"
+    assert all(ref.startswith("refs/tags/${{") for ref in refs), refs
+
+
+@pytest.mark.unit
+def test_the_artifact_is_downloaded_beside_the_checkout() -> None:
+    release = _job("release")
+
+    assert "actions/download-artifact" in release, "positive control"
+    assert "path: sbom-artifact/" in release
+    assert "cd sbom-artifact || exit 1" in release
+
+
+@pytest.mark.unit
+def test_two_runs_for_one_release_queue_rather_than_race() -> None:
+    workflow = _WORKFLOW.read_text(encoding="utf-8")
+    top = workflow[: workflow.index("\njobs:\n")]
+
+    assert "group: publish-${{ inputs.tag || github.ref_name }}" in top
+    assert "cancel-in-progress: false" in top
