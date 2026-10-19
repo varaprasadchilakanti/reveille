@@ -17,6 +17,7 @@ import json
 
 import pytest
 import typer.main
+from typer.testing import CliRunner
 
 from reveille import __version__
 from reveille.capabilities import (
@@ -130,6 +131,12 @@ class TestDerivedFactsCannotDrift:
 
     def test_a_json_reader_is_told_the_guarantees_are_not_a_warranty(self, document: dict) -> None:
         assert "not a warranty" in document["guarantees_are"]
+
+    def test_a_text_reader_is_told_so_too(self) -> None:
+        result = CliRunner().invoke(app, ["capabilities"])
+
+        assert result.exit_code == ExitCode.SUCCESS, result.stderr
+        assert "not a warranty" in result.stdout
 
 
 @pytest.mark.unit
