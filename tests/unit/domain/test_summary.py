@@ -272,9 +272,21 @@ class TestBehaviouralFindingsAreWithheldInSmallTeams:
         findings = summarise(_commits(40), _stats([202, 78]))
         finding = next(f for f in findings if "contributor" in f.headline)
         assert "distributed across 2 contributors" in finding.headline
-        assert finding.evidence.startswith("Gini"), (
-            "the repository-level measure should still be reported"
+        assert finding.evidence == "2 contributors", finding.evidence
+
+    def test_the_gini_is_not_the_evidence_for_two_contributors(self) -> None:
+        """With two people the Gini fixes each share: 0.5 plus the Gini leads."""
+        finding = next(
+            f for f in summarise(_commits(40), _stats([202, 78])) if "contributor" in f.headline
         )
+        assert "Gini" not in finding.evidence, finding.evidence
+        assert "fixes each share" in finding.detail, finding.detail
+
+    def test_the_gini_is_still_the_evidence_for_three_contributors(self) -> None:
+        finding = next(
+            f for f in summarise(_commits(40), _stats([202, 78, 40])) if "contributor" in f.headline
+        )
+        assert finding.evidence.startswith("Gini"), finding.evidence
 
     def test_the_pointer_to_the_shares_holds_where_no_table_follows(self) -> None:
         """`reveille summary` prints this finding with no table after it."""

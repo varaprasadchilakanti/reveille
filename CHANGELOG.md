@@ -86,6 +86,9 @@ before release.
   built in a job that cannot obtain the PyPI token.
 - **Documentation** was corrected by running each statement. SECURITY.md no longer promises a
   response time.
+- **With two people, the distribution sentence's evidence is "2 contributors", not the Gini.** With
+  two people the Gini fixes each share. The Gini itself is still shown, as the repository's measure,
+  and the contributor table shows each share.
 
 ### Removed
 

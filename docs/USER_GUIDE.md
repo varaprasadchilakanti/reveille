@@ -707,7 +707,10 @@ risk.
 A few sentences generated from the report's figures by fixed rules, without a language model: the
 same history always gives the same sentences. They name nobody. With fewer than three people, a
 sentence that would in effect describe one identifiable person, such as a share of commits or a
-weekend-working pattern, is left out.
+weekend-working pattern, is left out. With two people the Gini fixes each share, so the distribution
+sentence gives the number of people as its evidence, not the Gini. The Gini itself is still shown,
+in the Distribution card, the Contribution Distribution section and `summary`, because it is the
+repository's measure; the contributor table shows each share in any case.
 
 ### Contribution Distribution
 
