@@ -429,11 +429,12 @@ esac
 Further detail goes to stderr, not into more exit codes, which would break scripts that branch on
 the existing ones.
 
-With `--format json`, `summary`, `brief`, `state`, `who-changed` and `capabilities` write each
-stderr message as one JSON object per line, `{"level": "error", "message": "..."}` (levels
-`error`, `warning`, `note`), so a program can read why there is no answer without parsing prose.
-Errors in the command line itself (an unknown option) are still reported as text, before the
-format is known. `generate` keeps text on stderr, beside its progress lines.
+With `--format json`, `summary`, `brief`, `state`, `who-changed`, `repos` and `capabilities`
+write each stderr message as one JSON object per line, `{"level": "error", "message": "..."}`
+(levels `error`, `warning` and `note`, and `debug` with `--verbose`), so a program can read why
+there is no answer without parsing prose. A negative answer (exit 1) is written at level `error`
+too: the exit code says which it is. Errors in the command line itself (an unknown option, or a
+value out of range such as `--limit 0`) are still reported as text, before the format is known. `generate` keeps text on stderr, beside its progress lines.
 
 ### Diagnostics
 

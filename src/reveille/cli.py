@@ -104,13 +104,15 @@ def _err(message: str) -> None:
     """Write one message to stderr, with terminal control characters escaped.
 
     Under `--format json` the message is one JSON object on its own line,
-    `{"level": "error" | "warning" | "note" | "message", "message": ...}`.
+    `{"level": "error" | "warning" | "note", "message": ...}`: a configuration
+    error is an error, and any other message without a prefix is a note.
 
     Args:
         message: The message to print, starting "Error: ", "Warning: " or "Note: ".
     """
     if _stderr_json["on"]:
-        level, text = "message", message
+        level = "error" if message.startswith("Configuration error: ") else "note"
+        text = message
         for prefix, name in _LEVELS.items():
             if message.startswith(prefix):
                 level, text = name, message.removeprefix(prefix)
