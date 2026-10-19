@@ -2712,7 +2712,8 @@ def _refuse_special_files(root: Path) -> None:
     """Refuse a named pipe, a device or a socket anywhere under `root`.
 
     Only the type is checked, not the size: a pack can rightly be gigabytes. A
-    link to a directory is not followed, so a loop cannot hold the walk.
+    link to a directory is followed, as Git follows it; each directory is
+    walked once, so a loop of links cannot hold the walk.
 
     Args:
         root: A directory Git or GitPython reads files from, such as `refs`.
@@ -2721,13 +2722,23 @@ def _refuse_special_files(root: Path) -> None:
         RepositoryError: If a file under it is not a regular file.
     """
     pending = [root]
+    walked: set[tuple[int, int]] = set()
     while pending:
+        directory = pending.pop()
         try:
-            entries = list(os.scandir(pending.pop()))
+            identity = directory.stat()
+            entries = list(os.scandir(directory))
         except OSError:
             continue
+        if (identity.st_dev, identity.st_ino) in walked:
+            continue
+        walked.add((identity.st_dev, identity.st_ino))
         for entry in entries:
-            if entry.is_dir(follow_symlinks=False):
+            try:
+                is_directory = entry.is_dir()  # through a link, as Git reads it
+            except OSError:
+                continue  # a link Git cannot resolve either, such as one to itself
+            if is_directory:
                 pending.append(Path(entry.path))
                 continue
             if entry.is_file(follow_symlinks=False):

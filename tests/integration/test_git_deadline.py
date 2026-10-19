@@ -123,6 +123,27 @@ def test_a_pipe_at_a_loose_object_the_history_read_needs(repo: Path) -> None:
     _refused(_run(repo, "generate", "--format", "json", "--output", "-"), head[2:])
 
 
+def test_a_pipe_in_an_object_directory_reached_through_a_link(repo: Path, tmp_path: Path) -> None:
+    head = _git(repo, "rev-parse", "HEAD")
+    linked = repo / ".git" / "objects" / head[:2]
+    moved = tmp_path / "moved-objects"
+    linked.rename(moved)
+    linked.symlink_to(moved, target_is_directory=True)
+    _replace_with_pipe(moved / head[2:])
+
+    assert _git_waits(repo, "log", "--numstat")
+    _refused(_run(repo, "summary"), head[2:])
+
+
+def test_a_loop_of_links_under_refs_does_not_hold_the_check(repo: Path) -> None:
+    (repo / ".git" / "refs" / "heads" / "loop").symlink_to("..", target_is_directory=True)
+    (repo / ".git" / "refs" / "heads" / "self").symlink_to("self")
+
+    done = _run(repo, "summary", "--format", "json")
+
+    assert done.returncode == 0, done.stderr
+
+
 def test_a_pipe_behind_a_link_to_a_directory_is_refused(repo: Path, tmp_path: Path) -> None:
     """The walk for `.gitattributes` does not follow links; Git does."""
     elsewhere = tmp_path / "elsewhere"
