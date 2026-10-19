@@ -2728,9 +2728,12 @@ def _refuse_git_files_that_block(start: Path, *, search_up: bool) -> None:
                 configs.append(directory / name)
     for config in configs:
         _check_includes(config, 0)
-    # GitPython reads refs and loose objects in Python, where no deadline reaches.
+    # GitPython reads refs and loose objects in Python, where no deadline reaches;
+    # `state` reads the index, the reflogs and every worktree's HEAD.
     for directory in dict.fromkeys(directories):
-        _refuse_special_files(directory / "refs")
+        _checked(directory / "index", bounded=False)
+        for name in ("refs", "logs", "worktrees"):
+            _refuse_special_files(directory / name)
         for objects in _object_directories(directory / "objects"):
             _refuse_special_files(objects)
 
@@ -2871,8 +2874,8 @@ def _checked(path: Path, *, bounded: bool = True) -> bool:
         if stat.S_ISDIR(status.st_mode):
             return False
         raise RepositoryError(
-            f"'{path}' is not a regular file (a named pipe or a device). Git reads it "
-            "before anything else, and would wait on it for ever or read it without end. "
+            f"'{path}' is not a regular file (a named pipe or a device). Git reads it, "
+            "and would wait on it for ever or read it without end. "
             "Remove it, or run Reveille on a fresh clone."
         )
     if bounded and status.st_size > _MAX_GIT_FILE_BYTES:

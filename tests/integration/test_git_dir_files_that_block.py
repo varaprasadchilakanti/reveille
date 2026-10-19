@@ -220,3 +220,38 @@ class TestIncludePaths:
         (tmp_path / "c.cfg").write_text("[core]\n\tbare = false\n", encoding="utf-8")
 
         assert _include_paths(tmp_path / "c.cfg") == []
+
+
+@pytest.mark.parametrize(
+    "name", ["logs/HEAD", "logs/refs/stash", "index", "worktrees/wt/HEAD", "worktrees/wt/index"]
+)
+def test_a_pipe_state_reads_is_refused(repo: Path, tmp_path: Path, name: str) -> None:
+    """`state` reads the reflogs, the index and every worktree's HEAD; a pipe held it 300 s."""
+    subprocess.run(
+        ["git", "worktree", "add", "-q", str(tmp_path / "wt"), "-b", "side"], cwd=repo, check=True
+    )
+    (repo / "a.txt").write_text("b", encoding="utf-8")
+    subprocess.run(
+        ["git", "-c", "user.name=A", "-c", "user.email=a@e.test", "stash", "-q"],
+        cwd=repo,
+        check=True,
+    )
+    target = repo / ".git" / name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists():
+        target.unlink()
+    os.mkfifo(target)
+    try:
+        done = subprocess.run(
+            [sys.executable, "-c", _CHILD, "state", "--repo", str(repo)],
+            capture_output=True,
+            text=True,
+            stdin=subprocess.DEVNULL,
+            timeout=20,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail("Reveille waited on it")
+
+    assert done.returncode == 2, done.stderr
+    assert name in done.stderr and "not a regular file" in done.stderr, done.stderr
