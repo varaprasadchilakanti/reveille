@@ -22,7 +22,7 @@ import threading
 import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Annotated, Any, ClassVar, TextIO, cast
+from typing import Annotated, Any, ClassVar, NoReturn, TextIO, cast
 
 import typer
 
@@ -306,6 +306,17 @@ def _why_git_cannot_start(message: str) -> str:
     return reasons[0] if reasons else "no working `git` program was found on PATH"
 
 
+def _exit_as_defect(exc: Exception) -> NoReturn:
+    """Say an error nobody anticipated is a defect, and exit 2, never 1.
+
+    Args:
+        exc: The error.
+    """
+    _logger.debug("Unexpected error", exc_info=True)
+    _err(f"Error: {type(exc).__name__}: {exc}. This is a defect in Reveille; please report it.")
+    sys.exit(ExitCode.CANNOT_RUN)
+
+
 class _App(typer.Typer):
     """The Typer application, with an exit code for errors nobody anticipated."""
 
@@ -327,7 +338,7 @@ class _App(typer.Typer):
             return super().__call__(*args, **kwargs)
         except ImportError as exc:
             if not str(exc).startswith("Failed to initialize"):
-                raise
+                _exit_as_defect(exc)  # a bare `raise` would pass the handler below, and exit 1
             _logger.debug("GitPython could not start Git", exc_info=True)
             _err(
                 f"Error: Git could not be started: {_why_git_cannot_start(str(exc))}. Install "
@@ -335,11 +346,7 @@ class _App(typer.Typer):
             )
             sys.exit(ExitCode.CANNOT_RUN)
         except Exception as exc:
-            _logger.debug("Unexpected error", exc_info=True)
-            _err(
-                f"Error: {type(exc).__name__}: {exc}. This is a defect in Reveille; please report it."
-            )
-            sys.exit(ExitCode.CANNOT_RUN)
+            _exit_as_defect(exc)
 
 
 app = _App(
