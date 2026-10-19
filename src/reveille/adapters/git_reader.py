@@ -21,6 +21,7 @@ import os
 import re
 import stat
 import sys
+import tempfile
 import threading
 import time
 import unicodedata
@@ -2867,18 +2868,24 @@ def _include_paths(config: Path) -> list[str]:
         RepositoryError: If Git cannot read the file as configuration.
     """
     try:
-        raw = _TimedGit().execute(
-            [
-                "git",
-                "config",
-                "--file",
-                str(config),
-                "--no-includes",
-                "-z",
-                "--get-regexp",
-                r"^include(if\..*)?\.path$",
-            ]
-        )
+        # Git reads the configuration of the repository it starts in, includes and all,
+        # before `--file` applies: started inside this one, or with GIT_DIR naming it, it
+        # would open the pipe this check exists to refuse. Every variable that names a
+        # repository points at an empty directory instead.
+        with tempfile.TemporaryDirectory() as nowhere:
+            raw = _TimedGit(nowhere).execute(
+                [
+                    "git",
+                    "config",
+                    "--file",
+                    str(config),
+                    "--no-includes",
+                    "-z",
+                    "--get-regexp",
+                    r"^include(if\..*)?\.path$",
+                ],
+                env=dict.fromkeys(_REPOSITORY_VARIABLES, nowhere),
+            )
     except GitCommandError as exc:
         if exc.status == 1:  # no such key
             return []

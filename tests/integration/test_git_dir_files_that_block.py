@@ -44,7 +44,9 @@ def repo(tmp_path: Path) -> Path:
     return path
 
 
-def _summary(repo: Path) -> subprocess.CompletedProcess[str] | None:
+def _summary(
+    repo: Path, cwd: Path | None = None, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str] | None:
     """Run `summary` in a child, with no terminal to read; None if it had to be killed."""
     try:
         return subprocess.run(
@@ -52,6 +54,8 @@ def _summary(repo: Path) -> subprocess.CompletedProcess[str] | None:
             capture_output=True,
             text=True,
             stdin=subprocess.DEVNULL,
+            cwd=cwd,
+            env=None if env is None else {**os.environ, **env},
             timeout=30,
             check=False,
         )
@@ -59,8 +63,10 @@ def _summary(repo: Path) -> subprocess.CompletedProcess[str] | None:
         return None
 
 
-def _refused(repo: Path, because: str) -> None:
-    done = _summary(repo)
+def _refused(
+    repo: Path, because: str, cwd: Path | None = None, env: dict[str, str] | None = None
+) -> None:
+    done = _summary(repo, cwd, env)
     assert done is not None, "Reveille waited on it"
     assert done.returncode == 2, done.stderr
     assert because in done.stderr and "not a regular file" in done.stderr, done.stderr
@@ -102,6 +108,18 @@ def test_an_include_that_blocks_or_never_ends_is_refused(repo: Path, named: str)
     subprocess.run(["git", "config", "include.path", named], cwd=repo, check=True)
 
     _refused(repo, named)
+
+
+@pytest.mark.parametrize("where", ["inside the repository", "GIT_DIR names it"])
+def test_an_include_is_refused_wherever_reveille_is_run_from(repo: Path, where: str) -> None:
+    """Git started inside the repository read its config, and the pipe, before the check."""
+    os.mkfifo(repo / ".git" / "extra.cfg")
+    subprocess.run(["git", "config", "include.path", "extra.cfg"], cwd=repo, check=True)
+
+    if where == "inside the repository":
+        _refused(repo, "extra.cfg", cwd=repo)
+    else:
+        _refused(repo, "extra.cfg", env={"GIT_DIR": str(repo / ".git")})
 
 
 def test_a_conditional_include_is_checked_whatever_its_condition(repo: Path) -> None:
