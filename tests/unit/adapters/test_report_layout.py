@@ -258,6 +258,7 @@ def test_the_report_carries_no_template_indentation(rendered: str) -> None:
 @pytest.mark.unit
 def test_the_template_holds_nothing_indentation_means_something_in() -> None:
     """The loader strips leading whitespace from every template line (`_DedentingLoader`)."""
+    from html.parser import HTMLParser
     from pathlib import Path
 
     from reveille.adapters import renderer
@@ -265,7 +266,29 @@ def test_the_template_holds_nothing_indentation_means_something_in() -> None:
     template = (Path(renderer.__file__).parents[1] / "templates" / "report.html.j2").read_text(
         encoding="utf-8"
     )
-    scripts = re.findall(r"<script[^>]*>(.*?)</script>", template, re.S | re.IGNORECASE)
+
+    class _ScriptCollector(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__()
+            self._in_script = False
+            self.scripts: list[str] = []
+
+        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+            if tag.lower() == "script":
+                self._in_script = True
+                self.scripts.append("")
+
+        def handle_endtag(self, tag: str) -> None:
+            if tag.lower() == "script":
+                self._in_script = False
+
+        def handle_data(self, data: str) -> None:
+            if self._in_script and self.scripts:
+                self.scripts[-1] += data
+
+    collector = _ScriptCollector()
+    collector.feed(template)
+    scripts = collector.scripts
 
     assert scripts, "positive control: the template has scripts"
     assert "<textarea" not in template
