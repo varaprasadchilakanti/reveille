@@ -165,7 +165,8 @@ jobs:
       contents: read
       # Required to attest the SBOM. `id-token` mints the Sigstore identity;
       # `attestations` writes the resulting bundle. Both are scoped to this
-      # job, which runs no third-party code beyond the generator itself.
+      # job. Its third-party code is the pinned actions, and the generator
+      # with its dependencies, installed by hash.
       id-token: write
       attestations: write
     steps:
@@ -220,6 +221,12 @@ jobs:
       # of the project's own dependency graph means the tool that
       # describes that graph is not a member of it.
       #
+      # It and everything it pulls in are installed by version and hash from
+      # the file `make sbom` also uses. This job can mint a Sigstore
+      # identity, so only files whose hashes are recorded run here. And the
+      # SBOM names the version of the library that wrote it, so an unpinned
+      # dependency would make the same lock give a different SBOM.
+      #
       # The filename reaches the shell through the environment rather than
       # through `${{ }}`, which pastes its value into the script before a
       # shell ever sees it: a value containing a quote or a `$(...)` would
@@ -230,7 +237,8 @@ jobs:
         env:
           SBOM_FILE: ${{ steps.release.outputs.file }}
         run: |
-          python -m pip install --quiet cyclonedx-bom==7.3.1
+          python -m pip install --quiet --disable-pip-version-check \
+            --require-hashes -r .github/requirements/sbom.txt
           cyclonedx-py poetry --no-dev --output-reproducible \
             --of JSON -o "$SBOM_FILE" .
 

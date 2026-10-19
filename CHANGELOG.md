@@ -124,6 +124,12 @@ before release.
 - **When Git could not say whether a clone is shallow, Reveille took it as "no".** A shallow
   clone's figures could then read as the whole history, with no notice. It now stops with Git's
   reason (exit 2), or, in `repos`, gives that row as not read.
+- **`make sbom` could not reproduce a published SBOM, as SECURITY.md said it would.** The SBOM
+  names the version of the library that wrote it, and that library was installed unpinned: the
+  same `poetry.lock` gave a different SBOM once it moved from 11.11.0 to 11.12.0. The generator
+  and its dependencies are now installed from `.github/requirements/sbom.txt`, by version and
+  hash, by both `make sbom` and the release job, and `make sbom` rebuilds a tool environment made
+  from older requirements.
 - **`repos` skipped a working tree whose `.git` is a symbolic link, and listed a separate Git
   directory twice.** The link now makes a row, as a `.git` file does, and a Git directory a working
   tree in the search uses is not a row of its own; one nothing uses is a row that says what it is

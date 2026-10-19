@@ -103,8 +103,12 @@ workflow artifact and the regeneration path both work. Regenerate from a checkou
 $ make sbom
 ```
 
-The output is byte-reproducible for a given `poetry.lock`, so it can be compared directly against
-a published one.
+The output is byte-reproducible for a given `poetry.lock` and generator, so it can be compared
+directly against a published one. The SBOM names the version of the library that wrote it, so the
+generator is part of what has to match: `make sbom` and the release job both install it from
+`.github/requirements/sbom.txt`, pinned by version and hash. Releases up to v0.9.0 installed the
+generator's own dependencies unpinned, so regenerating one of their SBOMs today can differ in the
+recorded library version.
 
 ## Project Posture
 

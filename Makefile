@@ -173,16 +173,20 @@ build:  ## Build the distribution packages
 # pyproject.toml and poetry.lock as files, so it needs no access to the
 # project environment -- and keeping it out means the tool that describes
 # our dependency graph is not itself a member of it. It lives in a
-# throwaway venv instead, pinned to the same version CI uses.
-SBOM_TOOL_VERSION := 7.3.1
+# throwaway venv instead, installed from the same hash-pinned requirements
+# as the release job. The SBOM names the version of the library that wrote
+# it, so a venv left from older requirements is rebuilt, not reused.
+SBOM_REQUIREMENTS := .github/requirements/sbom.txt
 SBOM_VENV := .tool-venvs/sbom
 
-$(SBOM_VENV):
+$(SBOM_VENV)/installed: $(SBOM_REQUIREMENTS)
+	@rm -rf $(SBOM_VENV)
 	@python3 -m venv $(SBOM_VENV)
 	@$(SBOM_VENV)/bin/pip install --quiet --disable-pip-version-check \
-		cyclonedx-bom==$(SBOM_TOOL_VERSION)
+		--require-hashes -r $(SBOM_REQUIREMENTS)
+	@touch $@
 
-sbom: $(SBOM_VENV)  ## Generate a CycloneDX SBOM of the runtime dependency graph
+sbom: $(SBOM_VENV)/installed  ## Generate a CycloneDX SBOM of the runtime dependency graph
 	@mkdir -p dist
 	@VER=$$(poetry version --short); \
 	$(SBOM_VENV)/bin/cyclonedx-py poetry --no-dev --output-reproducible \
