@@ -2941,9 +2941,14 @@ def _absolute_git_dir(path: Path) -> str | None:
 
 
 def _git_error(exc: GitCommandError) -> str:
-    """Return the first line Git wrote to stderr, or its exit status."""
-    lines = str(exc.stderr or "").strip().splitlines()
-    return lines[0].strip().removeprefix("stderr: ").strip("'") if lines else f"exit {exc.status}"
+    """Return the first line Git wrote to stderr that is not a hint, or its exit status.
+
+    Hints come first: Reveille's own `GIT_GRAFT_FILE` makes Git print one.
+    """
+    text = str(exc.stderr or "").strip().removeprefix("stderr: ").strip("'")
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    said = [line for line in lines if not line.startswith("hint:")] or lines
+    return said[0] if said else f"exit {exc.status}"
 
 
 def _is_partial_clone(repo: Repo) -> bool:

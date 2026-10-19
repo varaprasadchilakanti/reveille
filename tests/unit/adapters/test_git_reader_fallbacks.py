@@ -230,3 +230,20 @@ def test_the_version_is_asked_once_when_readers_open_together(
     finally:
         monkeypatch.undo()
         git_reader._read_git_version.cache_clear()
+
+
+@pytest.mark.unit
+def test_a_git_error_is_its_message_not_a_hint_before_it() -> None:
+    """Reveille's own GIT_GRAFT_FILE makes Git print a deprecation hint first."""
+    from git.exc import GitCommandError
+
+    from reveille.adapters.git_reader import _git_error
+
+    exc = GitCommandError(
+        ["git", "status"],
+        128,
+        "hint: Support for <GIT_DIR>/info/grafts is deprecated\n"
+        "hint: and will be removed\nfatal: bad object HEAD",
+    )
+
+    assert _git_error(exc) == "fatal: bad object HEAD"
