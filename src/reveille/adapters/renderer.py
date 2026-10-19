@@ -24,7 +24,7 @@ import json
 import math
 import re
 import shlex
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Callable, Sequence
 from html import unescape
 from pathlib import Path
@@ -655,7 +655,8 @@ class Renderer:
 
         def names(people: tuple[tuple[str, str], ...]) -> str:
             # A repeated name carries its address.
-            repeated = {n for n in (p[0] for p in people) if [p[0] for p in people].count(n) > 1}
+            counts = Counter(n for n, _e in people)
+            repeated = {n for n, count in counts.items() if count > 1}
             shown = ", ".join(f"{n} <{e}>" if n in repeated else n for n, e in people[:limit])
             rest = len(people) - min(len(people), limit)
             return f"{shown} and {rest:,} more" if rest else shown
@@ -1481,9 +1482,8 @@ def _accessible_table(chart: str, specification: str) -> dict[str, Any]:
             "rows": [list(pair) for pair in zip(categories, values, strict=False)],
         }
 
-    ordered: list[Any] = []
-    for _name, categories, _values in series:
-        ordered.extend(c for c in categories if c not in ordered)
+    # A dict keeps first-seen order with constant-time membership.
+    ordered = dict.fromkeys(c for _name, categories, _values in series for c in categories)
     lookup = [
         (name, dict(zip(categories, values, strict=False))) for name, categories, values in series
     ]

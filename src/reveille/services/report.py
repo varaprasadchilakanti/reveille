@@ -341,7 +341,7 @@ class _HeldWarnings(logging.Filter):
         records: list[logging.LogRecord] | None = getattr(self._local, "records", None)
         if records is None:
             return True
-        if record not in records:  # each handler sees it; hold it once
+        if not records or records[-1] is not record:  # each handler sees it in turn; hold it once
             records.append(record)
         return False
 
