@@ -113,6 +113,8 @@ before release.
 
 ### Removed
 
+- **`click` as a direct dependency.** Nothing imports it. Typer before 0.27 still installs the
+  Click it needs, and Typer 0.27 carries its own.
 - **Four runtime packages no module imported** (`pydantic-settings`, `python-dateutil`,
   `python-dotenv`, `six`), and `types-python-dateutil` from the development tools.
 - **The Makefile's `publish` targets.** Only the tagged workflow publishes.
