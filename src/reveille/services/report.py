@@ -242,8 +242,9 @@ def repositories_text(
     if unreadable:
         _notify(
             on_notice,
-            f"{len(unreadable):,} {'directory' if len(unreadable) == 1 else 'directories'} "
-            "could not be listed and were not searched.",
+            "1 directory could not be listed and was not searched."
+            if len(unreadable) == 1
+            else f"{len(unreadable):,} directories could not be listed and were not searched.",
         )
     if not found:
         raise EmptyRepositoryError(
