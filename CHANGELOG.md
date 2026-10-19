@@ -119,6 +119,9 @@ before release.
 
 ### Fixed
 
+- **When Git could not say whether a clone is shallow, Reveille took it as "no".** A shallow
+  clone's figures could then read as the whole history, with no notice. It now stops with Git's
+  reason (exit 2), or, in `repos`, gives that row as not read.
 - **`repos` skipped a working tree whose `.git` is a symbolic link, and listed a separate Git
   directory twice.** The link now makes a row, as a `.git` file does, and a Git directory a working
   tree in the search uses is not a row of its own; one nothing uses is a row that says what it is
