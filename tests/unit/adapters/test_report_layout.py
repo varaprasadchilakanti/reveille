@@ -265,7 +265,7 @@ def test_the_template_holds_nothing_indentation_means_something_in() -> None:
     template = (Path(renderer.__file__).parents[1] / "templates" / "report.html.j2").read_text(
         encoding="utf-8"
     )
-    scripts = re.findall(r"<script[^>]*>(.*?)</script>", template, re.S)
+    scripts = re.findall(r"<script[^>]*>(.*?)</script>", template, re.S | re.IGNORECASE)
 
     assert scripts, "positive control: the template has scripts"
     assert "<textarea" not in template
