@@ -118,7 +118,8 @@ file is found automatically and may come from a repository you do not control. A
 needs an explicit path.
 
 `--output -` writes the report to stdout, in any format, and nothing else goes there: progress,
-notes and errors are on stderr. CSV on stdout carries no byte-order mark.
+notes and errors are on stderr. CSV on stdout carries no byte-order mark. An output path ending in
+`/` names a directory and is refused (exit 2), from a flag or from `reveille.toml`.
 
 ```bash
 reveille generate --format json --output - | jq .derived
@@ -602,7 +603,8 @@ The file has no effect until you uncomment keys. Its structure is the
 [TOML Configuration Reference](#toml-configuration-reference). Options:
 
 - **`--output`, `-o`** (default `./reveille.toml`) writes the file elsewhere. The parent directory
-  must exist.
+  must exist, and a path ending in `/` is refused, as it names a directory. `-o -` prints the file
+  on stdout instead and writes nothing; it needs no repository, and is not used with `--mailmap`.
 - **`--force`** replaces an existing file. Without it, an existing file is an error.
 - **`--mailmap`** also writes an annotated `.mailmap` template at the repository root, covering
   all four `gitmailmap(5)` forms with examples and the matching precedence. An

@@ -339,6 +339,11 @@ def _parse_report_section(report: dict[str, Any]) -> dict[str, Any]:
                 f"Invalid '{key}' in the [report] section of the configuration "
                 f"file: expected a string, got {type(value).__name__}."
             )
+        if field == "output_path" and value.endswith(("/", os.sep)):
+            # `Path` drops the separator, and the report would take the directory's name.
+            raise ConfigurationError(
+                f"[report] output {value!r} names a directory, not a file. Give a file name in it."
+            )
         kwargs[field] = Path(value) if field == "output_path" else value
     for field in ("since", "until"):
         if field in report:

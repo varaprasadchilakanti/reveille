@@ -95,6 +95,9 @@ before release.
   the affirmative answer, over a table of `not_read` rows. The rows are still written, since each
   says why; one readable repository, even an empty one, keeps exit 0
   ([ADR 0028](docs/adr/0028-repos-exits-2-when-nothing-was-read.md)).
+- **An output path ending in `/` is refused.** `-o reports/` wrote a file named `reports`.
+- **`init -o -` prints the file on stdout**, as `generate -o -` does, instead of writing a file
+  named `-`.
 - **A `reveille.toml` that starts with a byte-order mark is read.** It was reported as "Invalid
   statement" at line 1.
 - **A key or table in `reveille.toml` that Reveille does not read is named in a note.** A

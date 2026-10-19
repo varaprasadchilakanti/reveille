@@ -323,6 +323,30 @@ def _exit_as_defect(exc: Exception) -> NoReturn:
     sys.exit(ExitCode.CANNOT_RUN)
 
 
+def _file_path(value: str | Path) -> Path:
+    """Read `--output` as a file's path, refusing one spelt as a directory.
+
+    `Path` drops a trailing slash, so `-o reports/` would have written a file
+    named `reports`.
+
+    Args:
+        value: The option as given, or its default.
+
+    Returns:
+        The path.
+
+    Raises:
+        typer.BadParameter: If the path ends with a separator.
+    """
+    text = str(value)
+    if text.endswith(("/", os.sep)) and text != os.sep:
+        raise typer.BadParameter(
+            f"{text!r} ends with {text[-1]!r}, so it names a directory, not a file. "
+            "Give a file name in it."
+        )
+    return Path(text)
+
+
 #: The commands whose stderr is JSON lines under `--format json`.
 _JSON_STDERR_COMMANDS = frozenset(
     {"summary", "brief", "state", "repos", "who-changed", "capabilities"}
@@ -958,7 +982,7 @@ def generate(
     ] = Path("."),
     output: Annotated[
         Path,
-        typer.Option("--output", "-o", help="Output path for the HTML report."),
+        typer.Option("--output", "-o", help="Output path for the HTML report.", parser=_file_path),
     ] = Path("reveille-report.html"),
     since: Annotated[
         str | None,
@@ -1548,7 +1572,8 @@ def init(
         typer.Option(
             "--output",
             "-o",
-            help="Destination path for the generated configuration file.",
+            help="Destination path for the generated configuration file, or - for stdout.",
+            parser=_file_path,
         ),
     ] = Path("reveille.toml"),
     force: Annotated[
@@ -1569,11 +1594,25 @@ def init(
     """Scaffold an annotated reveille.toml configuration file.
 
     Writes a configuration file to the current directory (or the path given
-    by --output) with every key present and commented out, showing its
-    default. Uncomment and edit only the keys you want to override. Pass
+    by --output; `-o -` prints it instead) with every key present and
+    commented out, showing its default. Uncomment and edit only the keys you want to override. Pass
     --mailmap to also generate an annotated .mailmap template at the
     repository root.
     """
+    from reveille.init import (
+        DEFAULT_CONFIG_TEMPLATE,
+        refuse_symlink,
+        write_init_config,
+        write_mailmap_template,
+    )
+
+    if str(output) == "-":
+        # As for `generate --output -`: the file's text, to look at or to pipe.
+        if mailmap:
+            _err("Error: --mailmap writes a file, so it is not used with --output -.")
+            raise typer.Exit(code=ExitCode.CANNOT_RUN)
+        _say(DEFAULT_CONFIG_TEMPLATE, nl=False)
+        return
     cwd = Path(".").resolve()
     if not (cwd / ".git").exists():
         _err(
@@ -1583,8 +1622,6 @@ def init(
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
     _validate_output_path(output, cwd, example="reveille.toml")
-
-    from reveille.init import refuse_symlink, write_init_config, write_mailmap_template
 
     try:
         if mailmap:

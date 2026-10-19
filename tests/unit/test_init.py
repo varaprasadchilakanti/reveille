@@ -14,8 +14,8 @@ import pytest
 
 from reveille.exceptions import ConfigurationError, OutputPathError
 from reveille.init import (
-    _DEFAULT_CONFIG_TEMPLATE,
     _DEFAULT_MAILMAP_TEMPLATE,
+    DEFAULT_CONFIG_TEMPLATE,
     write_init_config,
     write_mailmap_template,
 )
@@ -41,7 +41,7 @@ class TestWriteInitConfig:
         """The file content is byte-for-byte the default template."""
         dest = tmp_path / "reveille.toml"
         write_init_config(dest)
-        assert dest.read_text(encoding="utf-8") == _DEFAULT_CONFIG_TEMPLATE
+        assert dest.read_text(encoding="utf-8") == DEFAULT_CONFIG_TEMPLATE
 
     def test_content_contains_all_section_headers(self, tmp_path):
         """The template contains all three TOML section headers."""
@@ -107,7 +107,7 @@ class TestWriteInitConfig:
         dest = tmp_path / "reveille.toml"
         dest.write_text("stale content", encoding="utf-8")
         write_init_config(dest, force=True)
-        assert dest.read_text(encoding="utf-8") == _DEFAULT_CONFIG_TEMPLATE
+        assert dest.read_text(encoding="utf-8") == DEFAULT_CONFIG_TEMPLATE
 
     def test_raises_output_path_error_when_parent_does_not_exist(self, tmp_path):
         """OutputPathError is raised if the parent directory is absent."""
