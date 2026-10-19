@@ -2641,6 +2641,10 @@ _GIT_DIR_FILES = (
 #: too, as GitPython reads the whole of one, includes and all.
 _MAX_GIT_FILE_BYTES = 8 * 1024 * 1024
 
+#: Files that grow with the repository (one line per ref, or per shallow boundary): only a
+#: pipe or a device there is refused, never a size.
+_UNBOUNDED_GIT_DIR_FILES = ("packed-refs", "shallow")
+
 #: Git follows `include.path` at most this deep.
 _MAX_INCLUDE_DEPTH = 10
 
@@ -2674,7 +2678,8 @@ def _refuse_git_files_that_block(start: Path, *, search_up: bool) -> None:
     configs: list[Path] = []
     for directory in directories:
         for name in _GIT_DIR_FILES:
-            if _checked(directory / name) and name.startswith("config"):
+            bounded = name not in _UNBOUNDED_GIT_DIR_FILES
+            if _checked(directory / name, bounded=bounded) and name.startswith("config"):
                 configs.append(directory / name)
     for config in configs:
         _check_includes(config, 0)
@@ -2800,17 +2805,18 @@ def _git_dir_of(start: Path, *, search_up: bool) -> Path | None:
     return None
 
 
-def _checked(path: Path) -> bool:
+def _checked(path: Path, *, bounded: bool = True) -> bool:
     """Return whether a file Git reads is there, refusing one that would block.
 
     Args:
         path: The file; a symbolic link is followed, as Git follows it.
+        bounded: Whether a size past `_MAX_GIT_FILE_BYTES` is refused too.
 
     Returns:
         True for a regular file of a plausible size, False when it is absent.
 
     Raises:
-        RepositoryError: If it is not a regular file, or is too large.
+        RepositoryError: If it is not a regular file, or is bounded and too large.
     """
     try:
         status = path.stat()
@@ -2824,7 +2830,7 @@ def _checked(path: Path) -> bool:
             "before anything else, and would wait on it for ever or read it without end. "
             "Remove it, or run Reveille on a fresh clone."
         )
-    if status.st_size > _MAX_GIT_FILE_BYTES:
+    if bounded and status.st_size > _MAX_GIT_FILE_BYTES:
         raise RepositoryError(
             f"'{path}' is {status.st_size:,} bytes, larger than any configuration a person "
             f"writes (the limit is {_MAX_GIT_FILE_BYTES:,}). Reveille does not read it."

@@ -141,6 +141,21 @@ def test_an_included_file_too_large_to_be_a_configuration_is_refused(repo: Path)
     assert "larger than any configuration" in done.stderr
 
 
+def test_packed_refs_past_the_configuration_limit_are_read(repo: Path) -> None:
+    """`packed-refs` grows with the refs, so only a pipe or a device there is refused."""
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=True
+    ).stdout.strip()
+    lines = [f"{head} refs/tags/t{index:07d}\n" for index in range(160_000)]
+    packed = repo / ".git" / "packed-refs"
+    packed.write_text("# pack-refs with: peeled sorted\n" + "".join(lines), encoding="utf-8")
+    assert packed.stat().st_size > 8 * 1024 * 1024, "positive control: past the limit"
+
+    done = _summary(repo)
+
+    assert done is not None and done.returncode == 0, done
+
+
 def test_a_regular_include_and_a_linked_worktree_are_read(repo: Path, tmp_path: Path) -> None:
     (repo / ".git" / "extra.cfg").write_text("[core]\n\tabbrev = 12\n", encoding="utf-8")
     subprocess.run(["git", "config", "include.path", "extra.cfg"], cwd=repo, check=True)
