@@ -1888,14 +1888,20 @@ class GitReader:
         Args:
             branch: The ref to resolve; the active branch if None.
 
+        Asked of Git: GitPython reads ref files itself, and a reftable
+        repository has none, so it said every ref was unresolvable.
+
         Returns:
             The 40-character SHA, or None if the ref cannot be resolved.
         """
         rev = branch or self._resolve_active_branch()
         try:
-            return str(self._repo.commit(rev).hexsha)
-        except Exception:
+            sha = self._git().rev_parse(
+                "--quiet", "--verify", "--end-of-options", f"{rev}^{{commit}}"
+            )
+        except GitCommandError:
             return None
+        return str(sha).strip()
 
     def _addresses_in_history(
         self, rev: str, mailmap: _Mailmap, exclude_set: set[str]
