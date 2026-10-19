@@ -1377,9 +1377,11 @@ def init(
 
     _validate_output_path(output, cwd)
 
-    from reveille.init import write_init_config, write_mailmap_template
+    from reveille.init import refuse_symlink, write_init_config, write_mailmap_template
 
     try:
+        if mailmap:
+            refuse_symlink(cwd / ".mailmap")  # first, so a refusal writes neither file
         written_path = write_init_config(output, force=force)
         typer.echo(f"Configuration file written to: {written_path}")
     except ReveilleError as exc:

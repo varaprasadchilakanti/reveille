@@ -797,6 +797,28 @@ class TestSecondPassFindings:
 
         assert victim.read_text(encoding="utf-8") == "USER DATA"
 
+    @pytest.mark.parametrize("force", [False, True])
+    def test_init_refusing_the_mailmap_writes_nothing(self, tmp_path: Path, force: bool) -> None:
+        """Both destinations are checked before either is written, so a refusal leaves no half."""
+        repo = tmp_path / "r"
+        repo.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+        if force:
+            (repo / "reveille.toml").write_text("# mine\n", encoding="utf-8")
+        (repo / ".mailmap").symlink_to(tmp_path / "victim")
+
+        args = ["init", "--mailmap", *(["--force"] if force else [])]
+        result = _run_console_script(args, cwd=repo)
+
+        assert result.returncode == 2, result.stderr
+        assert "symbolic link" in result.stderr
+        if force:
+            assert (repo / "reveille.toml").read_text(encoding="utf-8") == "# mine\n"
+        else:
+            assert not (repo / "reveille.toml").exists()
+        assert "written" not in result.stdout
+        assert not (tmp_path / "victim").exists()
+
     def test_a_quoted_false_does_not_enable_the_ranking(self, tmp_path: Path) -> None:
         """`bool("false")` is True, and the wrong direction to fail in.
 

@@ -267,7 +267,7 @@ def write_init_config(output_path: Path, *, force: bool = False) -> Path:
         ConfigurationError: If the file exists and force is False.
         OutputPathError: If the parent is missing or the write fails.
     """
-    _refuse_symlink(output_path)
+    refuse_symlink(output_path)
     resolved = output_path.resolve()
 
     if not resolved.parent.exists():
@@ -305,7 +305,7 @@ def write_mailmap_template(output_path: Path, *, force: bool = False) -> Path | 
     Raises:
         OutputPathError: If the parent is missing or the write fails.
     """
-    _refuse_symlink(output_path)
+    refuse_symlink(output_path)
     resolved = output_path.resolve()
 
     if not resolved.parent.exists():
@@ -325,7 +325,7 @@ def write_mailmap_template(output_path: Path, *, force: bool = False) -> Path | 
     return resolved
 
 
-def _refuse_symlink(path: Path) -> None:
+def refuse_symlink(path: Path) -> None:
     """Refuse to write through a symbolic link.
 
     Checked before `resolve()`, which follows links: a repository can commit
