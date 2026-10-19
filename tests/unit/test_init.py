@@ -209,3 +209,15 @@ class TestWritesReplaceTheFile:
             os.umask(previous)
 
         assert stat.S_IMODE((tmp_path / "scaffold").stat().st_mode) == 0o644
+
+    @pytest.mark.skipif(os.name != "posix", reason="POSIX file modes")
+    @pytest.mark.parametrize("writer", [write_init_config, write_mailmap_template])
+    def test_a_new_scaffold_is_never_writable_by_others(self, tmp_path: Path, writer) -> None:
+        """Reveille reads `reveille.toml`; under umask 0 another user could rewrite it."""
+        previous = os.umask(0)
+        try:
+            writer(tmp_path / "scaffold")
+        finally:
+            os.umask(previous)
+
+        assert stat.S_IMODE((tmp_path / "scaffold").stat().st_mode) == 0o644
