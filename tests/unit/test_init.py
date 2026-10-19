@@ -199,25 +199,25 @@ class TestWritesReplaceTheFile:
         assert dest.read_text(encoding="utf-8") != "not yours\n"
 
     @pytest.mark.skipif(os.name != "posix", reason="POSIX file modes")
+    @pytest.mark.parametrize("umask", [0o022, 0])
     @pytest.mark.parametrize("writer", [write_init_config, write_mailmap_template])
-    def test_a_new_scaffold_takes_the_umask_like_any_new_file(self, tmp_path: Path, writer) -> None:
-        """The scaffolds are meant to be committed; owner-only is for reports."""
-        previous = os.umask(0o022)
+    def test_a_new_scaffold_is_owner_only(self, tmp_path: Path, writer, umask: int) -> None:
+        """A filled-in `.mailmap` names people; Git does not record read bits, so commits are unchanged."""
+        previous = os.umask(umask)
         try:
             writer(tmp_path / "scaffold")
         finally:
             os.umask(previous)
 
-        assert stat.S_IMODE((tmp_path / "scaffold").stat().st_mode) == 0o644
+        assert stat.S_IMODE((tmp_path / "scaffold").stat().st_mode) == 0o600
 
     @pytest.mark.skipif(os.name != "posix", reason="POSIX file modes")
     @pytest.mark.parametrize("writer", [write_init_config, write_mailmap_template])
-    def test_a_new_scaffold_is_never_writable_by_others(self, tmp_path: Path, writer) -> None:
-        """Reveille reads `reveille.toml`; under umask 0 another user could rewrite it."""
-        previous = os.umask(0)
-        try:
-            writer(tmp_path / "scaffold")
-        finally:
-            os.umask(previous)
+    def test_a_mode_the_owner_widened_survives_force(self, tmp_path: Path, writer) -> None:
+        dest = tmp_path / "scaffold"
+        writer(dest)
+        dest.chmod(0o644)
 
-        assert stat.S_IMODE((tmp_path / "scaffold").stat().st_mode) == 0o644
+        writer(dest, force=True)
+
+        assert stat.S_IMODE(dest.stat().st_mode) == 0o644

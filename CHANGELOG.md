@@ -162,8 +162,12 @@ Security entries state 0.9.0's exposure only where it was recorded.
 - **The heatmap opened on an empty year** when the history stopped before the window's end; it now
   opens on the latest year with a commit.
 - **`reveille init --force`** wrote into the existing file, so a hard-linked `reveille.toml` or
-  `.mailmap` overwrote its other link; it now replaces the name. A new one is created 0o644 at
-  most, so a umask of 0 no longer leaves the config Reveille reads writable by other users.
+  `.mailmap` overwrote its other link; it now replaces the name. A new one is owner-only (mode
+  600), as a report is, since a filled-in `.mailmap` names people; under a umask of 0 it was
+  writable by every user. Git records no read permissions, so commits are unchanged, and a mode
+  the owner set is kept.
+- **A working-tree `.mailmap` Reveille could not read was skipped without a word**, so identities
+  were not merged and every count changed. It is now reported on stderr.
 - **Exit codes.** An unanticipated error exited 1, the negative-answer code; it exits 2 with one
   line on stderr (traceback with `--verbose`). A repository another user owns and a SHA-256
   repository were reported as having no commits (exit 1); both exit 2, the first naming

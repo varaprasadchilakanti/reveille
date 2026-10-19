@@ -240,7 +240,8 @@ reveille generate --format json --output - | jq .derived
 ### `reveille init`
 
 Writes an annotated `reveille.toml` (every key commented out) in the current directory, which
-must be a repository root. `--mailmap` adds a `.mailmap` template; `--force` overwrites.
+must be a repository root. `--mailmap` adds a `.mailmap` template; `--force` overwrites. New
+files are owner-only; `chmod 644` lets other accounts on a shared machine read them.
 
 ### `reveille validate`
 

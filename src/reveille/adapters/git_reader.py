@@ -2011,7 +2011,13 @@ class GitReader:
             # Read one byte past the limit: the file can grow after a size check.
             with mailmap_path.open("rb") as handle:
                 raw = handle.read(_MAX_MAILMAP_BYTES + 1)
-        except OSError:
+        except OSError as exc:
+            # Said, not skipped: unmerged identities change every count. No path, which can
+            # hold a login name.
+            _logger.warning(
+                "The working-tree .mailmap could not be read (%s) and was not applied.",
+                exc.strerror or type(exc).__name__,
+            )
             return None
         if len(raw) > _MAX_MAILMAP_BYTES:
             _logger.warning(

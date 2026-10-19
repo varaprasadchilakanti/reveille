@@ -593,6 +593,12 @@ The file has no effect until you uncomment keys. Its structure is the
 reveille init --mailmap --force
 ```
 
+On POSIX systems a new `reveille.toml` or `.mailmap` is readable and writable by its owner only
+(mode 600), as a report is, because a filled-in `.mailmap` names people. Git records no read
+permissions, so committing, cloning and CI are unaffected. To let other accounts on the same
+machine read a shared checkout, run `chmod 644 reveille.toml .mailmap`; `--force` keeps a mode you
+set. A `.mailmap` Reveille cannot read is reported on stderr and not applied.
+
 ---
 
 ## TOML Configuration Reference

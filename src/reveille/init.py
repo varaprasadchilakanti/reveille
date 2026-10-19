@@ -283,7 +283,7 @@ def write_init_config(output_path: Path, *, force: bool = False) -> Path:
         )
 
     try:
-        write_replacing(resolved, _DEFAULT_CONFIG_TEMPLATE, encoding="utf-8", new_mode=0o644)
+        write_replacing(resolved, _DEFAULT_CONFIG_TEMPLATE, encoding="utf-8")
     except OSError as exc:
         raise OutputPathError(f"Failed to write configuration file to '{resolved}': {exc}") from exc
 
@@ -318,7 +318,7 @@ def write_mailmap_template(output_path: Path, *, force: bool = False) -> Path | 
         return None
 
     try:
-        write_replacing(resolved, _DEFAULT_MAILMAP_TEMPLATE, encoding="utf-8", new_mode=0o644)
+        write_replacing(resolved, _DEFAULT_MAILMAP_TEMPLATE, encoding="utf-8")
     except OSError as exc:
         raise OutputPathError(f"Failed to write .mailmap template to '{resolved}': {exc}") from exc
 
