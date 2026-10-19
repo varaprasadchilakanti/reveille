@@ -132,6 +132,7 @@ def test_a_reason_names_no_path_outside_the_directory(tmp_path: Path) -> None:
     away = _repo(root / "away", ("2026-10-01", "Ana", "ana@corp.test"))
     elsewhere = tmp_path / "home of jane" / "tree"  # a space, which ends no quoted path
     subprocess.run(["git", "config", "core.worktree", str(elsewhere)], cwd=away, check=True)
+    _repo(root / "readable", ("2026-10-01", "Ana", "ana@corp.test"))  # so the run exits 0
 
     rows = _rows(root)
 
@@ -407,3 +408,58 @@ def test_an_unreadable_git_directory_is_one_row_not_the_end_of_the_run(tmp_path:
     assert validated.exit_code == ExitCode.CANNOT_RUN
     assert "its .git directory cannot be read" in validated.stderr
     assert "defect" not in validated.stderr
+
+
+def _refused(path: Path) -> Path:
+    refused = _repo(path, ("2026-10-01", "Dee", "dee@corp.test"))
+    subprocess.run(["git", "config", "remote.origin.promisor", "true"], cwd=refused, check=True)
+    return refused
+
+
+@pytest.mark.parametrize("count", [1, 2])
+def test_nothing_read_cannot_run_and_the_rows_still_say_why(tmp_path: Path, count: int) -> None:
+    """Every input failing is not an answer (ADR 0028), but the rows are the diagnosis."""
+    for n in range(count):
+        _refused(tmp_path / "ws" / f"r{n}")
+
+    code, out, err = _repos(tmp_path / "ws", "--format", "json")
+
+    assert code == ExitCode.CANNOT_RUN, err
+    rows = json.loads(out)["repositories"]
+    assert [row["status"] for row in rows] == ["not_read"] * count
+    assert all("partial clone" in row["reason"] for row in rows)
+    last = json.loads(err.splitlines()[-1])
+    assert last["level"] == "error"
+    assert last["message"] == (
+        "The 1 repository found could not be read; its row says why."
+        if count == 1
+        else "None of the 2 repositories found could be read; each row says why."
+    )
+
+
+def test_an_empty_repository_was_read(tmp_path: Path) -> None:
+    """A repository with no commits is an answer about it, so one keeps exit 0."""
+    _refused(tmp_path / "ws" / "refused")
+    (tmp_path / "ws" / "unborn").mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=tmp_path / "ws" / "unborn", check=True)
+
+    code, _, err = _repos(tmp_path / "ws")
+
+    assert code == ExitCode.SUCCESS, err
+
+
+def test_rows_a_reader_stops_early_on_still_exit_2(tmp_path: Path) -> None:
+    for n in range(40):
+        _refused(tmp_path / "ws" / f"r{n:02}")
+    child = subprocess.Popen(
+        [sys.executable, "-m", "reveille", "repos", str(tmp_path / "ws"), "--until", _UNTIL],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    assert child.stdout is not None and child.stderr is not None
+    child.stdout.close()
+    error = child.stderr.read().decode()
+    child.wait(timeout=120)
+
+    assert child.returncode == ExitCode.CANNOT_RUN, error
+    assert "None of the 40 repositories" in error, error

@@ -30,7 +30,12 @@ from reveille import __version__
 from reveille.config import OutputFormat, ReportConfig, ReportConfigKwargs
 from reveille.domain.models import ProgressEvent
 from reveille.domain.repositories import MAX_SEARCH_DEPTH
-from reveille.exceptions import ConfigurationError, EmptyRepositoryError, ReveilleError
+from reveille.exceptions import (
+    ConfigurationError,
+    EmptyRepositoryError,
+    NoRepositoryReadError,
+    ReveilleError,
+)
 
 _logger = logging.getLogger("reveille.cli")
 
@@ -1154,6 +1159,15 @@ def _run_query(produce: Callable[[Callable[[str], None]], str]) -> None:
     except EmptyRepositoryError as exc:
         _err(f"Error: {exc}")
         raise typer.Exit(code=ExitCode.NEGATIVE) from exc
+    except NoRepositoryReadError as exc:
+        # The rows are the diagnosis, so they are given before the exit says
+        # that nothing was read.
+        _print_notices(notices)
+        answer = _printable(exc.answer)
+        with contextlib.suppress(typer.Exit):  # delivered or not, nothing was read
+            _say(answer, nl=not answer.endswith("\n"), answer=False)
+        _err(f"Error: {exc}")
+        raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
     except ReveilleError as exc:
         _err(f"Error: {exc}")
         raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc

@@ -386,7 +386,10 @@ The rules are stated in every format ([ADR 0026](adr/0026-many-repositories-one-
   is reported once on stderr.
 - **A repository that cannot be read** (a partial clone, a SHA-256 repository, a corrupt one) is a
   row with status `not_read` and the reason; the others are still read, and the exit code is 0.
-  No repository found is a negative answer (exit 1).
+  When none of the repositories found could be read, the rows are still written and the exit code
+  is 2, because there is no answer about any of them
+  ([ADR 0028](adr/0028-repos-exits-2-when-nothing-was-read.md)). A repository with no commits was
+  read. No repository found is a negative answer (exit 1).
 - **It names nobody and counts nobody across repositories.** The people column describes one
   repository each; adding it up does not give a number of people.
 - **Formats:** `text` (default), `json`, `markdown` and `csv`. CSV cells that a spreadsheet would

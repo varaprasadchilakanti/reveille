@@ -7,7 +7,8 @@ The hierarchy is::
 
     ReveilleError
     ├── RepositoryError
-    │   └── EmptyRepositoryError
+    │   ├── EmptyRepositoryError
+    │   └── NoRepositoryReadError
     ├── ConfigurationError
     └── RenderError
         └── OutputPathError
@@ -22,6 +23,7 @@ import warnings
 __all__ = [
     "ConfigurationError",
     "EmptyRepositoryError",
+    "NoRepositoryReadError",
     "OutputPathError",
     "RenderError",
     "RepositoryError",
@@ -39,6 +41,24 @@ class RepositoryError(ReveilleError):
 
 class EmptyRepositoryError(RepositoryError):
     """Raised when no commits exist within the specified analysis window."""
+
+
+class NoRepositoryReadError(RepositoryError):
+    """Raised when repositories were found and none of them could be read.
+
+    Attributes:
+        answer: The rows, each saying why its repository was not read.
+    """
+
+    def __init__(self, message: str, answer: str = "") -> None:
+        """Keep the answer, so the caller can still give it.
+
+        Args:
+            message: What could not be done.
+            answer: The rows that say why.
+        """
+        super().__init__(message)
+        self.answer = answer
 
 
 class ConfigurationError(ReveilleError):

@@ -117,7 +117,8 @@ _CAPABILITIES: tuple[dict[str, str], ...] = (
             "`reveille repos <directory>`: one row per repository, with its last "
             "commit, and the commits, people and automated accounts in a recent window "
             "as counts. It names nobody and counts nobody across repositories; a "
-            "repository that cannot be read is a row saying why."
+            "repository that cannot be read is a row saying why, and when none "
+            "can be read the rows are still given and the exit code is 2."
         ),
     },
     {

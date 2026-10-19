@@ -86,6 +86,10 @@ before release.
   built in a job that cannot obtain the PyPI token.
 - **Documentation** was corrected by running each statement. SECURITY.md no longer promises a
   response time.
+- **`repos` exits 2 when it found repositories and could read none of them.** It used to exit 0,
+  the affirmative answer, over a table of `not_read` rows. The rows are still written, since each
+  says why; one readable repository, even an empty one, keeps exit 0
+  ([ADR 0028](docs/adr/0028-repos-exits-2-when-nothing-was-read.md)).
 - **A key or table in `reveille.toml` that Reveille does not read is named in a note.** A
   misspelt `[report] tittle` used to be ignored without a word. The run continues and the exit code
   is unchanged.

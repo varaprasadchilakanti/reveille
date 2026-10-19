@@ -42,7 +42,12 @@ from reveille.domain.models import (
 from reveille.domain.pseudonyms import hide_emails
 from reveille.domain.ranking import rank_contributors
 from reveille.domain.repositories import RepositoryActivity, describe_repository
-from reveille.exceptions import EmptyRepositoryError, RepositoryError, ReveilleError
+from reveille.exceptions import (
+    EmptyRepositoryError,
+    NoRepositoryReadError,
+    RepositoryError,
+    ReveilleError,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -232,6 +237,7 @@ def repositories_text(
 
     Raises:
         EmptyRepositoryError: If no repository is found.
+        NoRepositoryReadError: If repositories were found and none could be read.
     """
     end = until if until is not None else _today()
     try:
@@ -286,9 +292,19 @@ def repositories_text(
             on_notice,
             f"--exclude-author matched no commits in any repository for: {', '.join(unmatched)}",
         )
-    return Renderer.repositories_text(
+    answer = Renderer.repositories_text(
         rows, directory.name, (start, end), days, depth, output_format
     )
+    # Every input failing is "could not run", not an answer (ADR 0028); the rows
+    # still go out, because each says why.
+    if all(row.status == "not_read" for row in rows):
+        raise NoRepositoryReadError(
+            "The 1 repository found could not be read; its row says why."
+            if len(rows) == 1
+            else f"None of the {len(rows):,} repositories found could be read; each row says why.",
+            answer,
+        )
+    return answer
 
 
 class _HeldWarnings(logging.Filter):
