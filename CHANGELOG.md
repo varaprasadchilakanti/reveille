@@ -69,6 +69,8 @@ before release.
 
 ### Changed
 
+- **plotly 7.0 or later is required** (was 5.20). Reports embed plotly.js 4.1.1, and figures were
+  checked with plotly 7.0.0 and 7.1.0, which gave byte-identical reports; no earlier release was.
 - **The HTML report names at most 1,000 people, or `--limit`.** The contributor table, the
   heatmap's list and the lines chart stop there, and the page says how many it left out. The Lorenz
   curve is drawn from at most 201 of its own points. Every figure still counts everyone. At 100,000

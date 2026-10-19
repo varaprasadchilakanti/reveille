@@ -86,7 +86,9 @@ jinja2 = "^3.1.6"
 
 # Charts -- builds the figure specifications. The report embeds the plotly.js
 # bundle vendored in src/reveille/vendor/ (ADR 0027), not this package's own.
-plotly = ">=5.20,<8.0"
+# Floor: 7.0. With that bundle, 7.0.0 and 7.1.0 gave byte-identical reports
+# (2026-10-19); nothing earlier was checked.
+plotly = ">=7.0,<8.0"
 
 # Data Validation
 # Floor: no published advisory affects 2.4.0 (OSV, 2026-10-13).
