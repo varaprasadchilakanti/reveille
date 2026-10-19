@@ -551,7 +551,19 @@ def brief_text(
             name_status=True,
         )
     except EmptyRepositoryError as exc:
-        raise EmptyRepositoryError(f"No commits since {point}.") from exc
+        # Each limit the caller set is named, since any of them can be the cause.
+        limits = [f"up to {config.until} (--until)"] if config.until is not None else []
+        limits += [
+            f"with {flag} applied"
+            for flag, used in (
+                ("--exclude-author", config.exclude_authors),
+                ("--exclude-path", config.exclude_paths),
+            )
+            if used
+        ]
+        raise EmptyRepositoryError(
+            f"No commits since {point}{''.join(' ' + limit for limit in limits)}."
+        ) from exc
     if reader.commits_dated_after and cutoff is not None:
         _notify(
             on_notice,

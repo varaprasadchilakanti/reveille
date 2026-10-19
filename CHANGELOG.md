@@ -95,6 +95,9 @@ before release.
   the affirmative answer, over a table of `not_read` rows. The rows are still written, since each
   says why; one readable repository, even an empty one, keeps exit 0
   ([ADR 0028](docs/adr/0028-repos-exits-2-when-nothing-was-read.md)).
+- **An empty `brief` names the limits that applied.** `brief --until 2000-01-01` said only "No
+  commits since v1.0."; it now adds "up to 2000-01-01 (--until)", and names `--exclude-author` and
+  `--exclude-path` when given.
 - **An output path ending in `/` is refused.** `-o reports/` wrote a file named `reports`.
 - **`init -o -` prints the file on stdout**, as `generate -o -` does, instead of writing a file
   named `-`.
