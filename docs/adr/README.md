@@ -52,11 +52,11 @@ in part), or Deprecated.
 | [0026](0026-many-repositories-one-row-each.md) | Many repositories, one row each: `reveille repos` | Proposed |
 | [0027](0027-the-report-embeds-a-pinned-cartesian-bundle.md) | The report embeds a pinned plotly.js cartesian bundle, with its licences | Proposed |
 
-## Notes from the review of 2026-10-09
+## Drift since acceptance
 
 An accepted record is not edited. Where one has drifted from the program without its
 decision changing, the drift is noted here instead; where its decision changed, a later record
-supersedes it, and the table says so. The review itself is kept outside the repository.
+supersedes it, and the table says so.
 
 - **0001.** The `no_merges=True` wording is old; the decision holds and is tested. Not stated in
   the record: a change made only in a merge commit, such as a conflict resolution, is not counted,

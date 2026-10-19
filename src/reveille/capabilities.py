@@ -91,7 +91,7 @@ _CAPABILITIES: tuple[dict[str, str], ...] = (
         "description": (
             "Say where a repository stands now with `reveille state`: the branch or "
             "detached commit, upstream ahead/behind as of the last fetch, a merge, "
-            "rebase, cherry-pick, revert or bisect in progress, conflicted paths, "
+            "rebase, `git am`, cherry-pick, revert or bisect in progress, conflicted paths, "
             "staged, modified, deleted, renamed and untracked counts with bounded "
             "lists, stashes, worktrees, local branches as counts, and the latest tag "
             "with the commits since it. Every Git call runs with optional locks and "

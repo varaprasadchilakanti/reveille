@@ -255,7 +255,8 @@ reveille validate --repo /path/to/repository
 ### `reveille summary`
 
 The repository in a few lines, naming no contributor (with one or two people, counts can identify
-someone). It reads no line counts, so on a large history it is several times faster than `generate`.
+someone). It reads no line counts, so it is quicker than `generate`: 1.02 s against 9.35 s on a
+9,015-commit history (measured 2026-10-12).
 
 ```bash
 reveille summary --format json
