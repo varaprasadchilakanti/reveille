@@ -86,6 +86,8 @@ before release.
   built in a job that cannot obtain the PyPI token.
 - **Documentation** was corrected by running each statement. SECURITY.md no longer promises a
   response time.
+- **`--min-commits` above everyone's count says so.** The report is still written with an empty
+  contributor table and exit 0, and a note gives the highest count.
 - **`repos` exits 2 when it found repositories and could read none of them.** It used to exit 0,
   the affirmative answer, over a table of `not_read` rows. The rows are still written, since each
   says why; one readable repository, even an empty one, keeps exit 0

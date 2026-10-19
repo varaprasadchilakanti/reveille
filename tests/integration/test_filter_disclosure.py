@@ -356,3 +356,57 @@ class TestTheCommitShareIsAShareOfEveryCommit:
         repo = _repo_with_two_contributors(tmp_path / "repo", major=9, minor=3)
 
         assert self._pie(repo, tmp_path / "r.html", min_commits=1) == {"Major": 9, "Minor": 3}
+
+
+class TestAThresholdAboveEveryone:
+    """`--min-commits` above everyone writes a report with no table, and says so."""
+
+    def _notices(self, repo: Path, out: Path, min_commits: int) -> list[str]:
+        notices: list[str] = []
+        generate_report(
+            ReportConfig(repo_path=repo, output_path=out, min_commits=min_commits),
+            on_notice=notices.append,
+        )
+        return notices
+
+    def test_the_empty_table_is_explained(self, tmp_path: Path) -> None:
+        repo = _repo_with_two_contributors(tmp_path / "repo", major=9, minor=3)
+
+        notices = self._notices(repo, tmp_path / "r.html", min_commits=10)
+
+        assert (tmp_path / "r.html").stat().st_size > 0, "the report is still written"
+        assert any(
+            "No contributor has the 10 commits --min-commits asks for (the most is 9)" in n
+            for n in notices
+        ), notices
+
+    def test_a_table_with_someone_in_it_is_not_explained(self, tmp_path: Path) -> None:
+        repo = _repo_with_two_contributors(tmp_path / "repo", major=9, minor=3)
+
+        notices = self._notices(repo, tmp_path / "r.html", min_commits=9)
+
+        assert not any("--min-commits" in n for n in notices), notices
+
+
+def test_the_cli_notes_it_and_exits_0(tmp_path: Path) -> None:
+    from typer.testing import CliRunner
+
+    from reveille.cli import ExitCode, app
+
+    repo = _repo_with_two_contributors(tmp_path / "repo", major=2, minor=1)
+    result = CliRunner().invoke(
+        app,
+        [
+            "generate",
+            "-q",
+            "--repo",
+            str(repo),
+            "--min-commits",
+            "99999",
+            "-o",
+            str(tmp_path / "r.html"),
+        ],
+    )
+
+    assert result.exit_code == ExitCode.SUCCESS, result.stderr
+    assert "Note: No contributor has the 99,999 commits" in result.stderr, result.stderr

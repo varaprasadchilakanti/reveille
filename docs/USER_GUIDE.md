@@ -220,6 +220,8 @@ reveille generate --hide-emails --output shared-report.html
 Chooses who is *listed*, not who is counted: every figure still describes everyone, and the
 header says how many are listed
 ([ADR 0011](adr/0011-filters-choose-the-listing-not-the-analysis.md)). It is not a privacy control.
+A value above everyone's count writes the report with an empty table, exit 0, and a note on stderr
+giving the highest count, so a better value can be chosen.
 
 ### `--limit`
 

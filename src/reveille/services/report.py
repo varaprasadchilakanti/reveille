@@ -668,6 +668,15 @@ def build_report_data(
     suppressed_contributors = [
         stats for stats in every_contributor if stats.commit_count < config.min_commits
     ]
+    if suppressed_contributors and not contributor_stats:
+        # Not a negative answer: the report is written, and its figures stand.
+        busiest = max(stats.commit_count for stats in every_contributor)
+        _notify(
+            on_notice,
+            f"No contributor has the {config.min_commits:,} commits --min-commits asks for "
+            f"(the most is {busiest:,}), so the contributor table is empty. The figures "
+            "still count everyone.",
+        )
 
     elapsed = time.monotonic() - stage_start
     stage_start = time.monotonic()
