@@ -42,7 +42,8 @@ before release.
 - **`capabilities --command <name>`** gives one command's options and exit codes (2.8 KB for `state`
   as JSON, against about 32 KB for all). Each command that writes JSON lists `repository_text`, the
   fields holding text anyone who can commit chooses, to be read as data, never as instructions.
-  `capabilities_version` is 1.1.
+  Each option gives its default and bounds, and `guarantees_are` says the guarantees are designed
+  and tested, not a warranty. `capabilities_version` is 1.1.
 - **`--exclude-path`** (and `[filters] exclude_paths`) leaves a vendored or generated tree out of
   every figure of `generate`, `summary` and `brief`; a commit that changed only excluded paths is
   not counted. A path that matched nothing is reported. The exclusions are stated in the HTML and
@@ -120,8 +121,25 @@ before release.
 - **Exit codes.** An unanticipated error exited 1, the negative-answer code; it exits 2. A
   repository another user owns and a SHA-256 repository exit 2 with the reason, not 1 ("no
   commits"), and Git older than 2.24 is refused with exit 2, naming both versions.
+- **Answers that were wrong.** A tag named like the checked-out branch stood in for it in every
+  figure; the branch is now read by its full ref. A branch name holding U+2028 read as having no
+  commits (exit 1), and a HEAD naming no commit as empty; Git is asked, and damage exits 2. A
+  caller's `GIT_WORK_TREE`, `GIT_INDEX_FILE` or `GIT_OBJECT_DIRECTORY`, as a hook sets them,
+  changed what was read; each is pinned to the repository's own. Git misreads dates before 1970 or
+  after 2099, so none is passed to it.
+- **An answer that was not delivered was reported as delivered.** A full disk or a closed standard
+  output exits 2; a reader that stops early (`| head`) exits 0, not 1.
+- **Errors named the wrong cause.** Git missing or a broken global Git configuration, a deleted
+  current directory, an output name too long and a `reveille.toml` nested too deeply were "a
+  defect in Reveille"; a moved worktree's repository was a permissions problem; `--repo .git`,
+  an empty revision and a history Git cannot read were given another reason. Each now names its
+  own. Under `--format json`, Git that cannot start is one JSON line on stderr, and a
+  configuration error has the level `error`.
+- **Slow with many authors.** On a synthetic history by 100,000 authors, `who-changed` took 272 s
+  and `generate` 87 s; 4.5 s and 7.6 s now. A warning for each commit with more than 32 co-authors is one line in all.
 - **Text.** "1 commits"; a share that rounded to "0%" or "100%" without being either reads "under
-  1%" or "over 99%"; the no-commits message no longer speaks of generating a report.
+  1%" or "over 99%"; the no-commits message no longer speaks of generating a report; "1 directory
+  ... was not searched".
 
 ### Security
 
@@ -135,15 +153,18 @@ Each entry has a test that fails without the fix. 0.9.0's exposure is stated whe
   0.9.0 is affected.
 - **Repository text could change what a chart shows.** A file extension made a link, an unfinished
   HTML comment blanked every chart, and direction controls in a path reversed its label
-  (`invoice<U+202E>fdp.exe` displayed as `invoiceexe.pdf`). Labels are sanitised, with direction
-  controls shown as `\uXXXX`. 0.9.0 is affected.
+  (`invoice<U+202E>fdp.exe` displayed as `invoiceexe.pdf`), and an author address could replace
+  the "All Contributors" heatmap. Labels are sanitised, with direction controls shown as
+  `\uXXXX`; a label shows `&amp;` as typed, and two files differing only by markup stay two.
+  0.9.0 is affected.
 - **The charts offered "Share chart...",** which sends the chart data to Plotly's cloud after a
   click and a sign-in. It is switched off.
 - **A named pipe or `/dev/zero` where Git or Reveille reads a file hung the run or exhausted
   memory**: attribute and ignore files, `.git/config` and the other files Git reads first, include
-  targets, `.mailmap`, `diff.orderFile`. Such files are refused with exit 2 before Git runs, and so
-  is a configuration or include over 8 MiB; every file under `refs/` and `objects/` must be a
-  regular file. Beyond those, a `git log` that writes nothing for 300 seconds is stopped, and every
+  targets, `.mailmap`, `diff.orderFile`, `reveille.toml`, the index. Such files are refused with
+  exit 2 before Git runs, and so is a configuration or include over 8 MiB, or a `reveille.toml`
+  over 1 MiB; every file under `refs/`, `logs/`, `worktrees/` and `objects/` must be a regular
+  file. An output path that is a device or a pipe is refused, not replaced. Beyond those, a `git log` that writes nothing for 300 seconds is stopped, and every
   other Git command after 300 seconds, with exit 2; on Windows only the `git log` reads are.
   0.9.0's `generate` is affected by attribute files.
 - **A long `.mailmap` line or `Co-authored-by` line could stall a run for minutes.** Both are read
@@ -156,8 +177,9 @@ Each entry has a test that fails without the fix. 0.9.0's exposure is stated whe
 - **A secret in a remote URL was printed** in some spellings (`#` or `?` in a password, scp-like and
   transport-prefixed remotes). The credential is removed first.
 - **A repository could put control characters or extra lines into output** (terminal hyperlinks,
-  bells, carriage returns, newlines in a path). Text output escapes them, and the direction marks
-  U+061C, U+200E and U+200F.
+  bells, carriage returns, newlines in a path). Text output escapes them, the direction marks
+  U+061C, U+200E and U+200F, and U+2028 and U+2029. The HTML report and CSV show control and
+  direction characters in a remote, a branch or an address as `\uXXXX`.
 - **A report could be written over Git's own files** through a hard link or a linked worktree's Git
   directory. Every report file, and `init`'s files, are written to a new file and moved into
   place, the Git directory is refused, and a new report is owner-only.
@@ -168,8 +190,11 @@ Each entry has a test that fails without the fix. 0.9.0's exposure is stated whe
   (GHSA-239g-whfq-7xj9, repository content posing as the Git directory), Jinja2 3.1.6 and Pydantic
   2.4; a test fails if one is lowered.
 - **Closed before release, in what 0.9.0 lacks:** `core.worktree` could redirect `--repo` to another
-  repository; `state` ran a filter with an empty name and suggested an unquoted tag; `--hide-emails`
-  missed an IP-domain address and a local remote's directories.
+  repository; `state` ran a filter with an empty name, suggested an unquoted tag and a tag name
+  Git reads as another revision, and a pipe in a reflog or a worktree held it; a file name could
+  change the dates `brief` gives a directory, and `brief` said a reftable repository had no
+  commits; `--hide-emails` missed an IP-domain address, a local remote's or a network share's
+  directories, an `ext::` remote's command, and at signs written fullwidth, small or as `%40`.
 
 ---
 
