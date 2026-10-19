@@ -290,6 +290,21 @@ def _configure_logging(verbose: bool) -> None:
     package_logger.setLevel(level)
 
 
+def _why_git_cannot_start(message: str) -> str:
+    """Return Git's own reason from GitPython's import-time failure, or a plain one.
+
+    Args:
+        message: The ImportError text GitPython raises when `git version` fails.
+
+    Returns:
+        Git's first error line, or a sentence saying no Git was found on PATH.
+    """
+    _, found, stderr = message.partition("stderr: '")
+    lines = [line.strip() for line in stderr.rstrip("'").splitlines()] if found else []
+    reasons = [line for line in lines if line and not line.startswith("hint:")]
+    return reasons[0] if reasons else "no working `git` program was found on PATH"
+
+
 class _App(typer.Typer):
     """The Typer application, with an exit code for errors nobody anticipated."""
 
@@ -301,6 +316,15 @@ class _App(typer.Typer):
         """
         try:
             return super().__call__(*args, **kwargs)
+        except ImportError as exc:
+            if not str(exc).startswith("Failed to initialize"):
+                raise
+            _logger.debug("GitPython could not start Git", exc_info=True)
+            _err(
+                f"Error: Git could not be started: {_why_git_cannot_start(str(exc))}. Install "
+                "Git 2.24 or later, put it on PATH, and check your Git configuration."
+            )
+            sys.exit(ExitCode.CANNOT_RUN)
         except Exception as exc:
             _logger.debug("Unexpected error", exc_info=True)
             _err(
@@ -1148,10 +1172,10 @@ def summary(
 
     Small counts can identify someone.
     """
-    from reveille.services.report import summary_text
-
     _configure_logging(verbose)
     _check_query_format(output_format, ("text", "json", "markdown"))
+    from reveille.services.report import summary_text
+
     config = _query_config(repo, since, until, branch, exclude_author, deterministic, exclude_path)
     _run_query(lambda notice: summary_text(config, output_format, on_notice=notice))
 
@@ -1182,10 +1206,10 @@ def brief(
 
     Small counts can identify someone.
     """
-    from reveille.services.report import brief_text
-
     _configure_logging(verbose)
     _check_query_format(output_format, ("text", "json", "markdown", "line"))
+    from reveille.services.report import brief_text
+
     if from_revision is not None and since is not None:
         _err("Error: give --from <revision> or --since <date>, not both.")
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
@@ -1210,10 +1234,10 @@ def state(
     directories, which can contain your login name), the current branch, its
     upstream and the branches checked out in worktrees.
     """
-    from reveille.services.report import state_text
-
     _configure_logging(verbose)
     _check_query_format(output_format, ("text", "json", "markdown", "line"))
+    from reveille.services.report import state_text
+
     _run_query(lambda _notice: state_text(_root(repo), output_format, limit))
 
 
@@ -1252,10 +1276,10 @@ def repos(
 
     One row per repository, in counts. Nobody is counted across repositories.
     """
-    from reveille.services.report import repositories_text
-
     _configure_logging(verbose)
     _check_query_format(output_format, ("text", "json", "markdown", "csv"))
+    from reveille.services.report import repositories_text
+
     if not directory.is_dir():
         _err(f"Error: '{directory}' is not a directory.")
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
@@ -1330,10 +1354,10 @@ def who_changed(
     verbose: _VerboseOption = False,
 ) -> None:
     """Say who changed a file or directory, and who changed it most recently."""
-    from reveille.services.report import who_changed_text
-
     _configure_logging(verbose)
     _check_query_format(output_format)
+    from reveille.services.report import who_changed_text
+
     relative = _repository_path(path, _root(repo))
     config = _query_config(repo, since, until, branch, exclude_author, deterministic)
     _run_query(
