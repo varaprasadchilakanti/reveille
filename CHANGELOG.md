@@ -69,6 +69,11 @@ before release.
 
 ### Changed
 
+- **The HTML report names at most 1,000 people, or `--limit`.** The contributor table, the
+  heatmap's list and the lines chart stop there, and the page says how many it left out. The Lorenz
+  curve is drawn from at most 201 of its own points. Every figure still counts everyone. At 100,000
+  authors the report went from 78 MB to 2.5 MB; smaller reports are unchanged
+  ([ADR 0029](docs/adr/0029-the-html-names-a-bounded-list.md)).
 - **The HTML report is 1.7 MB, down from 4.9 MB.** It embeds the plotly.js 4.1.1 cartesian bundle,
   pinned in `src/reveille/vendor/` with its notices, not the full bundle of whichever plotly is
   installed ([ADR 0027](docs/adr/0027-the-report-embeds-a-pinned-cartesian-bundle.md)). In headless

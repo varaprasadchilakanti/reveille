@@ -2160,8 +2160,10 @@
             individuals. The weights are a stated choice, not a validated model.
         </p>
         {% endif %}
-        {% set table_rows = data.ranked_contributors|length %}
-        {% if table_rows > 12 %}
+        {% set table_rows = derived.html_listed|length %}
+        {% if derived.html_unlisted %}
+        <p class="table-count">The first {{ '{:,}'.format(table_rows) }} of {{ '{:,}'.format(data.ranked_contributors|length) }} listed contributors are shown here, and in the heatmap and the lines chart; the table scrolls within its panel. The figures count everyone. JSON and CSV (<code>--format json</code> or <code>csv</code>) list everyone unless <code>--limit</code> is given, which also sets how many this page shows.</p>
+        {% elif table_rows > 12 %}
         <p class="table-count">{{ '{:,}'.format(table_rows) }} contributors; the table scrolls within its panel.</p>
         {% endif %}
         <div class="table-wrapper" role="region" aria-label="Contributor table, scrollable" tabindex="0">
@@ -2197,7 +2199,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for contributor in data.ranked_contributors %}
+                    {% for contributor in derived.html_listed %}
                     <tr>
                         {% if ranked %}
                         <th scope="row" class="rank-number" style="text-align:center">

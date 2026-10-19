@@ -226,9 +226,12 @@ giving the highest count, so a better value can be chosen.
 
 ### `--limit`
 
-Bounds every list of people in JSON and CSV to this many. JSON states the full total and a
-`truncated` flag beside each list; a cut CSV is announced on stderr. It shortens lists for
-assistants and scripts and removes nobody from the figures. `who-changed` accepts it too (default
+Bounds every list of people to this many. JSON states the full total and a `truncated` flag beside
+each list; a cut CSV is announced on stderr. In the HTML report it sets how many people the
+contributor table, the heatmap's list and the lines chart name; without it the HTML names the
+first 1,000, and says so when it leaves anyone out
+([ADR 0029](adr/0029-the-html-names-a-bounded-list.md)). JSON and CSV have no default bound. It
+removes nobody from the figures. `who-changed` accepts it too (default
 20). In `reveille.toml` it is `[report] limit`.
 
 ### `--ranking` and `--no-ranking`

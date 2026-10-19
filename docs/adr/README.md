@@ -38,7 +38,7 @@ in part), or Deprecated.
 | [0012](0012-the-repository-profile-is-a-table.md) | The repository profile is three measures in a table, not five on a radar | Accepted; partly superseded by 0016 |
 | [0013](0013-who-changes-what-is-opt-in-and-area-first.md) | "Who changes what" is opt-in, and organised by area, not by person | Accepted |
 | [0014](0014-co-authors-are-a-separate-fact.md) | Co-authors are read from trailers and reported as a separate fact | Accepted |
-| [0015](0015-an-interface-for-agents.md) | An interface for agents: summary, who-changed, stdout and bounded lists | Accepted |
+| [0015](0015-an-interface-for-agents.md) | An interface for agents: summary, who-changed, stdout and bounded lists | Accepted; `--limit` extended to HTML by 0029 |
 | [0016](0016-the-profile-shape-returns-as-a-flower.md) | The profile's shape returns, as six separate petals beside the table (above it on a narrow screen) | Accepted |
 | [0017](0017-distribution-figures-count-people.md) | The distribution figures count people; automated accounts are stated beside them | Accepted |
 | [0018](0018-replace-refs-are-not-honoured.md) | Reveille reads the objects its hashes name; replace refs are not honoured | Accepted |
@@ -52,6 +52,7 @@ in part), or Deprecated.
 | [0026](0026-many-repositories-one-row-each.md) | Many repositories, one row each: `reveille repos` | Proposed; exit-code consequence superseded by 0028 |
 | [0027](0027-the-report-embeds-a-pinned-cartesian-bundle.md) | The report embeds a pinned plotly.js cartesian bundle, with its licences | Proposed |
 | [0028](0028-repos-exits-2-when-nothing-was-read.md) | `repos` exits 2 when no repository it found could be read | Proposed |
+| [0029](0029-the-html-names-a-bounded-list.md) | The HTML report names at most 1,000 people, or `--limit` | Proposed |
 
 ## Drift since acceptance
 
