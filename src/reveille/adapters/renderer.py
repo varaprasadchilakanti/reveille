@@ -2154,11 +2154,21 @@ def _script_safe(text: str) -> str:
     return text.replace("<", "\\u003c")
 
 
+# Direction controls, shown as escapes in labels: a path keeps them, since it names a
+# file, and obeyed they reorder what follows (`invoice<RLO>fdp.exe` reads `...exe.pdf`).
+_DIRECTION_CONTROLS: dict[int, str] = {
+    code: f"\\u{code:04x}"
+    for block in ((0x061C, 0x200E, 0x200F), range(0x202A, 0x202F), range(0x2066, 0x206A))
+    for code in block
+}
+
+
 def _sanitise_chart_label(value: str) -> str:
-    """Strip HTML tags, stray angle brackets, null bytes and surrounding whitespace.
+    r"""Strip HTML tags, stray angle brackets, null bytes and surrounding whitespace.
 
     Labels come from commit metadata, and Plotly renders some HTML in them. A lone
     `<` or `>` is dropped too, so a label joined to other text cannot form a tag.
+    Direction controls are shown as `\uXXXX` escapes rather than obeyed.
 
     Args:
         value: The raw string to sanitise.
@@ -2169,7 +2179,7 @@ def _sanitise_chart_label(value: str) -> str:
     value = _SCRIPT_BLOCK_RE.sub("", value)
     value = _HTML_TAG_RE.sub("", value)
     value = value.replace("<", "").replace(">", "").replace("\x00", "")
-    return value.strip()
+    return value.translate(_DIRECTION_CONTROLS).strip()
 
 
 def _aggregate_pie_data(
