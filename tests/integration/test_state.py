@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shlex
 import subprocess
 import sys
 import time
@@ -517,3 +518,27 @@ class TestOnWindows:
         state = reader.read_state()
 
         assert state.branch == "main"
+
+
+class TestTheSuggestedRevisionIsTheTag:
+    @pytest.mark.parametrize("tag", ["HEAD", "ORIG_HEAD", "heads/main", "stash", "hash"])
+    def test_the_suggested_command_reads_from_the_tag(self, repo: Path, tag: str) -> None:
+        """Git looks up `HEAD`, `refs/<name>` and a full hash before `refs/tags/<name>`."""
+        tagged = _git(repo, "rev-parse", "HEAD~1").stdout.strip()
+        _commit(repo, "c.txt", "three\n")
+        if tag == "hash":
+            tag = _git(repo, "rev-parse", "HEAD").stdout.strip()
+        if tag == "stash":
+            (repo / "a.txt").write_text("changed\n", encoding="utf-8")
+            _git(repo, "stash", "-q")
+        _git(repo, "update-ref", f"refs/tags/{tag}", tagged)
+
+        line = next(x for x in _text(repo).splitlines() if "Next: " in x)
+        argv = shlex.split(line.split("Next: ", 1)[1])
+        assert argv[:3] == ["reveille", "brief", "--from"], line
+        brief = CliRunner().invoke(
+            app, ["brief", "--repo", str(repo), "--format", "json", *argv[2:]]
+        )
+
+        assert brief.exit_code == ExitCode.SUCCESS, (line, brief.stderr)
+        assert json.loads(brief.stdout)["point"]["commit"] == tagged, line

@@ -1311,13 +1311,19 @@ def _repositories_csv(rows: list[RepositoryActivity]) -> str:
     return buffer.getvalue()
 
 
+# A tag Git would not find first by its short name: an option-like one, a full hash, a
+# pseudo-ref name (`HEAD`, `ORIG_HEAD`), `stash` and anything under `refs/` (`heads/main`).
+_SHADOWED_TAG = re.compile(r"-.*|[0-9a-f]{40}|[0-9a-f]{64}|[A-Z_]+|stash|.*/.*", re.DOTALL)
+
+
 def _brief_from(tag: str) -> str:
     """Return the `reveille brief` command for a tag, quoted for a POSIX shell.
 
-    A tag can begin with `-`, which `--from` refuses as an option; its full
-    ref name cannot be taken for one.
+    Git resolves a short name as `HEAD`-like files, then `refs/<name>`, then
+    `refs/tags/<name>`, and takes a full hash as the commit; a tag those would
+    shadow, or one `--from` would refuse as an option, is given by its full ref name.
     """
-    revision = f"refs/tags/{tag}" if tag.startswith("-") else tag
+    revision = f"refs/tags/{tag}" if _SHADOWED_TAG.fullmatch(tag) else tag
     return f"reveille brief --from {shlex.quote(revision)}"
 
 
