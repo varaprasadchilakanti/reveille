@@ -518,10 +518,10 @@ def brief_text(
     if from_revision is None and config.since is None:
         # Settle the branch first, so "no tag" is never said for another reason.
         if config.branch is not None:
-            reader.resolve_commit(config.branch)
+            reader.resolve_commit(reader.branch_revision(config.branch))
         elif reader.resolve_head_sha() is None:
             raise EmptyRepositoryError(f"Repository at '{config.repo_path}' contains no commits.")
-        from_revision = reader.latest_tag(config.branch or "HEAD")
+        from_revision = reader.latest_tag(reader.branch_revision(config.branch))
         if from_revision is None:
             raise RepositoryError(
                 "The branch has no tag to start from: give --from <revision> or --since <date>."

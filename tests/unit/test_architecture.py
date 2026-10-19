@@ -353,6 +353,10 @@ class TestFilesystemWrites:
     # `describe`, `merge_base` and `ls_tree` read refs, ancestry and a tree.
     # `status` would rewrite the index, but every call runs with
     # GIT_OPTIONAL_LOCKS=0, which stops it (ADR 0024).
+    # `show_ref` has no form that writes (refs are written by update-ref);
+    # `--verify` checks that one exact ref exists. Measured with Git 2.55: the
+    # Git directory and tree were byte-identical after it, and no configured
+    # program started.
     _READ_ONLY_GIT = frozenset(
         {
             "log",
@@ -366,6 +370,7 @@ class TestFilesystemWrites:
             "merge_base",
             "ls_tree",
             "status",
+            "show_ref",
         }
     )
 

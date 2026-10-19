@@ -650,6 +650,7 @@ class GitReader:
         """
         self._mailmap_applied = False
         self._active_branch: str | None = None
+        self._branch_refs: dict[str, str] = {}
         self._file_stats: tuple[FileStats, ...] = ()
         #: Commits the last `read_commits` dropped as dated after `dated_until`.
         self.commits_dated_after: int = 0
@@ -1145,7 +1146,7 @@ class GitReader:
                 is not one branch, tag or commit (a range would narrow the history
                 while the report still says "branch").
         """
-        rev = branch or self._active_revision()
+        rev = self.branch_revision(branch)
         if rev.startswith("-"):
             raise RepositoryError(
                 f"Refusing to use {rev!r} as a revision: a value beginning with "
@@ -1153,7 +1154,7 @@ class GitReader:
                 "a branch. If a ref really has this name, rename it."
             )
         if branch is not None:
-            self.resolve_commit(branch)
+            self.resolve_commit(rev)
         return rev
 
     def _head_is_born(self) -> bool:
@@ -1188,6 +1189,45 @@ class GitReader:
             The branch name, or 'HEAD'.
         """
         return self._active_revision().removeprefix("refs/heads/")
+
+    def branch_revision(self, branch: str | None) -> str:
+        """Return the revision a branch name is read as: the branch, when there is one.
+
+        Git reads `refs/tags/<name>` before `refs/heads/<name>` (gitrevisions(7)),
+        so a tag sharing a branch's name stood in for it. Git's advice for that case
+        is to name the ref in full, which also leaves nothing to its lookup order.
+        A name that is no branch is left for Git to read as a tag or commit.
+
+        Args:
+            branch: As given; the active branch if None.
+
+        Returns:
+            `refs/heads/<name>` when that branch exists, else the name as given.
+        """
+        if branch is None:
+            return self._active_revision()
+        if branch.startswith(("-", "refs/")) or branch == "HEAD":
+            return branch  # refused later, already in full, or the checked-out commit
+        if branch not in self._branch_refs:
+            self._branch_refs[branch] = (
+                f"refs/heads/{branch}" if self._ref_exists(f"refs/heads/{branch}") else branch
+            )
+            if self._branch_refs[branch] != branch and self._ref_exists(f"refs/tags/{branch}"):
+                _logger.warning(
+                    "%r names both a branch and a tag; the branch is read. "
+                    "Give --branch refs/tags/%s to read the tag.",
+                    branch,
+                    branch,
+                )
+        return self._branch_refs[branch]
+
+    def _ref_exists(self, ref: str) -> bool:
+        """Return whether this exact ref exists; `show-ref --verify` reads no revision syntax."""
+        try:
+            self._git().show_ref("--verify", "--quiet", ref)
+        except GitCommandError:
+            return False
+        return True
 
     def _active_revision(self) -> str:
         """Return the active branch's full ref, as read, or 'HEAD' when detached.
@@ -1811,7 +1851,7 @@ class GitReader:
         until: datetime.date | None,
     ) -> list[str]:
         """Do the work of `tags_in_range`, letting Git's errors through."""
-        rev = branch or self._active_revision()
+        rev = self.branch_revision(branch)
         walk = f"{from_commit}..{rev}" if from_commit is not None else rev
         _, rev_list_args = _build_log_args(walk, since, until, self._supports_since_as_filter())
         order = {
@@ -1868,7 +1908,7 @@ class GitReader:
         if before_commit is not None:
             args += ["--end-of-options", before_commit]
         else:
-            rev = branch or self._active_revision()
+            rev = self.branch_revision(branch)
             before = None if before_date is None else _git_before(before_date)
             if before is not None:
                 args.append(f"--before={before}")
@@ -1941,7 +1981,7 @@ class GitReader:
         Returns:
             The 40-character SHA, or None if the ref cannot be resolved.
         """
-        rev = branch or self._active_revision()
+        rev = self.branch_revision(branch)
         try:
             sha = self._git().rev_parse(
                 "--quiet", "--verify", "--end-of-options", f"{rev}^{{commit}}"

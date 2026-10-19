@@ -117,6 +117,10 @@ before release.
 
 ### Fixed
 
+- **`--branch main` read a tag named `main`.** Git reads `refs/tags/<name>` before
+  `refs/heads/<name>`, and its documentation advises naming the ref in full when both exist. A name
+  that is a branch is now read as `refs/heads/<name>`, with a warning when a tag shares it; any other
+  name is read as Git reads it.
 - **Under `--format json`, a command-line mistake is a JSON line too.** An unknown option, a missing
   argument or an out-of-range value gave Click's boxed text to a caller reading JSON lines. It is now
   one `{"level": "error", ...}` line, exit 2, naming the `capabilities` call that lists the options.
