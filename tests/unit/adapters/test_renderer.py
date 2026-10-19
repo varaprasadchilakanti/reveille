@@ -11,6 +11,7 @@ completeness, and the behavioural contract for edge cases.
 from __future__ import annotations
 
 import csv
+import dataclasses
 import datetime
 import json
 from pathlib import Path
@@ -540,7 +541,7 @@ class TestBuildHeatmapData:
     ) -> None:
         result = _build_heatmap_data([], [], datetime.date(2024, 1, 1), datetime.date(2024, 12, 31))
         parsed = json.loads(result)
-        assert parsed["daily_counts"]["__aggregated__"] == {}
+        assert parsed["daily_counts"]["__AGGREGATED__"] == {}
 
     def test_years_span_full_analysis_window(self) -> None:
         result = _build_heatmap_data([], [], datetime.date(2022, 6, 1), datetime.date(2024, 3, 31))
@@ -552,7 +553,7 @@ class TestBuildHeatmapData:
 
     def test_aggregated_contributor_is_always_first(self) -> None:
         result = _build_heatmap_data([], [], datetime.date(2024, 1, 1), datetime.date(2024, 12, 31))
-        assert json.loads(result)["contributors"][0]["email"] == "__aggregated__"
+        assert json.loads(result)["contributors"][0]["email"] == "__AGGREGATED__"
 
     def test_aggregated_counts_sum_all_contributors(self) -> None:
         commits = [
@@ -563,9 +564,32 @@ class TestBuildHeatmapData:
         result = _build_heatmap_data(
             commits, [], datetime.date(2024, 1, 1), datetime.date(2024, 12, 31)
         )
-        agg = json.loads(result)["daily_counts"]["__aggregated__"]
+        agg = json.loads(result)["daily_counts"]["__AGGREGATED__"]
         assert agg["2024-03-15"] == 2
         assert agg["2024-03-20"] == 1
+
+    def test_an_address_spelled_like_the_aggregate_key_cannot_replace_it(self) -> None:
+        """A committer chooses their address; the "All Contributors" view stays every commit."""
+        ann = _make_ranked("Ann", commit_count=5)
+        mallory = _make_ranked("Mallory", commit_count=1)
+        key = json.loads(
+            _build_heatmap_data([], [], datetime.date(2024, 1, 1), datetime.date(2024, 12, 31))
+        )["contributors"][0]["email"]
+        mallory = dataclasses.replace(mallory, stats=dataclasses.replace(mallory.stats, email=key))
+        commits = [
+            _make_commit(datetime.date(2024, 3, day), email="ann@example.com")
+            for day in range(1, 6)
+        ]
+        commits.append(_make_commit(datetime.date(2024, 3, 20), email=key))
+
+        payload = json.loads(
+            _build_heatmap_data(
+                commits, [ann, mallory], datetime.date(2024, 1, 1), datetime.date(2024, 12, 31)
+            )
+        )
+
+        assert sum(payload["daily_counts"][key].values()) == 6
+        assert [c["email"] for c in payload["contributors"]].count(key) == 1
 
     def test_per_contributor_counts_keyed_by_lowercased_email(self) -> None:
         commits = [
@@ -597,7 +621,7 @@ class TestBuildHeatmapData:
             commits, ranked, datetime.date(2024, 1, 1), datetime.date(2024, 12, 31)
         )
         contributors = json.loads(result)["contributors"]
-        assert contributors[0]["email"] == "__aggregated__"
+        assert contributors[0]["email"] == "__AGGREGATED__"
         assert contributors[1]["email"] == "alice@example.com"
         assert contributors[2]["email"] == "bob@example.com"
 

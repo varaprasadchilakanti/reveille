@@ -1657,6 +1657,11 @@ def _week_axis(weeks: list[str]) -> dict[str, Any]:
     return axis
 
 
+#: The heatmap's "All Contributors" key. A person's key is their address lower-cased, which
+#: this cannot be, so no address a committer chooses replaces the view the page opens on.
+_AGGREGATE_KEY = "__AGGREGATED__"
+
+
 def _build_heatmap_data(
     commits: list[Commit],
     ranked_contributors: list[RankedContributor],
@@ -1665,7 +1670,7 @@ def _build_heatmap_data(
 ) -> str:
     """Build a compact daily commit-count payload for client-side heatmap rendering.
 
-    Keys: `years`; `contributors`, `{email, name}` with "__aggregated__" first;
+    Keys: `years`; `contributors`, `{email, name}` with `_AGGREGATE_KEY` first;
     `daily_counts`, email to ISO date to count. The client draws the grid.
 
     Args:
@@ -1691,8 +1696,8 @@ def _build_heatmap_data(
         per_email[email_key][date_str] += 1
 
     labels = _contributor_labels(ranked_contributors)
-    contributors: list[dict[str, str]] = [{"email": "__aggregated__", "name": "All Contributors"}]
-    daily_counts: dict[str, dict[str, int]] = {"__aggregated__": dict(agg_counts)}
+    contributors: list[dict[str, str]] = [{"email": _AGGREGATE_KEY, "name": "All Contributors"}]
+    daily_counts: dict[str, dict[str, int]] = {_AGGREGATE_KEY: dict(agg_counts)}
 
     for r in ranked_contributors:
         email_key = r.stats.email.lower()
