@@ -16,6 +16,7 @@ from __future__ import annotations
 import datetime
 import json
 import re
+from html import unescape
 
 import plotly.graph_objects as go
 import pytest
@@ -76,7 +77,7 @@ def test_the_heatmap_payload_holds_no_angle_bracket(text: str) -> None:
 
     assert "<" not in payload
     names = [c["name"] for c in json.loads(payload)["contributors"]]
-    assert _sanitise_chart_label(text) in names, "the name arrives as the sanitiser leaves it"
+    assert unescape(_sanitise_chart_label(text)) in names, "the page is given the name's text"
 
 
 def test_an_extension_carries_no_markup_into_the_chart() -> None:

@@ -325,11 +325,14 @@ class TestSanitiseChartLabel:
     def test_plain_string_passes_through_unchanged(self) -> None:
         assert _sanitise_chart_label("Alice Smith") == "Alice Smith"
 
-    def test_html_tag_stripped(self) -> None:
-        assert _sanitise_chart_label("Alice <b>Smith</b>") == "Alice Smith"
+    def test_a_tag_is_written_as_text_plotly_shows(self) -> None:
+        """Plotly decodes the entities to `<b>` as text; it reads no tag."""
+        assert _sanitise_chart_label("Alice <b>Smith</b>") == "Alice &lt;b&gt;Smith&lt;/b&gt;"
 
-    def test_script_tag_stripped(self) -> None:
-        assert _sanitise_chart_label("<script>alert(1)</script>Alice") == "Alice"
+    def test_a_script_is_written_as_text_plotly_shows(self) -> None:
+        assert _sanitise_chart_label("<script>alert(1)</script>Alice") == (
+            "&lt;script&gt;alert(1)&lt;/script&gt;Alice"
+        )
 
     def test_null_byte_stripped(self) -> None:
         assert _sanitise_chart_label("Alice\x00Smith") == "AliceSmith"
@@ -337,8 +340,9 @@ class TestSanitiseChartLabel:
     def test_surrounding_whitespace_trimmed(self) -> None:
         assert _sanitise_chart_label("  Alice  ") == "Alice"
 
-    def test_ampersand_preserved(self) -> None:
-        assert _sanitise_chart_label("Alice & Bob") == "Alice & Bob"
+    def test_an_ampersand_is_an_entity_so_none_typed_is_decoded(self) -> None:
+        assert _sanitise_chart_label("Alice & Bob") == "Alice &amp; Bob"
+        assert _sanitise_chart_label("A&#8238;B") == "A&amp;#8238;B"
 
     def test_parentheses_preserved(self) -> None:
         assert _sanitise_chart_label("Alice (Smith)") == "Alice (Smith)"

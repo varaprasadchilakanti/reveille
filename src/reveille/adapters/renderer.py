@@ -26,6 +26,7 @@ import re
 import shlex
 from collections import defaultdict
 from collections.abc import Callable, Sequence
+from html import unescape
 from pathlib import Path
 from typing import Any, cast
 
@@ -126,11 +127,8 @@ _MAX_CHART_HEIGHT: int = 2400
 # The Lorenz reference diagonal: neutral, so it reads as scaffolding, not a series.
 _EQUALITY_LINE_COLOUR: str = "#767676"
 
-# Sanitising patterns: script blocks go with their content before other tags.
-_SCRIPT_BLOCK_RE: re.Pattern[str] = re.compile(
-    r"<script\b[^>]*>.*?</script\b[^>]*>", re.IGNORECASE | re.DOTALL
-)
-_HTML_TAG_RE: re.Pattern[str] = re.compile(r"<[^>]+>")
+# What Plotly reads as markup in a label, written as the entities it decodes back to text.
+_PLOTLY_TEXT = str.maketrans({"&": "&amp;", "<": "&lt;", ">": "&gt;"})
 
 
 @functools.cache
@@ -1470,6 +1468,11 @@ def _accessible_table(chart: str, specification: str) -> dict[str, Any]:
     if not series or headings is None:
         return {}
 
+    # The labels are written for Plotly; the table, escaped by Jinja, shows their text.
+    series = [
+        (name, [unescape(c) if isinstance(c, str) else c for c in categories], values)
+        for name, categories, values in series
+    ]
     if len(series) == 1:
         _name, categories, values = series[0]
         columns = list(headings[:2]) or ["Item", "Value"]
@@ -1708,7 +1711,8 @@ def _build_heatmap_data(
     for r in ranked_contributors:
         email_key = r.stats.email.lower()
         if email_key in per_email:
-            contributors.append({"email": email_key, "name": labels[email_key]})
+            # Drawn as text by the page, not by Plotly.
+            contributors.append({"email": email_key, "name": unescape(labels[email_key])})
             daily_counts[email_key] = dict(per_email[email_key])
 
     payload: dict[str, object] = {
@@ -2175,22 +2179,23 @@ _DIRECTION_CONTROLS: dict[int, str] = {
 
 
 def _sanitise_chart_label(value: str) -> str:
-    r"""Strip HTML tags, stray angle brackets, null bytes and surrounding whitespace.
+    r"""Return a label Plotly shows as the text it is.
 
-    Labels come from commit metadata, and Plotly renders some HTML in them. A lone
-    `<` or `>` is dropped too, so a label joined to other text cannot form a tag.
-    Direction controls are shown as `\uXXXX` escapes rather than obeyed.
+    Labels come from commit metadata. Plotly reads tags in a label (`<a>`, `<b>`,
+    `<span style>`), then decodes `&...;` entities in the text between them, so `&`,
+    `<` and `>` are written as entities: nothing forms a tag, an entity shows as
+    typed, and two names that differ only by markup stay two. Null bytes and
+    surrounding whitespace are removed, and direction controls are shown as
+    `\uXXXX` escapes rather than obeyed. `unescape` gives the text back.
 
     Args:
         value: The raw string to sanitise.
 
     Returns:
-        The sanitised string.
+        The label to give Plotly.
     """
-    value = _SCRIPT_BLOCK_RE.sub("", value)
-    value = _HTML_TAG_RE.sub("", value)
-    value = value.replace("<", "").replace(">", "").replace("\x00", "")
-    return value.translate(_DIRECTION_CONTROLS).strip()
+    value = value.replace("\x00", "").translate(_DIRECTION_CONTROLS).strip()
+    return value.translate(_PLOTLY_TEXT)
 
 
 def _aggregate_pie_data(

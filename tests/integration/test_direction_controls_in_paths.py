@@ -10,7 +10,6 @@ report shows each as `\\u202e`, as the text formats do.
 
 from __future__ import annotations
 
-import html
 import json
 import re
 import subprocess
@@ -46,7 +45,7 @@ def test_a_paths_direction_controls_are_shown_not_obeyed(tmp_path: Path) -> None
     page = out.read_text(encoding="utf-8")
     spec = re.search(r'id="spec-hotspots">\s*(.*?)\s*</script>', page, re.S)
     assert spec, "positive control: the hotspot chart is in the page"
-    labels = json.dumps(json.loads(html.unescape(spec.group(1))), ensure_ascii=False)
+    labels = json.dumps(json.loads(spec.group(1)), ensure_ascii=False)
     assert "invoice\\\\u202efdp.exe" in labels, "the control is shown as an escape"
     assert not _CONTROLS.search(labels), "a chart label obeys a direction control"
     assert not _CONTROLS.search(page.replace(_bundle(), "")), "the markup carries one"
