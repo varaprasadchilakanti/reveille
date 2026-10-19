@@ -647,6 +647,7 @@ class GitReader:
             RepositoryError: If the path is not a valid readable Git repository.
         """
         self._mailmap_applied = False
+        self._active_branch: str | None = None
         self._file_stats: tuple[FileStats, ...] = ()
         #: Commits the last `read_commits` dropped as dated after `dated_until`.
         self.commits_dated_after: int = 0
@@ -893,9 +894,7 @@ class GitReader:
 
         # An unborn HEAD is a negative answer, not a read failure; a named branch
         # is read even then, and a missing one fails below.
-        # GitPython's check also says no for a branch whose name is not UTF-8,
-        # so a no is checked again before it is taken as the answer.
-        if branch is None and not self._repo.head.is_valid() and self.resolve_head_sha() is None:
+        if branch is None and not self._head_is_born():
             raise EmptyRepositoryError(
                 f"Repository at '{self._repo_path}' contains no commits. "
                 "There is nothing to read until the first commit is made."
@@ -1126,26 +1125,47 @@ class GitReader:
             self.resolve_commit(branch)
         return rev
 
+    def _head_is_born(self) -> bool:
+        """Return whether HEAD names a commit, as Git sees it; False when it is unborn.
+
+        Asked of Git, not GitPython: GitPython says no for a HEAD it cannot
+        parse or whose commit it cannot read, which made a repository with
+        history, or a damaged one, read as having none.
+
+        Raises:
+            RepositoryError: If HEAD exists but names no commit Git can read.
+        """
+        try:
+            self._git().rev_parse("--quiet", "--verify", "--end-of-options", "HEAD^{commit}")
+        except GitCommandError:
+            pass
+        else:
+            return True
+        try:
+            self._git().rev_parse("--quiet", "--verify", "--end-of-options", "HEAD")
+        except GitCommandError:
+            return False  # no such ref: unborn
+        raise RepositoryError(
+            f"HEAD in '{self._repo_path}' names an object that is missing or is not a "
+            "commit, so the repository is damaged. Run `git fsck` to see what is wrong."
+        )
+
     def _resolve_active_branch(self) -> str:
         """Return the active branch name, or 'HEAD' when detached.
+
+        Git's answer, asked once: GitPython splits HEAD at U+2028, U+2029 and
+        U+0085, which a branch name may hold, and stops on one that is not UTF-8.
 
         Returns:
             The branch name, or 'HEAD'.
         """
-        try:
-            return self._repo.active_branch.name
-        except TypeError:
-            return "HEAD"
-        except UnicodeDecodeError:
-            pass
-        # GitPython stops on a name that is not UTF-8. Git's answer keeps such
-        # bytes, so the name can be passed back; asked only then, it costs a
-        # process no other read pays.
-        try:
-            ref = str(self._git().symbolic_ref("--quiet", "HEAD")).strip()
-        except GitCommandError:
-            return "HEAD"
-        return ref.removeprefix("refs/heads/")
+        if self._active_branch is None:
+            try:
+                ref = str(self._git().symbolic_ref("--quiet", "HEAD")).rstrip("\n")
+            except GitCommandError:
+                ref = "HEAD"
+            self._active_branch = ref.removeprefix("refs/heads/")
+        return self._active_branch
 
     def _read_alongside(
         self,
