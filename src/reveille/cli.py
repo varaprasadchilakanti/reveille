@@ -1093,8 +1093,9 @@ def generate(
         typer.Option(
             "--limit",
             help=(
-                "Bound every list of people in JSON and CSV to this many, with "
-                "the full total beside it; the HTML report is not bounded. Default: every one."
+                "Bound every list of people to this many: in JSON with the full total "
+                "beside it, in CSV, and in the HTML. Default: every one in JSON and CSV, "
+                "1,000 in the HTML."
             ),
         ),
     ] = None,

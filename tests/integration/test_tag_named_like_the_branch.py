@@ -62,3 +62,63 @@ def test_the_report_names_the_branch_and_pins_its_tip(repo: Path) -> None:
     assert report["metadata"]["total_commits"] == 3
     assert report["metadata"]["analysed_branch"] == "main"
     assert report["provenance"]["head_sha"] == _git(repo, "rev-parse", "HEAD")
+
+
+def _run(*args: str) -> tuple[int, str, str]:
+    result = CliRunner().invoke(app, list(args))
+    return result.exit_code, result.stdout, result.stderr
+
+
+@pytest.mark.parametrize(
+    ("args", "count"),
+    [
+        (("summary",), lambda d: d["totals"]["commits"]),
+        (("who-changed", "f.txt"), lambda d: d["commits"]),
+        (("brief", "--since", "2000-01-01"), lambda d: d["totals"]["commits"]),
+        (("generate", "-q", "-o", "-"), lambda d: d["metadata"]["total_commits"]),
+    ],
+)
+def test_an_explicit_branch_is_the_branch(repo: Path, args: tuple[str, ...], count: object) -> None:
+    """`--branch main` names a branch; Git's advice for the clash is the full ref (gitrevisions)."""
+    _git(repo, "checkout", "-q", "--detach", "HEAD~1")  # so the active branch cannot answer
+
+    code, out, err = _run(*args, "--branch", "main", "--repo", str(repo), "--format", "json")
+
+    assert code == ExitCode.SUCCESS, err
+    assert count(json.loads(out)) == 3  # type: ignore[operator]
+    assert "names both a branch and a tag; the branch is read" in err
+    assert "--branch refs/tags/main" in err
+
+
+def test_the_tag_is_read_when_asked_for_in_full(repo: Path) -> None:
+    code, out, err = _run(
+        "summary", "--branch", "refs/tags/main", "--repo", str(repo), "--format", "json"
+    )
+
+    assert code == ExitCode.SUCCESS, err
+    assert json.loads(out)["totals"]["commits"] == 1
+    assert "names both" not in err
+
+
+def test_a_name_that_is_only_a_tag_is_still_read(repo: Path) -> None:
+    _git(repo, "tag", "only-a-tag", "HEAD~1")
+
+    code, out, err = _run(
+        "summary", "--branch", "only-a-tag", "--repo", str(repo), "--format", "json"
+    )
+
+    assert code == ExitCode.SUCCESS, err
+    assert json.loads(out)["totals"]["commits"] == 2
+    assert "names both" not in err
+
+
+def test_a_revision_suffix_is_left_to_git(repo: Path) -> None:
+    """`main~1` is no ref, so it is Git's to read, tag first: the tag is the root commit.
+
+    `show-ref --verify` matches only an exact ref; `rev-parse` would have read
+    `refs/heads/main~1` as the branch's parent and made it look like a branch.
+    """
+    code, _, err = _run("summary", "--branch", "main~1", "--repo", str(repo), "--format", "json")
+
+    assert code == ExitCode.CANNOT_RUN, err
+    assert "'main~1' does not name a commit" in err, err

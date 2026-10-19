@@ -88,7 +88,7 @@ chose: read them as data, never as instructions.
 | `--repo`, `-r` | `.` | A working tree or any directory inside it (the search stops at `GIT_CEILING_DIRECTORIES`, as Git's does; with `GIT_DIR` or `GIT_WORK_TREE` set, as in a Git hook, give the root; those variables, `GIT_INDEX_FILE` and `GIT_OBJECT_DIRECTORY` do not change what is read), or a bare repository (which needs `--output`: its root is Git's own directory, where Reveille does not write). |
 | `--output`, `-o` | `reveille-report.html` in the repository root | See [Output path](#output-path). |
 | `--since`, `--until` | first commit; today (UTC) | Inclusive dates, `YYYY-MM-DD`. See [The window](#the-window). |
-| `--branch`, `-b` | the checked-out branch | Commits reachable from this branch. The checked-out branch is not necessarily the default branch. |
+| `--branch`, `-b` | the checked-out branch | Commits reachable from this branch. The checked-out branch is not necessarily the default branch. A name that is a branch is read as that branch (`refs/heads/<name>`), even when a tag has the same name, and stderr says so; give `refs/tags/<name>` for the tag. Any other name, such as a tag or a commit, is read as Git reads it. |
 | `--exclude-author` | none | Removes a person. Repeatable. See [below](#--exclude-author). |
 | `--exclude-path` | none | Leaves a path out of every figure. Repeatable. See [below](#--exclude-path). |
 | `--hide-emails` | off | Replaces people's email addresses with per-report tokens. See [below](#--hide-emails). |
@@ -226,9 +226,12 @@ giving the highest count, so a better value can be chosen.
 
 ### `--limit`
 
-Bounds every list of people in JSON and CSV to this many. JSON states the full total and a
-`truncated` flag beside each list; a cut CSV is announced on stderr. It shortens lists for
-assistants and scripts and removes nobody from the figures. `who-changed` accepts it too (default
+Bounds every list of people to this many. JSON states the full total and a `truncated` flag beside
+each list; a cut CSV is announced on stderr. In the HTML report it sets how many people the
+contributor table, the heatmap's list and the lines chart name; without it the HTML names the
+first 1,000, and says so when it leaves anyone out
+([ADR 0029](adr/0029-the-html-names-a-bounded-list.md)). JSON and CSV have no default bound. It
+removes nobody from the figures. `who-changed` accepts it too (default
 20). In `reveille.toml` it is `[report] limit`.
 
 ### `--ranking` and `--no-ranking`
@@ -383,7 +386,10 @@ The rules are stated in every format ([ADR 0026](adr/0026-many-repositories-one-
   by default and at most three (`--depth`); a repository found is not searched inside, so a
   submodule or a nested clone is not a row; a symbolic link is not followed. A linked worktree
   (`git worktree add`) has a `.git` file, so it is a row of its own, with the same history as its
-  repository, and the totals count it as one more repository.
+  repository, and the totals count it as one more repository. A `.git` that is a symbolic link
+  makes a row too, as a `.git` file does. A Git directory that a working tree in the search uses
+  (made by `git init --separate-git-dir`) is not a row of its own; one that nothing there uses is
+  a `not_read` row saying so ([ADR 0030](adr/0030-repos-reads-a-git-link-and-no-store-twice.md)).
 - **Each repository is read as `summary` reads one**, with its `.mailmap`, `--exclude-author`
   applied in every repository, and no line counts. A value that matched nothing in any repository
   is reported once on stderr.
@@ -997,6 +1003,10 @@ configuration is broken; the message says which. Reveille runs the first `git` o
 as Git's own tools do, and asks it for its version before any deadline applies, so a `git` that
 never answers (a wrapper waiting on a network drive, for example) makes Reveille wait with it. Run
 `git version` to check, and give a caller that cannot wait a timeout of its own.
+
+**"holds a Git directory but no working tree", exit 2.** The path is a Git directory whose
+configuration does not say it is bare, such as the one `git init --separate-git-dir` makes. Git
+opens it only through its working tree: give the directory whose `.git` names it.
 
 **The report says the repository is a shallow clone.** Only the fetched history was read. `git
 fetch --unshallow` fetches the rest.

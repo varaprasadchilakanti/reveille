@@ -32,7 +32,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 from git import Git, InvalidGitRepositoryError, NoSuchPathError, Repo
 from git.compat import safe_decode
@@ -650,6 +650,7 @@ class GitReader:
         """
         self._mailmap_applied = False
         self._active_branch: str | None = None
+        self._branch_refs: dict[str, str] = {}
         self._file_stats: tuple[FileStats, ...] = ()
         #: Commits the last `read_commits` dropped as dated after `dated_until`.
         self.commits_dated_after: int = 0
@@ -713,15 +714,7 @@ class GitReader:
         try:
             self._git().rev_parse("--git-dir")
         except GitCommandError as exc:
-            # Git refuses a repository another user owns, and GitPython then reads
-            # its HEAD as unborn: "no commits" would be a wrong answer.
-            if "dubious ownership" in str(exc.stderr):
-                raise RepositoryError(
-                    f"Git refuses to read '{repo_path}': another user owns it. If you "
-                    "trust it, add it to Git's safe.directory setting "
-                    "(git config --global --add safe.directory <path>)."
-                ) from exc
-            raise RepositoryError(f"Git cannot read '{repo_path}': {exc.stderr.strip()}") from exc
+            _refuse_what_git_cannot_open(repo_path, exc)
         # GitPython cannot parse SHA-256 refs and reads HEAD as unborn: refuse
         # rather than answer "no commits". Git before 2.29 echoes the option.
         if str(self._git().rev_parse("--show-object-format")).strip() == "sha256":
@@ -1145,7 +1138,7 @@ class GitReader:
                 is not one branch, tag or commit (a range would narrow the history
                 while the report still says "branch").
         """
-        rev = branch or self._active_revision()
+        rev = self.branch_revision(branch)
         if rev.startswith("-"):
             raise RepositoryError(
                 f"Refusing to use {rev!r} as a revision: a value beginning with "
@@ -1153,7 +1146,7 @@ class GitReader:
                 "a branch. If a ref really has this name, rename it."
             )
         if branch is not None:
-            self.resolve_commit(branch)
+            self.resolve_commit(rev)
         return rev
 
     def _head_is_born(self) -> bool:
@@ -1188,6 +1181,45 @@ class GitReader:
             The branch name, or 'HEAD'.
         """
         return self._active_revision().removeprefix("refs/heads/")
+
+    def branch_revision(self, branch: str | None) -> str:
+        """Return the revision a branch name is read as: the branch, when there is one.
+
+        Git reads `refs/tags/<name>` before `refs/heads/<name>` (gitrevisions(7)),
+        so a tag sharing a branch's name stood in for it. Git's advice for that case
+        is to name the ref in full, which also leaves nothing to its lookup order.
+        A name that is no branch is left for Git to read as a tag or commit.
+
+        Args:
+            branch: As given; the active branch if None.
+
+        Returns:
+            `refs/heads/<name>` when that branch exists, else the name as given.
+        """
+        if branch is None:
+            return self._active_revision()
+        if branch.startswith(("-", "refs/")) or branch == "HEAD":
+            return branch  # refused later, already in full, or the checked-out commit
+        if branch not in self._branch_refs:
+            self._branch_refs[branch] = (
+                f"refs/heads/{branch}" if self._ref_exists(f"refs/heads/{branch}") else branch
+            )
+            if self._branch_refs[branch] != branch and self._ref_exists(f"refs/tags/{branch}"):
+                _logger.warning(
+                    "%r names both a branch and a tag; the branch is read. "
+                    "Give --branch refs/tags/%s to read the tag.",
+                    branch,
+                    branch,
+                )
+        return self._branch_refs[branch]
+
+    def _ref_exists(self, ref: str) -> bool:
+        """Return whether this exact ref exists; `show-ref --verify` reads no revision syntax."""
+        try:
+            self._git().show_ref("--verify", "--quiet", ref)
+        except GitCommandError:
+            return False
+        return True
 
     def _active_revision(self) -> str:
         """Return the active branch's full ref, as read, or 'HEAD' when detached.
@@ -1811,7 +1843,7 @@ class GitReader:
         until: datetime.date | None,
     ) -> list[str]:
         """Do the work of `tags_in_range`, letting Git's errors through."""
-        rev = branch or self._active_revision()
+        rev = self.branch_revision(branch)
         walk = f"{from_commit}..{rev}" if from_commit is not None else rev
         _, rev_list_args = _build_log_args(walk, since, until, self._supports_since_as_filter())
         order = {
@@ -1868,7 +1900,7 @@ class GitReader:
         if before_commit is not None:
             args += ["--end-of-options", before_commit]
         else:
-            rev = branch or self._active_revision()
+            rev = self.branch_revision(branch)
             before = None if before_date is None else _git_before(before_date)
             if before is not None:
                 args.append(f"--before={before}")
@@ -1941,7 +1973,7 @@ class GitReader:
         Returns:
             The 40-character SHA, or None if the ref cannot be resolved.
         """
-        rev = branch or self._active_revision()
+        rev = self.branch_revision(branch)
         try:
             sha = self._git().rev_parse(
                 "--quiet", "--verify", "--end-of-options", f"{rev}^{{commit}}"
@@ -2645,13 +2677,76 @@ def find_repositories(directory: Path, depth: int) -> tuple[list[Path], list[Pat
                 else:
                     below.append(candidate)
         level = below
+    # A Git directory a working tree here uses (`git init --separate-git-dir`) is
+    # that working tree's, so it is not a row of its own. One nothing uses stays.
+    used = {_git_directory_of(tree) for tree in found}
+    found = [path for path in found if path.resolve() not in used]
     return sorted(found), sorted(unreadable)
 
 
-def is_repository(path: Path) -> bool:
-    """Return whether `path` is a working tree or a bare repository, by its files alone."""
+def _refuse_what_git_cannot_open(repo_path: Path, exc: GitCommandError) -> NoReturn:
+    """Say why Git cannot open a repository, in its own words where Reveille has none.
+
+    Args:
+        repo_path: The repository given.
+        exc: Git's refusal.
+
+    Raises:
+        RepositoryError: Always.
+    """
+    # Git refuses a repository another user owns, and GitPython then reads
+    # its HEAD as unborn: "no commits" would be a wrong answer.
+    if "dubious ownership" in str(exc.stderr):
+        raise RepositoryError(
+            f"Git refuses to read '{repo_path}': another user owns it. If you "
+            "trust it, add it to Git's safe.directory setting "
+            "(git config --global --add safe.directory <path>)."
+        ) from exc
+    if not os.path.lexists(repo_path / ".git") and is_repository(repo_path):
+        # A Git directory not configured as bare, such as the store that
+        # `git init --separate-git-dir` makes: Git looks for its working tree.
+        raise RepositoryError(
+            f"'{repo_path}' holds a Git directory but no working tree, and its "
+            "configuration does not say it is bare (core.bare is not true). Give the "
+            "working tree whose `.git` names this directory."
+        ) from exc
+    raise RepositoryError(f"Git cannot read '{repo_path}': {exc.stderr.strip()}") from exc
+
+
+#: A `.git` file holds one `gitdir:` line, a path; more than a path's length is not one.
+_MAX_GITFILE_BYTES = 4096
+
+
+def _git_directory_of(tree: Path) -> Path | None:
+    """Return the Git directory a working tree's `.git` names, by its files alone.
+
+    A `.git` directory is its own; a symbolic link is resolved; a `.git` file is
+    read for its `gitdir:` line, relative to the tree when not absolute.
+    """
+    dotgit = tree / ".git"
     try:
-        if (path / ".git").exists() and not (path / ".git").is_symlink():
+        if dotgit.is_symlink() or dotgit.is_dir():
+            return dotgit.resolve()
+        # Opened without waiting, so a named pipe here does not hold the search (it
+        # reads as empty), and read to a bound, so a device cannot read for ever.
+        descriptor = os.open(dotgit, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
+        with os.fdopen(descriptor, "rb") as handle:
+            line = handle.read(_MAX_GITFILE_BYTES).split(b"\n", 1)[0].decode()
+    except (OSError, UnicodeDecodeError):
+        return None
+    if not line.startswith("gitdir: "):
+        return None
+    return (tree / line.removeprefix("gitdir: ").strip()).resolve()
+
+
+def is_repository(path: Path) -> bool:
+    """Return whether `path` is a working tree or a bare repository, by its files alone.
+
+    A `.git` that is a symbolic link counts, as a `.git` file does: it names the
+    repository's own Git directory, as Git reads it, and the search does not enter it.
+    """
+    try:
+        if os.path.lexists(path / ".git"):
             return True
         return (
             (path / "HEAD").is_file() and (path / "objects").is_dir() and (path / "refs").is_dir()
