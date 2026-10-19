@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -501,3 +502,18 @@ class TestATagNamedLikeAHash:
 
         assert (state["latest_tag"], state["commits_since_tag"]) == (first, 0)
         assert brief.exit_code == ExitCode.NEGATIVE, brief.stdout
+
+
+class TestOnWindows:
+    def test_state_reads_where_git_python_cannot_stop_a_command(
+        self, repo: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """GitPython refuses `kill_after_timeout` on Windows, so `state` must not pass it there."""
+        from reveille.adapters.git_reader import GitReader
+
+        reader = GitReader(repo)
+        monkeypatch.setattr(sys, "platform", "win32")  # read by GitPython at each call
+
+        state = reader.read_state()
+
+        assert state.branch == "main"

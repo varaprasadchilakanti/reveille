@@ -1458,6 +1458,10 @@ class GitReader:
                     f"filter.{name}.required=false",
                 )
             ]
+            # GitPython refuses a deadline on Windows rather than run the command.
+            deadline = (
+                {} if sys.platform == "win32" else {"kill_after_timeout": STATUS_TIMEOUT_SECONDS}
+            )
             try:
                 raw = str(
                     self._git(overrides).status(
@@ -1466,7 +1470,7 @@ class GitReader:
                         "-z",
                         "--untracked-files=normal",
                         "--ignore-submodules=all",
-                        kill_after_timeout=STATUS_TIMEOUT_SECONDS,
+                        **deadline,
                     )
                 )
             except GitCommandError as exc:
