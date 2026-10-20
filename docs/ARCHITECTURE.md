@@ -238,9 +238,10 @@ report, and never for JSON or CSV.
 
 `ReportConfig` (Pydantic) lives in `config.py`; a validator refuses a `since` later than `until`.
 `RankingWeights` holds `commits=0.30`, `lines=0.25`, `consistency=0.25`, `recency=0.20`, each in
-`[0, 1]`, with a validator enforcing that they sum to 1.0 within `1e-6`. `load_config_from_toml`
-reads via stdlib `tomllib` and flattens `[report]`, `[filters]`, `[ranking]` and `[areas]` into a
-`ReportConfigKwargs` `TypedDict`.
+`[0, 1]`, with a validator enforcing that they sum to 1.0 within `1e-6`. `read_config_file`, which
+the CLI calls, reads via stdlib `tomllib`, flattens `[report]`, `[filters]`, `[ranking]` and
+`[areas]` into a `ReportConfigKwargs` `TypedDict`, and names the keys it does not read;
+`load_config_from_toml` returns the values alone.
 
 **An explicitly provided CLI flag always beats the config file.** `min_commits` carries a `None`
 sentinel for this reason: without it, `--min-commits 1` is indistinguishable from "not provided",

@@ -110,6 +110,8 @@ limit liability as far as applicable law allows.
   branch names, and with one or two people the counts can identify someone.
   `generate --format json --output -` prints names and email addresses, which leave your machine if
   given to a hosted model.
+  To tell a coding agent about these, `reveille skill >> AGENTS.md` adds a short section to its
+  instructions ([`reveille skill`](#reveille-skill)).
 
 Its figures do not support judging people; see [Contributor Ranking](#contributor-ranking).
 

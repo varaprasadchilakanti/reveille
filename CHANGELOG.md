@@ -132,8 +132,6 @@ before release.
 - **A commit dated in the last week of 9999 stopped the HTML report** ("date value out of range",
   exit 2). Git accepts such a date. The weekly charts now end at that week. JSON and CSV were not
   affected.
-- **`repos --depth 1` left out a directory it could not open, with no note.** It may be a
-  repository; it is now counted in "could not be listed", as it was at greater depths.
 - **When Git could not say whether a clone is shallow, Reveille took it as "no".** A shallow
   clone's figures could then read as the whole history, with no notice. It now stops with Git's
   reason (exit 2), or, in `repos`, gives that row as not read.
