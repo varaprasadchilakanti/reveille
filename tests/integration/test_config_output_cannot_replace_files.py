@@ -10,6 +10,7 @@ bare repository inside the tree, and the run exited 0.
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -95,6 +96,32 @@ def test_the_sibling_a_format_writes_is_checked(repo: Path, output_format: str, 
 
     assert code == ExitCode.CANNOT_RUN, stderr
     assert sibling.read_text(encoding="utf-8") == start
+
+
+@pytest.mark.skipif(os.name == "nt" or os.geteuid() == 0, reason="needs POSIX permissions")
+def test_a_sibling_that_cannot_be_read_is_kept(repo: Path) -> None:
+    sibling = repo / "data.json"
+    sibling.write_text(_WORK, encoding="utf-8")
+    sibling.chmod(0)
+    _configure(repo, "data.html", "json")
+    try:
+        code, stderr = _generate()
+    finally:
+        sibling.chmod(0o644)
+
+    assert code == ExitCode.CANNOT_RUN, stderr
+    assert sibling.read_text(encoding="utf-8") == _WORK
+
+
+def test_a_sibling_that_is_not_a_file_is_refused(repo: Path) -> None:
+    (repo / "data.csv").mkdir()
+    _configure(repo, "data.html", "csv")
+
+    code, stderr = _generate()
+
+    assert code == ExitCode.CANNOT_RUN, stderr
+    assert "which is not a Reveille report" in stderr
+    assert (repo / "data.csv").is_dir()
 
 
 def test_an_output_the_user_names_is_theirs_to_replace(repo: Path) -> None:

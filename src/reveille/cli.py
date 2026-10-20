@@ -756,10 +756,12 @@ _REPORT_STARTS = {
 
 
 def _written_by_reveille(path: Path, output_format: str) -> bool:
-    """Whether `path` is missing, or a regular file that begins as a Reveille report does."""
+    """Whether `path` is missing, or begins as a Reveille report does.
+
+    A directory cannot be read and a pipe reads as empty (opened without waiting), so
+    neither passes; a symbolic link is replaced by the write, not followed.
+    """
     try:
-        if not stat.S_ISREG(path.lstat().st_mode):
-            return False
         descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
         with os.fdopen(descriptor, "rb") as handle:
             head = handle.read(4096).decode("utf-8", errors="replace").lstrip("\ufeff")
