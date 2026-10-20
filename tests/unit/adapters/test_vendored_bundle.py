@@ -21,7 +21,7 @@ import pytest
 from markupsafe import escape
 
 from reveille.adapters.renderer import Renderer
-from tests.unit.adapters.test_lorenz_chart import _report_data
+from tests.unit.adapters.report_data import report_data
 
 pytestmark = pytest.mark.unit
 
@@ -95,7 +95,7 @@ def test_every_package_the_bundle_names_is_traced() -> None:
 
 
 def test_the_report_carries_the_notices(tmp_path: Path) -> None:
-    Renderer().render(_report_data([3, 1]), tmp_path / "r.html")
+    Renderer().render(report_data([3, 1]), tmp_path / "r.html")
     html = (tmp_path / "r.html").read_text(encoding="utf-8")
 
     assert str(escape(_NOTICES)) in html

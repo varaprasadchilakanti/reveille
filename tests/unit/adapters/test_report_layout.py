@@ -17,12 +17,12 @@ import pytest
 
 from reveille.adapters.renderer import Renderer
 from reveille.domain.models import Commit
-from tests.unit.adapters.test_lorenz_chart import _report_data
+from tests.unit.adapters.report_data import report_data
 
 
 @pytest.fixture(scope="module")
 def rendered(tmp_path_factory: pytest.TempPathFactory) -> str:
-    data = _report_data([12, 7, 3])
+    data = report_data([12, 7, 3])
     data.commits = [
         Commit(
             sha=f"{index:040d}",

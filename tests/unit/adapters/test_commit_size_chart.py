@@ -93,10 +93,10 @@ class TestItIsWiredIntoTheReport:
 
     def test_the_rendered_report_contains_it(self, tmp_path: Path) -> None:
         from reveille.adapters.renderer import Renderer
-        from tests.unit.adapters.test_lorenz_chart import _report_data
+        from tests.unit.adapters.report_data import report_data
 
         out = tmp_path / "r.html"
-        Renderer().render(_report_data([5, 3]), out)
+        Renderer().render(report_data([5, 3]), out)
         assert 'id="spec-commit_size"' in out.read_text(encoding="utf-8")
 
     def test_it_names_no_contributor(self) -> None:

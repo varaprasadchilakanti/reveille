@@ -72,10 +72,10 @@ def test_only_the_reports_own_scripts_may_run(tmp_path: Path) -> None:
     import hashlib
 
     from reveille.adapters.renderer import Renderer
-    from tests.unit.adapters.test_lorenz_chart import _report_data
+    from tests.unit.adapters.report_data import report_data
 
     out = tmp_path / "r.html"
-    Renderer().render(_report_data([3, 1]), out)
+    Renderer().render(report_data([3, 1]), out)
     page = out.read_text(encoding="utf-8")
     policy = re.search(r'<meta http-equiv="Content-Security-Policy" content="([^"]+)">', page)
     assert policy

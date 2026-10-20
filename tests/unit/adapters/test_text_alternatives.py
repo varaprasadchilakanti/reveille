@@ -22,7 +22,7 @@ from pathlib import Path
 import pytest
 
 from reveille.adapters.renderer import Renderer, _accessible_table
-from tests.unit.adapters.test_lorenz_chart import _report_data
+from tests.unit.adapters.report_data import report_data
 
 _TEMPLATE = Path(__file__).resolve().parents[3] / "src/reveille/templates/report.html.j2"
 
@@ -37,7 +37,7 @@ def rendered(tmp_path_factory: pytest.TempPathFactory) -> str:
     """
     from reveille.domain.models import Commit
 
-    data = _report_data([12, 7, 3])
+    data = report_data([12, 7, 3])
     data.commits = [
         Commit(
             sha=f"{index:040d}",

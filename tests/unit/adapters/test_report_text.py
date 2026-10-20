@@ -20,7 +20,7 @@ import pytest
 
 from reveille.adapters.renderer import Renderer
 from reveille.domain.models import Commit, ReportData
-from tests.unit.adapters.test_lorenz_chart import _report_data
+from tests.unit.adapters.report_data import report_data
 
 
 def _render(data: ReportData, tmp_path_factory: pytest.TempPathFactory) -> str:
@@ -51,18 +51,18 @@ def _with_commits(data: ReportData) -> ReportData:
 @pytest.mark.unit
 class TestTheReportsOwnWords:
     def test_one_contributor_holds(self, tmp_path_factory: pytest.TempPathFactory) -> None:
-        text = _render(_report_data([30, 1]), tmp_path_factory)
+        text = _render(report_data([30, 1]), tmp_path_factory)
 
         assert "Holds Half the Commits" in text
 
     def test_several_contributors_hold(self, tmp_path_factory: pytest.TempPathFactory) -> None:
-        text = _render(_report_data([5, 5, 5, 5]), tmp_path_factory)
+        text = _render(report_data([5, 5, 5, 5]), tmp_path_factory)
 
         assert "Hold Half the Commits" in text
         assert "Holds Half" not in text
 
     def test_no_markdown_backticks(self, tmp_path_factory: pytest.TempPathFactory) -> None:
-        text = _render(_with_commits(_report_data([15, 15])), tmp_path_factory)
+        text = _render(_with_commits(report_data([15, 15])), tmp_path_factory)
 
         assert "git log" in text, "positive control: the sentence is present"
         assert "`" not in text
@@ -70,7 +70,7 @@ class TestTheReportsOwnWords:
     def test_the_gini_ceiling_is_never_printed_as_one(
         self, tmp_path_factory: pytest.TempPathFactory
     ) -> None:
-        text = _render(_report_data([1] * 300), tmp_path_factory)
+        text = _render(report_data([1] * 300), tmp_path_factory)
 
         match = re.search(r"Gini runs 0 \(even\) to ([0-9.]+)", text)
         assert match, "the Gini note is missing"
@@ -80,12 +80,12 @@ class TestTheReportsOwnWords:
     def test_a_small_population_keeps_two_places(
         self, tmp_path_factory: pytest.TempPathFactory
     ) -> None:
-        text = _render(_report_data([3, 1]), tmp_path_factory)
+        text = _render(report_data([3, 1]), tmp_path_factory)
 
         assert "Gini runs 0 (even) to 0.50," in text
 
     def test_the_period_is_written_one_way(self, tmp_path_factory: pytest.TempPathFactory) -> None:
-        text = _render(_report_data([3, 1]), tmp_path_factory)
+        text = _render(report_data([3, 1]), tmp_path_factory)
 
         assert "2024-01-01 to 2024-06-01" in text
         assert "2024-01-01 — 2024-06-01" not in text
@@ -94,7 +94,7 @@ class TestTheReportsOwnWords:
     def test_a_detached_head_names_the_commit(
         self, tmp_path_factory: pytest.TempPathFactory
     ) -> None:
-        data = _report_data([3, 1])
+        data = report_data([3, 1])
         data = replace(
             data,
             metadata=replace(data.metadata, analysed_branch="HEAD"),
@@ -112,7 +112,7 @@ class TestTheReportStatesItsLimits:
     def test_the_html_carries_the_notice_under_the_header(
         self, tmp_path_factory: pytest.TempPathFactory
     ) -> None:
-        text = _render(_report_data([3, 1]), tmp_path_factory)
+        text = _render(report_data([3, 1]), tmp_path_factory)
         header_end = text.index("</header>")
 
         assert "check before relying on it for a decision" in text[:header_end]
@@ -122,7 +122,7 @@ class TestTheReportStatesItsLimits:
 
         from reveille.adapters.renderer import Renderer
 
-        payload = json.loads(Renderer().json_text(_report_data([3, 1])))
+        payload = json.loads(Renderer().json_text(report_data([3, 1])))
 
         assert "check before relying on it for a decision" in payload["notice"]
 
@@ -134,7 +134,7 @@ class TestTheReportStatesItsLimits:
 
         from reveille.adapters.renderer import _NOTICE
 
-        data = _report_data([3, 1])
+        data = report_data([3, 1])
         notice = re.search(r'<p class="report-notice">(.*?)</p>', _render(data, tmp_path_factory))
 
         assert notice
@@ -215,4 +215,4 @@ def test_a_profile_failure_is_a_render_error(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr(renderer, "repository_profile", broken)
 
     with pytest.raises(RenderError, match="profile"):
-        Renderer().html_text(_report_data([3, 1]))
+        Renderer().html_text(report_data([3, 1]))
