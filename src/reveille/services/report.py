@@ -608,6 +608,7 @@ def brief_text(
         tags=tags,
         output_format=output_format,
         limit=limit,
+        until=config.until,
     )
 
 

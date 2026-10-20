@@ -703,6 +703,7 @@ class Renderer:
         tags: list[str],
         output_format: str,
         limit: int,
+        until: datetime.date | None = None,
     ) -> str:
         """Render a brief as JSON or plain lines (ADR 0022). Names nobody.
 
@@ -714,6 +715,7 @@ class Renderer:
             tags: Tags whose commit lies in the range, newest first.
             output_format: "json", "text", "markdown" or "line".
             limit: The most entries any list carries.
+            until: The window's last day, when the caller closed it.
 
         Returns:
             The brief.
@@ -756,7 +758,7 @@ class Renderer:
             )
 
         if output_format == "markdown":
-            return _brief_markdown(facts, repository, point, tip, tags, limit)
+            return _brief_markdown(facts, repository, point, tip, tags, limit, until)
         if output_format == "line":
             return _brief_line(facts, repository, named, tip, tags)
 
@@ -785,7 +787,7 @@ class Renderer:
             )
         if tags:
             lines.append(f"Tags in the range: {listed(tags)}.")
-        lines.append(f"Next: reveille brief --from {tip[:12]}")
+        lines.append(f"Next: {_next_brief(tip, until)}")
         lines.append(_NOTICE)
         return _joined(lines)
 
@@ -2606,6 +2608,17 @@ def _summary_markdown(document: dict[str, Any]) -> str:
     return _joined(lines)
 
 
+def _next_brief(tip: str, until: datetime.date | None) -> str:
+    """The brief that continues this one: from the tip, or, after a closed window, the next day.
+
+    With `--until` the tip can be later than the window, so starting from it would skip the
+    commits in between.
+    """
+    if until is None:
+        return f"reveille brief --from {tip[:12]}"
+    return f"reveille brief --since {(until + datetime.timedelta(days=1)).isoformat()}"
+
+
 def _brief_markdown(
     facts: Brief,
     repository: tuple[str, str],
@@ -2613,6 +2626,7 @@ def _brief_markdown(
     tip: str,
     tags: list[str],
     limit: int,
+    until: datetime.date | None = None,
 ) -> str:
     """Render a brief as Markdown (ADR 0022)."""
     named, commit = point
@@ -2638,7 +2652,7 @@ def _brief_markdown(
         )
     if tags:
         lines.append(f"- **Tags in the range:** {_md_listed(tags, limit)}")
-    lines += ["", f"Next: {_md(f'reveille brief --from {tip[:12]}')}", "", f"> {_NOTICE}"]
+    lines += ["", f"Next: {_md(_next_brief(tip, until))}", "", f"> {_NOTICE}"]
     return _joined(lines)
 
 
