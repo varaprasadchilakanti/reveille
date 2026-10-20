@@ -2700,6 +2700,10 @@ def find_repositories(directory: Path, depth: int) -> tuple[list[Path], list[Pat
                 candidate = Path(entry.path)
                 if is_repository(candidate):
                     found.append(candidate)
+                elif not os.access(candidate, os.X_OK):
+                    # Nothing inside can be looked at, so it may be a repository; at the
+                    # last level it was left out without a word.
+                    unreadable.append(candidate)
                 else:
                     below.append(candidate)
         level = below
