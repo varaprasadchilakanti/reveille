@@ -15,7 +15,6 @@ stay coupled to the palette.
 
 from __future__ import annotations
 
-import datetime
 import json
 from pathlib import Path
 
@@ -28,73 +27,9 @@ from reveille.adapters.renderer import (
     _translucent,
 )
 from reveille.domain.concentration import gini_coefficient
-from reveille.domain.models import (
-    SCHEMA_VERSION,
-    AnalysisProvenance,
-    ContributorStats,
-    RankedContributor,
-    ReportData,
-    RepositoryMetadata,
-)
+from tests.unit.adapters.report_data import report_data
 
 _TEMPLATE = Path(__file__).resolve().parents[3] / "src/reveille/templates/report.html.j2"
-
-_PROVENANCE = AnalysisProvenance(
-    reveille_version="0.0.0-test",
-    schema_version=SCHEMA_VERSION,
-    head_sha="0" * 40,
-    requested_branch=None,
-    requested_since=None,
-    requested_until=None,
-    exclude_authors_count=0,
-    min_commits=1,
-    ranking_enabled=False,
-    ranking_weights=None,
-    mailmap_applied=False,
-    deterministic=False,
-)
-
-
-def _report_data(counts: list[int]) -> ReportData:
-    """A minimal report whose only interesting content is the distribution."""
-    return ReportData(
-        metadata=RepositoryMetadata(
-            name="test-repo",
-            remote_url=None,
-            analysed_branch="main",
-            total_commits=sum(counts),
-            unique_contributors=len(counts),
-            analysis_since=datetime.date(2024, 1, 1),
-            analysis_until=datetime.date(2024, 6, 1),
-            generated_at=datetime.datetime(2024, 6, 2, 12, 0, tzinfo=datetime.UTC),
-        ),
-        provenance=_PROVENANCE,
-        ranked_contributors=_ranked(counts),
-        commits=[],
-    )
-
-
-def _ranked(counts: list[int]) -> list[RankedContributor]:
-    """Ranked contributors with the given commit counts. Only counts are used."""
-    return [
-        RankedContributor(
-            stats=ContributorStats(
-                name=f"Dev {i}",
-                email=f"dev{i}@example.com",
-                commit_count=c,
-                lines_added=10,
-                lines_deleted=1,
-                active_days=5,
-                first_commit_date=datetime.date(2024, 1, 1),
-                last_commit_date=datetime.date(2024, 6, 1),
-            ),
-            composite_score=float(c),
-            percentile=50.0,
-            tier=1,
-            tier_designation="Private",
-        )
-        for i, c in enumerate(counts)
-    ]
 
 
 def _figure(counts: list[int]) -> dict:
@@ -188,7 +123,7 @@ class TestTheReportShowsTheRealGini:
         from reveille.adapters.renderer import Renderer
 
         out = tmp_path / "r.html"
-        Renderer().render(_report_data(counts), out)
+        Renderer().render(report_data(counts), out)
         html = out.read_text(encoding="utf-8")
         expected = f"{gini_coefficient(counts):.2f}"
         assert f"Gini <b>{expected}</b>" in html, (
@@ -206,7 +141,7 @@ class TestTheReportShowsTheRealGini:
         from reveille.adapters.renderer import Renderer
 
         out = tmp_path / "r.html"
-        Renderer().render(_report_data([4, 4, 4, 4]), out)
+        Renderer().render(report_data([4, 4, 4, 4]), out)
         assert "Gini <b>0.00</b>" in out.read_text(encoding="utf-8")
 
 
@@ -255,7 +190,7 @@ class TestLorenzChartNamesNobody:
         """
         from reveille.adapters.renderer import Renderer
 
-        payload = Renderer()._build_charts(_report_data([10, 5, 1]))["lorenz"]
+        payload = Renderer()._build_charts(report_data([10, 5, 1]))["lorenz"]
         assert payload != "null", "an empty spec would pass whatever leaked"
         assert "Dev 0" not in payload
         assert "@example.com" not in payload
@@ -273,7 +208,7 @@ class TestLorenzChartReachesTheReport:
     def test_build_charts_emits_a_real_lorenz_spec(self) -> None:
         from reveille.adapters.renderer import Renderer
 
-        data = _report_data([10, 5, 1])
+        data = report_data([10, 5, 1])
         charts = Renderer()._build_charts(data)
         assert charts["lorenz"] != "null"
         assert json.loads(charts["lorenz"])["data"]
@@ -289,7 +224,7 @@ class TestLorenzChartReachesTheReport:
         from reveille.adapters.renderer import Renderer
 
         out = tmp_path / "r.html"
-        Renderer().render(_report_data([10, 5, 1]), out)
+        Renderer().render(report_data([10, 5, 1]), out)
         html = out.read_text(encoding="utf-8")
         assert 'id="spec-lorenz"' in html
         assert "Gini <b>" in html

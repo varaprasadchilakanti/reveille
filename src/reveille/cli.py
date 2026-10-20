@@ -861,8 +861,9 @@ def _validate_output_path(
 
     if ".." in output.parts:
         _err(
-            f"Error: output path '{output}' contains upward traversal components. "
-            "Provide an absolute path or a path relative to the current directory.",
+            f"Error: output path '{output}' contains '..'. Give the same place as an "
+            f"absolute path, '{Path(os.path.normpath(Path.cwd() / output))}', or a path "
+            "below the current directory.",
         )
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
@@ -1343,7 +1344,7 @@ def _run_query(produce: Callable[[Callable[[str], None]], str]) -> None:
 
 def _check_query_format(output_format: str, allowed: tuple[str, ...] = ("text", "json")) -> None:
     """Refuse a --format the command does not offer; under json, stderr is JSON too."""
-    _stderr_json["on"] = output_format == "json"
+    _stderr_json["on"] = output_format == "json" and "json" in allowed
     if output_format not in allowed:
         choices = ", ".join(allowed[:-1]) + f" or {allowed[-1]}"
         _err(f"Error: --format must be {choices}, not {output_format!r}.")
@@ -1587,7 +1588,16 @@ def who_changed(
     _check_query_format(output_format)
     from reveille.services.report import who_changed_text
 
-    relative = _repository_path(path, _root(repo))
+    root = _root(repo)
+    from reveille.adapters.git_reader import GitReader
+
+    try:
+        # Opened first: "outside the repository '/tmp'" named a repository that is not one.
+        GitReader(root)
+    except ReveilleError as exc:
+        _err(f"Error: {exc}")
+        raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
+    relative = _repository_path(path, root)
     config = _query_config(repo, since, until, branch, exclude_author, deterministic)
     _run_query(
         lambda notice: who_changed_text(config, relative, output_format, limit, on_notice=notice)
@@ -1733,10 +1743,7 @@ def capabilities(
         render_text,
     )
 
-    _stderr_json["on"] = output_format == "json"
-    if output_format not in {"text", "json"}:
-        _err(f"Error: unsupported format '{output_format}'. Accepted values: text, json.")
-        raise typer.Exit(code=ExitCode.CANNOT_RUN)
+    _check_query_format(output_format)
 
     document = build_capabilities(get_command(app), ExitCode)
     if command is not None:
@@ -1773,9 +1780,7 @@ def skill(
     """
     from reveille.agent_guide import guide
 
-    if output_format not in {"markdown", "skill"}:
-        _err(f"Error: unsupported format '{output_format}'. Accepted values: markdown, skill.")
-        raise typer.Exit(code=ExitCode.CANNOT_RUN)
+    _check_query_format(output_format, ("markdown", "skill"))
     _say(guide(output_format), nl=False)
 
 

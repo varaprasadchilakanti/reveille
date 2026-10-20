@@ -111,7 +111,7 @@ def mailmap() -> _Mailmap:
     return GitReader(_REPO_ROOT)._read_mailmap()
 
 
-@pytest.mark.unit
+@pytest.mark.integration
 class TestTheRepositoryMailmapFoldsItsOwnAliases:
     """Each entry is asserted against the identity it exists to fold."""
 
@@ -168,7 +168,7 @@ class TestTheRepositoryMailmapFoldsItsOwnAliases:
         assert (name, email) == ("Someone Else", "someone@example.com")
 
 
-@pytest.mark.unit
+@pytest.mark.integration
 class TestAnAppAccountIsNotAStrayPerson:
     """The exemption the stray check applies, tested in both directions.
 
@@ -212,7 +212,7 @@ class TestAnAppAccountIsNotAStrayPerson:
         )
 
 
-@pytest.mark.unit
+@pytest.mark.integration
 class TestGitItselfHonoursTheFile:
     """Reveille is not the only consumer, and it is the most forgiving one.
 

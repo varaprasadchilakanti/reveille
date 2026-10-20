@@ -23,7 +23,7 @@ from reveille.adapters.renderer import (
     _build_hotspot_chart,
 )
 from reveille.domain.models import Commit, FileStats
-from tests.unit.adapters.test_lorenz_chart import _report_data
+from tests.unit.adapters.report_data import report_data
 
 
 def _commits(sizes: list[int]) -> list[Commit]:
@@ -81,7 +81,7 @@ class TestNumberAxes:
 @pytest.mark.unit
 def test_cards_carry_thousands_separators(tmp_path_factory: pytest.TempPathFactory) -> None:
     out = tmp_path_factory.mktemp("cards") / "r.html"
-    Renderer().render(_report_data([20000, 10000]), out)
+    Renderer().render(report_data([20000, 10000]), out)
     html = out.read_text(encoding="utf-8")
 
     assert re.search(r'class="value" aria-hidden="true">30,000<', html)

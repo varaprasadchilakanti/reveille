@@ -17,7 +17,7 @@ import pytest
 
 from reveille.adapters import renderer
 from reveille.adapters.renderer import Renderer
-from tests.unit.adapters.test_lorenz_chart import _report_data
+from tests.unit.adapters.report_data import report_data
 
 pytestmark = pytest.mark.unit
 
@@ -43,8 +43,8 @@ def test_json_and_csv_compile_no_template_and_read_no_bundle(
     monkeypatch.setattr(renderer.Environment, "get_template", refuse)
     writer = Renderer()
 
-    writer.render_json(_report_data([3, 1]), tmp_path / "r.json")
-    writer.render_csv(_report_data([3, 1]), tmp_path / "r.csv")
+    writer.render_json(report_data([3, 1]), tmp_path / "r.json")
+    writer.render_csv(report_data([3, 1]), tmp_path / "r.csv")
 
 
 def test_html_compiles_the_template_once_per_renderer(
@@ -59,8 +59,8 @@ def test_html_compiles_the_template_once_per_renderer(
 
     monkeypatch.setattr(renderer.Environment, "get_template", counting)
     writer = Renderer()
-    writer.render(_report_data([3, 1]), tmp_path / "a.html")
-    writer.render(_report_data([3, 1]), tmp_path / "b.html")
+    writer.render(report_data([3, 1]), tmp_path / "a.html")
+    writer.render(report_data([3, 1]), tmp_path / "b.html")
 
     assert compiled == ["report.html.j2"]
     assert (tmp_path / "a.html").read_bytes() == (tmp_path / "b.html").read_bytes()

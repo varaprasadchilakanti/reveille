@@ -21,7 +21,7 @@ from reveille.cli import ExitCode, app
 from reveille.config import ConfigurationError, load_config_from_toml
 from reveille.init import DEFAULT_CONFIG_TEMPLATE
 
-pytestmark = pytest.mark.unit
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture

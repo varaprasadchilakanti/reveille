@@ -199,12 +199,15 @@ before release.
   defect in Reveille"; a moved worktree's repository was a permissions problem; `--repo .git`,
   an empty revision and a history Git cannot read were given another reason. Each now names its
   own. Under `--format json`, Git that cannot start is one JSON line on stderr, and a
-  configuration error has the level `error`.
+  configuration error has the level `error`. `who-changed` with a `--repo` that is not a
+  repository says so, rather than that the path is outside it.
 - **Slow with many authors.** On a synthetic history by 100,000 authors, `who-changed` took 272 s
   and `generate` 87 s; 4.5 s and 7.6 s now. A warning for each commit with more than 32 co-authors is one line in all.
 - **Text.** "1 commits"; a share that rounded to "0%" or "100%" without being either reads "under
   1%" or "over 99%"; the no-commits message no longer speaks of generating a report; "1 directory
-  ... was not searched".
+  ... was not searched". `capabilities` and `skill` refuse an unknown `--format` in the words the query commands use, and an
+  output path holding `..` is refused with the absolute path to give instead. `who-changed` text
+  leaves out "Changed it most recently" when that would list every author again.
 
 ### Security
 

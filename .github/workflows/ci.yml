@@ -177,7 +177,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # tests/unit/test_mailmap_file.py runs `git shortlog` over this
+          # tests/integration/test_mailmap_file.py runs `git shortlog` over this
           # repository's real history, to assert that Git itself -- not just
           # Reveille's more forgiving parser -- folds the maintainer's
           # aliases. At the default depth of 1 the only visible commit is the

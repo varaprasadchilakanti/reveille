@@ -678,7 +678,8 @@ class Renderer:
             f"from {window[0].isoformat()} to {answer.last_changed.isoformat()}, "
             f"in a window ending {window[1].isoformat()}.",
         ]
-        if answer.recently_active:
+        # A subset of the authors; with every author in it, it repeats them.
+        if len(answer.recently_active) < len(answer.authors):
             lines.append(f"Changed it most recently: {names(answer.recently_active)}.")
         if answer.authors:
             lines.append(f"Authors: {names(answer.authors)}.")

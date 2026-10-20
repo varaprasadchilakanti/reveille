@@ -19,8 +19,7 @@ import pytest
 from reveille.adapters.renderer import _LORENZ_POINTS, Renderer, _build_lorenz_chart
 from reveille.domain.concentration import gini_coefficient, lorenz_curve
 from reveille.domain.models import Commit, ReportData
-
-from .test_lorenz_chart import _report_data
+from tests.unit.adapters.report_data import report_data
 
 pytestmark = pytest.mark.unit
 
@@ -58,7 +57,7 @@ def _lines_chart_people(html: str) -> int:
 
 
 def test_a_long_list_is_cut_at_1000_and_says_so() -> None:
-    data = _with_one_commit_each(_report_data(list(range(1, 1201))))
+    data = _with_one_commit_each(report_data(list(range(1, 1201))))
 
     html = Renderer().html_text(data)
 
@@ -69,7 +68,7 @@ def test_a_long_list_is_cut_at_1000_and_says_so() -> None:
 
 
 def test_limit_sets_how_many_the_page_names() -> None:
-    data = _report_data(list(range(1, 51)))
+    data = report_data(list(range(1, 51)))
     data = dataclasses.replace(data, provenance=dataclasses.replace(data.provenance, limit=7))
 
     html = Renderer().html_text(data)
@@ -79,7 +78,7 @@ def test_limit_sets_how_many_the_page_names() -> None:
 
 
 def test_a_short_list_is_whole_and_says_nothing_of_a_cut() -> None:
-    html = Renderer().html_text(_report_data(list(range(1, 31))))
+    html = Renderer().html_text(report_data(list(range(1, 31))))
 
     assert _rows(html) == 30
     assert "listed contributors are shown here" not in html
@@ -87,7 +86,7 @@ def test_a_short_list_is_whole_and_says_nothing_of_a_cut() -> None:
 
 def test_the_gini_is_of_everyone_not_of_the_rows_shown() -> None:
     counts = [1] * 1100 + [500] * 100
-    html = Renderer().html_text(_report_data(counts))
+    html = Renderer().html_text(report_data(counts))
 
     assert f"Gini <b>{gini_coefficient(counts):.2f}</b>" in html
     assert f"{gini_coefficient(counts[:1000]):.2f}" != f"{gini_coefficient(counts):.2f}"

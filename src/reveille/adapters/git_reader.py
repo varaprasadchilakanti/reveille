@@ -2732,6 +2732,13 @@ def _refuse_what_git_cannot_open(repo_path: Path, exc: GitCommandError) -> NoRet
             "trust it, add it to Git's safe.directory setting "
             "(git config --global --add safe.directory <path>)."
         ) from exc
+    if "safe.bareRepository" in str(exc.stderr):
+        # The caller's own setting refuses a bare repository found by searching.
+        raise RepositoryError(
+            f"Git refuses to read '{repo_path}': it is a bare repository, and your "
+            "safe.bareRepository setting is 'explicit'. Clone it (git clone <path>) and give "
+            "the clone."
+        ) from exc
     if not os.path.lexists(repo_path / ".git") and is_repository(repo_path):
         # A Git directory not configured as bare, such as the store that
         # `git init --separate-git-dir` makes: Git looks for its working tree.

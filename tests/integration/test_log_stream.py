@@ -18,7 +18,7 @@ from git.exc import GitCommandError
 from reveille.adapters import git_reader
 from reveille.adapters.git_reader import GitReader, _LogStream
 
-pytestmark = pytest.mark.unit
+pytestmark = pytest.mark.integration
 
 
 class _Chunked(io.RawIOBase):
