@@ -65,8 +65,8 @@ contract, the domain model, the pipeline and the invariants the tests protect. D
 reasoning live in [docs/adr/](docs/adr/). Dependencies point inward, and outer layers never
 appear in inner ones.
 
-- `src/reveille/domain/`: frozen dataclasses and the ranking engine.
-  Performs no I/O and no rendering. It does import `RankingWeights` from
+- `src/reveille/domain/`: the frozen data model and the computations on it (ranking, summary,
+  brief, areas, repositories). Performs no I/O and no rendering. It does import `RankingWeights` from
   `config.py`, which is a Pydantic model; that is a deliberate,
   documented exception.
 - `src/reveille/adapters/`: `GitReader` (the only module that imports
@@ -77,8 +77,9 @@ appear in inner ones.
 - `src/reveille/cli.py`: the only module that imports Typer. Argument
   parsing, exit codes, and progress display. No business logic.
 
-New behaviour belongs in the layer that owns it; `tests/unit/test_layering.py` fails on a domain
-import of I/O or presentation. If a change makes a statement in `ARCHITECTURE.md` untrue, update
+New behaviour belongs in the layer that owns it. `tests/unit/test_layering.py` fails on a domain
+import of I/O or presentation, and `tests/unit/test_architecture.py` fails when a framework is
+imported outside its owner, inside a function included. If a change makes a statement in `ARCHITECTURE.md` untrue, update
 it in the same pull request.
 
 Releases follow [RELEASE.md](RELEASE.md).

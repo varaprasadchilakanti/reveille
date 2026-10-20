@@ -26,6 +26,7 @@ from typing import Annotated, Any, ClassVar, NoReturn, TextIO, cast
 
 import typer
 from typer.core import TyperGroup
+from typer.main import get_command
 
 from reveille import __version__
 from reveille.config import OutputFormat, ReportConfig, ReportConfigKwargs
@@ -1727,7 +1728,7 @@ def capabilities(
         _err(f"Error: unsupported format '{output_format}'. Accepted values: text, json.")
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
-    document = build_capabilities(app, ExitCode)
+    document = build_capabilities(get_command(app), ExitCode)
     if command is not None:
         narrowed = command_capabilities(document, command)
         if narrowed is None:

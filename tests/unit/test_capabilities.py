@@ -16,7 +16,8 @@ from __future__ import annotations
 import json
 
 import pytest
-import typer.main
+from typer.core import TyperGroup
+from typer.main import get_command
 from typer.testing import CliRunner
 
 from reveille import __version__
@@ -32,7 +33,7 @@ from reveille.domain.models import SCHEMA_VERSION
 @pytest.fixture()
 def document() -> dict:
     """The assembled capability document."""
-    return build_capabilities(app, ExitCode)
+    return build_capabilities(get_command(app), ExitCode)
 
 
 @pytest.mark.unit
@@ -56,7 +57,7 @@ class TestDerivedFactsCannotDrift:
         and both sides became empty, the test would pass while the document
         told a program this tool has no commands.
         """
-        registered = set(typer.main.get_command(app).commands)
+        registered = set(get_command(app).commands)
         described = {c["name"] for c in document["commands"]}
 
         assert described == registered
@@ -80,20 +81,13 @@ class TestDerivedFactsCannotDrift:
         `getattr(group, "commands", {})` would have produced exactly that: a
         valid-looking document, exit 0, claiming no commands exist.
         """
-        import typer.main as typer_main
-
         from reveille.capabilities import _commands
 
         class _NoCommands:
             pass
 
-        original = typer_main.get_command
-        typer_main.get_command = lambda _app: _NoCommands()  # type: ignore[assignment]
-        try:
-            with pytest.raises(RuntimeError, match="Could not read the command list"):
-                _commands(app)
-        finally:
-            typer_main.get_command = original
+        with pytest.raises(RuntimeError, match="Could not read the command list"):
+            _commands(_NoCommands())
 
     def test_the_capabilities_command_describes_itself(self, document: dict) -> None:
         """A self-description that omits itself is incomplete by construction."""
@@ -108,8 +102,8 @@ class TestDerivedFactsCannotDrift:
 
     def test_each_default_and_bound_is_the_parsers(self, document: dict) -> None:
         """An agent reads the limits before it calls, so they come from the parser."""
-        click_app = typer.main.get_command(app)
-        assert isinstance(click_app, typer.core.TyperGroup)
+        click_app = get_command(app)
+        assert isinstance(click_app, TyperGroup)
         for described in document["commands"]:
             params = {p.opts[0]: p for p in click_app.commands[described["name"]].params}
             for option in described["options"]:
@@ -237,7 +231,7 @@ class TestGuaranteeTextsSayWhatTheyClaim:
     """
 
     def _guarantee(self, guarantee_id: str) -> str:
-        document = build_capabilities(app, ExitCode)
+        document = build_capabilities(get_command(app), ExitCode)
         matches = [g for g in document["guarantees"] if g["id"] == guarantee_id]
         assert matches, f"guarantee {guarantee_id!r} is missing from the document"
         return matches[0]["description"].lower()
@@ -267,7 +261,7 @@ class TestGuaranteeTextsSayWhatTheyClaim:
 
     def test_no_guarantee_promises_something_the_tool_does_not_do(self) -> None:
         """A blanket sweep for claims this tool must never make."""
-        document = build_capabilities(app, ExitCode)
+        document = build_capabilities(get_command(app), ExitCode)
         blob = " ".join(g["description"].lower() for g in document["guarantees"])
         for forbidden in (
             "measures productivity",
@@ -289,26 +283,29 @@ class TestDerivedFactsAreActuallyDerived:
 
         from reveille.config import OutputFormat
 
-        document = build_capabilities(app, ExitCode)
+        document = build_capabilities(get_command(app), ExitCode)
         assert document["output_formats"] == [str(f) for f in get_args(OutputFormat)]
 
     def test_output_formats_are_not_empty(self) -> None:
-        assert build_capabilities(app, ExitCode)["output_formats"]
+        assert build_capabilities(get_command(app), ExitCode)["output_formats"]
 
     def test_exit_codes_match_the_enum(self) -> None:
-        document = build_capabilities(app, ExitCode)
+        document = build_capabilities(get_command(app), ExitCode)
         reported = {entry["code"] for entry in document["exit_codes"]}
         assert reported == {member.value for member in ExitCode}
 
     def test_schema_version_matches_the_models(self) -> None:
         from reveille.domain.models import SCHEMA_VERSION
 
-        assert build_capabilities(app, ExitCode)["output_schema_version"] == SCHEMA_VERSION
+        assert (
+            build_capabilities(get_command(app), ExitCode)["output_schema_version"]
+            == SCHEMA_VERSION
+        )
 
     def test_version_matches_the_package(self) -> None:
         import reveille
 
-        assert build_capabilities(app, ExitCode)["version"] == reveille.__version__
+        assert build_capabilities(get_command(app), ExitCode)["version"] == reveille.__version__
 
 
 @pytest.mark.unit

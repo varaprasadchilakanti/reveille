@@ -285,6 +285,34 @@ class TestDependencyDirection:
 
         assert not offenders, "adapters are coupled: " + "; ".join(offenders)
 
+    @pytest.mark.parametrize(
+        ("framework", "owner"),
+        [
+            ("git", "adapters/git_reader.py"),
+            ("plotly", "adapters/renderer.py"),
+            ("jinja2", "adapters/renderer.py"),
+            ("typer", "cli.py"),
+            ("click", "cli.py"),
+        ],
+    )
+    def test_each_framework_is_imported_by_its_owner_alone(
+        self, framework: str, owner: str
+    ) -> None:
+        """An import inside a function is an import too.
+
+        `test_layering.py` sees only what loads when a module is imported, so
+        `capabilities.py` imported Typer inside a function with every guard green.
+        """
+        importers = [
+            _rel(m)
+            for m in _modules()
+            if any(
+                name == framework or name.startswith(f"{framework}.") for name in _imported_names(m)
+            )
+        ]
+
+        assert set(importers) <= {owner}, importers
+
 
 @pytest.mark.unit
 class TestFilesystemWrites:

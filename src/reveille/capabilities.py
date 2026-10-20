@@ -359,21 +359,17 @@ _GUARANTEES: tuple[dict[str, str], ...] = (
 )
 
 
-def _commands(app: Any) -> list[dict[str, Any]]:
-    """Describe the CLI surface by inspecting the live Typer application.
+def _commands(group: Any) -> list[dict[str, Any]]:
+    """Describe the CLI surface by inspecting the live command group.
 
     Derived, not written down, so it cannot disagree with the program.
 
     Args:
-        app: The Typer application object.
+        group: The Click group the CLI builds from its Typer application.
 
     Returns:
         One entry per command, each with its options.
     """
-    import typer.main
-
-    group = typer.main.get_command(app)
-
     # An empty command list (for example if Click restructured) is never true,
     # so fail rather than describe a tool with no commands.
     commands = getattr(group, "commands", None)
@@ -518,11 +514,11 @@ def _exit_codes(exit_code_enum: type[enum.IntEnum]) -> list[dict[str, Any]]:
     ]
 
 
-def build_capabilities(app: Any, exit_code_enum: type[enum.IntEnum]) -> dict[str, Any]:
+def build_capabilities(group: Any, exit_code_enum: type[enum.IntEnum]) -> dict[str, Any]:
     """Assemble the full capability document.
 
     Args:
-        app: The Typer application, used to derive the command surface.
+        group: The CLI's Click group, used to derive the command surface.
         exit_code_enum: The ExitCode enumeration, used to derive exit codes.
 
     Returns:
@@ -540,7 +536,7 @@ def build_capabilities(app: Any, exit_code_enum: type[enum.IntEnum]) -> dict[str
         "can": [dict(item) for item in _CAPABILITIES],
         "cannot": [dict(item) for item in _NOT_CAPABILITIES],
         "caveats": [dict(item) for item in _CAVEATS],
-        "commands": _commands(app),
+        "commands": _commands(group),
         "exit_codes": _exit_codes(exit_code_enum),
     }
 
