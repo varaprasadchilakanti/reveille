@@ -746,12 +746,63 @@ def _refuse_what_is_not_a_file(output: Path, example: str) -> None:
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
 
+#: How each report Reveille writes begins. The HTML title has stood since the first renderer.
+_REPORT_STARTS = {
+    "html": ("<!DOCTYPE html>", "Reveille Report</title>"),
+    "json": ('{\n  "schema_version"', '"schema_version"'),
+    "csv": ("rank,name,email,", "rank,name,email,"),
+}
+
+
+def _written_by_reveille(path: Path, output_format: str) -> bool:
+    """Whether `path` is missing, or a regular file that begins as a Reveille report does."""
+    try:
+        if not stat.S_ISREG(path.lstat().st_mode):
+            return False
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
+        with os.fdopen(descriptor, "rb") as handle:
+            head = handle.read(4096).decode("utf-8", errors="replace").lstrip("\ufeff")
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+    start, marker = _REPORT_STARTS[output_format]
+    return head.startswith(start) and marker in head
+
+
+def _refuse_what_a_config_cannot_replace(output: Path, output_format: str) -> None:
+    """Refuse a discovered config's output that is not a report, or would replace another file.
+
+    A committed `reveille.toml` could name `src/app.py` or an ignored `.env`, and the
+    report replaced it; or `vendor.git/HEAD`, a bare repository's own file.
+
+    Raises:
+        typer.Exit: ExitCode.CANNOT_RUN if the path is refused.
+    """
+    if output.suffix.casefold() != ".html":
+        _err(
+            f"Error: the configuration file sets an output path that does not end in .html: "
+            f"'{output}'. A reveille.toml is discovered automatically, so it may come from a "
+            "repository you do not control. Pass --output explicitly to write there."
+        )
+        raise typer.Exit(code=ExitCode.CANNOT_RUN)
+    written = output if output_format == "html" else output.with_suffix(f".{output_format}")
+    if not _written_by_reveille(written, output_format):
+        _err(
+            f"Error: the configuration file sets an output path that would replace "
+            f"'{written}', which is not a Reveille report. Pass --output explicitly to "
+            "replace it."
+        )
+        raise typer.Exit(code=ExitCode.CANNOT_RUN)
+
+
 def _validate_output_path(
     output: Path,
     repo_path: Path,
     *,
     from_config: bool = False,
     example: str = "reveille-report.html",
+    output_format: str = "html",
 ) -> None:
     """Validate the output path for traversal and the repository boundary.
 
@@ -763,6 +814,7 @@ def _validate_output_path(
         repo_path: The resolved repository root.
         from_config: An auto-discovered (untrusted) file supplied the path.
         example: A file name to suggest when the path is a directory.
+        output_format: The format to be written, which names the file replaced.
 
     Raises:
         typer.Exit: ExitCode.CANNOT_RUN if the path is refused.
@@ -801,6 +853,8 @@ def _validate_output_path(
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
     _refuse_what_is_not_a_file(output, example)
+    if from_config:
+        _refuse_what_a_config_cannot_replace(output, output_format)
 
     if ".." in output.parts:
         _err(
@@ -1182,6 +1236,7 @@ def generate(
             Path(merged.get("output_path", output)),
             merged["repo_path"],
             from_config=_output_from_config,
+            output_format=str(merged.get("output_format", "html")),
         )
 
     try:

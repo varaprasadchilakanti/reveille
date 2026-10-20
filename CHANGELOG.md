@@ -207,6 +207,11 @@ before release.
 
 Each entry has a test that fails without the fix. 0.9.0's exposure is stated where it was checked.
 
+- **A `reveille.toml` committed to a repository could make the report replace any file in its
+  working tree** (uncommitted work in `src/b.py`, an ignored `.env`, the `HEAD` of a bare
+  repository inside the tree), and the run exited 0. A discovered file's `output` must now end in
+  `.html`, and may replace only a Reveille report; otherwise the run stops (exit 2). `--output`
+  and `--config` are unchanged. 0.9.0 is affected (read in its code).
 - **The report carried plotly.js without its licences.** Reports now carry every bundled package's
   notice. 0.9.0 is affected.
 - **An author address could make the report request a remote URL when opened**, telling a third
