@@ -12,6 +12,7 @@ has already ticked.
 
 from __future__ import annotations
 
+import hashlib
 import re
 import subprocess
 import sys
@@ -118,3 +119,25 @@ class TestFalseAcceptances:
     def test_the_plain_acceptance_still_passes(self) -> None:
         body = "- [x] I accept the Reveille Contributor Licence Agreement (`Reveille-CLA-1.0`).\n"
         assert _run_gate(body) == 0
+
+
+# The text contributors accepted as 1.0. A changed agreement is a new version with a new
+# copy beside this one (CLA.md §6.5, ADR 0009); this copy never changes.
+_CLA_1_0_SHA256 = "1f1ec19111b7460f3d872fcc85e59a1e6d728f14854fac56f82733f887f64a9e"
+
+
+@pytest.mark.unit
+class TestTheAgreementTextIsVersioned:
+    def test_cla_md_is_the_copy_kept_for_the_version_the_gate_requires(self) -> None:
+        kept = _ROOT / "docs" / "cla" / f"CLA-{_cla_version()}.md"
+
+        assert kept.is_file(), f"no copy of the agreement at {kept}"
+        assert (_ROOT / "CLA.md").read_bytes() == kept.read_bytes(), (
+            "CLA.md differs from the text accepted under this version: "
+            "a changed agreement needs a new version"
+        )
+
+    def test_the_1_0_text_is_unchanged(self) -> None:
+        text = (_ROOT / "docs" / "cla" / "CLA-1.0.md").read_bytes()
+
+        assert hashlib.sha256(text).hexdigest() == _CLA_1_0_SHA256
