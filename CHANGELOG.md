@@ -121,6 +121,9 @@ before release.
 
 ### Fixed
 
+- **Ctrl-C while Git was running took up to five minutes to take effect.** GitPython (3.2.1)
+  leaves its deadline timer running when the wait is interrupted, and Python waits for that timer
+  before exiting: measured at 300 s on a 200,000-commit `generate`, 0.06 s now. Exit is still 130.
 - **When Git could not say whether a clone is shallow, Reveille took it as "no".** A shallow
   clone's figures could then read as the whole history, with no notice. It now stops with Git's
   reason (exit 2), or, in `repos`, gives that row as not read.

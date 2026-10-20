@@ -2561,7 +2561,22 @@ class _TimedGit(Git):
         A command started as a process is not waited for here; its reader keeps
         the deadline (`_Silence`). A caller's own deadline is kept, and so is the
         error it gets.
+
+        GitPython (3.2.1) cancels its deadline timer only when the wait returns.
+        Interrupted, the timer outlives the command, and the interpreter waits for
+        it before exiting: Ctrl-C took the full deadline to take effect.
         """
+        running = set(threading.enumerate())
+        try:
+            return self._execute_timed(*args, **kwargs)
+        except (KeyboardInterrupt, SystemExit):
+            for thread in set(threading.enumerate()) - running:
+                if isinstance(thread, threading.Timer):
+                    thread.cancel()
+            raise
+
+    def _execute_timed(self, *args: Any, **kwargs: Any) -> Any:
+        """Run the command, with `GIT_TIMEOUT_SECONDS` unless a deadline is given."""
         timed = (
             sys.platform != "win32"
             and not kwargs.get("as_process")
