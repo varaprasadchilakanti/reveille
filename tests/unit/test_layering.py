@@ -188,7 +188,7 @@ class TestDependencyRule:
 
         The root exposes `__version__` and installs a logging
         NullHandler. Anything that made it import Plotly would put a
-        4.8 MB bundle read behind every `reveille --version`.
+        1.5 MB bundle read behind every `reveille --version`.
         """
         loaded = _top_level_imports("reveille")
         offenders = sorted(loaded & _IO_AND_PRESENTATION)

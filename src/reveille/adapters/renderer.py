@@ -703,6 +703,7 @@ class Renderer:
         tags: list[str],
         output_format: str,
         limit: int,
+        until: datetime.date | None = None,
     ) -> str:
         """Render a brief as JSON or plain lines (ADR 0022). Names nobody.
 
@@ -714,6 +715,7 @@ class Renderer:
             tags: Tags whose commit lies in the range, newest first.
             output_format: "json", "text", "markdown" or "line".
             limit: The most entries any list carries.
+            until: The window's last day, when the caller closed it.
 
         Returns:
             The brief.
@@ -756,7 +758,7 @@ class Renderer:
             )
 
         if output_format == "markdown":
-            return _brief_markdown(facts, repository, point, tip, tags, limit)
+            return _brief_markdown(facts, repository, point, tip, tags, limit, until)
         if output_format == "line":
             return _brief_line(facts, repository, named, tip, tags)
 
@@ -785,7 +787,7 @@ class Renderer:
             )
         if tags:
             lines.append(f"Tags in the range: {listed(tags)}.")
-        lines.append(f"Next: reveille brief --from {tip[:12]}")
+        lines.append(f"Next: {_next_brief(tip, until)}")
         lines.append(_NOTICE)
         return _joined(lines)
 
@@ -1543,9 +1545,12 @@ def _week_starts(first: datetime.date, last: datetime.date) -> list[str]:
     """
     monday = first - datetime.timedelta(days=first.weekday())
     weeks: list[str] = []
+    step = datetime.timedelta(weeks=1)
     while monday <= last:
         weeks.append(monday.isoformat())
-        monday += datetime.timedelta(weeks=1)
+        if monday > datetime.date.max - step:
+            break  # 9999-12-27, the last Monday a date can hold; Git accepts a commit after it.
+        monday += step
     return weeks
 
 
@@ -1689,7 +1694,9 @@ def _week_axis(weeks: list[str]) -> dict[str, Any]:
     if len(weeks) == 1:
         week = datetime.date.fromisoformat(weeks[0])
         span = datetime.timedelta(days=7)
-        axis["range"] = [(week - span).isoformat(), (week + span).isoformat()]
+        low = week - span if week - datetime.date.min >= span else datetime.date.min
+        high = week + span if datetime.date.max - week >= span else datetime.date.max
+        axis["range"] = [low.isoformat(), high.isoformat()]
         axis["tickformat"] = "%b %-d, %Y"
     return axis
 
@@ -2601,6 +2608,17 @@ def _summary_markdown(document: dict[str, Any]) -> str:
     return _joined(lines)
 
 
+def _next_brief(tip: str, until: datetime.date | None) -> str:
+    """The brief that continues this one: from the tip, or, after a closed window, the next day.
+
+    With `--until` the tip can be later than the window, so starting from it would skip the
+    commits in between.
+    """
+    if until is None:
+        return f"reveille brief --from {tip[:12]}"
+    return f"reveille brief --since {(until + datetime.timedelta(days=1)).isoformat()}"
+
+
 def _brief_markdown(
     facts: Brief,
     repository: tuple[str, str],
@@ -2608,6 +2626,7 @@ def _brief_markdown(
     tip: str,
     tags: list[str],
     limit: int,
+    until: datetime.date | None = None,
 ) -> str:
     """Render a brief as Markdown (ADR 0022)."""
     named, commit = point
@@ -2633,7 +2652,7 @@ def _brief_markdown(
         )
     if tags:
         lines.append(f"- **Tags in the range:** {_md_listed(tags, limit)}")
-    lines += ["", f"Next: {_md(f'reveille brief --from {tip[:12]}')}", "", f"> {_NOTICE}"]
+    lines += ["", f"Next: {_md(_next_brief(tip, until))}", "", f"> {_NOTICE}"]
     return _joined(lines)
 
 
@@ -2697,18 +2716,29 @@ def _state_markdown_notes(state: RepositoryState, history_replaced: bool, limit:
     return notes
 
 
+# Characters that show as nothing, in text, Markdown and line output: control and direction
+# characters, the zero-width space, word joiner and invisible operators, the byte order mark,
+# and the tag characters, which spell out ASCII that a model reads and a person does not see.
+# ZWJ and ZWNJ stay: names in several scripts are spelt with them.
+_INVISIBLE_IN_TEXT: dict[int, str] = {
+    **_UNSHOWABLE,
+    **{code: f"\\u{code:04x}" for code in (0x200B, *range(0x2060, 0x2065), 0xFEFF)},
+    **{code: f"\\U{code:08x}" for code in range(0xE0000, 0xE0080)},
+}
+
+
 def _joined(lines: Sequence[str]) -> str:
-    """Join output lines; a CR or LF inside one, from a repository name, is shown as an escape.
+    """Join output lines, showing what a repository name could hide or add as escapes.
 
     Each element is one line of output, so a newline inside it can only have come
     from a path, branch or directory name, and would let that name add a line.
     """
-    return "".join(line.replace("\r", "\\r").replace("\n", "\\n") + "\n" for line in lines)
+    return "".join(_one_line(line) for line in lines)
 
 
 def _one_line(text: str) -> str:
-    """End `text` with its only newline: a CR or LF inside a name is shown as an escape."""
-    return text.replace("\r", "\\r").replace("\n", "\\n") + "\n"
+    """End `text` with its only newline; CR, LF and invisible characters are shown as escapes."""
+    return text.replace("\r", "\\r").replace("\n", "\\n").translate(_INVISIBLE_IN_TEXT) + "\n"
 
 
 def _state_line(state: RepositoryState, name: str) -> str:

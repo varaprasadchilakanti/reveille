@@ -22,6 +22,7 @@ pytestmark = [
 ]
 
 
+@pytest.mark.parametrize("depth", ["1", "2"])
 @pytest.mark.parametrize(
     ("locked", "said"),
     [
@@ -29,7 +30,8 @@ pytestmark = [
         (2, "2 directories could not be listed and were not searched."),
     ],
 )
-def test_the_count_and_the_verb_agree(tmp_path: Path, locked: int, said: str) -> None:
+def test_the_count_and_the_verb_agree(tmp_path: Path, locked: int, said: str, depth: str) -> None:
+    """At depth 1 a shut directory was left out silently; it may be a repository."""
     repo = tmp_path / "r"
     repo.mkdir()
     subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
@@ -45,7 +47,7 @@ def test_the_count_and_the_verb_agree(tmp_path: Path, locked: int, said: str) ->
         directory.mkdir()
         directory.chmod(0)
     try:
-        result = CliRunner().invoke(app, ["repos", str(tmp_path), "--depth", "2"])
+        result = CliRunner().invoke(app, ["repos", str(tmp_path), "--depth", depth])
     finally:
         for directory in shut:
             directory.chmod(0o755)

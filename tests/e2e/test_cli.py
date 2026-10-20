@@ -28,6 +28,7 @@ import typer.main
 from typer.testing import CliRunner
 
 from reveille import __version__
+from reveille.adapters.renderer import _vendored
 from reveille.cli import ExitCode, app
 
 runner = CliRunner()
@@ -379,6 +380,21 @@ class TestHelpCommand:
         assert "init" in result.output
         assert "validate" in result.output
 
+    def test_help_with_a_command_shows_that_command(self) -> None:
+        """`reveille help brief` exited 2 with "unexpected extra argument"."""
+        result = runner.invoke(app, ["help", "brief"])
+        shown = re.sub(r"\x1b\[[0-9;]*m", "", result.output)  # Rich colours help on CI
+
+        assert result.exit_code == 0, result.output
+        assert "Usage: reveille brief" in shown
+        assert "--from" in shown
+
+    def test_help_with_an_unknown_command_names_the_commands(self) -> None:
+        result = runner.invoke(app, ["help", "nosuch"])
+
+        assert result.exit_code == 2
+        assert "no command 'nosuch'; the commands are generate" in result.stderr
+
 
 # ------------------------------------------------------------------
 # Validate command
@@ -455,7 +471,10 @@ class TestGenerateCommand:
         assert "</html>" in default_report_content
 
     def test_output_contains_plotly_bundle(self, default_report_content: str) -> None:
-        assert "plotly" in default_report_content.lower()
+        # The whole vendored bundle, inline. "plotly" alone also appears in the
+        # licence notices, so a report without the bundle passed.
+        bundle = _vendored("plotly-cartesian.min.js")
+        assert f"<script>{bundle}</script>" in default_report_content
 
     def test_output_contains_contributor_names(self, default_report_content: str) -> None:
         assert "Alice" in default_report_content

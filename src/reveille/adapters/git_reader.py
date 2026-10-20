@@ -2064,12 +2064,23 @@ class GitReader:
         """Report whether the repository is a shallow clone, so figures are partial.
 
         Returns:
-            True when Git reports a shallow repository; False otherwise or on error.
+            True when Git reports a shallow repository, False when it reports not.
+
+        Raises:
+            RepositoryError: If Git cannot say. "Not shallow" would then be a guess,
+                and a shallow clone's figures would read as the whole history.
         """
         try:
-            return str(self._git().rev_parse("--is-shallow-repository")).strip() == "true"
-        except Exception:
-            return False
+            answer = str(self._git().rev_parse("--is-shallow-repository")).strip()
+        except GitCommandError as exc:
+            raise RepositoryError(
+                f"Git could not say whether this is a shallow clone: {_git_error(exc)}"
+            ) from exc
+        if answer not in ("true", "false"):
+            raise RepositoryError(
+                f"Git could not say whether this is a shallow clone: it answered {answer!r}."
+            )
+        return answer == "true"
 
     @property
     def file_stats(self) -> tuple[FileStats, ...]:
@@ -2550,7 +2561,22 @@ class _TimedGit(Git):
         A command started as a process is not waited for here; its reader keeps
         the deadline (`_Silence`). A caller's own deadline is kept, and so is the
         error it gets.
+
+        GitPython (3.2.1) cancels its deadline timer only when the wait returns.
+        Interrupted, the timer outlives the command, and the interpreter waits for
+        it before exiting: Ctrl-C took the full deadline to take effect.
         """
+        running = set(threading.enumerate())
+        try:
+            return self._execute_timed(*args, **kwargs)
+        except (KeyboardInterrupt, SystemExit):
+            for thread in set(threading.enumerate()) - running:
+                if isinstance(thread, threading.Timer):
+                    thread.cancel()
+            raise
+
+    def _execute_timed(self, *args: Any, **kwargs: Any) -> Any:
+        """Run the command, with `GIT_TIMEOUT_SECONDS` unless a deadline is given."""
         timed = (
             sys.platform != "win32"
             and not kwargs.get("as_process")
@@ -2674,6 +2700,10 @@ def find_repositories(directory: Path, depth: int) -> tuple[list[Path], list[Pat
                 candidate = Path(entry.path)
                 if is_repository(candidate):
                     found.append(candidate)
+                elif not os.access(candidate, os.X_OK):
+                    # Nothing inside can be looked at, so it may be a repository; at the
+                    # last level it was left out without a word.
+                    unreadable.append(candidate)
                 else:
                     below.append(candidate)
         level = below

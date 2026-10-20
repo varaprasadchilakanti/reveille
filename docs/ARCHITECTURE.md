@@ -46,7 +46,7 @@ Dependencies point inward. The domain knows nothing about how commits are read o
 |---|---|---|
 | `domain/` | stdlib, `config.py` | GitPython, Plotly, Jinja2, Typer |
 | `adapters/` | stdlib, `domain/`, `exceptions.py`, `replacing.py`, its own framework | `services/`, `cli.py` |
-| `services/` | `domain/`, `adapters/`, `config.py` | Typer, GitPython, Plotly, Jinja2 |
+| `services/` | `domain/`, `adapters/`, `config.py`, `exceptions.py`, `__version__` | Typer, GitPython, Plotly, Jinja2 |
 | `cli.py` | `services/`, `config.py`, `exceptions.py`, `capabilities.py`, `agent_guide.py`, `init.py`, `domain/models.py` (`ProgressEvent`), `domain/repositories.py` (`MAX_SEARCH_DEPTH`), and `adapters/git_reader.py` inside a function (`validate`, the repository root) | GitPython, Plotly, Jinja2 |
 
 Framework ownership is exclusive: `adapters/git_reader.py` is the only module that imports
@@ -142,7 +142,8 @@ it. The service has no opinion about terminals.
 ```
 ReveilleError
 ├── RepositoryError
-│   └── EmptyRepositoryError
+│   ├── EmptyRepositoryError
+│   └── NoRepositoryReadError
 ├── ConfigurationError
 └── RenderError
     └── OutputPathError
@@ -235,11 +236,12 @@ report, and never for JSON or CSV.
 
 ## Configuration
 
-`ReportConfig` (Pydantic) lives in `config.py`; a validator enforces `since < until`.
+`ReportConfig` (Pydantic) lives in `config.py`; a validator refuses a `since` later than `until`.
 `RankingWeights` holds `commits=0.30`, `lines=0.25`, `consistency=0.25`, `recency=0.20`, each in
-`[0, 1]`, with a validator enforcing that they sum to 1.0 within `1e-6`. `load_config_from_toml`
-reads via stdlib `tomllib` and flattens `[report]`, `[filters]`, `[ranking]` and `[areas]` into a
-`ReportConfigKwargs` `TypedDict`.
+`[0, 1]`, with a validator enforcing that they sum to 1.0 within `1e-6`. `read_config_file`, which
+the CLI calls, reads via stdlib `tomllib`, flattens `[report]`, `[filters]`, `[ranking]` and
+`[areas]` into a `ReportConfigKwargs` `TypedDict`, and names the keys it does not read;
+`load_config_from_toml` returns the values alone.
 
 **An explicitly provided CLI flag always beats the config file.** `min_commits` carries a `None`
 sentinel for this reason: without it, `--min-commits 1` is indistinguishable from "not provided",

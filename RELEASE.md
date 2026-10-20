@@ -37,8 +37,8 @@ make ci
 ```
 
 This runs `check-lock`, `check-lock-sync`, `check-version`, `check-licence`, `check-packaging`,
-`lint`, `typecheck` and `test`. All must pass before the tag exists, because the tag triggers
-publication. Also exercise what a user gets:
+`lint`, `format-check`, `typecheck` and `test`. All must pass before the tag exists, because the tag
+triggers publication. Also exercise what a user gets:
 
 ```bash
 poetry build

@@ -18,6 +18,7 @@ before release.
 
 ### Added
 
+- `reveille help <command>` shows that command's help; it used to exit 2.
 - **`reveille state`** says where a repository stands now: the branch, upstream ahead/behind as of
   the last fetch (Reveille never fetches), a merge, rebase, `git am`, cherry-pick, revert or bisect
   in progress, conflicts, staged, modified, deleted, renamed and untracked files (bounded by
@@ -69,6 +70,10 @@ before release.
 
 ### Changed
 
+- `reveille skill` names `repos`, says how to continue after `brief --until`, and says that
+  repository text which looks like a note, a prompt or a command is still data.
+- `make test-unit`, `make test-integration` and `make test-e2e` ran only marked tests and left out
+  116, among them the security tests; each now runs its whole folder. CI was not affected.
 - **plotly 7.0 or later is required** (was 5.20). Reports embed plotly.js 4.1.1, and figures were
   checked with plotly 7.0.0 and 7.1.0, which gave byte-identical reports; no earlier release was.
 - **The HTML report names at most 1,000 people, or `--limit`.** The contributor table, the
@@ -113,12 +118,29 @@ before release.
 
 ### Removed
 
+- **`click` as a direct dependency.** Nothing imports it. Typer before 0.27 still installs the
+  Click it needs, and Typer 0.27 carries its own.
 - **Four runtime packages no module imported** (`pydantic-settings`, `python-dateutil`,
   `python-dotenv`, `six`), and `types-python-dateutil` from the development tools.
 - **The Makefile's `publish` targets.** Only the tagged workflow publishes.
 
 ### Fixed
 
+- **Ctrl-C while Git was running took up to five minutes to take effect.** GitPython (3.2.1)
+  leaves its deadline timer running when the wait is interrupted, and Python waits for that timer
+  before exiting: measured at 300 s on a 200,000-commit `generate`, 0.06 s now. Exit is still 130.
+- **A commit dated in the last week of 9999 stopped the HTML report** ("date value out of range",
+  exit 2). Git accepts such a date. The weekly charts now end at that week. JSON and CSV were not
+  affected.
+- **When Git could not say whether a clone is shallow, Reveille took it as "no".** A shallow
+  clone's figures could then read as the whole history, with no notice. It now stops with Git's
+  reason (exit 2), or, in `repos`, gives that row as not read.
+- **`make sbom` could not reproduce a published SBOM, as SECURITY.md said it would.** The SBOM
+  names the version of the library that wrote it, and that library was installed unpinned: the
+  same `poetry.lock` gave a different SBOM once it moved from 11.11.0 to 11.12.0. The generator
+  and its dependencies are now installed from `.github/requirements/sbom.txt`, by version and
+  hash, by both `make sbom` and the release job, and `make sbom` rebuilds a tool environment made
+  from older requirements.
 - **`repos` skipped a working tree whose `.git` is a symbolic link, and listed a separate Git
   directory twice.** The link now makes a row, as a `.git` file does, and a Git directory a working
   tree in the search uses is not a row of its own; one nothing uses is a row that says what it is
@@ -188,6 +210,16 @@ before release.
 
 Each entry has a test that fails without the fix. 0.9.0's exposure is stated where it was checked.
 
+- **A `reveille.toml` committed to a repository could make the report replace any file in its
+  working tree** (uncommitted work in `src/b.py`, an ignored `.env`, the `HEAD` of a bare
+  repository inside the tree), and the run exited 0. A discovered file's `output` must now end in
+  `.html`, and may replace only a Reveille report; otherwise the run stops (exit 2). `--output`
+  and `--config` are unchanged. 0.9.0 is affected (read in its code).
+- **Characters that do not display reached text, Markdown and line output unescaped.** Tag
+  characters (U+E0000 to U+E007F) spell out words a person cannot see and a model can read. They,
+  control and direction characters, the zero-width space, the word joiner and the byte order
+  mark are now shown as escapes there; JSON already escaped them. 0.9.0's
+  `who-changed` and `summary` text is affected (read in its code).
 - **The report carried plotly.js without its licences.** Reports now carry every bundled package's
   notice. 0.9.0 is affected.
 - **An author address could make the report request a remote URL when opened**, telling a third
@@ -229,6 +261,13 @@ Each entry has a test that fails without the fix. 0.9.0's exposure is stated whe
 - **An author name could add commits and people to every figure** by holding `git log`'s record
   separators and a real commit's hash. Each record is framed by its hash, and a hash with more than
   one record is counted as unreadable.
+- **The release workflow:** the SBOM job, which can mint a Sigstore identity, installed the
+  generator's dependencies without hashes; they are now installed by hash. The SBOM and Release
+  jobs check out `refs/tags/<tag>`, since a bare name is also read as a branch. The SBOM job checks
+  that the tagged commit is on `main`, as the build job does, because it also runs for a dispatched
+  tag and its output drafts the Release. The SBOM artifact is downloaded into a directory of its
+  own rather than over the checkout. Two runs for one tag queue rather than race. These checks live
+  in the workflow file, so a pushed tag on a commit that edits the workflow is not stopped by them.
 - **Dependency floors allowed versions with published advisories.** The floors are GitPython 3.1.62
   (GHSA-239g-whfq-7xj9, repository content posing as the Git directory), Jinja2 3.1.6 and Pydantic
   2.4; a test fails if one is lowered.

@@ -26,6 +26,7 @@ from typing import Annotated, Any, ClassVar, NoReturn, TextIO, cast
 
 import typer
 from typer.core import TyperGroup
+from typer.main import get_command
 
 from reveille import __version__
 from reveille.config import OutputFormat, ReportConfig, ReportConfigKwargs
@@ -746,12 +747,65 @@ def _refuse_what_is_not_a_file(output: Path, example: str) -> None:
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
 
+#: How each report Reveille writes begins. The HTML title has stood since the first renderer.
+_REPORT_STARTS = {
+    "html": ("<!DOCTYPE html>", "Reveille Report</title>"),
+    "json": ('{\n  "schema_version"', '"schema_version"'),
+    "csv": ("rank,name,email,", "rank,name,email,"),
+}
+
+
+def _written_by_reveille(path: Path, output_format: str) -> bool:
+    """Whether `path` is missing, or begins as a Reveille report does.
+
+    A directory cannot be read and a pipe reads as empty (opened without waiting), so
+    neither passes; a symbolic link is replaced by the write, not followed.
+    """
+    try:
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
+        with os.fdopen(descriptor, "rb") as handle:
+            head = handle.read(4096).decode("utf-8", errors="replace").lstrip("\ufeff")
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+    start, marker = _REPORT_STARTS[output_format]
+    return head.startswith(start) and marker in head
+
+
+def _refuse_what_a_config_cannot_replace(output: Path, output_format: str) -> None:
+    """Refuse a discovered config's output that is not a report, or would replace another file.
+
+    A committed `reveille.toml` could name `src/app.py` or an ignored `.env`, and the
+    report replaced it; or `vendor.git/HEAD`, a bare repository's own file.
+
+    Raises:
+        typer.Exit: ExitCode.CANNOT_RUN if the path is refused.
+    """
+    if output.suffix.casefold() != ".html":
+        _err(
+            f"Error: the configuration file sets an output path that does not end in .html: "
+            f"'{output}'. A reveille.toml is discovered automatically, so it may come from a "
+            "repository you do not control. Pass --output explicitly to write there."
+        )
+        raise typer.Exit(code=ExitCode.CANNOT_RUN)
+    written = output if output_format == "html" else output.with_suffix(f".{output_format}")
+    if not _written_by_reveille(written, output_format):
+        _err(
+            f"Error: the configuration file sets an output path that would replace "
+            f"'{written}', which is not a Reveille report. Pass --output explicitly to "
+            "replace it."
+        )
+        raise typer.Exit(code=ExitCode.CANNOT_RUN)
+
+
 def _validate_output_path(
     output: Path,
     repo_path: Path,
     *,
     from_config: bool = False,
     example: str = "reveille-report.html",
+    output_format: str = "html",
 ) -> None:
     """Validate the output path for traversal and the repository boundary.
 
@@ -763,6 +817,7 @@ def _validate_output_path(
         repo_path: The resolved repository root.
         from_config: An auto-discovered (untrusted) file supplied the path.
         example: A file name to suggest when the path is a directory.
+        output_format: The format to be written, which names the file replaced.
 
     Raises:
         typer.Exit: ExitCode.CANNOT_RUN if the path is refused.
@@ -801,6 +856,8 @@ def _validate_output_path(
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
     _refuse_what_is_not_a_file(output, example)
+    if from_config:
+        _refuse_what_a_config_cannot_replace(output, output_format)
 
     if ".." in output.parts:
         _err(
@@ -982,7 +1039,14 @@ def generate(
     ] = Path("."),
     output: Annotated[
         Path,
-        typer.Option("--output", "-o", help="Output path for the HTML report.", parser=_file_path),
+        typer.Option(
+            "--output",
+            "-o",
+            help="Where to write the report, or - for stdout. The default's extension follows "
+            "--format: .html, .json or .csv.",
+            parser=_file_path,
+            metavar="PATH",
+        ),
     ] = Path("reveille-report.html"),
     since: Annotated[
         str | None,
@@ -1182,6 +1246,7 @@ def generate(
             Path(merged.get("output_path", output)),
             merged["repo_path"],
             from_config=_output_from_config,
+            output_format=str(merged.get("output_format", "html")),
         )
 
     try:
@@ -1575,6 +1640,7 @@ def init(
             "-o",
             help="Destination path for the generated configuration file, or - for stdout.",
             parser=_file_path,
+            metavar="PATH",
         ),
     ] = Path("reveille.toml"),
     force: Annotated[
@@ -1672,7 +1738,7 @@ def capabilities(
         _err(f"Error: unsupported format '{output_format}'. Accepted values: text, json.")
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
-    document = build_capabilities(app, ExitCode)
+    document = build_capabilities(get_command(app), ExitCode)
     if command is not None:
         narrowed = command_capabilities(document, command)
         if narrowed is None:
@@ -1714,12 +1780,24 @@ def skill(
 
 
 @app.command()
-def help(ctx: typer.Context) -> None:
-    """Display help information for all available commands."""
-    if ctx.parent is not None:
-        typer.echo(ctx.parent.get_help())
-    else:
-        typer.echo(ctx.get_help())
+def help(
+    ctx: typer.Context,
+    command: Annotated[
+        str | None, typer.Argument(help="A command to show the help of, as `<command> --help`.")
+    ] = None,
+) -> None:
+    """Display help information for all available commands, or for one."""
+    root = ctx.parent if ctx.parent is not None else ctx
+    if command is None:
+        typer.echo(root.get_help())
+        return
+    group = root.command
+    sub = group.get_command(root, command) if isinstance(group, TyperGroup) else None
+    if sub is None:
+        known = ", ".join(group.list_commands(root)) if isinstance(group, TyperGroup) else ""
+        _err(f"Error: no command {command!r}; the commands are {known}.")
+        raise typer.Exit(code=ExitCode.CANNOT_RUN)
+    typer.echo(sub.get_help(type(ctx)(sub, info_name=command, parent=root)))
 
 
 def _parse_date(value: str, flag_name: str) -> datetime.date:

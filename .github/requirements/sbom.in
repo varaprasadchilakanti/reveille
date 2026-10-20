@@ -1,0 +1,8 @@
+# The SBOM generator, outside the project's own dependency graph: the tool that
+# describes that graph is not a member of it. `sbom.txt` pins it and everything
+# it pulls in by version and hash, so the release job and `make sbom` install
+# the same versions, from files whose hashes are recorded. Regenerate it after
+# changing this file, from this directory:
+#
+#   pip-compile --generate-hashes --strip-extras --allow-unsafe sbom.in
+cyclonedx-bom==7.3.1
