@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -78,3 +79,30 @@ def test_a_date_git_cannot_parse_gives_the_answer_the_window_means(
     assert _commits(workspace / "r") == (ExitCode.SUCCESS, 1), "positive control"
 
     assert _commits(workspace / "r", *window) == expected
+
+
+def test_a_commit_in_the_last_week_of_the_calendar_is_drawn(tmp_path: Path) -> None:
+    """Git accepts 9999-12-31; the week after it cannot be held, and the HTML failed to render."""
+    repo = tmp_path / "r"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    (repo / "a.txt").write_text("a", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    last_day = {
+        "GIT_AUTHOR_DATE": "@253402214400 +0000",
+        "GIT_COMMITTER_DATE": "@253402214400 +0000",
+    }
+    subprocess.run(
+        ["git", "-c", "user.name=A", "-c", "user.email=a@e.test", "commit", "-qm", "a"],
+        cwd=repo,
+        check=True,
+        env={**os.environ, **last_day},
+    )
+    out = tmp_path / "r.html"
+
+    result = CliRunner().invoke(
+        app, ["generate", "--repo", str(repo), "--deterministic", "-o", str(out), "-q"]
+    )
+
+    assert result.exit_code == ExitCode.SUCCESS, result.stderr
+    assert "9999-12-27" in out.read_text(encoding="utf-8")

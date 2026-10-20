@@ -1543,9 +1543,12 @@ def _week_starts(first: datetime.date, last: datetime.date) -> list[str]:
     """
     monday = first - datetime.timedelta(days=first.weekday())
     weeks: list[str] = []
+    step = datetime.timedelta(weeks=1)
     while monday <= last:
         weeks.append(monday.isoformat())
-        monday += datetime.timedelta(weeks=1)
+        if monday > datetime.date.max - step:
+            break  # 9999-12-27, the last Monday a date can hold; Git accepts a commit after it.
+        monday += step
     return weeks
 
 
@@ -1689,7 +1692,9 @@ def _week_axis(weeks: list[str]) -> dict[str, Any]:
     if len(weeks) == 1:
         week = datetime.date.fromisoformat(weeks[0])
         span = datetime.timedelta(days=7)
-        axis["range"] = [(week - span).isoformat(), (week + span).isoformat()]
+        low = week - span if week - datetime.date.min >= span else datetime.date.min
+        high = week + span if datetime.date.max - week >= span else datetime.date.max
+        axis["range"] = [low.isoformat(), high.isoformat()]
         axis["tickformat"] = "%b %-d, %Y"
     return axis
 
