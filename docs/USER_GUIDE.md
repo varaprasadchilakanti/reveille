@@ -512,8 +512,9 @@ person, starting work follow the same order:
 
 1. `reveille state --format json`: where the repository stands now, before anything changes.
 2. `reveille brief --format json`: what changed since the latest tag, or with `--from <commit>`
-   since a commit seen before. Its `analysed_commit` is the `--from` for the next brief. With no
-   tag on the branch it exits 2; give `--since <YYYY-MM-DD>` instead.
+   since a commit seen before. Its `analysed_commit` is the `--from` for the next brief; after
+   `--until <date>`, start the next with `--since` the day after. With no tag on the branch it
+   exits 2; give `--since <YYYY-MM-DD>` instead.
 3. `reveille who-changed <path> --format json`, before changing a file or directory: whom to ask.
 
 The army's morning report recorded people; `brief` and `state` name nobody, and `repos` lists
@@ -522,7 +523,7 @@ repositories, never people.
 `reveille skill` prints this as a section to paste into `AGENTS.md`, `CLAUDE.md` or another
 instructions file, since an agent uses a tool its instructions name. `--format skill` prints it as
 a `SKILL.md`, with the `name` and `description` frontmatter an agent loads it by. It reads no
-repository, is about 1.4 KB, and a test runs every command it names against a repository before it
+repository, is about 1.9 KB, and a test runs every command it names against a repository before it
 ships.
 
 ```bash

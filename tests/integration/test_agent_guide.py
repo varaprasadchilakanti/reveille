@@ -63,7 +63,7 @@ def _commands() -> list[str]:
 def test_the_guide_names_the_commands_it_should() -> None:
     names = {shlex.split(command)[1] for command in _commands()}
 
-    assert names == {"state", "brief", "who-changed", "summary", "capabilities"}
+    assert names == {"state", "brief", "who-changed", "summary", "capabilities", "repos"}
 
 
 def test_every_command_in_the_guide_runs(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -73,6 +73,7 @@ def test_every_command_in_the_guide_runs(repo: Path, monkeypatch: pytest.MonkeyP
         "<path>": "src",
         "<name>": "state",
         "<date>": "2000-01-01",
+        "<directory>": str(repo.parent),
     }
     documents = {}
     for command in _commands():
