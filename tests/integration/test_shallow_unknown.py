@@ -18,7 +18,7 @@ from git.exc import GitCommandError
 
 from reveille.adapters.git_reader import GitReader, RepositoryError
 
-pytestmark = pytest.mark.unit
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture

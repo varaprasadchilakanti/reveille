@@ -12,7 +12,7 @@ import pytest
 
 from reveille.adapters.git_reader import GitReader
 
-pytestmark = pytest.mark.unit
+pytestmark = pytest.mark.integration
 
 
 def test_one_author_s_commits_share_their_strings(tmp_path: Path) -> None:

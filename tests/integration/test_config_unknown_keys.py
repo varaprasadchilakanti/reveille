@@ -21,7 +21,7 @@ from reveille.cli import ExitCode, app
 from reveille.config import _KNOWN_KEYS, read_config_file
 from reveille.init import write_init_config
 
-pytestmark = pytest.mark.unit
+pytestmark = pytest.mark.integration
 
 _GUIDE = Path(__file__).resolve().parents[2] / "docs" / "USER_GUIDE.md"
 

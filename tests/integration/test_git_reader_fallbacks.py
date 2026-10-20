@@ -18,7 +18,7 @@ from reveille.adapters import git_reader
 from reveille.adapters.git_reader import GitReader
 from reveille.exceptions import RepositoryError
 
-pytestmark = pytest.mark.unit
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
@@ -232,7 +232,6 @@ def test_the_version_is_asked_once_when_readers_open_together(
         git_reader._read_git_version.cache_clear()
 
 
-@pytest.mark.unit
 def test_a_git_error_is_its_message_not_a_hint_before_it() -> None:
     """Reveille's own GIT_GRAFT_FILE makes Git print a deprecation hint first."""
     from git.exc import GitCommandError
