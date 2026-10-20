@@ -2702,18 +2702,29 @@ def _state_markdown_notes(state: RepositoryState, history_replaced: bool, limit:
     return notes
 
 
+# Characters that show as nothing, in text, Markdown and line output: control and direction
+# characters, the zero-width space, word joiner and invisible operators, the byte order mark,
+# and the tag characters, which spell out ASCII that a model reads and a person does not see.
+# ZWJ and ZWNJ stay: names in several scripts are spelt with them.
+_INVISIBLE_IN_TEXT: dict[int, str] = {
+    **_UNSHOWABLE,
+    **{code: f"\\u{code:04x}" for code in (0x200B, *range(0x2060, 0x2065), 0xFEFF)},
+    **{code: f"\\U{code:08x}" for code in range(0xE0000, 0xE0080)},
+}
+
+
 def _joined(lines: Sequence[str]) -> str:
-    """Join output lines; a CR or LF inside one, from a repository name, is shown as an escape.
+    """Join output lines, showing what a repository name could hide or add as escapes.
 
     Each element is one line of output, so a newline inside it can only have come
     from a path, branch or directory name, and would let that name add a line.
     """
-    return "".join(line.replace("\r", "\\r").replace("\n", "\\n") + "\n" for line in lines)
+    return "".join(_one_line(line) for line in lines)
 
 
 def _one_line(text: str) -> str:
-    """End `text` with its only newline: a CR or LF inside a name is shown as an escape."""
-    return text.replace("\r", "\\r").replace("\n", "\\n") + "\n"
+    """End `text` with its only newline; CR, LF and invisible characters are shown as escapes."""
+    return text.replace("\r", "\\r").replace("\n", "\\n").translate(_INVISIBLE_IN_TEXT) + "\n"
 
 
 def _state_line(state: RepositoryState, name: str) -> str:

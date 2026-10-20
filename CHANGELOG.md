@@ -212,6 +212,11 @@ Each entry has a test that fails without the fix. 0.9.0's exposure is stated whe
   repository inside the tree), and the run exited 0. A discovered file's `output` must now end in
   `.html`, and may replace only a Reveille report; otherwise the run stops (exit 2). `--output`
   and `--config` are unchanged. 0.9.0 is affected (read in its code).
+- **Characters that do not display reached text, Markdown and line output unescaped.** Tag
+  characters (U+E0000 to U+E007F) spell out words a person cannot see and a model can read. They,
+  control and direction characters, the zero-width space, the word joiner and the byte order
+  mark are now shown as escapes there; JSON already escaped them. 0.9.0's
+  `who-changed` and `summary` text is affected (read in its code).
 - **The report carried plotly.js without its licences.** Reports now carry every bundled package's
   notice. 0.9.0 is affected.
 - **An author address could make the report request a remote URL when opened**, telling a third
