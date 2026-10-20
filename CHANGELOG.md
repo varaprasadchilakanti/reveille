@@ -69,6 +69,13 @@ before release.
 
 ### Changed
 
+- **plotly 7.0 or later is required** (was 5.20). Reports embed plotly.js 4.1.1, and figures were
+  checked with plotly 7.0.0 and 7.1.0, which gave byte-identical reports; no earlier release was.
+- **The HTML report names at most 1,000 people, or `--limit`.** The contributor table, the
+  heatmap's list and the lines chart stop there, and the page says how many it left out. The Lorenz
+  curve is drawn from at most 201 of its own points. Every figure still counts everyone. At 100,000
+  authors the report went from 78 MB to 2.5 MB; smaller reports are unchanged
+  ([ADR 0029](docs/adr/0029-the-html-names-a-bounded-list.md)).
 - **The HTML report is 1.7 MB, down from 4.9 MB.** It embeds the plotly.js 4.1.1 cartesian bundle,
   pinned in `src/reveille/vendor/` with its notices, not the full bundle of whichever plotly is
   installed ([ADR 0027](docs/adr/0027-the-report-embeds-a-pinned-cartesian-bundle.md)). In headless
@@ -112,6 +119,16 @@ before release.
 
 ### Fixed
 
+- **`repos` skipped a working tree whose `.git` is a symbolic link, and listed a separate Git
+  directory twice.** The link now makes a row, as a `.git` file does, and a Git directory a working
+  tree in the search uses is not a row of its own; one nothing uses is a row that says what it is
+  ([ADR 0030](docs/adr/0030-repos-reads-a-git-link-and-no-store-twice.md)).
+- **A Git directory not configured as bare** gave Git's raw "not a git repository". It is now told
+  that it holds a Git directory but no working tree, and to give its working tree.
+- **`--branch main` read a tag named `main`.** Git reads `refs/tags/<name>` before
+  `refs/heads/<name>`, and its documentation advises naming the ref in full when both exist. A name
+  that is a branch is now read as `refs/heads/<name>`, with a warning when a tag shares it; any other
+  name is read as Git reads it.
 - **Under `--format json`, a command-line mistake is a JSON line too.** An unknown option, a missing
   argument or an out-of-range value gave Click's boxed text to a caller reading JSON lines. It is now
   one `{"level": "error", ...}` line, exit 2, naming the `capabilities` call that lists the options.

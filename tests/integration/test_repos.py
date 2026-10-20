@@ -463,3 +463,109 @@ def test_rows_a_reader_stops_early_on_still_exit_2(tmp_path: Path) -> None:
 
     assert child.returncode == ExitCode.CANNOT_RUN, error
     assert "None of the 40 repositories" in error, error
+
+
+def _commit(repo: Path) -> None:
+    """One commit inside the tests' window, which ends on `_UNTIL`."""
+    stamp = "2026-10-10T10:00:00+00:00"
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=A",
+            "-c",
+            "user.email=a@e.test",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "a",
+        ],
+        cwd=repo,
+        check=True,
+        env={**os.environ, "GIT_AUTHOR_DATE": stamp, "GIT_COMMITTER_DATE": stamp},
+    )
+
+
+def test_a_dot_git_symlink_is_a_row_as_a_dot_git_file_is(tmp_path: Path) -> None:
+    """`summary` reads a working tree whose `.git` is a link; `repos` skipped it."""
+    store, tree = tmp_path / "stores" / "s.git", tmp_path / "ws" / "linked"
+    tree.mkdir(parents=True)
+    store.parent.mkdir()
+    subprocess.run(
+        ["git", "init", "-q", "-b", "main", f"--separate-git-dir={store}", str(tree)], check=True
+    )
+    (tree / ".git").unlink()
+    (tree / ".git").symlink_to(store, target_is_directory=True)
+    _commit(tree)
+
+    rows = _rows(tmp_path / "ws")
+
+    assert rows["linked"]["status"] == "active", rows
+    assert "s.git" not in rows, "the link is not searched: the store outside is no row"
+
+
+def test_a_git_directory_a_working_tree_here_uses_is_not_a_row_of_its_own(tmp_path: Path) -> None:
+    root = tmp_path / "ws"
+    tree = root / "sep"
+    tree.mkdir(parents=True)
+    subprocess.run(
+        ["git", "init", "-q", "-b", "main", f"--separate-git-dir={root / 'sep-store'}", str(tree)],
+        check=True,
+    )
+    _commit(tree)
+    assert (root / "sep-store" / "HEAD").is_file(), (
+        "positive control: the store is in the directory"
+    )
+
+    rows = _rows(root)
+
+    assert set(rows) == {"sep"}, rows
+
+
+def test_a_git_directory_nothing_here_uses_is_a_row_that_says_what_it_is(tmp_path: Path) -> None:
+    """Dropped only when its working tree is a row; otherwise the row names the cause."""
+    tree = tmp_path / "elsewhere"
+    tree.mkdir()
+    store = tmp_path / "ws" / "orphan"
+    store.parent.mkdir()
+    subprocess.run(
+        ["git", "init", "-q", "-b", "main", f"--separate-git-dir={store}", str(tree)], check=True
+    )
+    _commit(tree)
+
+    code, out, err = _repos(tmp_path / "ws", "--format", "json")
+
+    assert code == ExitCode.CANNOT_RUN, err  # the only row, and it was not read (ADR 0028)
+    (row,) = json.loads(out)["repositories"]
+    assert row["path"] == "orphan" and row["status"] == "not_read"
+    assert "holds a Git directory but no working tree" in row["reason"], row
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="named pipes are POSIX")
+def test_a_dot_git_pipe_does_not_hold_the_search(tmp_path: Path) -> None:
+    root = tmp_path / "ws"
+    (root / "piped").mkdir(parents=True)
+    os.mkfifo(root / "piped" / ".git")
+    _repo(root / "plain", ("2026-10-01", "Ana", "ana@corp.test"))
+
+    done = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "reveille",
+            "repos",
+            str(root),
+            "--until",
+            _UNTIL,
+            "--format",
+            "json",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+
+    assert done.returncode == ExitCode.SUCCESS, done.stderr
+    assert {row["path"] for row in json.loads(done.stdout)["repositories"]} >= {"plain"}

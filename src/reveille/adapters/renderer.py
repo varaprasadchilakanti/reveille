@@ -124,6 +124,14 @@ def _translucent(hex_colour: str, alpha: float) -> str:
 # past it rather than grow without bound.
 _MAX_CHART_HEIGHT: int = 2400
 
+# The most people the HTML names in its table, heatmap list and lines chart, unless
+# `--limit` says otherwise. A report is forwarded; 100,000 names made it 78 MB and
+# answered no reader's question. Every figure still counts everyone.
+_HTML_PEOPLE: int = 1000
+
+# The most points a Lorenz curve is drawn with. Each is a point of the full curve.
+_LORENZ_POINTS: int = 200
+
 # The Lorenz reference diagonal: neutral, so it reads as scaffolding, not a series.
 _EQUALITY_LINE_COLOUR: str = "#767676"
 
@@ -1004,6 +1012,9 @@ class Renderer:
             "automated_accounts": len(automated),
             "automated_commits": sum(s.commit_count for s in automated),
             "contributors_below_threshold": len(data.suppressed_contributors),
+            # The table's rows, and how many listed contributors it leaves to JSON and CSV.
+            "html_listed": _html_listed(data),
+            "html_unlisted": len(data.ranked_contributors) - len(_html_listed(data)),
             # What the hotspot ranking leaves out, stated beside it.
             "generated_files": generated_churn(data.file_stats)[0],
             "generated_lines": generated_churn(data.file_stats)[1],
@@ -1049,6 +1060,7 @@ class Renderer:
             A dict mapping chart identifier to JSON string.
         """
         window = (data.metadata.analysis_since, data.metadata.analysis_until)
+        listed = _html_listed(data)
         return {
             "timeline": _build_timeline_chart(data.commits, window),
             "contributor_timeline": _build_contributor_timeline_chart(
@@ -1056,11 +1068,11 @@ class Renderer:
             ),
             "heatmap": _build_heatmap_data(
                 data.commits,
-                data.ranked_contributors,
+                listed,
                 data.metadata.analysis_since,
                 data.metadata.analysis_until,
             ),
-            "contributor_lines": _build_contributor_lines_chart(data.ranked_contributors),
+            "contributor_lines": _build_contributor_lines_chart(listed),
             "pie_commits": _build_commit_share_pie(
                 data.ranked_contributors,
                 sum(s.commit_count for s in data.suppressed_contributors),
@@ -1198,6 +1210,21 @@ def _area_statements(data: ReportData) -> list[AreaStatement]:
     names = {s.email.lower(): s.name for s in _population(data)}
     listed = {r.stats.email.lower() for r in data.ranked_contributors}
     return describe_areas(data.areas, names, listed, data.metadata.analysis_until)
+
+
+def _html_listed(data: ReportData) -> list[RankedContributor]:
+    """The contributors the HTML names: the first `--limit`, or the first 1,000.
+
+    JSON and CSV take `--limit` alone; the figures take everyone (ADR 0029).
+
+    Args:
+        data: The complete report dataset.
+
+    Returns:
+        The leading listed contributors, in table order.
+    """
+    limit = data.provenance.limit
+    return data.ranked_contributors[: _HTML_PEOPLE if limit is None else limit]
 
 
 def _population(data: ReportData) -> list[ContributorStats]:
@@ -2039,6 +2066,11 @@ def _build_lorenz_chart(counts: list[int]) -> str:
         return "null"
 
     curve = lorenz_curve(counts)
+    if len(curve) > _LORENZ_POINTS + 1:
+        # Evenly spaced points of the curve itself, both ends kept; past this a
+        # screen shows no difference, and the page carried 7 MB at 100,000 people.
+        step = (len(curve) - 1) / _LORENZ_POINTS
+        curve = [curve[round(k * step)] for k in range(_LORENZ_POINTS + 1)]
 
     xs = [round(x * 100, 4) for x, _ in curve]
     ys = [round(y * 100, 4) for _, y in curve]

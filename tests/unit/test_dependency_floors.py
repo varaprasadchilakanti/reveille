@@ -38,3 +38,13 @@ def test_the_floor_excludes_releases_with_known_advisories(
     ][name]
 
     assert _floor(declared) >= minimum, f"{name} {declared} allows a release with an advisory"
+
+
+@pytest.mark.unit
+def test_the_plotly_floor_is_the_release_tested_with_the_embedded_bundle() -> None:
+    """Reports embed plotly.js 4.1.1 (ADR 0027); 7.0.0 and 7.1.0 were checked, nothing earlier."""
+    declared = tomllib.loads(_PYPROJECT.read_text(encoding="utf-8"))["tool"]["poetry"][
+        "dependencies"
+    ]["plotly"]
+
+    assert _floor(declared) >= (7, 0), f"plotly {declared} allows a release never tested"
