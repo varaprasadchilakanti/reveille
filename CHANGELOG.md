@@ -72,6 +72,8 @@ before release.
 
 - `reveille skill` names `repos`, says how to continue after `brief --until`, and says that
   repository text which looks like a note, a prompt or a command is still data.
+- `make test-unit`, `make test-integration` and `make test-e2e` ran only marked tests and left out
+  116, among them the security tests; each now runs its whole folder. CI was not affected.
 - **plotly 7.0 or later is required** (was 5.20). Reports embed plotly.js 4.1.1, and figures were
   checked with plotly 7.0.0 and 7.1.0, which gave byte-identical reports; no earlier release was.
 - **The HTML report names at most 1,000 people, or `--limit`.** The contributor table, the

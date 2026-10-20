@@ -135,13 +135,13 @@ test:  ## Run the full test suite (parallel, no coverage instrumentation)
 	poetry run pytest -n auto
 
 test-unit:  ## Run unit tests only
-	poetry run pytest tests/unit -m unit
+	poetry run pytest tests/unit
 
 test-integration:  ## Run integration tests only
-	poetry run pytest tests/integration -m integration
+	poetry run pytest tests/integration
 
 test-e2e:  ## Run end-to-end tests only
-	poetry run pytest tests/e2e -m e2e
+	poetry run pytest tests/e2e
 
 coverage:  ## Generate HTML and terminal coverage report
 	poetry run pytest -n auto --cov=reveille --cov-report=term-missing --cov-report=html
