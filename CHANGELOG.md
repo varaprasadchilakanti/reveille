@@ -18,6 +18,7 @@ before release.
 
 ### Added
 
+- `reveille help <command>` shows that command's help; it used to exit 2.
 - **`reveille state`** says where a repository stands now: the branch, upstream ahead/behind as of
   the last fetch (Reveille never fetches), a merge, rebase, `git am`, cherry-pick, revert or bisect
   in progress, conflicts, staged, modified, deleted, renamed and untracked files (bounded by

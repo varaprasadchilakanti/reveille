@@ -326,7 +326,7 @@ reveille skill >> AGENTS.md
 
 ### `reveille help`
 
-Same as `reveille --help`.
+Same as `reveille --help`; `reveille help <command>` is `reveille <command> --help`.
 
 ---
 

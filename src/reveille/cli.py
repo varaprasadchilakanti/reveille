@@ -1037,7 +1037,14 @@ def generate(
     ] = Path("."),
     output: Annotated[
         Path,
-        typer.Option("--output", "-o", help="Output path for the HTML report.", parser=_file_path),
+        typer.Option(
+            "--output",
+            "-o",
+            help="Where to write the report, or - for stdout. The default's extension follows "
+            "--format: .html, .json or .csv.",
+            parser=_file_path,
+            metavar="PATH",
+        ),
     ] = Path("reveille-report.html"),
     since: Annotated[
         str | None,
@@ -1631,6 +1638,7 @@ def init(
             "-o",
             help="Destination path for the generated configuration file, or - for stdout.",
             parser=_file_path,
+            metavar="PATH",
         ),
     ] = Path("reveille.toml"),
     force: Annotated[
@@ -1770,12 +1778,24 @@ def skill(
 
 
 @app.command()
-def help(ctx: typer.Context) -> None:
-    """Display help information for all available commands."""
-    if ctx.parent is not None:
-        typer.echo(ctx.parent.get_help())
-    else:
-        typer.echo(ctx.get_help())
+def help(
+    ctx: typer.Context,
+    command: Annotated[
+        str | None, typer.Argument(help="A command to show the help of, as `<command> --help`.")
+    ] = None,
+) -> None:
+    """Display help information for all available commands, or for one."""
+    root = ctx.parent if ctx.parent is not None else ctx
+    if command is None:
+        typer.echo(root.get_help())
+        return
+    group = root.command
+    sub = group.get_command(root, command) if isinstance(group, TyperGroup) else None
+    if sub is None:
+        known = ", ".join(group.list_commands(root)) if isinstance(group, TyperGroup) else ""
+        _err(f"Error: no command {command!r}; the commands are {known}.")
+        raise typer.Exit(code=ExitCode.CANNOT_RUN)
+    typer.echo(sub.get_help(type(ctx)(sub, info_name=command, parent=root)))
 
 
 def _parse_date(value: str, flag_name: str) -> datetime.date:

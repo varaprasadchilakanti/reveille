@@ -380,6 +380,21 @@ class TestHelpCommand:
         assert "init" in result.output
         assert "validate" in result.output
 
+    def test_help_with_a_command_shows_that_command(self) -> None:
+        """`reveille help brief` exited 2 with "unexpected extra argument"."""
+        result = runner.invoke(app, ["help", "brief"])
+        shown = re.sub(r"\x1b\[[0-9;]*m", "", result.output)  # Rich colours help on CI
+
+        assert result.exit_code == 0, result.output
+        assert "Usage: reveille brief" in shown
+        assert "--from" in shown
+
+    def test_help_with_an_unknown_command_names_the_commands(self) -> None:
+        result = runner.invoke(app, ["help", "nosuch"])
+
+        assert result.exit_code == 2
+        assert "no command 'nosuch'; the commands are generate" in result.stderr
+
 
 # ------------------------------------------------------------------
 # Validate command
