@@ -76,7 +76,9 @@ class ExitCode(enum.IntEnum):
 # could otherwise erase the warning about it. A table rather than a regex range,
 # which CodeQL flags (py/overly-large-range).
 _TERMINAL_UNSAFE: dict[int, str] = {
-    code: f"\\x{code:02x}" if code < 0x100 else f"\\u{code:04x}"
+    code: f"\\x{code:02x}"
+    if code < 0x100
+    else (f"\\u{code:04x}" if code < 0x10000 else f"\\U{code:08x}")
     for block in (
         range(0x00, 0x09),  # C0 controls before tab
         range(0x0B, 0x20),  # C0 controls after newline, CR and ESC among them
@@ -85,6 +87,9 @@ _TERMINAL_UNSAFE: dict[int, str] = {
         (0x2028, 0x2029),  # line and paragraph separators: a line break to many readers
         range(0x202A, 0x202F),  # LRE, RLE, PDF, LRO, RLO: embeddings and overrides
         range(0x2066, 0x206A),  # LRI, RLI, FSI, PDI: direction isolates
+        (0x200B, 0xFEFF),  # zero-width space and byte order mark: show as nothing
+        range(0x2060, 0x2065),  # word joiner and invisible operators
+        range(0xE0000, 0xE0080),  # tag characters: ASCII a model reads and a person cannot see
     )
     for code in block
 }
@@ -1352,8 +1357,8 @@ def generate(
             "--deterministic",
             help=(
                 "Produce byte-identical output on the same version, dependencies "
-                "and Git settings. Pins the timestamp to the analysed commit "
-                "and closes the window on the last commit rather than today."
+                "and Git settings. Pins the timestamp to the latest commit date "
+                "and closes the window on it rather than today."
             ),
         ),
     ] = False,
@@ -1690,8 +1695,16 @@ def brief(
         _err("Error: give --from <revision> or --since <date>, not both.")
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
     config = _query_config(repo, since, until, branch, exclude_author, deterministic, exclude_path)
+    # The suggested next brief repeats what chose the history, as typed, so it runs from here.
+    carried = ["--repo", str(repo)] if repo != Path(".") else []
+    carried += ["--branch", branch] if branch is not None else []
+    carried += [part for name in exclude_author or [] for part in ("--exclude-author", name)]
+    carried += [part for path in exclude_path or [] for part in ("--exclude-path", path)]
+    carried += ["--deterministic"] if deterministic else []
     _run_query(
-        lambda notice: brief_text(config, from_revision, output_format, limit, on_notice=notice)
+        lambda notice: brief_text(
+            config, from_revision, output_format, limit, on_notice=notice, carried=carried
+        )
     )
 
 
@@ -1924,7 +1937,7 @@ def init(
     """
     from reveille.init import (
         DEFAULT_CONFIG_TEMPLATE,
-        refuse_symlink,
+        refuse_unreplaceable,
         write_init_config,
         write_mailmap_template,
     )
@@ -1948,7 +1961,7 @@ def init(
 
     try:
         if mailmap:
-            refuse_symlink(cwd / ".mailmap")  # first, so a refusal writes neither file
+            refuse_unreplaceable(cwd / ".mailmap", force=force)  # first: a refusal writes neither
         written_path = write_init_config(output, force=force)
         _say(f"Configuration file written to: {written_path}", answer=False)
     except ReveilleError as exc:

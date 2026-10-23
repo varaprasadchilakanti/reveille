@@ -18,7 +18,7 @@ import os
 import re
 import threading
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
@@ -628,6 +628,7 @@ def brief_text(
     output_format: str,
     limit: int,
     on_notice: Callable[[str], None] | None = None,
+    carried: Sequence[str] = (),
 ) -> str:
     """Say what changed since a point the caller names, in counts (ADR 0022).
 
@@ -641,6 +642,7 @@ def brief_text(
         output_format: "json", "text", "markdown" or "line".
         limit: The most entries any list carries.
         on_notice: As for generate_report.
+        carried: The options the suggested next brief repeats, as the caller gave them.
 
     Returns:
         The brief.
@@ -752,6 +754,7 @@ def brief_text(
         output_format=output_format,
         limit=limit,
         until=config.until,
+        carried=carried,
     )
 
 
@@ -876,8 +879,8 @@ def build_report_data(
 
     head_sha = reader.resolve_head_sha(config.branch)
 
-    # Deterministic mode pins the timestamp to the analysed commit, as a
-    # reproducible build pins to SOURCE_DATE_EPOCH.
+    # Deterministic mode pins the timestamp to the latest commit date read, as
+    # a reproducible build pins to SOURCE_DATE_EPOCH.
     if config.deterministic:
         head_commit_time = max(c.timestamp for c in commits)
         metadata = replace(metadata, generated_at=head_commit_time)

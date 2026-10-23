@@ -36,7 +36,9 @@ def write_replacing(path: Path, text: str, *, encoding: str) -> None:
     Replacing the name, not writing in place, leaves other hard links to the
     old file untouched. A new file is owner-only (0o600), since reports and a
     filled-in `.mailmap` name people; an existing file keeps its mode, so one
-    its owner widened stays widened. The temporary file is removed on failure.
+    its owner widened stays widened, and one its owner made read-only is
+    refused, as the shell's `>` refuses it. The text reaches the disk before the
+    name moves. The temporary file is removed on failure.
 
     The directory is opened once, and every step is taken in it: one swapped
     for a link, or for a Git directory, after the path was checked is not
@@ -49,8 +51,9 @@ def write_replacing(path: Path, text: str, *, encoding: str) -> None:
 
     Raises:
         OSError: If the file cannot be created, written or moved, the path
-            names something other than a regular file, its directory is now a
-            link, or it is inside a Git directory.
+            names something other than a regular file or a read-only one, its
+            directory is now a link, or it is inside a Git directory. The error
+            names `path`, not the temporary file.
     """
     if not _DIRECTORY_DESCRIPTORS:  # pragma: no cover - Windows
         _write_in(None, path, path.with_name(_temporary_name(path)), text, encoding)
@@ -83,12 +86,23 @@ def _write_in(directory: int | None, name: Path, temporary: Path, text: str, enc
                 str(name),
             )
         kept_mode = stat.S_IMODE(mode)
-    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=directory)
+        if not kept_mode & stat.S_IWUSR:
+            raise PermissionError(
+                errno.EACCES, "read-only; make it writable to replace it", str(name)
+            )
+    try:
+        descriptor = os.open(
+            temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=directory
+        )
+    except OSError as exc:
+        raise type(exc)(exc.errno, exc.strerror, str(name)) from exc
     try:
         with os.fdopen(descriptor, "w", encoding=encoding, newline="") as handle:
             handle.write(text)
             if kept_mode is not None:
                 os.chmod(handle.fileno(), kept_mode)
+            handle.flush()
+            os.fsync(handle.fileno())
         os.replace(temporary, name, src_dir_fd=directory, dst_dir_fd=directory)
     except BaseException:
         with contextlib.suppress(FileNotFoundError):

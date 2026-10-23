@@ -283,8 +283,8 @@ hides `Co-authored-by` trailers). Settings that could make a read start a progra
 ever, such as `core.fsmonitor`, `log.showSignature` or `diff.orderFile`, are pinned off too.
 Other settings are not pinned.
 
-It pins `generated_at` to the analysed commit's timestamp instead of the clock (the idea behind
-`SOURCE_DATE_EPOCH`), and closes the analysis window on the last commit instead of today.
+It pins `generated_at` to the latest commit date in the history read instead of the clock (the
+idea behind `SOURCE_DATE_EPOCH`), and closes the analysis window on the last commit instead of today.
 **The second part changes the numbers, not only the bytes**: the ranking's recency component is
 measured against the window, so pinning the window pins the scores. That is why the flag is
 opt-in, and why `provenance.deterministic` records its use. Use it when a report must be
@@ -577,7 +577,7 @@ whether it can parse the rest before trying.
   "schema_version": "1.3",
   "metadata": { "name": "...", "analysed_branch": "main", "...": "..." },
   "provenance": {
-    "reveille_version": "0.9.0",
+    "reveille_version": "0.10.0",
     "head_sha": "…",
     "deterministic": false,
     "mailmap_applied": true,
@@ -749,7 +749,7 @@ on them for a decision.
 A panel under the summary cards states, with this report's own numbers, the rules that most
 change a reading: commits are counted, not weighed; how many merge commits were left out; a squash
 merge is one commit by one author, with others shown only through Co-authored-by trailers (and
-how many commits carry one); dates are commit dates; whether a `.mailmap` merged identities; and
+how many commits carry one); dates are commit dates, in UTC; whether a `.mailmap` merged identities; and
 that concentration is not a bus factor. It is in the file because a report is forwarded without
 this guide.
 
@@ -832,7 +832,7 @@ describes a person ([ADR 0016](adr/0016-the-profile-shape-returns-as-a-flower.md
 
 ### Change Size per Commit
 
-How many commits changed how many lines (added plus deleted), in buckets that double in width:
+How many commits changed how many lines (added plus deleted), in buckets that widen at each step:
 0–9, 10–49, 50–199, 200–999, 1,000–4,999 and 5,000 or more. The tallest bar is therefore not the
 median; the median is marked. It needs JavaScript.
 

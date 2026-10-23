@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import base64
 import csv
+import dataclasses
 import datetime
 import functools
 import hashlib
@@ -23,6 +24,7 @@ import itertools
 import json
 import math
 import re
+import shlex
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable, Sequence
 from html import unescape
@@ -65,7 +67,7 @@ from reveille.domain.repositories import (
     status_counts,
 )
 from reveille.domain.state import QUIET_BRANCH_DAYS, RepositoryState, Worktree
-from reveille.domain.summary import Finding, longest_quiet_run, summarise
+from reveille.domain.summary import Finding, longest_quiet_run, summarise, whole_percent
 from reveille.exceptions import OutputPathError, RenderError
 from reveille.replacing import write_replacing
 from reveille.undecoded import json_text, shell_word
@@ -235,6 +237,7 @@ class Renderer:
                     undefined=StrictUndefined,
                     finalize=_shown_in_html,
                 )
+                environment.filters["share"] = whole_percent
                 self._template = environment.get_template("report.html.j2")
             except (TemplateNotFound, TemplatesNotFound, OSError) as exc:
                 raise RenderError(
@@ -711,6 +714,7 @@ class Renderer:
         output_format: str,
         limit: int,
         until: datetime.date | None = None,
+        carried: Sequence[str] = (),
     ) -> str:
         """Render a brief as JSON or plain lines (ADR 0022). Names nobody.
 
@@ -723,6 +727,7 @@ class Renderer:
             output_format: "json", "text", "markdown" or "line".
             limit: The most entries any list carries.
             until: The window's last day, when the caller closed it.
+            carried: The options the next brief repeats to read the same history.
 
         Returns:
             The brief.
@@ -765,13 +770,13 @@ class Renderer:
             )
 
         if output_format == "markdown":
-            return _brief_markdown(facts, repository, point, tip, tags, limit, until)
+            return _brief_markdown(facts, repository, point, tip, tags, limit, until, carried)
         if output_format == "line":
             return _brief_line(facts, repository, named, tip, tags)
 
         def listed(items: list[str]) -> str:
             rest = len(items) - limit
-            shown = ", ".join(items[:limit])
+            shown = ", ".join(items[:limit]) or "none"
             return f"{shown} and {rest:,} more" if rest > 0 else shown
 
         since = f"{named} ({commit[:7]})" if commit is not None else named
@@ -794,7 +799,7 @@ class Renderer:
             )
         if tags:
             lines.append(f"Tags in the range: {listed(tags)}.")
-        lines.append(f"Next: {_next_brief(tip, until)}")
+        lines.append(f"Next: {_next_brief(tip, until, carried)}")
         lines.append(_NOTICE)
         return _joined(lines)
 
@@ -1040,11 +1045,7 @@ class Renderer:
             "areas": _area_statements(data),
             # Co-authorship beside authorship (ADR 0014).
             "co_authored_any": any(r.stats.co_authored_commits for r in data.ranked_contributors),
-            "co_authors_named": [
-                c
-                for c in data.co_authors_only
-                if c.co_authored_commits >= data.provenance.min_commits
-            ],
+            "co_authors_named": _told_apart(_listed_co_authors(data)),
             "co_authors_unnamed": sum(
                 1
                 for c in data.co_authors_only
@@ -1191,7 +1192,7 @@ def _profile_flower(profile: list[ProfileAxis]) -> list[dict[str, Any]]:
         petals.append(
             {
                 "name": axis.name,
-                "percent": f"{axis.value * 100:.0f}%",
+                "percent": whole_percent(axis.value),
                 "track": wedge(_FLOWER_RADIUS, start, end),
                 "petal": wedge(length, start, end) if length >= 0.5 else "",
                 "expected": expected,
@@ -1414,6 +1415,17 @@ def _contributor_labels(ranked: list[RankedContributor]) -> dict[str, str]:
     }
 
 
+def _told_apart(co_authors: list[CoAuthor]) -> list[CoAuthor]:
+    """Add the address, or a hidden one's token, to a name more than one identity holds."""
+    held = Counter(c.name for c in co_authors)
+    told: list[CoAuthor] = []
+    for c in co_authors:
+        local, _, domain = c.email.rpartition("@")
+        key = local if domain == HIDDEN_DOMAIN else c.email
+        told.append(c if held[c.name] == 1 else dataclasses.replace(c, name=f"{c.name} ({key})"))
+    return told
+
+
 def _label_key(email: str) -> str:
     """Return what tells two people of one name apart: the address, or a hidden one's token."""
     local, _, domain = email.rpartition("@")
@@ -1526,8 +1538,11 @@ def _accessible_table(chart: str, specification: str) -> dict[str, Any]:
             "rows": [list(pair) for pair in zip(categories, values, strict=False)],
         }
 
-    # A dict keeps first-seen order with constant-time membership.
+    # A dict keeps first-seen order with constant-time membership. Numbers run in
+    # order: the Lorenz curve's equality line would otherwise put 100% second.
     ordered = dict.fromkeys(c for _name, categories, _values in series for c in categories)
+    if all(isinstance(c, int | float) for c in ordered):
+        ordered = dict.fromkeys(sorted(ordered))
     lookup = [
         (name, dict(zip(categories, values, strict=False))) for name, categories, values in series
     ]
@@ -1943,7 +1958,7 @@ def _build_commit_size_chart(commits: list[Commit]) -> str:
             "y": buckets[median_index],
             "yanchor": "bottom",
             "yshift": 22,
-            "text": f"median {median:,} lines",
+            "text": f"median {_counted(median, 'line')}",
             "showarrow": False,
             "font": {"size": 11},
         }
@@ -2207,8 +2222,8 @@ def _neutralise_csv_cell(value: str) -> str:
     r"""Prevent a text cell from being executed as a spreadsheet formula.
 
     Names and addresses are attacker-controlled; a leading apostrophe makes a
-    spreadsheet treat the cell as text. Control and direction characters are
-    written as `\uXXXX` escapes, as in the HTML report. Free-text columns only.
+    spreadsheet treat the cell as text. Control, direction and invisible
+    characters are written as escapes, as in the HTML report. Free-text columns only.
 
     Args:
         value: A free-text cell value derived from repository metadata.
@@ -2245,17 +2260,28 @@ _DIRECTION_CONTROLS: dict[int, str] = {
     for code in block
 }
 
+# Characters that show as nothing: the zero-width space, word joiner and invisible
+# operators, the byte order mark, the line and paragraph separators, and the tag
+# characters, which spell out ASCII that a model reads and a person does not see.
+# ZWJ and ZWNJ stay: names in several scripts are spelt with them.
+_INVISIBLE: dict[int, str] = {
+    **{code: f"\\u{code:04x}" for code in (0x200B, 0x2028, 0x2029, *range(0x2060, 0x2065))},
+    0xFEFF: "\\ufeff",
+    **{code: f"\\U{code:08x}" for code in range(0xE0000, 0xE0080)},
+}
+
 # Control characters too, wherever repository text is shown as text: a remote, a
 # branch, an address and a path keep them, as they name something real.
 _UNSHOWABLE: dict[int, str] = {
     **{code: f"\\u{code:04x}" for code in (*range(0x09), 0x0B, 0x0C, *range(0x0E, 0x20))},
     **{code: f"\\u{code:04x}" for code in range(0x7F, 0xA0)},
     **_DIRECTION_CONTROLS,
+    **_INVISIBLE,
 }
 
 
 def _shown_in_html(value: Any) -> Any:
-    r"""Show the control and direction characters in a report value as `\uXXXX` escapes.
+    r"""Show control, direction and invisible characters in a report value as escapes.
 
     Every `{{ }}` in the template passes through here before it is escaped.
     Markup (the chart bundle, the chart specs) is the renderer's own, and passes.
@@ -2287,7 +2313,7 @@ def _sanitise_chart_label(value: str) -> str:
     Returns:
         The label to give Plotly.
     """
-    value = value.replace("\x00", "").translate(_DIRECTION_CONTROLS).strip()
+    value = value.replace("\x00", "").translate({**_DIRECTION_CONTROLS, **_INVISIBLE}).strip()
     return value.translate(_PLOTLY_TEXT)
 
 
@@ -2622,9 +2648,12 @@ def _md_listed(
     items: list[str] | tuple[str, ...], limit: int, counts: dict[str, int] | None = None
 ) -> str:
     """Join at most `limit` code spans, with an optional count each, saying how many more."""
-    shown = ", ".join(
-        f"{_md(item)} {counts[item]:,}" if counts is not None else _md(item)
-        for item in items[:limit]
+    shown = (
+        ", ".join(
+            f"{_md(item)} {counts[item]:,}" if counts is not None else _md(item)
+            for item in items[:limit]
+        )
+        or "none"
     )
     rest = len(items) - limit
     return f"{shown} and {rest:,} more" if rest > 0 else shown
@@ -2658,15 +2687,18 @@ def _summary_markdown(document: dict[str, Any]) -> str:
     return _joined(lines)
 
 
-def _next_brief(tip: str, until: datetime.date | None) -> str:
+def _next_brief(tip: str, until: datetime.date | None, carried: Sequence[str] = ()) -> str:
     """The brief that continues this one: from the tip, or, after a closed window, the next day.
 
     With `--until` the tip can be later than the window, so starting from it would skip the
-    commits in between.
+    commits in between. `carried` repeats the repository, branch and exclusions, quoted for a
+    POSIX shell, so the command reads the same history when run from the same place.
     """
     if until is None:
-        return f"reveille brief --from {tip[:12]}"
-    return f"reveille brief --since {(until + datetime.timedelta(days=1)).isoformat()}"
+        start = f"--from {tip[:12]}"
+    else:
+        start = f"--since {(until + datetime.timedelta(days=1)).isoformat()}"
+    return " ".join(["reveille brief", start, *(shlex.quote(option) for option in carried)])
 
 
 def _brief_markdown(
@@ -2677,6 +2709,7 @@ def _brief_markdown(
     tags: list[str],
     limit: int,
     until: datetime.date | None = None,
+    carried: Sequence[str] = (),
 ) -> str:
     """Render a brief as Markdown (ADR 0022)."""
     named, commit = point
@@ -2702,7 +2735,7 @@ def _brief_markdown(
         )
     if tags:
         lines.append(f"- **Tags in the range:** {_md_listed(tags, limit)}")
-    lines += ["", f"Next: {_md(_next_brief(tip, until))}", "", f"> {_NOTICE}"]
+    lines += ["", f"Next: {_md(_next_brief(tip, until, carried))}", "", f"> {_NOTICE}"]
     return _joined(lines)
 
 
@@ -2767,17 +2800,6 @@ def _state_markdown_notes(state: RepositoryState, history_replaced: bool, limit:
     return notes
 
 
-# Characters that show as nothing, in text, Markdown and line output: control and direction
-# characters, the zero-width space, word joiner and invisible operators, the byte order mark,
-# and the tag characters, which spell out ASCII that a model reads and a person does not see.
-# ZWJ and ZWNJ stay: names in several scripts are spelt with them.
-_INVISIBLE_IN_TEXT: dict[int, str] = {
-    **_UNSHOWABLE,
-    **{code: f"\\u{code:04x}" for code in (0x200B, *range(0x2060, 0x2065), 0xFEFF)},
-    **{code: f"\\U{code:08x}" for code in range(0xE0000, 0xE0080)},
-}
-
-
 def _joined(lines: Sequence[str]) -> str:
     """Join output lines, showing what a repository name could hide or add as escapes.
 
@@ -2789,7 +2811,7 @@ def _joined(lines: Sequence[str]) -> str:
 
 def _one_line(text: str) -> str:
     """End `text` with its only newline; CR, LF and invisible characters are shown as escapes."""
-    return text.replace("\r", "\\r").replace("\n", "\\n").translate(_INVISIBLE_IN_TEXT) + "\n"
+    return text.replace("\r", "\\r").replace("\n", "\\n").translate(_UNSHOWABLE) + "\n"
 
 
 def _state_line(state: RepositoryState, name: str) -> str:

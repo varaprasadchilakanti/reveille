@@ -16,6 +16,7 @@ from reveille.exceptions import ConfigurationError, OutputPathError
 from reveille.init import (
     _DEFAULT_MAILMAP_TEMPLATE,
     DEFAULT_CONFIG_TEMPLATE,
+    refuse_unreplaceable,
     write_init_config,
     write_mailmap_template,
 )
@@ -221,3 +222,28 @@ class TestWritesReplaceTheFile:
         writer(dest, force=True)
 
         assert stat.S_IMODE(dest.stat().st_mode) == 0o644
+
+
+@pytest.mark.unit
+class TestRefuseUnreplaceable:
+    """What `init --mailmap` checks before it writes either file."""
+
+    def test_a_missing_file_passes(self, tmp_path: Path) -> None:
+        refuse_unreplaceable(tmp_path / ".mailmap", force=True)
+
+    @pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="named pipes are POSIX")
+    def test_a_pipe_is_refused(self, tmp_path: Path) -> None:
+        os.mkfifo(tmp_path / ".mailmap")
+        with pytest.raises(OutputPathError, match="not a regular file"):
+            refuse_unreplaceable(tmp_path / ".mailmap", force=False)
+
+    def test_a_read_only_file_is_refused_only_when_it_would_be_replaced(
+        self, tmp_path: Path
+    ) -> None:
+        mailmap = tmp_path / ".mailmap"
+        mailmap.write_text("# theirs\n", encoding="utf-8")
+        mailmap.chmod(0o444)
+
+        refuse_unreplaceable(mailmap, force=False)  # skipped, not replaced
+        with pytest.raises(OutputPathError, match="read-only"):
+            refuse_unreplaceable(mailmap, force=True)

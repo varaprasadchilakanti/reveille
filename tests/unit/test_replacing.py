@@ -201,3 +201,47 @@ def test_a_git_directory_whose_head_link_dangles_is_refused(tmp_path: Path) -> N
 
     with pytest.raises(OSError, match="inside a Git directory"):
         write_replacing(git / "objects" / "r.html", "x", encoding="utf-8")
+
+
+def test_a_read_only_file_is_refused_and_kept(tmp_path: Path) -> None:
+    """Moving over a name needs no write permission on the file, so a report its
+    owner made read-only to keep was replaced; the shell's `>` refuses it."""
+    target = tmp_path / "kept.html"
+    target.write_text("old", encoding="utf-8")
+    target.chmod(0o444)
+
+    with pytest.raises(PermissionError, match="read-only"):
+        write_replacing(target, "new", encoding="utf-8")
+
+    assert target.read_text(encoding="utf-8") == "old"
+    assert [p.name for p in tmp_path.iterdir()] == ["kept.html"], "no temporary file left"
+
+
+@pytest.mark.skipif(os.name == "nt" or os.geteuid() == 0, reason="root writes anywhere")
+def test_a_directory_that_cannot_be_written_is_named_not_the_temporary(tmp_path: Path) -> None:
+    """The error named `.out.html.<hex>.tmp`, a file the caller never asked for."""
+    tmp_path.chmod(0o555)
+    try:
+        with pytest.raises(PermissionError) as raised:
+            write_replacing(tmp_path / "out.html", "x", encoding="utf-8")
+    finally:
+        tmp_path.chmod(0o755)
+
+    assert ".tmp" not in str(raised.value)
+    assert "out.html" in str(raised.value)
+
+
+def test_the_text_reaches_the_disk_before_the_name_moves(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without it, a crash just after the move can leave an empty file under the name."""
+    calls: list[str] = []
+    real_fsync, real_replace = os.fsync, os.replace
+    monkeypatch.setattr(os, "fsync", lambda fd: (calls.append("fsync"), real_fsync(fd))[1])
+    monkeypatch.setattr(
+        os, "replace", lambda *a, **k: (calls.append("replace"), real_replace(*a, **k))[1]
+    )
+
+    write_replacing(tmp_path / "out.html", "x", encoding="utf-8")
+
+    assert calls == ["fsync", "replace"]
