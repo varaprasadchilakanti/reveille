@@ -25,7 +25,12 @@ from pathlib import Path
 from typing import cast
 
 from reveille import __version__
-from reveille.adapters.git_reader import GitReader, find_repositories, is_repository
+from reveille.adapters.git_reader import (
+    GitReader,
+    find_repositories,
+    is_repository,
+    main_worktree_of,
+)
 from reveille.adapters.renderer import Renderer
 from reveille.config import ReportConfig
 from reveille.domain.areas import who_changed
@@ -172,7 +177,12 @@ def who_changed_text(
             path=path,
         )
     except EmptyRepositoryError as exc:
-        raise EmptyRepositoryError(f"No commit in the analysis window changed '{path}'.") from exc
+        said = f"No commit in the analysis window changed '{path}'"
+        # A typo is the usual reason; a working tree can say nothing has that name.
+        working_tree = os.path.lexists(config.repo_path / ".git")
+        if working_tree and not os.path.lexists(config.repo_path / path):
+            said += ", and nothing by that name is in the working tree: check the path"
+        raise EmptyRepositoryError(f"{said}.") from exc
     if reader.commits_dated_after and cutoff is not None:
         _notify(
             on_notice,
@@ -276,9 +286,7 @@ def repositories_text(
             row, matched_here = _repository_row(
                 path, path.relative_to(directory).as_posix(), start, end, days, exclude_authors
             )
-        if row.reason is not None:
-            row = replace(row, reason=_without_local_paths(row.reason, directory))
-        return row, matched_here, records
+        return _as_shared(row, path, directory), matched_here, records
 
     with held.installed(), ThreadPoolExecutor(max_workers=_repository_workers()) as pool:
         for row, matched_here, records in pool.map(read_row, found):
@@ -469,6 +477,23 @@ def _without_local_paths(reason: str, directory: Path) -> str:
     return _ABSOLUTE_PATH.sub("(a path outside the directory)", reason)
 
 
+def _as_shared(row: RepositoryActivity, path: Path, directory: Path) -> RepositoryActivity:
+    """Return the row with the main tree of a linked worktree, and no path outside `directory`.
+
+    A path on this machine can hold a login name, and the row is meant to be shared.
+    """
+    if row.reason is not None:
+        row = replace(row, reason=_without_local_paths(row.reason, directory))
+    main = main_worktree_of(path)
+    if main is None:
+        return row
+    try:
+        named = main.relative_to(directory.resolve()).as_posix()
+    except ValueError:
+        named = "(a path outside the directory)"
+    return replace(row, worktree_of=named)
+
+
 def _read_or_empty(
     reader: GitReader,
     since: datetime.date | None,
@@ -528,10 +553,13 @@ def brief_text(
             reader.resolve_commit(reader.branch_revision(config.branch))
         elif reader.resolve_head_sha() is None:
             raise EmptyRepositoryError(f"Repository at '{config.repo_path}' contains no commits.")
-        from_revision = reader.latest_tag(reader.branch_revision(config.branch))
+        # With --until, a tag after it would start the brief after its own end (ADR 0031).
+        from_revision = reader.latest_tag(reader.branch_revision(config.branch), config.until)
         if from_revision is None:
+            by = "" if config.until is None else f" on or before {config.until}"
             raise RepositoryError(
-                "The branch has no tag to start from: give --from <revision> or --since <date>."
+                f"The branch has no tag{by} to start from: give --from <revision> or "
+                "--since <date>."
             )
         # Resolved as a tag: a tag named like a commit hash would resolve to that commit.
         from_commit: str | None = reader.resolve_commit(f"refs/tags/{from_revision}")

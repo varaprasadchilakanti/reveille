@@ -82,3 +82,32 @@ def test_an_output_with_dot_dot_is_refused_with_the_absolute_path_to_give(
     assert result.exit_code == ExitCode.CANNOT_RUN
     expected = os.path.normpath(repo / "../report.html")
     assert f"Give the same place as an absolute path, '{expected}'" in result.stderr
+
+
+def test_a_path_nothing_in_the_tree_is_named_says_to_check_it(repo: Path) -> None:
+    result = CliRunner().invoke(app, ["who-changed", "a.tx", "--repo", str(repo)])
+
+    assert result.exit_code == ExitCode.NEGATIVE
+    assert "No commit in the analysis window changed 'a.tx', and nothing by that name" in (
+        result.stderr
+    )
+
+
+def test_a_path_in_the_tree_no_commit_in_the_window_changed_is_a_plain_no(repo: Path) -> None:
+    """Positive control: the file is there, so the hint would be wrong."""
+    result = CliRunner().invoke(
+        app, ["who-changed", "a.txt", "--repo", str(repo), "--since", "2999-01-01"]
+    )
+
+    assert result.exit_code == ExitCode.NEGATIVE
+    assert "No commit in the analysis window changed 'a.txt'." in result.stderr
+
+
+def test_a_bare_repository_has_no_tree_to_name_the_path_in(repo: Path, tmp_path: Path) -> None:
+    bare = tmp_path / "bare.git"
+    subprocess.run(["git", "clone", "-q", "--bare", str(repo), str(bare)], check=True)
+
+    result = CliRunner().invoke(app, ["who-changed", "a.tx", "--repo", str(bare)])
+
+    assert result.exit_code == ExitCode.NEGATIVE, result.stderr
+    assert "No commit in the analysis window changed 'a.tx'." in result.stderr

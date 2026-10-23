@@ -138,6 +138,7 @@ def test_state_json_keeps_the_upstream_and_worktrees() -> None:
         "branch": None,
         "locked": True,
         "prunable": False,
+        "current": False,
     }
 
 
@@ -234,3 +235,14 @@ def test_an_empty_name_is_shown_not_dropped() -> None:
     from reveille.adapters.renderer import _md
 
     assert _md("") == "(empty)"
+
+
+def test_state_lists_the_worktrees_other_than_the_one_marked_current() -> None:
+    main, linked = _FULL.worktrees
+    state = dataclasses.replace(_FULL, worktrees=(main, dataclasses.replace(linked, current=True)))
+
+    text = Renderer.state_text(
+        state, name="r", history_replaced=False, output_format="text", limit=9
+    )
+
+    assert "2 stashes; 1 other worktree: /r (main)." in text.splitlines()

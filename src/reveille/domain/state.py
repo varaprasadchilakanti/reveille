@@ -26,12 +26,14 @@ class Worktree:
         branch: The branch checked out there, or None if detached or bare.
         locked: Whether it is locked against pruning.
         prunable: Whether Git would prune it (its directory is gone).
+        current: Whether it is the one read.
     """
 
     path: str
     branch: str | None
     locked: bool
     prunable: bool
+    current: bool = False
 
 
 @dataclass(frozen=True)

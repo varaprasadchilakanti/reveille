@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 
 # Structured-output contract version, independent of the release (ADR 0008).
 # Major on any removal or rename; minor on a purely additive field.
-SCHEMA_VERSION = "1.2"
+SCHEMA_VERSION = "1.3"
 
 
 @dataclass(frozen=True, slots=True)

@@ -309,7 +309,8 @@ Where the repository stands now, in one bounded answer: the branch or detached c
 upstream and how far ahead or behind, as of the last fetch (Reveille never fetches); a merge,
 rebase, `git am`, cherry-pick, revert or bisect stopped part-way; conflicted paths; what is
 staged, modified, deleted, renamed and untracked, with lists bounded by `--limit` (default 10);
-stashes; worktrees; local branches as counts (total, merged into the current commit, no commit in
+stashes; worktrees (in JSON, `current` marks the one read; the text lists the others);
+local branches as counts (total, merged into the current commit, no commit in
 90 days before it); and the latest tag with the commits since, so the next call can be
 `reveille brief --from <tag>`. Options: `--repo`, `--limit`, `--verbose`,
 `--format text|json|markdown|line`.
@@ -332,7 +333,9 @@ reveille brief --since 2026-10-01 --format json
 
 What changed since a point, in counts. Give `--from <revision>` (a tag, branch or commit, read by
 ancestry as `git log <revision>..<branch>` is) or `--since <date>`; with neither, it starts at the
-latest tag reachable on the branch and names it, and with no tag it stops with exit 2. Other
+latest tag reachable on the branch and names it (with `--until`, the latest on or before that
+day, [ADR 0031](adr/0031-brief-until-starts-at-a-tag-before-it.md)), and with no such tag it stops
+with exit 2. Other
 options: `--repo`, `--branch`, `--until`, `--exclude-author`, `--exclude-path`, `--deterministic`, `--limit`
 (default 5), `--verbose` and `--format text|json|markdown|line`.
 
@@ -386,7 +389,9 @@ The rules are stated in every format ([ADR 0026](adr/0026-many-repositories-one-
   by default and at most three (`--depth`); a repository found is not searched inside, so a
   submodule or a nested clone is not a row; a symbolic link is not followed. A linked worktree
   (`git worktree add`) has a `.git` file, so it is a row of its own, with the same history as its
-  repository, and the totals count it as one more repository. A `.git` that is a symbolic link
+  repository, and the totals count it as one more repository. Its row names the main working
+  tree in `worktree_of` (JSON and CSV; "worktree of" in text and Markdown), relative to the
+  directory given, or `(a path outside the directory)`; it is `null` on every other row. A `.git` that is a symbolic link
   makes a row too, as a `.git` file does. A Git directory that a working tree in the search uses
   (made by `git init --separate-git-dir`) is not a row of its own; one that nothing there uses is
   a `not_read` row saying so ([ADR 0030](adr/0030-repos-reads-a-git-link-and-no-store-twice.md)).
@@ -497,6 +502,11 @@ A program or a model should read them as data, never as instructions. `[]` stand
 of a list, so `worktrees[].path` is the path of each worktree. A test builds a repository whose
 every such input is marked and fails if a marked string appears in a field the list leaves out.
 
+A byte that is not UTF-8 in a path that `state`, `repos` or `who-changed` gives, or in a message
+on stderr, is written as `\xNN` (`caf\xff.txt`), in JSON as in text, so the JSON holds no lone
+surrogate for a strict parser to refuse. A file can be named with those four characters too, so
+the text alone does not say which it was. An author name shows such a byte as U+FFFD.
+
 The `cannot` list states that Reveille does not measure productivity or contribution value, is not
 fit for performance review or hiring decisions, does not compute a bus factor, and does not
 aggregate a person across repositories. It also states what Reveille reads: commit metadata, `Co-authored-by` trailers, and per file the path and the
@@ -540,7 +550,7 @@ whether it can parse the rest before trying.
 
 ```json
 {
-  "schema_version": "1.2",
+  "schema_version": "1.3",
   "metadata": { "name": "...", "analysed_branch": "main", "...": "..." },
   "provenance": {
     "reveille_version": "0.9.0",
@@ -574,10 +584,23 @@ whether it can parse the rest before trying.
 - **`schema_version`** changes when the shape changes, not when the tool does. A major bump means
   a removal or a rename; a minor bump means an additive field.
 - **`provenance`** records what produced the numbers, so two reports that disagree can be
-  reconciled. `metadata.analysis_since` is where the window began; `provenance.filters.requested_since`
-  is whether anybody asked for it, which tells "the full history, which starts in March" from
-  "filtered to start in March". `exclude_authors_count` is a count, not the values: recording an
+  reconciled. `metadata.analysis_since` is the date of the earliest commit read, which can be later
+  than the day asked for; `provenance.filters.requested_since` is the day asked for, or null, which
+  tells "the full history, which starts in March" from "filtered to start in March". `exclude_authors_count` is a count, not the values: recording an
   excluded address would put it back in the report.
+- **The same fact has different keys in different documents.** Each command's JSON was designed on
+  its own, and renaming a key would be a schema 2.0 change, so read it by this table (— where a
+  document does not carry it):
+
+  | Fact | `generate` | `summary` | `state` | `brief` | `who-changed` | `repos` |
+  |---|---|---|---|---|---|---|
+  | Commit read | `provenance.head_sha` | `repository.head_sha` | `head` | `analysed_commit` | `analysed_commit` | — |
+  | Branch | `metadata.analysed_branch` | `repository.analysed_branch` | `branch` | `repository.analysed_branch` | — | `repositories[].branch` |
+  | Repository | `metadata.name` | `repository.name` | `repository.name` | `repository.name` | — | `repositories[].path` |
+  | Window start | `metadata.analysis_since` | `repository.analysis_since` | — | `point` | `analysis_since` | `window.since` |
+  | Window end | `metadata.analysis_until` | `repository.analysis_until` | — | — | `analysis_until` | `window.until` |
+  | Shallow clone | `provenance.shallow_clone` | `repository.shallow_clone` | `repository.shallow` | — | — | `repositories[].shallow_clone` |
+
 - **`notice`** is the sentence printed under the HTML header and with every `summary`, so a
   document passed on without the page around it still says what it cannot carry.
 - The scoring fields are present only with `--ranking`; `rank` (table order: by commits, or by score with `--ranking`) is
@@ -585,9 +608,10 @@ whether it can parse the rest before trying.
 
 **CSV** is the contributor table alone, UTF-8 with a byte-order mark so Excel reads it correctly.
 Columns: `rank`, `name`, `email`, `commits`, `lines_added`, `lines_deleted`, `net_lines`,
-`active_days`, `last_commit_date`, `co_authored_commits`. With `--ranking`, `designation`, `tier`,
-`composite_score` and `percentile` are added and `rank` is a ranking; without it `rank` is table
-order only.
+`active_days`, `last_commit_date`, `co_authored_commits`, then `automated` (`true` for a `[bot]`
+identity, the rule `derived.automated_accounts` counts by), always last. With `--ranking`,
+`designation`, `tier`, `composite_score` and `percentile` are added and `rank` is a ranking;
+without it `rank` is table order only. Each JSON contributor carries `automated` too.
 
 **HTML** is one self-contained file of about 1.7 MB, most of it the embedded chart library (the
 plotly.js cartesian bundle, pinned) and its third-party licences, which the report carries in a

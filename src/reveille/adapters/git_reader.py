@@ -447,6 +447,14 @@ def _parse_worktrees(output: str, *, nul: bool = True) -> list[Worktree]:
     return found
 
 
+def _same_directory(recorded: str, directory: Path) -> bool:
+    """Return whether the path Git recorded is `directory`; False if it is gone."""
+    try:
+        return os.path.samefile(recorded, directory)
+    except (OSError, ValueError):
+        return False
+
+
 def _numstat_path(field: str) -> str:
     """Return the path a numstat field names, decoded and after any rename.
 
@@ -1736,16 +1744,17 @@ class GitReader:
         return len(out.split())
 
     def _worktrees(self) -> list[Worktree]:
-        """List the working trees attached to this repository."""
+        """List the working trees attached to this repository, the one read marked."""
         try:
-            return _parse_worktrees(str(self._git().worktree("list", "--porcelain", "-z")))
+            found = _parse_worktrees(str(self._git().worktree("list", "--porcelain", "-z")))
         except GitCommandError:
-            pass
-        try:
-            # `-z` needs Git 2.36; older Git gives newline-separated records.
-            return _parse_worktrees(str(self._git().worktree("list", "--porcelain")), nul=False)
-        except GitCommandError:
-            return []
+            try:
+                # `-z` needs Git 2.36; older Git gives newline-separated records.
+                output = str(self._git().worktree("list", "--porcelain"))
+            except GitCommandError:
+                return []
+            found = _parse_worktrees(output, nul=False)
+        return [replace(w, current=_same_directory(w.path, self._repo_path)) for w in found]
 
     def _branch_tips(self) -> dict[str, datetime.datetime]:
         """Map each local branch to its last commit time (UTC)."""
@@ -1766,16 +1775,24 @@ class GitReader:
         out = str(self._git().for_each_ref(f"--merged={head}", "--format=%(refname)", "refs/heads"))
         return len(out.split())
 
-    def latest_tag(self, rev: str) -> str | None:
+    def latest_tag(self, rev: str, until: datetime.date | None = None) -> str | None:
         """Return the nearest tag reachable from a revision, or None if there is none.
 
         Args:
             rev: A commit or branch.
+            until: Look from the newest commit dated (UTC) on or before this day
+                instead, so the tag is one a brief ending then can start at (ADR 0031).
 
         Returns:
             The tag name, as repository text.
         """
         try:
+            if until is not None:
+                before = _git_before(until + datetime.timedelta(days=1))
+                bound = [] if before is None else [f"--before={before}"]
+                rev = str(self._git().rev_list("-1", *bound, "--end-of-options", rev, "--")).strip()
+                if not rev:
+                    return None
             return str(
                 self._git().describe("--tags", "--abbrev=0", "--end-of-options", rev)
             ).strip()
@@ -2819,6 +2836,34 @@ def _git_directory_of(tree: Path) -> Path | None:
     if not line.startswith("gitdir: "):
         return None
     return (tree / line.removeprefix("gitdir: ").strip()).resolve()
+
+
+def main_worktree_of(tree: Path) -> Path | None:
+    """Return the main working tree of a linked worktree, by its files alone.
+
+    A linked worktree's Git directory holds `commondir`, naming the main one's
+    Git directory; the main tree is that directory without a trailing `.git`, as
+    `git worktree list` gives it (a bare repository is its own). No Git command runs.
+
+    Args:
+        tree: A working tree.
+
+    Returns:
+        The main working tree, resolved, or None for a tree that is not a linked
+        worktree or whose files cannot be read.
+    """
+    git_directory = _git_directory_of(tree)
+    if git_directory is None:
+        return None
+    try:
+        with (git_directory / "commondir").open("rb") as handle:
+            line = handle.read(_MAX_GITFILE_BYTES).split(b"\n", 1)[0].decode().strip()
+    except (OSError, UnicodeDecodeError):
+        return None
+    if not line:
+        return None
+    common = (git_directory / line).resolve()
+    return common.parent if common.name == ".git" else common
 
 
 def is_repository(path: Path) -> bool:

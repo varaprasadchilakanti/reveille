@@ -38,6 +38,7 @@ from reveille.exceptions import (
     NoRepositoryReadError,
     ReveilleError,
 )
+from reveille.undecoded import json_text
 
 _logger = logging.getLogger("reveille.cli")
 
@@ -124,7 +125,7 @@ def _err(message: str) -> None:
         for prefix, name in _LEVELS.items():
             if message.startswith(prefix):
                 level, text = name, message.removeprefix(prefix)
-        typer.echo(json.dumps({"level": level, "message": text}), err=True)
+        typer.echo(json_text({"level": level, "message": text}), err=True)
         return
     typer.echo(_printable(message), err=True)
 
@@ -272,7 +273,7 @@ class _StderrHandler(logging.StreamHandler):  # type: ignore[type-arg]
             self.stream.write("\n")
         if _stderr_json["on"]:
             entry = {"level": record.levelname.lower(), "message": record.getMessage()}
-            self.stream.write(json.dumps(entry) + "\n")
+            self.stream.write(json_text(entry) + "\n")
             return
         super().emit(record)
 

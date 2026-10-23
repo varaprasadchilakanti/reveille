@@ -13,9 +13,10 @@ from __future__ import annotations
 import csv
 import dataclasses
 import datetime
+import itertools
 import json
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import plotly.graph_objects as go
 import pytest
@@ -23,6 +24,7 @@ import pytest
 from reveille.adapters.renderer import (
     _PIE_MAX_SLICES,
     Renderer,
+    _accessible_table,
     _aggregate_pie_data,
     _build_commit_share_pie,
     _build_contributor_lines_chart,
@@ -217,6 +219,7 @@ class TestRenderCsv:
         "co_authored_commits",
         "composite_score",
         "percentile",
+        "automated",
     ]
 
     def _renderer(self) -> Renderer:
@@ -403,8 +406,16 @@ class TestBuildTimelineChart:
         trace = json.loads(_build_timeline_chart(commits))["data"][0]
         weeks = dict(zip(trace["x"], trace["y"], strict=True))
 
-        assert weeks["2026-07-06"] == 0
-        assert len(weeks) == 8, "every Monday from 1 June to 20 July"
+        assert weeks == {"2026-06-01": 1, "2026-06-08": 0, "2026-07-13": 0, "2026-07-20": 1}
+        _assert_no_line_bridges_a_quiet_week(trace)
+
+    def test_the_points_follow_the_weeks_with_commits_not_the_span(self) -> None:
+        """A commit dated 1970 beside this year's drew a point for every week between."""
+        commits = [_make_commit(datetime.date(1970, 1, 5)), _make_commit(datetime.date(2026, 6, 1))]
+        trace = json.loads(_build_timeline_chart(commits))["data"][0]
+
+        assert trace["x"] == ["1970-01-05", "1970-01-12", "2026-05-25", "2026-06-01"]
+        assert trace["y"] == [1, 0, 0, 1]
 
     def test_the_whole_analysis_window_is_drawn(self) -> None:
         """Quiet weeks before the first commit and after the last count too."""
@@ -415,6 +426,14 @@ class TestBuildTimelineChart:
         assert trace["x"][0] == "2026-05-18"
         assert trace["x"][-1] == "2026-06-15"
         assert sum(trace["y"]) == 1
+
+
+def _assert_no_line_bridges_a_quiet_week(trace: dict[str, Any]) -> None:
+    """Points more than a week apart are both zero, so the line between is zero."""
+    points = list(zip(trace["x"], trace["y"], strict=True))
+    for (week, count), (after, later) in itertools.pairwise(points):
+        gap = datetime.date.fromisoformat(after) - datetime.date.fromisoformat(week)
+        assert gap == datetime.timedelta(weeks=1) or count == later == 0, (week, after)
 
 
 @pytest.mark.unit
@@ -448,6 +467,25 @@ class TestBuildContributorTimelineChart:
         for trace in traces:
             assert trace["x"] == ["2024-03-04", "2024-03-11", "2024-03-18", "2024-03-25"]
             assert trace["y"][1:3] == [0, 0]
+
+    def test_a_long_quiet_stretch_keeps_one_week_list_and_its_zeros(self) -> None:
+        """Every trace shares the weeks, so the table's rows stay in date order."""
+        commits = [
+            _make_commit(datetime.date(2020, 3, 2), email="alice@example.com"),
+            _make_commit(datetime.date(2025, 3, 3), email="bob@example.com"),
+            _make_commit(datetime.date(2025, 3, 24), email="alice@example.com"),
+        ]
+        ranked = [_make_ranked("Alice", commit_count=2), _make_ranked("Bob", commit_count=1)]
+        specification = _build_contributor_timeline_chart(commits, ranked)
+        traces = json.loads(specification)["data"]
+
+        weeks = ["2020-03-02", "2020-03-09", "2025-02-24", "2025-03-03", "2025-03-10"]
+        weeks += ["2025-03-17", "2025-03-24"]
+        for trace in traces:
+            assert trace["x"] == weeks
+            _assert_no_line_bridges_a_quiet_week(trace)
+        rows = _accessible_table("contributor_timeline", specification)["rows"]
+        assert [row[0] for row in rows] == weeks
 
     def test_two_contributors_return_valid_chart_json(self) -> None:
         commits = [
