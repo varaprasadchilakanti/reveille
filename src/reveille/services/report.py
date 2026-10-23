@@ -185,10 +185,15 @@ def who_changed_text(
         _refuse_a_path_in_another_repository(config.repo_path, path)
         _refuse_a_path_in_a_submodule_not_here(reader, path, tip)
         said = f"No commit in the analysis window changed '{path}'"
-        # A typo is the usual reason; a working tree can say nothing has that name.
+        # Not on disk is a typo only if no commit ever had it: a sparse checkout leaves
+        # files out, and a deleted file is gone.
         working_tree = os.path.lexists(config.repo_path / ".git")
-        if working_tree and not os.path.lexists(config.repo_path / path):
-            said += ", and nothing by that name is in the working tree: check the path"
+        if working_tree and not os.path.lexists(config.repo_path / path) and tip is not None:
+            ever = reader.ever_changed(path, tip)
+            if ever is False:
+                said += ", and nothing by that name is in the working tree: check the path"
+            elif ever:
+                said += "; commits outside the window or the filters did"
         raise EmptyRepositoryError(f"{said}.") from exc
     if reader.commits_dated_after and cutoff is not None:
         _notify(

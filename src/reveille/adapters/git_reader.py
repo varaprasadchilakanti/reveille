@@ -1208,6 +1208,24 @@ class GitReader:
             "commit, so the repository is damaged. Run `git fsck` to see what is wrong."
         )
 
+    def ever_changed(self, path: str, rev: str) -> bool | None:
+        """Return whether any commit reachable from `rev` changed a path, or None if unknown.
+
+        Args:
+            path: A repository-relative path, read literally.
+            rev: The commit the history is read from.
+
+        Returns:
+            True or False, or None when Git could not say.
+        """
+        try:
+            out = str(
+                self._git().rev_list("-1", "--end-of-options", rev, "--", f":(top,literal){path}")
+            )
+        except GitCommandError:
+            return None
+        return bool(out.strip())
+
     def submodule_holding(self, path: str, rev: str) -> str | None:
         """Return the submodule a path lies inside, from a commit's tree, or None.
 
