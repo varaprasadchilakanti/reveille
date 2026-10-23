@@ -12,6 +12,9 @@ empty window exited 2 instead of 1, and `inner/.` said "'inner' is inside
 
 from __future__ import annotations
 
+import os
+import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -100,3 +103,31 @@ def test_a_path_inside_a_nested_clone_is_still_named_another_repository(repo: Pa
 
     assert code == ExitCode.CANNOT_RUN, stderr
     assert "'inner/x' is inside 'inner', another repository" in stderr
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
+def test_the_command_it_suggests_runs_for_a_name_that_is_not_utf8(tmp_path: Path) -> None:
+    """Text writes the byte as `\\xff`; the command quotes it `$'...'`, as bash reads it."""
+    repo = tmp_path / "r"
+    repo.mkdir()
+    _git("init", "-q", "-b", "main", cwd=repo)
+    _git("commit", "-q", "--allow-empty", "-m", "x", cwd=repo)
+    try:
+        nested = Path(os.fsdecode(bytes(repo) + b"/in\xff"))
+        nested.mkdir()
+    except (OSError, UnicodeEncodeError):
+        pytest.skip("this file system refuses the name")
+    _git("init", "-q", "-b", "main", cwd=nested)
+    (nested / "f").write_text("f", encoding="utf-8")
+    _git("add", "f", cwd=nested)
+    _git("commit", "-qm", "f", cwd=nested)
+
+    code, stderr = _who(repo, os.fsdecode(b"in\xff/f"))
+    [command] = re.findall(r"Ask it: `reveille (.*)`\.", stderr)
+    words = subprocess.run(
+        ["bash", "-c", f"printf '%s\\0' {command}"], check=True, capture_output=True
+    ).stdout.split(b"\0")[:-1]
+    asked = CliRunner().invoke(app, [os.fsdecode(word) for word in words])
+
+    assert code == ExitCode.CANNOT_RUN, stderr
+    assert asked.exit_code == ExitCode.SUCCESS, asked.output

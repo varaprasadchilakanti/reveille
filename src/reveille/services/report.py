@@ -16,7 +16,6 @@ import datetime
 import logging
 import os
 import re
-import shlex
 import threading
 import time
 from collections.abc import Callable, Iterator
@@ -54,6 +53,7 @@ from reveille.exceptions import (
     RepositoryError,
     ReveilleError,
 )
+from reveille.undecoded import shell_word
 
 _logger = logging.getLogger(__name__)
 
@@ -508,8 +508,8 @@ def _refuse_a_path_in_another_repository(repo_path: Path, path: str) -> None:
         candidate = repo_path / nested
         if os.path.normpath(nested) == "." or not is_repository(candidate):
             continue
-        rest = shlex.quote("/".join(parts[depth:]) or ".")
-        ask = f"Ask it: `reveille who-changed {rest} --repo {shlex.quote(str(candidate))}`."
+        rest = shell_word("/".join(parts[depth:]) or ".")
+        ask = f"Ask it: `reveille who-changed {rest} --repo {shell_word(str(candidate))}`."
         if main_worktree_of(candidate) == this_main:
             raise RepositoryError(
                 f"{where} another working tree of this repository, with a checkout of its own. "

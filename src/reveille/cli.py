@@ -41,7 +41,7 @@ from reveille.exceptions import (
     ReveilleError,
 )
 from reveille.git_directory import holds_a_git_directory, is_a_linked_worktree
-from reveille.undecoded import json_text
+from reveille.undecoded import json_text, quoted
 
 _logger = logging.getLogger("reveille.cli")
 
@@ -1553,7 +1553,7 @@ def _check_query_format(output_format: str, allowed: tuple[str, ...] = ("text", 
     _stderr_json["on"] = output_format == "json" and "json" in allowed
     if output_format not in allowed:
         choices = ", ".join(allowed[:-1]) + f" or {allowed[-1]}"
-        _err(f"Error: --format must be {choices}, not {output_format!r}.")
+        _err(f"Error: --format must be {choices}, not {quoted(output_format)}.")
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
 

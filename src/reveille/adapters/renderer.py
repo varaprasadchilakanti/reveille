@@ -23,7 +23,6 @@ import itertools
 import json
 import math
 import re
-import shlex
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable, Sequence
 from html import unescape
@@ -69,7 +68,7 @@ from reveille.domain.state import QUIET_BRANCH_DAYS, RepositoryState, Worktree
 from reveille.domain.summary import Finding, longest_quiet_run, summarise
 from reveille.exceptions import OutputPathError, RenderError
 from reveille.replacing import write_replacing
-from reveille.undecoded import json_text
+from reveille.undecoded import json_text, shell_word
 
 # Label of the aggregated residual slice, referenced where its colour is chosen.
 _OTHER_LABEL: str = "Other Contributors"
@@ -1369,7 +1368,7 @@ def _brief_from(tag: str) -> str:
     shadow, or one `--from` would refuse as an option, is given by its full ref name.
     """
     revision = f"refs/tags/{tag}" if _SHADOWED_TAG.fullmatch(tag) else tag
-    return f"reveille brief --from {shlex.quote(revision)}"
+    return f"reveille brief --from {shell_word(revision)}"
 
 
 def _counted(n: int, singular: str) -> str:

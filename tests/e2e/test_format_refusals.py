@@ -82,3 +82,12 @@ def test_a_config_file_format_names_the_value_given(repo: Path, tmp_path: Path) 
         "Configuration error: --format / report.format: Input should be 'html', 'json' or "
         "'csv', not 'xml'\n"
     )
+
+
+def test_a_refused_value_that_is_not_utf8_reads_as_text_output_writes_it() -> None:
+    """`repr` gave `'x\\udcff'`, where every other line writes the byte as `\\xff`."""
+    result = CliRunner().invoke(app, ["summary", "--format", "x\udcff"])
+
+    assert result.exit_code == ExitCode.CANNOT_RUN
+    assert "not 'x\\xff'." in result.stderr
+    assert "udcff" not in result.stderr

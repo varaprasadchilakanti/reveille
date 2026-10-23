@@ -46,7 +46,7 @@ Dependencies point inward. The domain knows nothing about how commits are read o
 |---|---|---|
 | `domain/` | stdlib, `config.py` | GitPython, Plotly, Jinja2, Typer |
 | `adapters/` | stdlib, `domain/`, `exceptions.py`, `git_directory.py`, `replacing.py`, `undecoded.py`, its own framework | `services/`, `cli.py` |
-| `services/` | `domain/`, `adapters/`, `config.py`, `exceptions.py`, `__version__` | Typer, GitPython, Plotly, Jinja2 |
+| `services/` | `domain/`, `adapters/`, `config.py`, `exceptions.py`, `undecoded.py`, `__version__` | Typer, GitPython, Plotly, Jinja2 |
 | `cli.py` | `services/`, `config.py`, `exceptions.py`, `git_directory.py`, `undecoded.py`, `capabilities.py`, `agent_guide.py`, `init.py`, `domain/models.py` (`ProgressEvent`), `domain/repositories.py` (`MAX_SEARCH_DEPTH`), and `adapters/git_reader.py` inside a function (`validate`, the repository root) | GitPython, Plotly, Jinja2 |
 
 Framework ownership is exclusive: `adapters/git_reader.py` is the only module that imports
@@ -81,7 +81,8 @@ src/reveille/
     init.py           reveille.toml and .mailmap scaffold generation
     replacing.py      writes a file by replacing its name, so a hard link is never written through
     git_directory.py  tells a Git directory by its files, as Git does
-    undecoded.py      writes a byte Git gave that is not UTF-8 as `\xNN` in JSON, as text does
+    undecoded.py      writes a byte Git gave that is not UTF-8 as `\xNN` in JSON, as text does,
+                      and quotes one in a suggested command so the shell reads it back
     capabilities.py   the machine-readable self-description: what the tool can and cannot do
     agent_guide.py    the text `reveille skill` prints for an agent's instructions
     exceptions.py     the exception hierarchy

@@ -20,7 +20,6 @@ import logging
 import os
 import re
 import secrets
-import shlex
 import stat
 import sys
 import tempfile
@@ -51,6 +50,7 @@ from reveille.domain.repositories import MAX_SEARCH_DEPTH
 from reveille.domain.state import RepositoryState, Worktree, quiet_branches
 from reveille.exceptions import EmptyRepositoryError, RepositoryError
 from reveille.git_directory import holds_a_git_directory
+from reveille.undecoded import shell_word
 
 # Separators for the `git log` read: 0x1E and 0x1F are rare, not impossible.
 # Git does not strip them from author fields, so a crafted commit can split a
@@ -709,7 +709,7 @@ class GitReader:
                 raise RepositoryError(
                     f"'{repo_path}' has a .git file naming '{named}', which does not exist: "
                     "the repository it belongs to was moved or deleted. If it was moved, run "
-                    f"`git worktree repair {shlex.quote(str(repo_path))}` in its new place."
+                    f"`git worktree repair {shell_word(str(repo_path))}` in its new place."
                 ) from exc
             if git_dir.is_dir() and not os.access(git_dir, os.R_OK | os.X_OK):
                 raise RepositoryError(
@@ -1283,7 +1283,7 @@ class GitReader:
                 f"Repository at '{self._repo_path}' contains no commits. "
                 "There is nothing to read until the first commit is made."
             )
-        example = shlex.quote(_shown(other.removeprefix("refs/heads/")))
+        example = shell_word(other.removeprefix("refs/heads/"))
         return (
             f"The current branch '{self._resolve_active_branch()}' has no commits yet; "
             f"other branches do. Name one, for example --branch {example}."
