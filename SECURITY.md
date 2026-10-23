@@ -4,10 +4,10 @@
 
 Only the current stable release receives security fixes.
 
-| Version | Supported |
-|---------|-----------|
-| 0.9.x   | Yes       |
-| < 0.9.0 | No        |
+| Version  | Supported |
+|----------|-----------|
+| 0.10.x   | Yes       |
+| < 0.10.0 | No        |
 
 ## Reporting a Vulnerability
 
@@ -186,8 +186,8 @@ v0.9.0 closed eleven more, each with a test that fails without the fix:
   another name. Every commit under an address the value reached, anywhere in
   the branch's history, is now removed.
 
-Fixed since 0.9.0, not yet released, each with a test that fails without the fix. The
-entries are in [CHANGELOG.md](CHANGELOG.md) under Unreleased, Security; by class:
+v0.10.0 closed these, each with a test that fails without the fix. The entries are in
+[CHANGELOG.md](CHANGELOG.md) under 0.10.0, Security; by class:
 
 - **Programs and hangs a repository could cause:** named pipes or devices at files Git
   reads (config, includes, attributes, ignore files, `.mailmap`, `diff.orderFile`), an

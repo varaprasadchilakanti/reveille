@@ -13,6 +13,12 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ## [Unreleased]
 
+Nothing yet.
+
+---
+
+## [0.10.0] — 2026-10-23 — Repository State, What Changed, and Security Fixes
+
 Compared with 0.9.0. A fix to something 0.9.0 lacks is listed only under Security, as closed
 before release.
 
@@ -2339,7 +2345,8 @@ interpolation into `run:` steps).
 
 ---
 
-[Unreleased]: https://github.com/varaprasadchilakanti/reveille/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/varaprasadchilakanti/reveille/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.10.0
 [0.9.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.9.0
 [0.8.1]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.8.1
 [0.8.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.8.0
