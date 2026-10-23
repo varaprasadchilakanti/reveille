@@ -287,6 +287,9 @@ Each entry has a test that fails without the fix. 0.9.0's exposure is stated whe
   value reached stderr, and the tables of any TOML file were named. A discovered file that is a
   link is now refused (exit 2), and one put in its place after the check is refused when opened;
   the same file given with `--config` is still read. 0.9.0 is affected (run against its tree).
+  The working tree's `.mailmap` was checked for a link and then opened following one; it is now
+  refused when opened, so one put in its place after the check is not read either (0.9.0 has the
+  same order, read in its code).
 - **Characters that do not display reached text, Markdown and line output unescaped.** Tag
   characters (U+E0000 to U+E007F) spell out words a person cannot see and a model can read. They,
   control and direction characters, the zero-width space, the word joiner and the byte order

@@ -111,3 +111,45 @@ def test_spaces_before_the_commit_address_still_map(tmp_path: Path) -> None:
 
     assert code == ExitCode.SUCCESS
     assert payload["totals"]["authors"] == 1
+
+
+@pytest.mark.integration
+class TestWhatIsNotAMailmapSaysNothing:
+    """Absent, a link, or not a file: not applied, as Git applies none of them, and no warning."""
+
+    def test_an_absent_mailmap_says_nothing(self, tmp_path: Path) -> None:
+        repo = _repo(tmp_path / "r", "")
+        (repo / ".mailmap").unlink()
+
+        code, payload, stderr = _summary(repo)
+
+        assert code == ExitCode.SUCCESS
+        assert payload["totals"]["authors"] == 2
+        assert "mailmap" not in stderr
+
+    def test_a_linked_mailmap_is_not_applied_and_says_nothing(self, tmp_path: Path) -> None:
+        repo = _repo(tmp_path / "r", "")
+        merging = tmp_path / "merging"
+        merging.write_text("Ana <new@e.test> <old@e.test>\n", encoding="utf-8")
+        (repo / ".mailmap").unlink()
+        (repo / ".mailmap").symlink_to(merging)
+
+        code, payload, stderr = _summary(repo)
+
+        assert code == ExitCode.SUCCESS
+        assert payload["totals"]["authors"] == 2, "the link was followed"
+        assert "mailmap" not in stderr
+        (repo / ".mailmap").unlink()
+        (repo / ".mailmap").write_text(merging.read_text(encoding="utf-8"), encoding="utf-8")
+        assert _summary(repo)[1]["totals"]["authors"] == 1, "positive control: a file merges"
+
+    def test_a_directory_named_mailmap_is_passed_over(self, tmp_path: Path) -> None:
+        repo = _repo(tmp_path / "r", "")
+        (repo / ".mailmap").unlink()
+        (repo / ".mailmap").mkdir()
+
+        code, payload, stderr = _summary(repo)
+
+        assert code == ExitCode.SUCCESS
+        assert payload["totals"]["authors"] == 2
+        assert "mailmap" not in stderr

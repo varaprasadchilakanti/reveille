@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import contextlib
 import datetime
+import errno
 import functools
 import logging
 import os
@@ -2346,20 +2347,28 @@ class GitReader:
             a symbolic link, or too large.
         """
         mailmap_path = self._repo_path / ".mailmap"
-        # Git refuses a symlinked .mailmap; one could point at /dev/zero.
-        if mailmap_path.is_symlink() or not mailmap_path.is_file():
+        # Git refuses a symlinked .mailmap; one could point at /dev/zero. Checked on the
+        # open file, so a link or a pipe put there after a look is not read either.
+        try:
+            descriptor = os.open(
+                mailmap_path,
+                os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0),
+            )
+        except OSError as exc:
+            if exc.errno in {errno.ENOENT, errno.ELOOP, errno.ENOTDIR}:
+                return None  # absent or a link: not applied, as Git applies neither
+            _mailmap_unreadable(exc)
+            return None
+        # Checked before `fdopen`, which refuses a directory with an error of its own.
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            os.close(descriptor)
             return None
         try:
-            # Read one byte past the limit: the file can grow after a size check.
-            with mailmap_path.open("rb") as handle:
+            with os.fdopen(descriptor, "rb") as handle:
+                # Read one byte past the limit: the file can grow after a size check.
                 raw = handle.read(_MAX_MAILMAP_BYTES + 1)
         except OSError as exc:
-            # Said, not skipped: unmerged identities change every count. No path, which can
-            # hold a login name.
-            _logger.warning(
-                "The working-tree .mailmap could not be read (%s) and was not applied.",
-                exc.strerror or type(exc).__name__,
-            )
+            _mailmap_unreadable(exc)
             return None
         if len(raw) > _MAX_MAILMAP_BYTES:
             _logger.warning(
@@ -2754,6 +2763,18 @@ def _timed_out(command: object) -> RepositoryError:
         f"Git did not finish ({command}) within {GIT_TIMEOUT_SECONDS} seconds and was "
         "stopped. A named pipe (FIFO) or a device where Git reads a file makes it wait for "
         "ever. Remove it, or run Reveille on a fresh clone."
+    )
+
+
+def _mailmap_unreadable(exc: OSError) -> None:
+    """Say the working tree's `.mailmap` was not applied, and why, without its path.
+
+    Said, not skipped: unmerged identities change every count. No path, which can
+    hold a login name.
+    """
+    _logger.warning(
+        "The working-tree .mailmap could not be read (%s) and was not applied.",
+        exc.strerror or type(exc).__name__,
     )
 
 
