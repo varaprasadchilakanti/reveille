@@ -113,7 +113,11 @@ def test_the_grid_is_not_padded_with_empty_columns() -> None:
     to fill the width, drawing empty weeks past the end of the window."""
     source = _TEMPLATE.read_text(encoding="utf-8")
 
-    assert re.search(r"xaxis:\s*\{ type: 'category', tickangle: 0, constrain: 'domain',", source)
+    assert re.search(
+        r"xaxis:\s*\{ type: 'category', tickangle: 0, constrain: 'domain',\s*"
+        r"tickvals: grid\.tickvals, ticktext: grid\.ticktext \}",
+        source,
+    ), "the month labels reach the chart's axis"
 
 
 @pytest.mark.unit

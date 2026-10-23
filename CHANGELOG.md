@@ -65,8 +65,9 @@ before release.
 - **In the report:** a "Read Before Using These Figures" panel on how the figures can mislead, and a
   "Third-party licences" section. The header names the commit the figures describe, a contents
   list links each section, and the footer gives the Reveille version, when the report was
-  generated and from which commit. Printed, each A4 sheet is numbered "Page N of M", and a table
-  row, a finding or the caveats panel is not split across two sheets.
+  generated and from which commit. Printed from a Chromium-based browser, each sheet is numbered
+  "Page N of M", and a table row, a finding or the caveats panel is kept on one sheet where it
+  fits.
 - **In JSON:** the merge commits left out (`merge_commits_excluded`); `reveille_version` in the
   `summary`, `state`, `brief`, `who-changed` and `repos` documents; `analysed_commit` in
   `who-changed`; `automated` for each contributor in `generate` JSON and CSV (CSV's last column),

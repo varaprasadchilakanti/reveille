@@ -642,7 +642,8 @@ plotly.js cartesian bundle, pinned) and its third-party licences, which the repo
 collapsed section after its footer: 1.69 MB for a one-commit repository and 1.70 MB for this one
 (measured 2026-10-18; 0.9.0's reports were 4.9 MB). Its header names the branch, the commit and
 the period the figures describe, and its footer the Reveille version that made it and when, so a
-report passed on can be checked against the repository. Printed, it fits A4 with numbered pages.
+report passed on can be checked against the repository. Printed from a Chromium-based browser,
+each sheet is numbered, on the paper size the print dialog is set to.
 
 ---
 

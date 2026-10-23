@@ -598,13 +598,14 @@
     }
     window.addEventListener('afterprint', function () { fitChartsTo(false); });
 
-    // The contents list is built from the page's own section headings, so it
-    // names exactly the sections this report has, whichever options made it.
+    // The contents list is built from the page's own headings, the caveats
+    // panel's and each section's, so it lists those this report has,
+    // whichever options made it.
     function buildContents() {
         var nav = document.getElementById('contents');
         if (!nav) return;
         var list = nav.querySelector('ol');
-        var headings = document.querySelectorAll('h2.section-title');
+        var headings = document.querySelectorAll('#caveats-title, h2.section-title');
         for (var i = 0; i < headings.length; i++) {
             var heading = headings[i];
             if (!heading.id) heading.id = 'section-' + (i + 1);
@@ -812,6 +813,7 @@
         }
 
         /* A heading reached from the contents is not left under the window's top edge. */
+        #caveats-title,
         h2.section-title { scroll-margin-top: 16px; }
 
         .report-header-copy h1 {
@@ -1272,9 +1274,12 @@
             }
 
             /* Margins a printer can reach, and a page number on each sheet, so
-               a printed report can be cited and reassembled. */
+               a printed report can be cited and reassembled. No size: the
+               reader's paper, A4 or Letter, is the browser's to choose. The
+               margin boxes print where the browser supports them (Chromium
+               does). Their grey is --color-text-secondary on white, which a
+               page box cannot read; a test holds the two equal. */
             @page {
-                size: A4;
                 margin: 14mm 12mm 16mm;
 
                 @bottom-left {
@@ -1764,7 +1769,7 @@
                 {% endif %}
                 {% if data.metadata.analysed_branch == 'HEAD' and data.provenance.head_sha %}
                 {# A detached checkout has no branch; "HEAD" names none. #}
-                <span><strong>Branch:</strong> detached HEAD at {{ data.provenance.head_sha[:7] }}</span>
+                <span><strong>Branch:</strong> detached HEAD at <code>{{ data.provenance.head_sha[:12] }}</code></span>
                 {% else %}
                 <span><strong>Branch:</strong> {{ data.metadata.analysed_branch }}</span>
                 {% if data.provenance.head_sha %}
@@ -1858,9 +1863,10 @@
     </header>
 
     {# Filled by buildContents() from the section headings; hidden until then. #}
-    <nav id="contents" class="report-contents" aria-label="Contents" hidden>
-        <span class="report-contents-label">Contents</span>
-        <ol></ol>
+    <nav id="contents" class="report-contents" aria-labelledby="contents-label" hidden>
+        <span id="contents-label" class="report-contents-label">Contents</span>
+        {#- role="list": Safari drops a list's semantics under list-style: none. #}
+        <ol role="list"></ol>
     </nav>
 
     <!-- ============================================================

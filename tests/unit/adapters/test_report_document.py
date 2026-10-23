@@ -21,6 +21,7 @@ from pathlib import Path
 import pytest
 
 from tests.unit.adapters.test_report_layout import (  # noqa: F401
+    _function,
     _print_rule,
     _print_rules,
     rendered,
@@ -60,12 +61,30 @@ class TestTheContentsList:
     def test_it_is_hidden_until_the_script_fills_it(self, rendered: str) -> None:  # noqa: F811
         """Without JavaScript an empty list would show only the word "Contents"."""
         assert re.search(
-            r'<nav id="contents" class="report-contents" aria-label="Contents" hidden>', rendered
+            r'<nav id="contents" class="report-contents" aria-labelledby="contents-label" hidden>',
+            rendered,
         )
+        assert '<span id="contents-label" class="report-contents-label">Contents</span>' in rendered
 
     def test_paper_leaves_it_out(self, rendered: str) -> None:  # noqa: F811
         """Links cannot be followed on paper, and the list gives no page numbers."""
         assert "display: none" in _print_rule(rendered, ".report-contents")
+
+    def test_the_page_fills_it_when_it_loads(self, rendered: str) -> None:  # noqa: F811
+        """Calling the builder in a test proves nothing if the page never calls it."""
+        loaded = rendered.index("document.addEventListener('DOMContentLoaded'")
+        handler = _function(rendered[loaded:], "")
+        assert "buildContents();" in handler
+
+    def test_it_lists_the_caveats_panel(self, rendered: str) -> None:  # noqa: F811
+        """The panel exists because documentation does not travel with the file;
+        a contents list that skipped it led a reader straight past it."""
+        assert '<h2 id="caveats-title">' in rendered
+        builder = _function(rendered, "buildContents")
+        assert "document.querySelectorAll('#caveats-title, h2.section-title')" in builder
+
+    def test_it_keeps_list_semantics_without_bullets(self, rendered: str) -> None:  # noqa: F811
+        assert '<ol role="list"></ol>' in rendered
 
 
 def _build_contents(headings: list[dict[str, str]]) -> dict:
@@ -126,6 +145,24 @@ class TestPrintedPages:
 
         assert "@page" in rules
         assert 'content: "Page " counter(page) " of " counter(pages);' in rules
+
+    def test_the_reader_chooses_the_paper(self, rendered: str) -> None:  # noqa: F811
+        """A declared size takes A4 or Letter out of the print dialog's hands."""
+        page = re.search(r"@page \{(.*?)@bottom-left", _print_rules(rendered))
+        assert page
+        assert "size:" not in page.group(1)
+
+    def test_the_margin_text_is_the_secondary_text_colour(self, rendered: str) -> None:  # noqa: F811
+        """A page box cannot read the custom properties, so the grey is written out;
+        it must stay the print palette's secondary text colour, which the
+        contrast tests measure."""
+        rules = _print_rules(rendered)
+        secondary = re.search(r"--color-text-secondary: (#[0-9a-f]{6});", rules)
+        assert secondary
+        boxes = re.findall(r"@bottom-(?:left|right) \{([^{}]*)\}", rules)
+        assert len(boxes) == 2
+        for box in boxes:
+            assert re.findall(r"(?<![-\w])color: ([^;]+);", box) == [secondary.group(1)]
 
     @pytest.mark.parametrize("selector", ["table.profile tr", ".findings li", ".caveats"])
     def test_a_row_or_finding_is_not_split_across_sheets(
