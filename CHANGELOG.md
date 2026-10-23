@@ -13,6 +13,12 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ## [Unreleased]
 
+Nothing yet.
+
+---
+
+## [0.10.0] — 2026-10-23 — Repository State, What Changed, and Security Fixes
+
 Compared with 0.9.0. A fix to something 0.9.0 lacks is listed only under Security, as closed
 before release.
 
@@ -53,9 +59,9 @@ before release.
   fields holding text anyone who can commit chooses, to be read as data, never as instructions.
   Each option gives its default and bounds, and `guarantees_are` says the guarantees are designed
   and tested, not a warranty. `capabilities_version` is 1.1.
-- **`--exclude-path`** (and `[filters] exclude_paths`) leaves a vendored or generated tree out of
-  every figure of `generate`, `summary` and `brief`; a commit that changed only excluded paths is
-  not counted. A path that matched nothing is reported. The exclusions are stated in the HTML and
+- **`--exclude-path`** leaves a vendored or generated tree out of every figure of `generate`,
+  `summary` and `brief` (and `[filters] exclude_paths` in `reveille.toml` does so for `generate`,
+  the only command that reads the file); a commit that changed only excluded paths is not counted. A path that matched nothing is reported. The exclusions are stated in the HTML and
   JSON reports and the summary, not in `brief` or the CSV.
 - **`generate --hide-emails`** (and `[report] hide_emails`) replaces people's email addresses in
   the report (authors, co-authors, an address written as a name, in a remote, or in the branch or
@@ -247,8 +253,9 @@ before release.
   <date>`; JSON is unchanged.
 - **The heatmap** opens on the latest year with a commit, not an empty one.
 - **`reveille init --force`** wrote into the existing file, through any hard link to it; it now
-  replaces the name, and a new file is owner-only (mode 600). With `--mailmap`, a symlinked
-  `.mailmap` was refused only after `reveille.toml` was written; now neither is.
+  replaces the name, and a new file is owner-only (mode 600). With `--mailmap`, a `.mailmap` that
+  could not be replaced (a link, a pipe, or a read-only file under `--force`) was refused only
+  after `reveille.toml` was written; now neither is.
 - **Exit codes.** An unanticipated error exited 1, the negative-answer code; it exits 2. A
   repository another user owns and a SHA-256 repository exit 2 with the reason, not 1 ("no
   commits"), and Git older than 2.24 is refused with exit 2, naming both versions.
@@ -270,8 +277,15 @@ before release.
 - **Slow with many authors.** On a synthetic history by 100,000 authors, `who-changed` took 272 s
   and `generate` 87 s; 4.5 s and 7.6 s now. A warning for each commit with more than 32 co-authors
   is one line in all.
-- **Text.** "1 commits"; a share that rounded to "0%" or "100%" without being either reads "under
-  1%" or "over 99%"; the no-commits message no longer speaks of generating a report.
+- **Report sentences that misdescribed their figures.** The weekend finding said its days came
+  from authors' own time zones; they are commit dates in UTC, and the caveat on dates now says so.
+  The change-size note said its buckets double in width; they widen (0–9, 10–49, 50–199, and on).
+  `--deterministic` was said to pin the time to the analysed commit; it is the latest commit date
+  read. The table under the Lorenz curve put its 100% point second, and two co-authors of one name
+  read "Adam Treat (1), Adam Treat (1)"; each now shows its address.
+- **Text.** "1 commits" and "median 1 lines"; a share that rounded to "0%" or "100%" without being
+  either reads "under 1%" or "over 99%", in the findings and now in the repository profile; the
+  no-commits message no longer speaks of generating a report.
   `capabilities` refuses an unknown `--format` in the words the query commands use, and an output
   path holding `..` is refused with the absolute path to give instead. `who-changed` text leaves
   out "Changed it most recently" when that would list every author again.
@@ -294,11 +308,12 @@ Each entry has a test that fails without the fix. 0.9.0's exposure is stated whe
   The working tree's `.mailmap` was checked for a link and then opened following one; it is now
   refused when opened, so one put in its place after the check is not read either (0.9.0 has the
   same order, read in its code).
-- **Characters that do not display reached text, Markdown and line output unescaped.** Tag
-  characters (U+E0000 to U+E007F) spell out words a person cannot see and a model can read. They,
-  control and direction characters, the zero-width space, the word joiner and the byte order
-  mark are now shown as escapes there; JSON already escaped them. 0.9.0's
-  `who-changed` and `summary` text is affected (read in its code).
+- **Characters that do not display reached every output unescaped.** Tag characters (U+E0000 to
+  U+E007F) spell out words a person cannot see and a model can read. They, control and direction
+  characters, the zero-width space, the word joiner, the line and paragraph separators and the
+  byte order mark are now shown as escapes in text, Markdown and line output, the HTML report and
+  its chart labels, the CSV, and error messages; JSON already escaped them. 0.9.0's report, CSV,
+  error messages and `who-changed` and `summary` text are affected (read in its code).
 - **The report carried plotly.js without its licences.** Reports now carry every bundled package's
   notice. 0.9.0 is affected.
 - **An author address could make the report request a remote URL when opened**, telling a third
@@ -314,12 +329,15 @@ Each entry has a test that fails without the fix. 0.9.0's exposure is stated whe
 - **The charts offered "Share chart...",** which sends the chart data to Plotly's cloud after a
   click and a sign-in. It is switched off.
 - **A named pipe or `/dev/zero` where Git or Reveille reads a file hung the run or exhausted
-  memory**: attribute and ignore files, `.git/config` and the other files Git reads first, include
-  targets, `.mailmap`, `diff.orderFile`, `reveille.toml`, the index. Such files are refused with
-  exit 2 before Git runs, and so is a configuration or include over 8 MiB, or a `reveille.toml`
-  over 1 MiB; every file under `refs/`, `logs/`, `worktrees/` and `objects/` must be a regular
-  file. An output path that is a device or a pipe is refused, not replaced. Beyond those, a `git log` that writes nothing for 300 seconds is stopped, and every
-  other Git command after 300 seconds, with exit 2; on Windows only the `git log` reads are.
+  memory**: attribute files when lines are counted, `.git/config` and the other files Git reads
+  first, include targets, `diff.orderFile`, `reveille.toml`, the index. Such files are refused with
+  exit 2 before Git runs, and so is a configuration or include over 8 MiB, or a `reveille.toml` over 1 MiB; every
+  file under `refs/`, `logs/`, `worktrees/` and `objects/` must be a regular file. A `.mailmap`
+  that is not a regular file is not read. An output path that is a device or a pipe is refused,
+  not replaced. Ignore files, and attribute files where no lines are counted, are not checked
+  first: `state`'s `git status` reads them, and is stopped after 120 seconds. Beyond those, a `git log` that writes nothing for 300 seconds is
+  stopped, and every other Git command after 300 seconds, with exit 2; on Windows only the
+  `git log` reads are.
   0.9.0's `generate` is affected by attribute files.
 - **A long `.mailmap` line or `Co-authored-by` line could stall a run for minutes.** Both are read
   in one pass, and bounded.
@@ -2327,7 +2345,8 @@ interpolation into `run:` steps).
 
 ---
 
-[Unreleased]: https://github.com/varaprasadchilakanti/reveille/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/varaprasadchilakanti/reveille/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.10.0
 [0.9.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.9.0
 [0.8.1]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.8.1
 [0.8.0]: https://github.com/varaprasadchilakanti/reveille/releases/tag/v0.8.0

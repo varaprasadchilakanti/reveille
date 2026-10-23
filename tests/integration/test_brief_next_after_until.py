@@ -57,9 +57,9 @@ def test_the_next_brief_after_a_closed_window_misses_nothing(
     assert first.exit_code == ExitCode.SUCCESS, first.stderr
 
     following = _next(first.stdout)
-    assert following == ["brief", "--since", "2026-10-01"]
+    assert following == ["brief", "--since", "2026-10-01", "--repo", str(repo)]
 
-    second = CliRunner().invoke(app, [*following, "--repo", str(repo), "--format", "json"])
+    second = CliRunner().invoke(app, [*following, "--format", "json"])
     assert second.exit_code == ExitCode.SUCCESS, second.stderr
     assert '"commits": 1' in second.stdout
 
@@ -72,4 +72,4 @@ def test_an_open_window_continues_from_the_tip(repo: Path) -> None:
     result = CliRunner().invoke(app, ["brief", "--repo", str(repo), "--since", "2026-09-01"])
 
     assert result.exit_code == ExitCode.SUCCESS, result.stderr
-    assert _next(result.stdout) == ["brief", "--from", tip[:12]]
+    assert _next(result.stdout) == ["brief", "--from", tip[:12], "--repo", str(repo)]

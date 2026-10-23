@@ -1,6 +1,6 @@
 # 0030 — `repos` reads a `.git` link, and gives a used Git directory no row of its own
 
-**Status:** Proposed (2026-10-19). Supersedes, in
+**Status:** Accepted (2026-10-23). Proposed 2026-10-19. Supersedes, in
 [ADR 0026](0026-many-repositories-one-row-each.md), what counts as a working tree; how far the
 search goes, and that it follows no link, stand.
 

@@ -260,6 +260,15 @@ class TestBehaviouralFindingsAreWithheldInSmallTeams:
             "the guard must not suppress the finding for a real team"
         )
 
+    def test_the_weekend_finding_names_the_dates_it_counts(self) -> None:
+        """It said author time zones; the day is the commit date's, in UTC."""
+        findings = summarise(self._weekend_heavy(), _stats([30, 10, 8, 5]))
+        finding = next(f for f in findings if "weekend" in f.headline.lower())
+
+        assert "commit dates in UTC" in finding.detail
+        assert "Author timestamps" not in finding.detail
+        assert "authored" not in finding.headline
+
     def test_a_leading_share_is_not_quoted_for_two_contributors(self) -> None:
         findings = summarise(_commits(40), _stats([202, 78]))
         headline = next(f.headline for f in findings if "contributor" in f.headline)

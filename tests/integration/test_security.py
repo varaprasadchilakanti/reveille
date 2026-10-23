@@ -862,6 +862,28 @@ class TestSecondPassFindings:
         assert "written" not in result.stdout
         assert not (tmp_path / "victim").exists()
 
+    @pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="named pipes are POSIX")
+    @pytest.mark.parametrize("mailmap", ["pipe", "read-only"])
+    def test_a_mailmap_that_cannot_be_replaced_writes_neither_file(
+        self, tmp_path: Path, mailmap: str
+    ) -> None:
+        """Only a link was checked first: a pipe let `--force` replace the config, then exit 2."""
+        repo = tmp_path / "r"
+        repo.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+        (repo / "reveille.toml").write_text("# mine\n", encoding="utf-8")
+        if mailmap == "pipe":
+            os.mkfifo(repo / ".mailmap")
+        else:
+            (repo / ".mailmap").write_text("# theirs\n", encoding="utf-8")
+            (repo / ".mailmap").chmod(0o444)
+
+        result = _run_console_script(["init", "--mailmap", "--force"], cwd=repo)
+
+        assert result.returncode == 2, result.stderr
+        assert (repo / "reveille.toml").read_text(encoding="utf-8") == "# mine\n"
+        assert "written" not in result.stdout
+
     def test_a_quoted_false_does_not_enable_the_ranking(self, tmp_path: Path) -> None:
         """`bool("false")` is True, and the wrong direction to fail in.
 

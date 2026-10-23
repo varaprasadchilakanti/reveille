@@ -1,6 +1,6 @@
 # 0026 — Many repositories, one row each: `reveille repos`
 
-**Status:** Proposed (2026-10-17).
+**Status:** Accepted (2026-10-23). Proposed 2026-10-17.
 
 ## Context
 

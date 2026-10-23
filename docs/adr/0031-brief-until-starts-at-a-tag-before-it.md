@@ -1,6 +1,6 @@
 # 0031 — `brief --until` starts at the latest tag on or before that day
 
-**Status:** Proposed (2026-10-23). Partly supersedes ADR 0025 (which tag, when `--until` is given).
+**Status:** Accepted (2026-10-23). Proposed 2026-10-23. Partly supersedes ADR 0025 (which tag, when `--until` is given).
 
 ## Context
 

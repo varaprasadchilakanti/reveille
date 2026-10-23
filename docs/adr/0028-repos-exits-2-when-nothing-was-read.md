@@ -1,6 +1,6 @@
 # 0028 — `repos` exits 2 when no repository it found could be read
 
-**Status:** Proposed (2026-10-19). Supersedes, in 0026, the consequence that a repository's
+**Status:** Accepted (2026-10-23). Proposed 2026-10-19. Supersedes, in 0026, the consequence that a repository's
 refusal never changes the exit code; the rest of 0026 stands.
 
 ## Context

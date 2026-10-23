@@ -8,6 +8,7 @@ Knows nothing of the CLI: it takes paths and a force flag, and writes files.
 
 from __future__ import annotations
 
+import stat
 from pathlib import Path
 
 from reveille.exceptions import ConfigurationError, OutputPathError
@@ -343,3 +344,28 @@ def refuse_symlink(path: Path) -> None:
             "Writing would replace the link's target rather than the link. "
             "Remove the link, or choose another path."
         )
+
+
+def refuse_unreplaceable(path: Path, *, force: bool) -> None:
+    """Refuse a destination that writing it would refuse, before anything is written.
+
+    `init --mailmap` writes two files; checked first, a refusal of the second
+    leaves the first as it was.
+
+    Args:
+        path: The destination as supplied, before resolution.
+        force: Whether an existing file would be replaced, not skipped.
+
+    Raises:
+        OutputPathError: If the path is a link, or, when it would be replaced,
+            something other than a regular file or a read-only one.
+    """
+    refuse_symlink(path)
+    try:
+        mode = path.stat().st_mode
+    except FileNotFoundError:
+        return
+    if not stat.S_ISREG(mode):
+        raise OutputPathError(f"'{path}' is not a regular file, so it is not replaced.")
+    if force and not mode & stat.S_IWUSR:
+        raise OutputPathError(f"'{path}' is read-only; make it writable to replace it.")

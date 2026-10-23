@@ -1,6 +1,6 @@
 # 0029 — The HTML report names at most 1,000 people, or `--limit`
 
-**Status:** Proposed (2026-10-19). Extends `--limit` from
+**Status:** Accepted (2026-10-23). Proposed 2026-10-19. Extends `--limit` from
 [ADR 0015](0015-an-interface-for-agents.md) to the HTML report; the rest of 0015 stands.
 
 ## Context
