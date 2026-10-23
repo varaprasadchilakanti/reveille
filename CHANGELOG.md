@@ -175,6 +175,10 @@ before release.
 - **Stopped with SIGTERM or SIGHUP while writing, a run left its `.tmp` file beside the
   output.** It now removes it and exits 143 or 129, as a terminated process does; a handler set by
   whatever runs Reveille is kept.
+- **A signal sent to Reveille alone left the Git command it was waiting for running.** `kill
+  <pid>` reaches Reveille, not its process group, as Ctrl-C in a terminal does; a Git blocked on a
+  named pipe then ran on after Reveille exited, with no deadline (0.9.0 too, run against its tree).
+  The command is now stopped with it, checked on Linux with SIGTERM, SIGHUP and SIGINT.
 - **A commit dated in the last week of 9999 stopped the HTML report** ("date value out of range",
   exit 2). Git accepts such a date. The weekly charts now end at that week. JSON and CSV were not
   affected.

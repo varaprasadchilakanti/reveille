@@ -20,6 +20,7 @@ import logging
 import os
 import re
 import secrets
+import signal
 import stat
 import sys
 import tempfile
@@ -2773,7 +2774,9 @@ class _TimedGit(Git):
 
         GitPython (3.2.1) cancels its deadline timer only when the wait returns.
         Interrupted, the timer outlives the command, and the interpreter waits for
-        it before exiting: Ctrl-C took the full deadline to take effect.
+        it before exiting: Ctrl-C took the full deadline to take effect. The
+        command is stopped too: a signal sent to Reveille alone, not its process
+        group, left a Git blocked on a named pipe running after Reveille exited.
         """
         running = set(threading.enumerate())
         try:
@@ -2782,6 +2785,7 @@ class _TimedGit(Git):
             for thread in set(threading.enumerate()) - running:
                 if isinstance(thread, threading.Timer):
                     thread.cancel()
+                    _stop_child(thread)
             raise
 
     def _execute_timed(self, *args: Any, **kwargs: Any) -> Any:
@@ -2799,6 +2803,22 @@ class _TimedGit(Git):
             if "Timeout:" in str(exc.stderr):
                 raise _timed_out(" ".join(map(str, exc.command))) from exc
             raise
+
+
+def _stop_child(watchdog: threading.Timer) -> None:
+    """Stop the command a GitPython watchdog was set for, if it is still this process's child.
+
+    The watchdog holds the command's process ID (`Timer(timeout, kill_process,
+    args=(proc.pid,))`). Asking with `WNOHANG` first means an ID already waited
+    for, which another process may now hold, is never signalled.
+    """
+    pid = next(iter(getattr(watchdog, "args", ())), None)
+    if not isinstance(pid, int) or not hasattr(os, "WNOHANG"):
+        return
+    with contextlib.suppress(ChildProcessError, ProcessLookupError):
+        if os.waitpid(pid, os.WNOHANG) == (0, 0):
+            os.kill(pid, signal.SIGKILL)
+            os.waitpid(pid, 0)
 
 
 class _TimedRepo(Repo):
