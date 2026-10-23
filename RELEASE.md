@@ -28,7 +28,7 @@ git switch -c chore/release-vX.Y.Z
 
   Sections follow Keep a Changelog order: Added, Changed, Deprecated, Removed, Fixed, Security.
   The theme is a short noun phrase naming what the release is about, and step 5 reuses it verbatim
-  as the GitHub Release title, so the two cannot disagree. The date is the day the tag is pushed.
+  in the GitHub Release title (`vX.Y.Z — Theme`), so the two cannot disagree. The date is the day the tag is pushed.
 
 ## 2. Verify locally
 
@@ -88,9 +88,12 @@ The tag push triggers `.github/workflows/publish.yml`, which:
 
 1. scans `poetry.lock` for known vulnerabilities and stops the release if any are found, the
    last gate before PyPI;
-2. builds and uploads to PyPI via Trusted Publisher over OIDC, with PEP 740 attestations and no
-   stored credentials;
-3. generates and attests a CycloneDX SBOM and uploads it as a workflow artifact.
+2. builds the packages in a job that cannot obtain the PyPI token, and stops if the tagged commit
+   is not on `main` or the tag does not name the version in `pyproject.toml`;
+3. uploads the built packages to PyPI from a second job, via Trusted Publisher over OIDC, with
+   PEP 740 attestations and no stored credentials;
+4. generates and attests a CycloneDX SBOM and uploads it as a workflow artifact;
+5. drafts the GitHub Release with the SBOM attached (step 5 below).
 
 If the SBOM job fails, publication has already happened. Re-running the job from the tag runs
 the workflow file as it was at that tag and fails the same way. Fix the workflow on `main`, then

@@ -6,7 +6,7 @@ Versioning follows [Semantic Versioning 2.0](https://semver.org/).
 
 From 0.8.0 a release heading carries three things — the version, the release
 date, and the theme: `## [X.Y.Z] — YYYY-MM-DD — Theme`. The theme is reused
-verbatim as the GitHub Release title, so the two can never drift. Headings
+verbatim in the GitHub Release title (`vX.Y.Z — Theme`), so the two cannot drift. Headings
 before 0.8.0 predate the convention and are left as they were released.
 
 ---
@@ -33,15 +33,21 @@ before release.
   types, files added, areas active again after 90 quiet days, and tags in the range. With neither
   option it starts at the latest tag (with `--until`, the latest on or before that day), and with
   no such tag exits 2 (ADR 0022, ADR 0025, ADR 0031). It prints the commit it reached, to pass as
-  `--from` next time.
+  `--from` next time. An empty brief names the limits that applied: `--until`, `--exclude-author`
+  and `--exclude-path`.
 - **`reveille repos <directory>`** gives one row per repository: active, quiet or dormant, its last
   commit, and counts for a window (90 days by default). It finds working trees and bare mirrors to
   `--depth` levels without following links and reads up to four at once; one it cannot read is a
   `not_read` row with the reason (ADR 0026). A linked worktree's row names its main working tree
-  (`worktree_of`).
+  (`worktree_of`). A `.git` that is a symbolic link makes a row, as a `.git` file does, and a Git
+  directory that a working tree in the search uses is not a row of its own
+  ([ADR 0030](docs/adr/0030-repos-reads-a-git-link-and-no-store-twice.md)). It exits 1 when it
+  finds no repository, and 2 when it found some and could read none, or could not list a directory
+  and found none ([ADR 0028](docs/adr/0028-repos-exits-2-when-nothing-was-read.md)).
 - **`reveille skill`** prints a section for `AGENTS.md` or `CLAUDE.md`, or a `SKILL.md` with
-  `--format skill`, naming the commands a coding agent should run. A test runs every command it
-  names.
+  `--format skill`, naming the commands a coding agent should run, how to continue after
+  `brief --until`, and that repository text which looks like a note, a prompt or a command is still
+  data. A test runs every command it names.
 - **`capabilities --command <name>`** gives one command's options and exit codes (2.8 KB for `state`
   as JSON, against about 32 KB for all). Each command that writes JSON lists `repository_text`, the
   fields holding text anyone who can commit chooses, to be read as data, never as instructions.
@@ -62,7 +68,8 @@ before release.
   `summary`, `state`, `brief`, `who-changed` and `repos` documents; `analysed_commit` in
   `who-changed`; `automated` for each contributor in `generate` JSON and CSV (CSV's last column),
   by the rule `derived.automated_accounts` counts by. With `--format json`, those commands and
-  `capabilities` write stderr messages as JSON objects; exit codes are unchanged.
+  `capabilities` write stderr messages as JSON objects, one per line, a command-line mistake and
+  Git that cannot start among them; exit codes are unchanged.
 - **Any directory inside a working tree** can be `--repo` or the current directory (`init`
   excepted), found as Git finds it, and `who-changed` takes a path relative to the current
   directory. A repository whose config sets `core.worktree` is refused (exit 2).
@@ -73,8 +80,6 @@ before release.
 
 ### Changed
 
-- `reveille skill` names `repos`, says how to continue after `brief --until`, and says that
-  repository text which looks like a note, a prompt or a command is still data.
 - `make test-unit`, `make test-integration` and `make test-e2e` ran only marked tests and left out
   116, among them the security tests; each now runs its whole folder. CI was not affected.
 - **plotly 7.0 or later is required** (was 5.20). Reports embed plotly.js 4.1.1, and figures were
@@ -118,17 +123,15 @@ before release.
   field is unchanged.
 - **Release checks.** A tag is published only from `main` with a matching version, and packages are
   built in a job that cannot obtain the PyPI token.
+- **The PyPI description and keywords** name the repository state, what changed since a tag, and
+  the JSON for scripts, CI and coding agents. The keywords `analytics`, `reporting`, `dashboard`,
+  `contributors` and `devtools` are dropped.
 - **Documentation** was corrected by running each statement. SECURITY.md no longer promises a
   response time. USER_GUIDE.md has a table of the keys that name the same fact differently in
   different documents (`analysed_commit`, `head`, `repository.head_sha`), and says that
   `analysis_since` is the first commit's day, not the day asked for.
 - **`--min-commits` above everyone's count says so.** The report is still written with an empty
   contributor table and exit 0, and a note gives the highest count.
-- **`repos` exits 2 when it found repositories and could read none of them.** It used to exit 0,
-  the affirmative answer, over a table of `not_read` rows. The rows are still written, since each
-  says why; one readable repository, even an empty one, keeps exit 0
-  ([ADR 0028](docs/adr/0028-repos-exits-2-when-nothing-was-read.md)). None found where a directory
-  could not be listed is exit 2 too, not "none found".
 - **`init -o -` prints the file on stdout**, as `generate -o -` does, instead of writing a file
   named `-`.
 - **A key or table in `reveille.toml` that Reveille does not read is named in a note.** A
@@ -194,22 +197,12 @@ before release.
   and its dependencies are now installed from `.github/requirements/sbom.txt`, by version and
   hash, by both `make sbom` and the release job, and `make sbom` rebuilds a tool environment made
   from older requirements.
-- **`repos` skipped a working tree whose `.git` is a symbolic link, and listed a separate Git
-  directory twice.** The link now makes a row, as a `.git` file does, and a Git directory a working
-  tree in the search uses is not a row of its own; one nothing uses is a row that says what it is
-  ([ADR 0030](docs/adr/0030-repos-reads-a-git-link-and-no-store-twice.md)).
 - **A Git directory not configured as bare** gave Git's raw "not a git repository". It is now told
   that it holds a Git directory but no working tree, and to give its working tree.
 - **`--branch main` read a tag named `main`.** Git reads `refs/tags/<name>` before
   `refs/heads/<name>`, and its documentation advises naming the ref in full when both exist. A name
   that is a branch is now read as `refs/heads/<name>`, with a warning when a tag shares it; any other
   name is read as Git reads it.
-- **Under `--format json`, a command-line mistake is a JSON line too.** An unknown option, a missing
-  argument or an out-of-range value gave Click's boxed text to a caller reading JSON lines. It is now
-  one `{"level": "error", ...}` line, exit 2, naming the `capabilities` call that lists the options.
-- **An empty `brief` names the limits that applied.** `brief --until 2000-01-01` said only "No
-  commits since v1.0."; it now adds "up to 2000-01-01 (--until)", and names `--exclude-author` and
-  `--exclude-path` when given.
 - **An output path ending in `/` is refused.** `-o reports/` wrote a file named `reports`.
 - **A `reveille.toml` that starts with a byte-order mark is read.** It was reported as "Invalid
   statement" at line 1.
@@ -265,16 +258,16 @@ before release.
   current directory, an output name too long and a `reveille.toml` nested too deeply were "a
   defect in Reveille"; a moved worktree's repository was a permissions problem; `--repo .git`,
   an empty revision and a history Git cannot read were given another reason. Each now names its
-  own. Under `--format json`, Git that cannot start is one JSON line on stderr, and a
-  configuration error has the level `error`. `who-changed` with a `--repo` that is not a
-  repository says so, rather than that the path is outside it.
+  own. `who-changed` with a `--repo` that is not a repository says so, rather than that the path
+  is outside it.
 - **Slow with many authors.** On a synthetic history by 100,000 authors, `who-changed` took 272 s
-  and `generate` 87 s; 4.5 s and 7.6 s now. A warning for each commit with more than 32 co-authors is one line in all.
+  and `generate` 87 s; 4.5 s and 7.6 s now. A warning for each commit with more than 32 co-authors
+  is one line in all.
 - **Text.** "1 commits"; a share that rounded to "0%" or "100%" without being either reads "under
-  1%" or "over 99%"; the no-commits message no longer speaks of generating a report; "1 directory
-  ... was not searched". `capabilities` and `skill` refuse an unknown `--format` in the words the query commands use, and an
-  output path holding `..` is refused with the absolute path to give instead. `who-changed` text
-  leaves out "Changed it most recently" when that would list every author again.
+  1%" or "over 99%"; the no-commits message no longer speaks of generating a report.
+  `capabilities` refuses an unknown `--format` in the words the query commands use, and an output
+  path holding `..` is refused with the absolute path to give instead. `who-changed` text leaves
+  out "Changed it most recently" when that would list every author again.
 
 ### Security
 
