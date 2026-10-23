@@ -90,6 +90,22 @@ def test_generate_refuses_an_attribute_file_that_blocks(
     assert where.split("/")[-1] in done.stderr
 
 
+def test_a_linked_worktree_checks_the_attributes_its_main_repository_holds(
+    repo: Path, tmp_path: Path
+) -> None:
+    """A linked worktree has a Git directory of its own; `info/` is in the common one."""
+    worktree = tmp_path / "wt"
+    subprocess.run(["git", "worktree", "add", "-q", str(worktree)], cwd=repo, check=True)
+    (repo / ".git" / "info").mkdir(exist_ok=True)
+    os.mkfifo(repo / ".git" / "info" / "attributes")
+
+    done = _run(worktree, "generate", "--format", "json", "-o", str(tmp_path / "out.json"))
+
+    assert done is not None, "generate hung"
+    assert done.returncode == 2
+    assert "attributes" in done.stderr
+
+
 def test_a_configured_attributes_file_that_blocks_is_refused(repo: Path, tmp_path: Path) -> None:
     os.mkfifo(tmp_path / "attributes")
     subprocess.run(

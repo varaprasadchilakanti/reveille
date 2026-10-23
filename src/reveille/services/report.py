@@ -477,8 +477,15 @@ def _read_or_empty(
 ) -> list[Commit]:
     """Read a window's commits without line counts, or none if it holds none."""
     try:
+        # Rows count authors only; co-authors matter only to which exclusions matched.
         return reader.read_commits(
-            None, since, until, exclude_authors, line_counts=False, report_unmatched=False
+            None,
+            since,
+            until,
+            exclude_authors,
+            line_counts=False,
+            report_unmatched=False,
+            co_authors=bool(exclude_authors),
         )
     except EmptyRepositoryError:
         return []

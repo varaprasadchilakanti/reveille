@@ -9,9 +9,14 @@ from __future__ import annotations
 
 import pytest
 
+from reveille.adapters import git_reader
 from reveille.adapters.git_reader import (
+    _bounded_match_key,
     _co_author_value,
+    _directory_prefixes,
     _exclusion_requests,
+    _identity,
+    _iter_numstat,
     _Mailmap,
     _match_key,
     _normalise_github_noreply,
@@ -68,6 +73,25 @@ class TestSumNumstat:
         # git never emits these; isdigit() rejects them rather than
         # letting a malformed value subtract from the total.
         assert _sum_numstat("-4\t-2\tmodule_a.py") == (0, 0)
+
+    def test_the_total_is_what_the_file_list_counts(self) -> None:
+        """The total reads the lines the file list reads, without decoding paths."""
+        block = "\n".join(
+            [
+                "",
+                "3\t1\tplain.py",
+                "-\t-\tlogo.png",
+                '7\t0\t"quoted\\tname.txt"',
+                "2\t5\tsrc/{old.py => new.py}",
+                "4\t4",
+                "x\ty\tz",
+                "9\t1\ta\tb",
+            ]
+        )
+        files = list(_iter_numstat(block))
+
+        assert _sum_numstat(block) == (sum(f[1] for f in files), sum(f[2] for f in files))
+        assert _sum_numstat(block) == (21, 7)
 
 
 @pytest.mark.unit
@@ -317,6 +341,26 @@ class TestMatchKey:
         assert len(_match_key("a" * 5_000_000)) == 4096
         assert _match_key("a" * 4096 + "b") == _match_key("a" * 4096 + "c")
 
+    def test_a_name_on_many_commits_is_normalised_once(self) -> None:
+        _bounded_match_key.cache_clear()
+
+        for _ in range(1000):
+            _match_key("Ana Silva")
+
+        assert _bounded_match_key.cache_info().misses == 1
+
+
+@pytest.mark.unit
+def test_with_nothing_excluded_no_identity_is_compared(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every commit is read through `_identity`: a comparison nobody asked for costs each."""
+
+    def refuse(value: str) -> str:
+        raise AssertionError(f"compared {value!r} with nothing excluded")
+
+    monkeypatch.setattr(git_reader, "_match_key", refuse)
+
+    assert _identity("Ana", "ana@e.test", _Mailmap(), set()) == ("Ana", "ana@e.test", set())
+
 
 @pytest.mark.unit
 def test_a_mailmap_entry_without_a_name_adds_only_its_address() -> None:
@@ -331,3 +375,16 @@ def test_a_mailmap_entry_without_a_name_adds_only_its_address() -> None:
         "ana",
         "ana@new.test",
     }
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "path", ["a/b/c.py", "a", "ab/c", "a b/c d/e", "a//b", "/a", "a/", "d\ufffd/x"]
+)
+def test_an_area_a_path_is_in_is_one_of_its_prefixes(path: str) -> None:
+    """The lookup gives what comparing the path with every area gave."""
+    areas = {"a", "a/b", "ab", "a b", "a b/c d", "a/b/c.py", "", "d\ufffd", "a/b/c"}
+
+    compared = {a for a in areas if path.startswith(a + "/") or path == a}
+
+    assert _directory_prefixes(path) & areas == compared
