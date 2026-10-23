@@ -80,3 +80,24 @@ def test_a_bare_repository_is_its_own_current_entry(trees: Path) -> None:
         ("store.git", True),
         ("checkout", False),
     ]
+
+
+def test_a_worktree_moved_without_git_is_still_the_one_read(trees: Path) -> None:
+    """Git lists it at its old path; its Git directory's `gitdir` file holds that path."""
+    moved = trees / "moved"
+    (trees / "side").rename(moved)
+
+    worktrees = json.loads(_state(moved, "json"))["worktrees"]
+    text = _state(moved, "text")
+
+    current = {Path(w["path"]).name: w["current"] for w in worktrees}
+    assert current == {"main": False, "side": True, "third": False}
+    assert f"2 other worktrees: {trees / 'main'} (main), {trees / 'third'} (third)." in text
+
+
+def test_the_main_worktree_is_the_one_read_when_another_was_moved(trees: Path) -> None:
+    (trees / "side").rename(trees / "moved")
+
+    worktrees = json.loads(_state(trees / "main", "json"))["worktrees"]
+
+    assert [w["current"] for w in worktrees] == [True, False, False]

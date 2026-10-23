@@ -1784,7 +1784,31 @@ class GitReader:
                     f"Git could not list the worktrees: {_git_error(exc)}"
                 ) from exc
             found = _parse_worktrees(output, nul=False)
+        recorded = self._recorded_worktree_path()
+        if recorded is not None:
+            return [replace(w, current=w.path == recorded) for w in found]
         return [replace(w, current=_same_directory(w.path, self._repo_path)) for w in found]
+
+    def _recorded_worktree_path(self) -> str | None:
+        """Return the path Git lists for the linked worktree read, or None.
+
+        Matched by Git directory, not by path: a worktree moved without `git
+        worktree move` is still listed at its old path, which its Git directory's
+        `gitdir` file holds. None for the main worktree, which Git lists where it is.
+        """
+        git_dir = Path(self._repo.git_dir)
+        if _same_directory(str(git_dir), Path(self._repo.common_dir)):
+            return None
+        try:
+            descriptor = os.open(git_dir / "gitdir", os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
+            with os.fdopen(descriptor, "rb") as handle:
+                text = handle.read(_MAX_GITFILE_BYTES)
+        except OSError:
+            return None
+        if not text.endswith(b"\n") or not text.strip():
+            return None
+        dot_git = git_dir / os.fsdecode(text[:-1])  # relative to it, from --relative-paths
+        return os.path.normpath(dot_git.parent)
 
     def _branch_tips(self) -> dict[str, datetime.datetime]:
         """Map each local branch to its last commit time (UTC)."""

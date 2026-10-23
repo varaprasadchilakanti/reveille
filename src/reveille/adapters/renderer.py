@@ -2508,11 +2508,15 @@ def _state_document(
     }
 
 
-def _other_worktrees(state: RepositoryState) -> list[Worktree]:
-    """The worktrees other than the one read; all but the main one if none is marked."""
+def _other_worktrees(state: RepositoryState) -> tuple[list[Worktree], str]:
+    """The worktrees other than the one read, and what to call them.
+
+    When none is marked, which one was read is not known, so all are listed as
+    worktrees, none as "other".
+    """
     if any(w.current for w in state.worktrees):
-        return [w for w in state.worktrees if not w.current]
-    return list(state.worktrees[1:])
+        return [w for w in state.worktrees if not w.current], "other worktree"
+    return list(state.worktrees) if len(state.worktrees) > 1 else [], "worktree"
 
 
 def _state_lines(
@@ -2537,9 +2541,10 @@ def _state_lines(
         lines.append(f"Conflicted: {_listed(state.conflicted, limit)}.")
     lines.extend(_working_tree_lines(state, limit))
     extra = ["1 stash" if state.stashes == 1 else f"{state.stashes:,} stashes"]
-    others = [f"{w.path} ({w.branch or 'detached'})" for w in _other_worktrees(state)]
+    worktrees, called = _other_worktrees(state)
+    others = [f"{w.path} ({w.branch or 'detached'})" for w in worktrees]
     if others:
-        extra.append(f"{_counted(len(others), 'other worktree')}: {_listed(others, limit)}")
+        extra.append(f"{_counted(len(others), called)}: {_listed(others, limit)}")
     lines.append("; ".join(extra) + ".")
     lines.append(
         f"Branches: {state.branches:,} local, {state.branches_merged:,} merged into this commit, "
@@ -2725,9 +2730,10 @@ def _state_markdown(state: RepositoryState, name: str, history_replaced: bool, l
         if items and not (state.bare or state.working_tree_unread):
             lines.append(f"  - {label}: {_md_listed(items, limit)}")
     lines.append(f"- **Stashes:** {state.stashes:,}")
-    others = [f"{w.path} ({w.branch or 'detached'})" for w in _other_worktrees(state)]
+    worktrees, called = _other_worktrees(state)
+    others = [f"{w.path} ({w.branch or 'detached'})" for w in worktrees]
     if others:
-        lines.append(f"- **Other worktrees:** {_md_listed(others, limit)}")
+        lines.append(f"- **{called.capitalize()}s:** {_md_listed(others, limit)}")
     lines.append(
         f"- **Branches:** {state.branches:,} local, {state.branches_merged:,} merged into this "
         f"commit, {state.branches_quiet:,} with no commit in {QUIET_BRANCH_DAYS} days before it"
