@@ -161,6 +161,9 @@ before release.
 - **A remote URL holding a byte that is not UTF-8, or a remote with no `url`, stopped `generate`
   with a traceback** (exit 1 in 0.9.0, run against its code). The URL is now read through Git; such
   a byte is shown as U+FFFD, and a remote with no URL is passed over.
+- **`--output ./-` wrote to standard output**, as `--output -` does (0.9.0 too, run against its
+  code), and `output = "./-"` in a `reveille.toml` did the same, past the checks a configured
+  output path gets. Only `-` itself now means standard output; `./-` is a file named `-`.
 - **An empty window always suggested "removing author filters"**, whether or not any were given.
   It now suggests only what narrowed the read: the date range, `--exclude-author`, or
   `--exclude-path`.

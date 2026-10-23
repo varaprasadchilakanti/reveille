@@ -31,7 +31,7 @@ from typer.main import get_command
 from typer.models import CommandFunctionType
 
 from reveille import __version__
-from reveille.config import OutputFormat, ReportConfig, ReportConfigKwargs
+from reveille.config import OutputFormat, ReportConfig, ReportConfigKwargs, output_path
 from reveille.domain.models import ProgressEvent
 from reveille.domain.repositories import MAX_SEARCH_DEPTH
 from reveille.exceptions import (
@@ -403,7 +403,7 @@ def _file_path(value: str | Path) -> Path:
             f"{text!r} ends with {text[-1]!r}, so it names a directory, not a file. "
             "Give a file name in it."
         )
-    return Path(text)
+    return output_path(text)
 
 
 #: The commands whose stderr is JSON lines under `--format json`.

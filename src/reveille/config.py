@@ -168,6 +168,22 @@ class ReportConfigKwargs(TypedDict, total=False):
 _MAX_CONFIG_BYTES = 1_048_576
 
 
+def output_path(text: str) -> Path:
+    """Return the output path `text` names; only `-` itself means standard output.
+
+    `Path` reads `./-` as `-`, so it would have gone to stdout, not to a file
+    named `-`. Such a spelling is made absolute, as the current directory gives it.
+
+    Args:
+        text: The path as given.
+
+    Returns:
+        The path; `Path("-")` only for `-`.
+    """
+    path = Path(text)
+    return Path(os.path.abspath(text)) if text != "-" and path == Path("-") else path
+
+
 def _read_config_bytes(path: Path) -> bytes:
     """Read a configuration file that is a regular file of a plausible size.
 
@@ -346,7 +362,7 @@ def _parse_report_section(report: dict[str, Any]) -> dict[str, Any]:
             raise ConfigurationError(
                 f"[report] output {value!r} names a directory, not a file. Give a file name in it."
             )
-        kwargs[field] = Path(value) if field == "output_path" else value
+        kwargs[field] = output_path(value) if field == "output_path" else value
     for field in ("since", "until"):
         if field in report:
             try:
