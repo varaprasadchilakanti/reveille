@@ -113,9 +113,38 @@ def test_the_grid_is_not_padded_with_empty_columns() -> None:
     to fill the width, drawing empty weeks past the end of the window."""
     source = _TEMPLATE.read_text(encoding="utf-8")
 
-    assert re.search(
-        r"xaxis:\s*\{ type: 'category', tickangle: -45, constrain: 'domain' \}", source
-    )
+    assert re.search(r"xaxis:\s*\{ type: 'category', tickangle: 0, constrain: 'domain',", source)
+
+
+@pytest.mark.unit
+@pytest.mark.skipif(shutil.which("node") is None, reason="needs Node.js to run the grid code")
+class TestTheAxisNamesMonthsNotWeeks:
+    """A label for every week ran to 53 dates, each rotated 45 degrees."""
+
+    def test_a_whole_year_has_one_label_per_month(self) -> None:
+        grid = _grid(2025, "2025-01-01", "2025-12-31", {})
+
+        assert grid["ticktext"] == [
+            "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+        ]  # fmt: skip
+        assert len(grid["x"]) == 53
+
+    def test_each_label_is_the_week_that_holds_the_first(self) -> None:
+        grid = _grid(2025, "2025-01-01", "2025-12-31", {})
+
+        # Monday 28 July to Sunday 3 August holds 1 August.
+        assert grid["tickvals"][grid["ticktext"].index("Aug")] == "Jul 28"
+
+    def test_a_window_ending_its_first_month_soon_is_not_labelled_twice(self) -> None:
+        grid = _grid(2025, "2025-01-25", "2025-03-31", {})
+
+        assert grid["ticktext"] == ["Feb", "Mar"]
+
+    def test_a_window_opening_mid_month_names_that_month(self) -> None:
+        grid = _grid(2025, "2025-04-09", "2025-06-30", {})
+
+        assert grid["ticktext"] == ["Apr", "May", "Jun"]
 
 
 def _show_latest_weeks(scroll_width: int, client_width: int) -> dict:
