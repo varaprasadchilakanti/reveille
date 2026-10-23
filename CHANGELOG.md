@@ -312,9 +312,10 @@ Each entry has a test that fails without the fix. 0.9.0's exposure is stated whe
   tag and its output drafts the Release. The SBOM artifact is downloaded into a directory of its
   own rather than over the checkout. Two runs for one tag queue rather than race. These checks live
   in the workflow file, so a pushed tag on a commit that edits the workflow is not stopped by them.
-- **Dependency floors allowed versions with published advisories.** The floors are GitPython 3.1.62
-  (GHSA-239g-whfq-7xj9, repository content posing as the Git directory), Jinja2 3.1.6 and Pydantic
-  2.4; a test fails if one is lowered.
+- **Dependency floors allowed versions with published advisories.** The floors are GitPython 3.2.1
+  (GHSA-239g-whfq-7xj9, repository content posing as the Git directory; GHSA-83vg-56qc-22m7, a
+  submodule cloned into `.git/hooks` by `create_submodule`, which Reveille never calls), Jinja2
+  3.1.6 and Pydantic 2.4; a test fails if one is lowered.
 - **Closed before release, in what 0.9.0 lacks:** `core.worktree` could redirect `--repo` to another
   repository; `state` ran a filter with an empty name, suggested an unquoted tag and a tag name
   Git reads as another revision, and a pipe in a reflog or a worktree held it; a file name could

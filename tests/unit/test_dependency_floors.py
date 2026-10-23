@@ -19,7 +19,7 @@ import pytest
 
 _PYPROJECT = Path(__file__).resolve().parents[2] / "pyproject.toml"
 
-_FLOORS = {"gitpython": (3, 1, 62), "jinja2": (3, 1, 6), "pydantic": (2, 4)}
+_FLOORS = {"gitpython": (3, 2, 1), "jinja2": (3, 1, 6), "pydantic": (2, 4)}
 
 
 def _floor(constraint: str) -> tuple[int, ...]:

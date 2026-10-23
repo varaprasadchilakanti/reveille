@@ -76,9 +76,10 @@ python = "^3.11"
 typer = ">=0.18,<0.28"
 
 # Git Data Layer
-# Floor: 3.1.60 fixed repository content posing as the Git directory. No
-# published advisory affects 3.1.62 (OSV, 2026-10-13).
-gitpython = "^3.1.62"
+# Floor: 3.2.1 fixed GHSA-83vg-56qc-22m7 (a submodule cloned into `.git/hooks` by
+# `create_submodule`, which Reveille never calls); 3.1.60 fixed repository content
+# posing as the Git directory. No published advisory affects 3.2.1 (OSV, 2026-10-23).
+gitpython = "^3.2.1"
 
 # Templating
 # Floor: no published advisory affects 3.1.6 (OSV, 2026-10-13).
