@@ -16,7 +16,8 @@ describing its commit history, or answers one question about it (`summary`, `bri
 breaks one changes what the product is, and needs to be argued as such.
 
 It does not change Git data (history, refs, index, objects or configuration). Reveille opens a
-repository, reads history, and writes one output file. It refuses any output path inside `.git`
+repository, reads history, and writes one output file (`init` writes a `reveille.toml` and, with
+`--mailmap`, a `.mailmap`). It refuses any output path inside `.git`
 and never runs a mutating Git command. The report goes where you point it, by default
 `reveille-report.html` in the repository root, which for a working tree is inside the working
 tree.
@@ -45,7 +46,7 @@ Dependencies point inward. The domain knows nothing about how commits are read o
 | Layer | May import | Must not import |
 |---|---|---|
 | `domain/` | stdlib, `config.py` | GitPython, Plotly, Jinja2, Typer |
-| `adapters/` | stdlib, `domain/`, `exceptions.py`, `git_directory.py`, `replacing.py`, `undecoded.py`, its own framework | `services/`, `cli.py` |
+| `adapters/` | stdlib, `domain/`, `exceptions.py`, `git_directory.py`, `replacing.py`, `undecoded.py`, `__version__`, its own framework | `services/`, `cli.py` |
 | `services/` | `domain/`, `adapters/`, `config.py`, `exceptions.py`, `undecoded.py`, `__version__` | Typer, GitPython, Plotly, Jinja2 |
 | `cli.py` | `services/`, `config.py`, `exceptions.py`, `git_directory.py`, `undecoded.py`, `capabilities.py`, `agent_guide.py`, `init.py`, `domain/models.py` (`ProgressEvent`), `domain/repositories.py` (`MAX_SEARCH_DEPTH`), and `adapters/git_reader.py` inside a function (`validate`, the repository root) | GitPython, Plotly, Jinja2 |
 
@@ -167,6 +168,9 @@ it is absent from `__all__`.
 | `0` `SUCCESS` | Ran; answer affirmative. |
 | `1` `NEGATIVE` | Ran correctly; answer negative, such as an analysis window with no commits. |
 | `2` `CANNOT_RUN` | Could not run: bad invocation, bad config, unreadable repository, unwritable output. |
+
+A run stopped by a signal exits 128 plus the signal's number, as a terminated process does: 130
+for Ctrl-C, 129 for SIGHUP, 143 for SIGTERM.
 
 The split follows `grep` and `diff`: a negative answer is not an inability to answer. A CI job can
 accept an empty window and fail on an unreadable repository. Finer causes belong in stderr;

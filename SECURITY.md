@@ -200,16 +200,21 @@ entries are in [CHANGELOG.md](CHANGELOG.md) under Unreleased, Security; by class
 - **Stalls:** `.mailmap` and `Co-authored-by` patterns that backtracked.
 - **Reading the wrong data:** separators in author names, `core.worktree` pointing at
   another repository, partial clones on Git older than 2.44.
-- **Text in output Reveille did not write:** control characters, newlines and markup
-  from paths, names and extensions; an unquoted tag in the command `state` suggests.
+- **Text in output Reveille did not write:** control characters, characters that do not
+  display (tag characters among them), newlines and markup from paths, names and
+  extensions; an unquoted tag in the command `state` suggests.
 - **Secrets in the remote URL:** tokens and passwords in scp-like, prefixed and
   `#`/`?`-holding remotes.
 - **The offline property:** an author address could make the report request a URL when
   opened, and the Content-Security-Policy allowed any inline script; Plotly's
   "Share chart..." upload is switched off.
 - **Writing:** a report path hard-linked to a Git file, a worktree's Git directory, and
-  another repository's bare Git directory.
-- **Dependencies:** floors that allowed releases with published advisories.
+  another repository's bare Git directory; a `reveille.toml` committed to a repository
+  naming any file in its working tree as the output.
+- **Reading outside the repository:** a `reveille.toml` committed as a symbolic link, and
+  a `.mailmap` replaced by one after it was checked, were followed to a file outside it.
+- **Dependencies:** floors that allowed releases with published advisories, and the
+  release workflow's SBOM job installing its generator's dependencies without hashes.
 
 Before these fixes, the HTML report could request a URL when opened, and Git could fetch
 from the network during a read (the partial-clone entry under 0.9.0 above); both broke the
