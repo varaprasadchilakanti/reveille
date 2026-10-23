@@ -387,6 +387,28 @@ def test_a_dormant_repository_is_not_read_whole_for_one_date(
     assert whole == []
 
 
+@pytest.mark.parametrize(("exclusions", "expected"), [([], {False}), (["ben@corp.test"], {True})])
+def test_co_authors_are_read_only_for_an_exclusion(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch, exclusions: list[str], expected: set[bool]
+) -> None:
+    """A row counts authors only: the trailer read is a second `git log` per repository."""
+    from reveille.adapters.git_reader import GitReader
+
+    asked: set[object] = set()
+    real = GitReader.read_commits
+
+    def spy(self: GitReader, *args: object, **kw: object) -> object:
+        asked.add(kw.get("co_authors", True))
+        return real(self, *args, **kw)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(GitReader, "read_commits", spy)
+    flags = [arg for value in exclusions for arg in ("--exclude-author", value)]
+    rows = _rows(workspace, *flags)
+
+    assert rows["api"]["status"] == "active"
+    assert asked == expected
+
+
 @pytest.mark.skipif(
     not hasattr(os, "geteuid") or os.geteuid() == 0, reason="root reads any directory"
 )

@@ -281,3 +281,32 @@ def test_a_hostile_trailer_is_read_in_linear_time(tmp_path: Path) -> None:
 
     assert result.exit_code == ExitCode.SUCCESS, result.stderr
     assert elapsed < 3, f"{elapsed:.1f} s"
+
+
+@pytest.mark.integration
+def test_a_read_without_co_authors_credits_nobody_and_starts_no_trailer_log(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    from reveille.adapters import git_reader
+    from reveille.adapters.git_reader import GitReader
+
+    started: list[tuple[object, ...]] = []
+    real = git_reader._LogStream.__init__
+
+    def spy(self: object, process: object, *args: object, **kw: object) -> None:
+        started.append(tuple(getattr(process, "args", ())))
+        real(self, process, *args, **kw)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(git_reader._LogStream, "__init__", spy)
+    with_them = GitReader(repo).read_commits(None, None, None, [])
+    logs_with = len(started)
+    started.clear()
+    caplog.clear()
+    with caplog.at_level("WARNING", logger="reveille"):
+        without = GitReader(repo).read_commits(None, None, None, [], co_authors=False)
+
+    assert any(c.co_authors for c in with_them), "positive control"
+    assert not any(c.co_authors for c in without)
+    assert len(started) == logs_with - 1
+    assert not any("trailers" in " ".join(map(str, a)) for a in started)
+    assert not [r.getMessage() for r in caplog.records if "co-author" in r.getMessage()]

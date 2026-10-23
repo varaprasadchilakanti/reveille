@@ -255,9 +255,13 @@ def _sum_numstat(block: str) -> tuple[int, int]:
     """
     added = 0
     deleted = 0
-    for _path, line_added, line_deleted in _iter_numstat(block):
-        added += line_added
-        deleted += line_deleted
+    # The lines `_iter_numstat` reads, without decoding a path only to drop it.
+    for line in block.splitlines():
+        fields = line.split("\t", 2)
+        if len(fields) < 3:
+            continue
+        added += int(fields[0]) if fields[0].isdigit() else 0
+        deleted += int(fields[1]) if fields[1].isdigit() else 0
     return added, deleted
 
 
@@ -280,6 +284,23 @@ def _iter_numstat(block: str) -> Iterator[tuple[str, int, int]]:
         added = int(raw_added) if raw_added.isdigit() else 0
         deleted = int(raw_deleted) if raw_deleted.isdigit() else 0
         yield _numstat_path(path), added, deleted
+
+
+def _directory_prefixes(path: str) -> set[str]:
+    """Return `path` and each prefix of it that ends before a `/`.
+
+    Args:
+        path: A repository path, `/`-separated.
+
+    Returns:
+        For `a/b/c.py`: `a`, `a/b` and `a/b/c.py`.
+    """
+    prefixes = {path}
+    end = path.find("/")
+    while end != -1:
+        prefixes.add(path[:end])
+        end = path.find("/", end + 1)
+    return prefixes
 
 
 def _iter_name_status(block: str) -> Iterator[tuple[str, str]]:
@@ -711,13 +732,14 @@ class GitReader:
                 f"Reveille needs Git {_MIN_GIT[0]}.{_MIN_GIT[1]} or newer, which every read "
                 f"relies on (--end-of-options); this is Git {version[0]}.{version[1]}."
             )
+        # GitPython cannot parse SHA-256 refs and reads HEAD as unborn: refuse
+        # rather than answer "no commits". Git before 2.29 echoes the option. One
+        # call: the Git directory's line only shows Git could open the repository.
         try:
-            self._git().rev_parse("--git-dir")
+            opened = str(self._git().rev_parse("--git-dir", "--show-object-format"))
         except GitCommandError as exc:
             _refuse_what_git_cannot_open(repo_path, exc)
-        # GitPython cannot parse SHA-256 refs and reads HEAD as unborn: refuse
-        # rather than answer "no commits". Git before 2.29 echoes the option.
-        if str(self._git().rev_parse("--show-object-format")).strip() == "sha256":
+        if opened.strip().splitlines()[-1:] == ["sha256"]:
             raise RepositoryError(
                 f"'{repo_path}' uses SHA-256 object names, which Reveille cannot read yet."
             )
@@ -770,12 +792,12 @@ class GitReader:
             and `.gitattributes` in every directory of the working tree.
         """
         candidates: list[Path] = []
-        for flag in ("--git-dir", "--git-common-dir"):
-            try:
-                found = str(self._git().rev_parse(flag)).strip()
-            except GitCommandError:
-                continue
-            git_dir = Path(found) if Path(found).is_absolute() else self._repo_path / found
+        try:
+            found = str(self._git().rev_parse("--git-dir", "--git-common-dir")).splitlines()
+        except GitCommandError:
+            found = []
+        for line in found:
+            git_dir = Path(line) if Path(line).is_absolute() else self._repo_path / line
             candidates.append(git_dir / "info" / "attributes")
         try:
             configured = str(self._git().config("--get", "core.attributesFile")).strip()
@@ -865,6 +887,7 @@ class GitReader:
         name_status: bool = False,
         exclude_paths: Sequence[str] = (),
         report_unmatched: bool = True,
+        co_authors: bool = True,
     ) -> list[Commit]:
         """Read all non-merge commits in the analysis window, in one `git log`.
 
@@ -888,6 +911,8 @@ class GitReader:
                 commit that changed only these is not read.
             report_unmatched: Log a warning for a value or path that matched
                 nothing. A caller reading many repositories reports it once instead.
+            co_authors: Read `Co-authored-by` trailers; False credits nobody and
+                saves a second `git log`, for a caller that counts authors only.
 
         Returns:
             Commits sorted most recent first.
@@ -931,10 +956,7 @@ class GitReader:
         stream = _LogStream(self._git().log(*log_args, as_process=True))
         trailers: _LogStream | None = None
         try:
-            trailers = _LogStream(
-                self._git().log("-z", _TRAILER_FORMAT, *_selection(log_args), as_process=True),
-                separator=b"\0",
-            )
+            trailers = self._trailer_stream(log_args, co_authors)
             records, authentic_order, mailmap, requests, reached = self._read_alongside(
                 stream, rev, rev_list_args, exclude_authors
             )
@@ -1301,7 +1323,7 @@ class GitReader:
 
     def _credit_co_authors(
         self,
-        co_author_records: list[str] | GitCommandError,
+        co_author_records: list[str] | GitCommandError | None,
         authentic_order: list[str],
         commits: list[Commit],
         mailmap: _Mailmap,
@@ -1315,7 +1337,8 @@ class GitReader:
         could forge another commit's record; otherwise nobody is credited.
 
         Args:
-            co_author_records: That log's records, or Git's failure to give them.
+            co_author_records: That log's records, Git's failure to give them, or
+                None when it was not read.
             authentic_order: Hashes from `rev-list`, in log order.
             commits: The commits being counted.
             mailmap: Parsed `.mailmap`, applied as for authors.
@@ -1325,7 +1348,7 @@ class GitReader:
         Returns:
             The commits, with `co_authors` set where any are credited.
         """
-        if not commits:
+        if not commits or co_author_records is None:
             return commits
         if isinstance(co_author_records, GitCommandError):
             _logger.warning("co-author trailers could not be read: %s", co_author_records)
@@ -1430,15 +1453,35 @@ class GitReader:
             ]
         )
 
-    def _trailer_records(self, trailers: _LogStream) -> list[str] | GitCommandError:
+    def _trailer_stream(self, log_args: list[str], co_authors: bool) -> _LogStream | None:
+        """Start the co-author read over the selection `log_args` makes, if it is wanted.
+
+        Args:
+            log_args: The main read's arguments.
+            co_authors: Whether the caller wants co-authors credited.
+
+        Returns:
+            The NUL-separated `git log`, started, or None.
+        """
+        if not co_authors:
+            return None
+        return _LogStream(
+            self._git().log("-z", _TRAILER_FORMAT, *_selection(log_args), as_process=True),
+            separator=b"\0",
+        )
+
+    def _trailer_records(self, trailers: _LogStream | None) -> list[str] | GitCommandError | None:
         """Take the co-author read: one record per commit, its hash and trailer values.
 
         Args:
-            trailers: The NUL-separated `git log`, already started.
+            trailers: The NUL-separated `git log`, already started, or None.
 
         Returns:
-            The records, or Git's failure, which leaves co-authors uncredited.
+            The records, Git's failure, which leaves co-authors uncredited, or None
+            when nothing was read.
         """
+        if trailers is None:
+            return None
         try:
             return trailers.records()
         except GitCommandError as exc:
@@ -1923,7 +1966,9 @@ class GitReader:
                         when = datetime.datetime.fromtimestamp(stamp, tz=datetime.UTC).date()
                         continue
                     path = token.lstrip(b"\n").decode("utf-8", "replace")
-                    for area in [a for a in remaining if path.startswith(a + "/") or path == a]:
+                    # An area a path is in is one of its prefixes ending at a `/`, or
+                    # the path itself: looked up, not compared with every area.
+                    for area in _directory_prefixes(path) & remaining:
                         found[area] = when
                         remaining.discard(area)
                 if not remaining:
@@ -2481,8 +2526,8 @@ def _well_formed_shas(
 
 
 def _shared_trailer_records(
-    records: list[str] | GitCommandError, canonical: Mapping[str, str]
-) -> list[str] | GitCommandError:
+    records: list[str] | GitCommandError | None, canonical: Mapping[str, str]
+) -> list[str] | GitCommandError | None:
     """Keep a co-author record that credits nobody as its hash alone, the shared string.
 
     Almost every commit has no trailer; otherwise its record is a second copy of
@@ -2491,13 +2536,13 @@ def _shared_trailer_records(
     whole, so it still fails that check.
 
     Args:
-        records: The co-author log's records, or Git's failure to give them.
+        records: The co-author log's records, Git's failure to give them, or None.
         canonical: Each hash `rev-list` listed, to the string the read shares.
 
     Returns:
         The records, the same in number and order.
     """
-    if isinstance(records, GitCommandError):
+    if not isinstance(records, list):
         return records
     for index, record in enumerate(records):
         sha, separator, values = record.partition(_FIELD_SEP)
@@ -3271,12 +3316,17 @@ def _identity(
     # Resolved and raw identity both match, so a value copied from `git log`
     # (which shows pre-mailmap names) still excludes the person. Matched before
     # the bounds below: a cut name is no longer the name an exclusion gives.
-    hits = exclude_set & {
-        _match_key(author_name),
-        _match_key(author_email),
-        _match_key(raw_name),
-        _match_key(raw_email),
-    }
+    hits = (
+        exclude_set
+        & {
+            _match_key(author_name),
+            _match_key(author_email),
+            _match_key(raw_name),
+            _match_key(raw_email),
+        }
+        if exclude_set
+        else set()
+    )
     author_name = _truncate(author_name, _MAX_NAME_LENGTH)
     author_email = _truncate(author_email, _MAX_EMAIL_LENGTH)
     # A name of only invisible characters is empty once cleaned; use the address.
@@ -3472,10 +3522,17 @@ def _match_key(value: str) -> str:
     for a privacy flag, matching too little is the wrong way round. Only the
     comparison changes; names are shown and counted unchanged.
     """
+    return _bounded_match_key(value[:_MAX_MATCH_LENGTH])
+
+
+@functools.lru_cache(maxsize=2048)
+def _bounded_match_key(value: str) -> str:
+    """Compute `_match_key` for a value already cut to its bound; called only by it.
+
+    A history names each person on many commits, so each is computed once.
+    """
     visible = "".join(
-        c
-        for c in unicodedata.normalize("NFC", value[:_MAX_MATCH_LENGTH])
-        if unicodedata.category(c) != "Cf"
+        c for c in unicodedata.normalize("NFC", value) if unicodedata.category(c) != "Cf"
     )
     return " ".join(visible.split()).lower()
 
