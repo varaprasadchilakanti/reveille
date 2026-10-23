@@ -36,7 +36,7 @@ before release.
   `--from` next time.
 - **`reveille repos <directory>`** gives one row per repository: active, quiet or dormant, its last
   commit, and counts for a window (90 days by default). It finds working trees and bare mirrors to
-  `--depth` levels without following links and reads four at once; one it cannot read is a
+  `--depth` levels without following links and reads up to four at once; one it cannot read is a
   `not_read` row with the reason (ADR 0026). A linked worktree's row names its main working tree
   (`worktree_of`).
 - **`reveille skill`** prints a section for `AGENTS.md` or `CLAUDE.md`, or a `SKILL.md` with

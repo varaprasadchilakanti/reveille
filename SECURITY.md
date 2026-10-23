@@ -217,7 +217,7 @@ offline property.
 
 Limit: Git honours the configuration in a repository's
 own `.git/config`, and some settings name a program for Git to run. Reveille
-switches off the ones its reads were measured to start, each proven by a test
+switches off the ones its reads were measured to start, each checked by a test
 that watches the program not run: `gpg.program` (`log.showSignature`), a
 `core.fsmonitor` program, and, for `reveille state`, the content filters
 (`clean`, `smudge`, `process`) the repository's own config defines. Its history

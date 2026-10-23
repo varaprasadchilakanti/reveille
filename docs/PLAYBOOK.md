@@ -12,13 +12,16 @@ agent summarising it for someone else. This page states *use*; what the measures
 | # | Section | The question it answers |
 |---|---|---|
 | 1 | Header, notice and cards | How much history, how many people, how recent? |
-| 2 | What the History Shows | What am I looking at, in a few sentences? |
-| 3 | Contribution Distribution | Is this one person's repository or a team's? |
-| 4 | Commit Activity Heatmap | When was work actually happening? |
-| 5 | Weekly Commit Timeline | Is the pace steady, spiky, or stopped? |
-| 6 | Repository Profile | What shape does the work have, against what chance would give? |
-| 7 | Change Size, Where Change Concentrates, Change by File Type | How big are changes, where do they land, and what kind of work is it? |
-| 8 | Contributors | The figures per person, as text. |
+| 2 | Read Before Using These Figures | Which rules most change how these numbers read? |
+| 3 | What the History Shows | What am I looking at, in a few sentences? |
+| 4 | Contribution Distribution | Is this one person's repository or a team's? |
+| 5 | Commit Activity Heatmap | When was work actually happening? |
+| 6 | Weekly Commit Timeline | Is the pace steady, spiky, or stopped? |
+| 7 | Repository Profile | What shape does the work have, against what chance would give? |
+| 8 | Change Size per Commit, Where Change Concentrates, Change by File Type | How big are changes, where do they land, and what kind of work is it? |
+| 9 | Per-Contributor Commit Frequency | When did each listed person commit? |
+| 10 | Who Changed Each Area (only with `--area-authors`) | Who changed which directory? Not who knows or owns it. |
+| 11 | Contributors (Contributor Rankings with `--ranking`), Contribution Breakdown | The figures per person, as a table and as charts. |
 
 This is the report's own order: findings first, evidence after. Stop at the first section that
 answers your question. What each section contains is in

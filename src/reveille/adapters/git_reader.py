@@ -1045,7 +1045,7 @@ class GitReader:
             co_author_records, authentic_order, commits, mailmap, exclude_set, matched
         )
 
-        # A filter that matched nothing is almost always a typo; say so. A value
+        # A filter that matched nothing is usually a typo; say so. A value
         # matched when any form it expanded to did, and only values given are named.
         # Assigned unconditionally so a reused reader never reports stale values.
         found = matched | set(reached)
@@ -1581,7 +1581,7 @@ class GitReader:
             return exc
 
     def _paths_never_changed(self, rev: str, paths: Sequence[str]) -> tuple[str, ...]:
-        """Return the excluded paths no commit on `rev` ever changed: almost always a typo.
+        """Return the excluded paths no commit on `rev` ever changed: usually a typo.
 
         Args:
             rev: The analysed revision.

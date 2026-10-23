@@ -1674,7 +1674,7 @@ def state(
     ] = 10,
     verbose: _VerboseOption = False,
 ) -> None:
-    """Say where the repository stands now: branch, work in progress, changes, worktrees.
+    """Say where the repository stands now: branch, work in progress, changes, latest tag.
 
     Names no author, but lists local paths (changed files and worktree
     directories, which can contain your login name), the current branch, its

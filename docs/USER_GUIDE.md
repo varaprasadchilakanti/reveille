@@ -174,7 +174,7 @@ The path is relative to the repository root, whichever directory you run from, a
 literally: `*.md` is a file of that name, not a pattern. A directory takes everything under it.
 A commit that changed only excluded paths is not counted at all; a commit that also changed
 something else is counted, without the excluded lines. A path no commit on the branch ever
-changed is reported on stderr, since it is almost always a typo. The paths are stated in the
+changed is reported on stderr, since it is usually a typo. The paths are stated in the
 report header, the summary and the JSON `provenance.filters.exclude_paths`. `generate`,
 `summary` and `brief` accept it; in `reveille.toml` it is `[filters] exclude_paths`.
 
@@ -479,9 +479,9 @@ options. `generate` keeps text on stderr, beside its progress lines.
 
 ### Diagnostics
 
-`--verbose` (on every command except `init`, `capabilities` and `skill`) writes DEBUG diagnostics to
-stderr: the resolved configuration after flags and the TOML file are merged, the `git log`
-invocation, how many commits were read, and every file written. Normal output is unchanged.
+`--verbose` (on every command except `init`, `capabilities`, `skill` and `help`) writes DEBUG
+diagnostics to stderr: the resolved configuration after flags and the TOML file are merged, the
+`git log` invocation, how many commits were read, and every file written. Normal output is unchanged.
 
 Progress also goes to stderr. On a terminal it animates; anywhere else (a CI log, a pipe, an
 assistant's tool call) each stage is one plain line. `--quiet` leaves progress out and keeps
@@ -761,7 +761,7 @@ risk.
 ### What the History Shows
 
 A few sentences generated from the report's figures by fixed rules, without a language model: the
-same history always gives the same sentences. They name nobody. With fewer than three people, a
+same history over the same window always gives the same sentences. They name nobody. With fewer than three people, a
 sentence that would in effect describe one identifiable person, such as a share of commits or a
 weekend-working pattern, is left out. With two people the Gini fixes each share, so the distribution
 sentence gives the number of people as its evidence, not the Gini. The Gini itself is still shown,
