@@ -109,7 +109,8 @@ flag, not a command: `reveille version` exits 2.
 ### Output path
 
 The parent directory must exist. A path inside a Git directory (this repository's or another's,
-a bare one included: any directory holding `HEAD`, `objects` and `refs`), a path containing `..`,
+a bare one included: any directory Git takes for one, holding `objects`, `refs` and a `HEAD` that
+names a ref or a commit), a path containing `..`,
 and a directory are refused (exit 2). The directory is checked again as the file is written, so
 one replaced by a link in between is not written into (not on Windows). Stopped with SIGTERM or SIGHUP, the
 command removes its temporary file and exits 143 or 129. The default path is inside the working tree, untracked, so

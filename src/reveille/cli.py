@@ -40,6 +40,7 @@ from reveille.exceptions import (
     NoRepositoryReadError,
     ReveilleError,
 )
+from reveille.git_directory import holds_a_git_directory
 from reveille.undecoded import json_text
 
 _logger = logging.getLogger("reveille.cli")
@@ -832,7 +833,7 @@ def _git_directories(repo_path: Path) -> list[Path]:
         if not pointer.startswith("gitdir:"):
             return []
         git_dir = (repo_path / pointer.removeprefix("gitdir:").strip()).resolve()
-    elif (repo_path / "HEAD").is_file() and (repo_path / "objects").is_dir():
+    elif holds_a_git_directory(repo_path):
         git_dir = repo_path.resolve()
     else:
         return []
@@ -934,26 +935,16 @@ def _refuse_what_a_config_cannot_replace(output: Path, output_format: str) -> No
 def _in_a_git_directory(path: Path) -> bool:
     """Return whether a directory above `path` is a Git directory, any repository's.
 
-    Git takes a directory holding `HEAD`, `objects` and `refs` as one; a bare
-    repository's has no `.git` in its name, and need not be the one read.
+    Told by its files, as Git tells one; a bare repository's has no `.git` in its
+    name, and need not be the one read.
 
     Args:
         path: A resolved path.
 
     Returns:
-        True when a parent of `path` holds all three.
+        True when a parent of `path` is one.
     """
-    for parent in path.parents:
-        try:
-            if (
-                (parent / "HEAD").is_file()
-                and (parent / "objects").is_dir()
-                and (parent / "refs").is_dir()
-            ):
-                return True
-        except OSError:
-            continue
-    return False
+    return any(holds_a_git_directory(parent) for parent in path.parents)
 
 
 def _validate_output_path(

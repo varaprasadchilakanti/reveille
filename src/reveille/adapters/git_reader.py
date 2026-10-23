@@ -50,6 +50,7 @@ from reveille.domain.models import (
 from reveille.domain.repositories import MAX_SEARCH_DEPTH
 from reveille.domain.state import RepositoryState, Worktree, quiet_branches
 from reveille.exceptions import EmptyRepositoryError, RepositoryError
+from reveille.git_directory import holds_a_git_directory
 
 # Separators for the `git log` read: 0x1E and 0x1F are rare, not impossible.
 # Git does not strip them from author fields, so a crafted commit can split a
@@ -2918,9 +2919,7 @@ def is_repository(path: Path) -> bool:
     try:
         if os.path.lexists(path / ".git"):
             return True
-        return (
-            (path / "HEAD").is_file() and (path / "objects").is_dir() and (path / "refs").is_dir()
-        )
+        return holds_a_git_directory(path)
     except OSError:
         return False
 
@@ -3146,7 +3145,7 @@ def _git_dir_of(start: Path, *, search_up: bool) -> Path | None:
             if not pointer.startswith("gitdir:"):
                 return None
             return directory / pointer.removeprefix("gitdir:").strip()
-        if all((directory / name).exists() for name in ("HEAD", "objects", "refs")):
+        if holds_a_git_directory(directory):
             return directory
     return None
 

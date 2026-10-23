@@ -312,9 +312,11 @@ Each entry has a test that fails without the fix. 0.9.0's exposure is stated whe
 - **`generate --output` and `init --output` could write into another repository's bare Git
   directory**: a report in its `refs/heads/` became a broken branch, and `init --force` replaced
   its `config`. Only a directory named `.git`, or the analysed repository's own, was refused. Any
-  directory holding `HEAD`, `objects` and `refs` now is, checked again from the open directory
-  when the file is written, so a directory swapped for a link in between is not written into (not
-  on Windows). 0.9.0 is affected (run against its code).
+  directory Git takes for one now is: `objects`, `refs`, and a `HEAD` naming a ref or a commit,
+  or a symbolic link into `refs/` even where it dangles, as it does when only `packed-refs`
+  holds the branch. A directory merely holding files of those names is not. It is checked again
+  from the open directory when the file is written, so a directory swapped for a link in between
+  is not written into (not on Windows). 0.9.0 is affected (run against its code).
 - **An author name could add commits and people to every figure** by holding `git log`'s record
   separators and a real commit's hash. Each record is framed by its hash, and a hash with more than
   one record is counted as unreadable.

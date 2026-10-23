@@ -16,6 +16,8 @@ import secrets
 import stat
 from pathlib import Path
 
+from reveille.git_directory import holds_a_git_directory_open
+
 #: Whether files can be made and moved relative to an open directory (not on Windows).
 _DIRECTORY_DESCRIPTORS = (
     hasattr(os, "O_DIRECTORY")
@@ -97,19 +99,19 @@ def _write_in(directory: int | None, name: Path, temporary: Path, text: str, enc
 def _in_a_git_directory(directory: int) -> bool:
     """Return whether the open `directory`, or one above it, is a Git directory.
 
-    One holding `HEAD`, `objects` and `refs`, as Git takes it. Walked through
+    One Git takes for its own (`reveille.git_directory`). Walked through
     `..` from the directory itself, so a name changed meanwhile cannot hide one.
 
     Args:
         directory: An open directory.
 
     Returns:
-        True when it, or a directory above it, holds all three.
+        True when it, or a directory above it, is one.
     """
     current = os.dup(directory)
     try:
         while True:
-            if _holds_a_git_directory(current):
+            if holds_a_git_directory_open(current):
                 return True
             parent = os.open("..", _SEARCH_ONLY | os.O_DIRECTORY, dir_fd=current)
             here, above = os.fstat(current), os.fstat(parent)
@@ -119,15 +121,3 @@ def _in_a_git_directory(directory: int) -> bool:
                 return False  # the root is its own parent
     finally:
         os.close(current)
-
-
-def _holds_a_git_directory(directory: int) -> bool:
-    """Return whether the open `directory` holds a `HEAD` file and `objects` and `refs`."""
-    kinds = {"HEAD": stat.S_ISREG, "objects": stat.S_ISDIR, "refs": stat.S_ISDIR}
-    for name, kind in kinds.items():
-        try:
-            if not kind(os.stat(name, dir_fd=directory).st_mode):
-                return False
-        except OSError:
-            return False
-    return True

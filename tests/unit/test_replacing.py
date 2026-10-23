@@ -189,3 +189,15 @@ def test_a_git_directory_that_cannot_be_listed_is_still_refused(tmp_path: Path) 
             write_replacing(git / "objects" / "r.html", "x", encoding="utf-8")
     finally:
         git.chmod(0o700)
+
+
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="links")
+def test_a_git_directory_whose_head_link_dangles_is_refused(tmp_path: Path) -> None:
+    """Git reads a `HEAD` linked to a branch only `packed-refs` holds."""
+    git = tmp_path / "bare.git"
+    for name in ("objects", "refs"):
+        (git / name).mkdir(parents=True)
+    (git / "HEAD").symlink_to("refs/heads/main")
+
+    with pytest.raises(OSError, match="inside a Git directory"):
+        write_replacing(git / "objects" / "r.html", "x", encoding="utf-8")
