@@ -287,7 +287,11 @@ def _option_label(field: str) -> str:
 
 
 class _EscapingFormatter(logging.Formatter):
-    """A log formatter that escapes terminal control characters in quoted values."""
+    """A log formatter that escapes terminal control characters in quoted values.
+
+    A warning reads as the CLI's own do, `Warning: ...`; a lower level keeps the
+    module that wrote it, for whoever is diagnosing with `--verbose`.
+    """
 
     def format(self, record: logging.LogRecord) -> str:
         """Format the record, then escape it.
@@ -298,6 +302,8 @@ class _EscapingFormatter(logging.Formatter):
         Returns:
             The formatted, escaped line.
         """
+        if record.levelno >= logging.WARNING:
+            return _printable(f"{record.levelname.capitalize()}: {record.getMessage()}")
         return _printable(super().format(record))
 
 

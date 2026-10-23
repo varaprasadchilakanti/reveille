@@ -109,6 +109,9 @@ before release.
   choice in `reveille.toml` (`report.format = "xml"`) now names the value given too. A byte in it
   that is not UTF-8 is written `\xff`, as every other line writes one, not `\udcff`, and a
   suggested command naming such a path quotes it `$'...'`, so bash reads the byte back.
+- **A warning reads "Warning: ...", as the CLI's own do.** It was "WARNING
+  reveille.adapters.git_reader: ...", naming the module that wrote it; a DEBUG line from
+  `--verbose` still names it.
 - **Progress off a terminal** is one plain line per stage. A dark-mode reader no longer sees the
   report light first.
 - **`schema_version` is 1.3.** The brief is a new document and the others gain fields; every 1.1
