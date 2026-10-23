@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import datetime
 import os
+import shutil
 import tempfile
 from pathlib import Path
 
 import pytest
 
 from reveille.domain.models import Commit, ContributorStats
+
+_EMPTY_CONFIG_HOME = pytest.StashKey[Path]()
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -26,10 +29,19 @@ def pytest_configure(config: pytest.Config) -> None:
     in every xdist worker. A test that needs a global setting sets
     `GIT_CONFIG_GLOBAL` itself with `monkeypatch`.
     """
-    empty = Path(tempfile.mkdtemp(prefix="reveille-tests-")) / "empty.gitconfig"
+    home = Path(tempfile.mkdtemp(prefix="reveille-tests-"))
+    config.stash[_EMPTY_CONFIG_HOME] = home
+    empty = home / "empty.gitconfig"
     empty.touch()
     os.environ["GIT_CONFIG_GLOBAL"] = str(empty)
     os.environ["GIT_CONFIG_NOSYSTEM"] = "1"
+
+
+def pytest_unconfigure(config: pytest.Config) -> None:
+    """Remove the empty config's directory; each worker left one in the temporary directory."""
+    home = config.stash.get(_EMPTY_CONFIG_HOME, None)
+    if home is not None:
+        shutil.rmtree(home, ignore_errors=True)
 
 
 @pytest.fixture(autouse=True)
