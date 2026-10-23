@@ -16,7 +16,7 @@ history.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/varaprasadchilakanti/reveille/main/docs/images/report-dark.png">
-  <img src="https://raw.githubusercontent.com/varaprasadchilakanti/reveille/main/docs/images/report-light.png" width="860" alt="The top of a Reveille report for a sample repository with invented contributors: the report's statement of its own limits, five summary figures with a note that one automated account is counted in the totals but not as a person, a box of what to read before using the figures, four findings in plain sentences, and a Lorenz curve of how commits are spread across six people.">
+  <img src="https://raw.githubusercontent.com/varaprasadchilakanti/reveille/main/docs/images/report-light.png" width="860" alt="The top of a Reveille report for a sample repository with invented contributors: the branch, commit and period it describes, the report's statement of its own limits, a list of its sections, five summary figures with a note that one automated account is counted in the totals but not as a person, a box of what to read before using the figures, four findings in plain sentences, and a Lorenz curve of how commits are spread across six people.">
 </picture>
 
 *A report for a sample repository with invented contributors, built by

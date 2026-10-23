@@ -94,8 +94,17 @@ def build(target: Path) -> int:
                 area = target / rng.choice(AREAS)
                 area.mkdir(parents=True, exist_ok=True)
                 suffix = rng.choice((".py", ".py", ".ts", ".md", ".yml"))
-                with (area / f"part{rng.randint(1, 9)}{suffix}").open("a", encoding="utf-8") as f:
-                    f.write("line\n" * rng.randint(1, 160))
+                path = area / f"part{rng.randint(1, 9)}{suffix}"
+                lines = path.read_text(encoding="utf-8").splitlines(True) if path.exists() else []
+                # Most changes also remove lines, so the report shows deletions as a
+                # real history does. Each line is distinct, or Git would read a
+                # removed line and an added one as no change.
+                if lines and rng.random() < 0.6:
+                    cut = rng.randint(1, max(1, len(lines) // 3))
+                    start = rng.randint(0, len(lines) - cut)
+                    del lines[start : start + cut]
+                lines += [f"line {made}.{i}\n" for i in range(rng.randint(1, 160))]
+                path.write_text("".join(lines), encoding="utf-8")
             made += 1
             stamp = (
                 day + datetime.timedelta(hours=rng.randint(0, 8), minutes=made % 60)
