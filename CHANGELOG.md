@@ -191,6 +191,12 @@ before release.
 - **An output path ending in `/` is refused.** `-o reports/` wrote a file named `reports`.
 - **A `reveille.toml` that starts with a byte-order mark is read.** It was reported as "Invalid
   statement" at line 1.
+- **Help did not follow the exit-code contract.** `--help`, `-h`, `help [<command>]` and a bare
+  `reveille` exited 120 with a "defect" message when stdout was full, 1 when the reader stopped
+  early, and 0 when stdout was closed. They now exit 2, 0 and 2, as an answer does; a bare
+  `reveille` still exits 2. `generate -o <file>` with a full stdout exited 2 though the file was
+  written; the path it prints is a confirmation, left out as with a closed stdout, and the exit is
+  0.
 - **A path that is not UTF-8 reached JSON as a lone surrogate** (`"caf\udcff.txt"` from
   `who-changed`), which a strict JSON parser refuses. Such a byte is written as `\xNN`
   (`caf\xff.txt`), in JSON as text output writes it, in `who-changed`, `state` and `repos` and in

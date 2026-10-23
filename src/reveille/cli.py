@@ -26,8 +26,9 @@ from pathlib import Path
 from typing import Annotated, Any, ClassVar, NoReturn, TextIO, cast, get_args
 
 import typer
-from typer.core import TyperGroup
+from typer.core import TyperCommand, TyperGroup
 from typer.main import get_command
+from typer.models import CommandFunctionType
 
 from reveille import __version__
 from reveille.config import OutputFormat, ReportConfig, ReportConfigKwargs
@@ -165,8 +166,53 @@ def _say(text: str, *, nl: bool = True, answer: bool = True) -> None:
         raise typer.Exit(code=ExitCode.SUCCESS) from exc
     except OSError as exc:
         _discard_stdout()
+        if not answer:
+            return
         _err(f"Error: the output could not be written to standard output: {exc.strerror}.")
         raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
+
+
+def _show_help(ctx: Any) -> None:
+    """Write a command's help to stdout, failing as `_say` does when it cannot be written.
+
+    Typer's help is printed by Rich from inside `get_help`, so the writing is
+    caught around that call, not around an echo of what it returns.
+
+    Args:
+        ctx: The Click context of the command whose help is wanted.
+
+    Raises:
+        typer.Exit: SUCCESS for a reader that stopped, CANNOT_RUN when the help
+            cannot be written.
+    """
+    if sys.stdout is None:
+        _err("Error: standard output is closed, so the answer has nowhere to go.")
+        raise typer.Exit(code=ExitCode.CANNOT_RUN)
+    try:
+        text = ctx.get_help()
+        if text:  # without Rich, Click returns the help instead of printing it
+            typer.echo(text)
+        sys.stdout.flush()
+    except BrokenPipeError as exc:
+        _discard_stdout()
+        raise typer.Exit(code=ExitCode.SUCCESS) from exc
+    except SystemExit as exc:
+        # Rich's own answer to a broken pipe (`Console.on_broken_pipe`) is exit 1,
+        # the negative answer; a reader that stopped early chose to, so it is 0.
+        if exc.code != 1:
+            raise
+        raise typer.Exit(code=ExitCode.SUCCESS) from exc
+    except OSError as exc:
+        _discard_stdout()
+        _err(f"Error: the output could not be written to standard output: {exc.strerror}.")
+        raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
+
+
+def _help_option_callback(ctx: Any, _param: Any, value: bool) -> None:
+    """Show the help for `--help` or `-h`, through `_show_help`."""
+    if value and not ctx.resilient_parsing:
+        _show_help(ctx)
+        ctx.exit()
 
 
 def _discard_stdout() -> None:
@@ -330,6 +376,8 @@ def _exit_as_defect(exc: Exception) -> NoReturn:
     """
     _logger.debug("Unexpected error", exc_info=True)
     _err(f"Error: {type(exc).__name__}: {exc}. This is a defect in Reveille; please report it.")
+    # A last flush of a stdout that cannot be written would turn the exit into 120.
+    _discard_stdout()
     sys.exit(ExitCode.CANNOT_RUN)
 
 
@@ -396,7 +444,24 @@ class _Group(TyperGroup):
             What Click's parser leaves for the subcommand.
         """
         ctx.meta["reveille.words"] = list(args)
+        if not args and self.no_args_is_help and not ctx.resilient_parsing:
+            # No command is not a command: the help is given, and the exit is 2 however
+            # the help went.
+            with contextlib.suppress(typer.Exit):
+                _show_help(ctx)
+            raise typer.Exit(code=ExitCode.CANNOT_RUN)
         return super().parse_args(ctx, args)
+
+    def get_help_option(self, ctx: Any) -> Any:
+        """Return `--help`, shown through `_show_help`.
+
+        Args:
+            ctx: The group's context.
+
+        Returns:
+            The help option.
+        """
+        return _through_show_help(super().get_help_option(ctx))
 
     def invoke(self, ctx: Any) -> Any:
         """Run the subcommand; under `--format json`, its usage errors are JSON too.
@@ -426,6 +491,28 @@ class _Group(TyperGroup):
                 "--format json` for its options."
             )
             raise typer.Exit(ExitCode.CANNOT_RUN) from exc
+
+
+def _through_show_help(option: Any) -> Any:
+    """Point a help option at `_show_help`; None stays None."""
+    if option is not None:
+        option.callback = _help_option_callback
+    return option
+
+
+class _Command(TyperCommand):
+    """A command whose `--help` is shown through `_show_help`."""
+
+    def get_help_option(self, ctx: Any) -> Any:
+        """Return `--help`, shown through `_show_help`.
+
+        Args:
+            ctx: The command's context.
+
+        Returns:
+            The help option.
+        """
+        return _through_show_help(super().get_help_option(ctx))
 
 
 class _App(typer.Typer):
@@ -458,6 +545,21 @@ class _App(typer.Typer):
             sys.exit(ExitCode.CANNOT_RUN)
         except Exception as exc:
             _exit_as_defect(exc)
+
+    def command(
+        self, name: str | None = None, *, cls: type[TyperCommand] | None = None, **kwargs: Any
+    ) -> Callable[[CommandFunctionType], CommandFunctionType]:
+        """Register a command, as `_Command` unless another class is given.
+
+        Args:
+            name: The command's name.
+            cls: Its class; `_Command` when not given.
+            **kwargs: As for `typer.Typer.command`.
+
+        Returns:
+            Typer's decorator.
+        """
+        return super().command(name, cls=cls or _Command, **kwargs)
 
 
 app = _App(
@@ -1894,7 +1996,7 @@ def help(
     """Display help information for all available commands, or for one."""
     root = ctx.parent if ctx.parent is not None else ctx
     if command is None:
-        typer.echo(root.get_help())
+        _show_help(root)
         return
     group = root.command
     sub = group.get_command(root, command) if isinstance(group, TyperGroup) else None
@@ -1902,7 +2004,7 @@ def help(
         known = ", ".join(group.list_commands(root)) if isinstance(group, TyperGroup) else ""
         _err(f"Error: no command {command!r}; the commands are {known}.")
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
-    typer.echo(sub.get_help(type(ctx)(sub, info_name=command, parent=root)))
+    _show_help(type(ctx)(sub, info_name=command, parent=root))
 
 
 def _parse_date(value: str, flag_name: str) -> datetime.date:
