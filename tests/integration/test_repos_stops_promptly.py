@@ -27,7 +27,8 @@ pytestmark = [
 
 # Each row's read waits on a minute-long command, started as Reveille starts a streamed Git.
 _CHILD = """
-import subprocess, sys, time
+import faulthandler, signal, subprocess, sys, time
+faulthandler.register(signal.SIGUSR1, all_threads=True)  # the test's record of a hang
 from reveille.adapters import git_reader
 import reveille.services.report as report
 def slow_row(path, *args):
@@ -50,6 +51,21 @@ def workspace(tmp_path: Path) -> Path:
     return tmp_path
 
 
+def _hang_report(reveille: subprocess.Popen[str]) -> str:
+    """Every thread's stack and the signal masks of a run that did not end, for the failure."""
+    masks = ""
+    with contextlib.suppress(OSError):
+        status = Path(f"/proc/{reveille.pid}/status").read_text().splitlines()
+        masks = "\n".join(
+            line for line in status if line.startswith(("SigIgn", "SigCgt", "SigBlk"))
+        )
+    reveille.send_signal(signal.SIGUSR1)
+    time.sleep(1)
+    reveille.kill()
+    _, stacks = reveille.communicate()
+    return f"{masks}\n{stacks}"
+
+
 @pytest.mark.parametrize(("name", "code"), [("SIGTERM", 143), ("SIGHUP", 129)])
 def test_the_run_ends_without_waiting_for_the_reads(workspace: Path, name: str, code: int) -> None:
     reveille = subprocess.Popen(
@@ -63,7 +79,10 @@ def test_the_run_ends_without_waiting_for_the_reads(workspace: Path, name: str, 
     try:
         sent = time.monotonic()
         reveille.send_signal(getattr(signal, name))
-        reveille.wait(timeout=30)
+        try:
+            reveille.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            pytest.fail(f"{name} did not end the run:\n{_hang_report(reveille)}")
 
         assert reveille.returncode == code
         assert time.monotonic() - sent < 10, "the run waited for the reads under way"
