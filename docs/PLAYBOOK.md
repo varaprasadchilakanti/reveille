@@ -37,7 +37,7 @@ answers your question. What each section contains is in
 | Commit concentration (the "Hold Half the Commits" card) | How few people hold most commits | A bus factor; it says nothing about who *knows* the code |
 | Active days | Regularity of committing | Hours worked |
 | Lines added/deleted | Size of recorded change | Quality, difficulty, or value |
-| Weekend finding (stated when more than 15% of commits fall on a weekend) | When commits were timestamped | Overwork — time zones and rebases move commits across the boundary |
+| Weekend finding (stated when 15% or more of commits fall on a weekend) | When commits were timestamped | Overwork — time zones and rebases move commits across the boundary |
 | Ranking (`--ranking`) | Volume and regularity, nothing else | Any assessment of a person |
 
 The ranking is off by default and should usually stay off. JSON and CSV still carry a `rank` column,

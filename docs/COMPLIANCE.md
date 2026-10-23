@@ -211,16 +211,19 @@ Reveille's own code; the vendored files carry their own licences.
 
 **What Reveille runs on.** The Python packages Reveille depends on are installed beside it, each
 with its own licence files, and Reveille redistributes none of them. At the versions in
-`poetry.lock` on 2026-10-18, read from each installed package's metadata and licence file:
+`poetry.lock` on 2026-10-23, read from each package's metadata and licence file:
 
 | Licence | Packages |
 |---|---|
 | MIT | annotated-doc, annotated-types, markdown-it-py, mdurl, narwhals, plotly, pydantic, pydantic-core, rich, typer, typing-inspection |
-| BSD-3-Clause | click, gitdb, GitPython, Jinja2, MarkupSafe, smmap |
+| BSD-3-Clause | colorama (installed on Windows only), gitdb, GitPython, Jinja2, MarkupSafe, smmap |
 | BSD-2-Clause | Pygments |
 | Apache-2.0 OR BSD-2-Clause | packaging |
 | ISC | shellingham |
 | PSF-2.0 | typing-extensions |
+
+Typer 0.27 carries its own copy of Click as `typer._click`, with Click's BSD-3-Clause licence
+file beside it.
 
 Each permits use, modification and redistribution with its notice kept. None is copyleft, so
 none places a condition on Reveille's own licence.
