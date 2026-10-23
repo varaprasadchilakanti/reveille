@@ -763,7 +763,7 @@ def main(
 ) -> None:
     """Offline reports of a Git repository's history."""
     _stderr_json["on"] = False
-    _exit_cleanly_on_sigterm()
+    _exit_cleanly_when_stopped()
 
 
 def _stop(signum: int, frame: object) -> None:
@@ -771,17 +771,19 @@ def _stop(signum: int, frame: object) -> None:
     raise SystemExit(128 + signum)
 
 
-def _exit_cleanly_on_sigterm() -> None:
-    """Make SIGTERM exit 143 by raising, so a half-written temporary file is removed.
+def _exit_cleanly_when_stopped() -> None:
+    """Make SIGTERM and SIGHUP exit 128 + N by raising, so a half-written file is removed.
 
     By default the process stops where it is, and the `.tmp` beside the output
-    stays. A handler someone else installed is left in place; only the main
-    thread can install one.
+    stays. SIGHUP is sent when a terminal closes; Windows has none. A handler
+    someone else installed is left in place; only the main thread can install one.
     """
     if threading.current_thread() is not threading.main_thread():
         return
-    if signal.getsignal(signal.SIGTERM) is signal.SIG_DFL:
-        signal.signal(signal.SIGTERM, _stop)
+    for name in ("SIGTERM", "SIGHUP"):
+        signum = getattr(signal, name, None)
+        if signum is not None and signal.getsignal(signum) is signal.SIG_DFL:
+            signal.signal(signum, _stop)
 
 
 def _root(repo: Path) -> Path:

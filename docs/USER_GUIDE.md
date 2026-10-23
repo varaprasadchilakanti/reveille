@@ -111,8 +111,8 @@ flag, not a command: `reveille version` exits 2.
 The parent directory must exist. A path inside a Git directory (this repository's or another's,
 a bare one included: any directory holding `HEAD`, `objects` and `refs`), a path containing `..`,
 and a directory are refused (exit 2). The directory is checked again as the file is written, so
-one replaced by a link in between is not written into (not on Windows). Stopped with SIGTERM, the
-command removes its temporary file and exits 143. The default path is inside the working tree, untracked, so
+one replaced by a link in between is not written into (not on Windows). Stopped with SIGTERM or SIGHUP, the
+command removes its temporary file and exits 143 or 129. The default path is inside the working tree, untracked, so
 `git add -A` would commit it; add it to `.gitignore` or choose another path. On POSIX systems a new
 report is readable and writable by its owner only (mode 600, tested on Linux), because it names
 people; a report written over an existing file keeps that file's permissions. A path outside the
@@ -461,6 +461,10 @@ esac
 
 Further detail goes to stderr, not into more exit codes, which would break scripts that branch on
 the existing ones.
+
+A command stopped by a signal exits 128 plus the signal's number, as a shell reports it: 130 for
+Ctrl-C (SIGINT), 143 for SIGTERM, 129 for SIGHUP (a closed terminal). None of these is an answer.
+A handler for SIGTERM or SIGHUP that whatever runs Reveille installed is kept, and decides instead.
 
 With `--format json`, `summary`, `brief`, `state`, `who-changed`, `repos` and `capabilities`
 write each stderr message as one JSON object per line, `{"level": "error", "message": "..."}`

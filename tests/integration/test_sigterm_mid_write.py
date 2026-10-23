@@ -1,9 +1,10 @@
 # SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti
 # SPDX-License-Identifier: Apache-2.0
 
-"""SIGTERM while a report is written exits 143 and leaves no temporary file.
+"""SIGTERM or SIGHUP while a report is written exits 128 + N and leaves no temporary file.
 
 By default Python stops where it is, and the `.tmp` beside the output stays.
+SIGHUP is what a closing terminal sends.
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ import os, signal, sys
 import reveille.replacing as r
 real = r.os.replace
 def replace(*args, **kwargs):
-    os.kill(os.getpid(), signal.SIGTERM)
+    os.kill(os.getpid(), signal.{signal})
     return real(*args, **kwargs)
 r.os.replace = replace
 {default}
@@ -51,31 +52,38 @@ def repo(tmp_path: Path) -> Path:
     return path
 
 
-def _generate(repo: Path, out: Path, default: str = "") -> int:
-    child = _CHILD.format(default=default)
+_STOPPING = ["SIGTERM", "SIGHUP"]
+
+
+def _generate(repo: Path, out: Path, default: str = "", sent: str = "SIGTERM") -> int:
+    child = _CHILD.format(default=default, signal=sent)
     args = [sys.executable, "-c", child, "generate", "-q", "--repo", str(repo), "-o", str(out)]
     return subprocess.run(args, capture_output=True, timeout=60, check=False).returncode
 
 
-def test_sigterm_during_the_write_exits_143_with_no_temporary(repo: Path, tmp_path: Path) -> None:
+@pytest.mark.parametrize("sent", _STOPPING)
+def test_a_stop_during_the_write_exits_128_plus_n_with_no_temporary(
+    repo: Path, tmp_path: Path, sent: str
+) -> None:
     out_dir = tmp_path / "out"
     out_dir.mkdir()
 
-    code = _generate(repo, out_dir / "r.html")
+    code = _generate(repo, out_dir / "r.html", sent=sent)
 
-    assert code == 128 + signal.SIGTERM
+    assert code == 128 + getattr(signal, sent)
     assert list(out_dir.iterdir()) == []
 
 
-def test_without_the_handler_the_temporary_is_left(repo: Path, tmp_path: Path) -> None:
+@pytest.mark.parametrize("sent", _STOPPING)
+def test_without_the_handler_the_temporary_is_left(repo: Path, tmp_path: Path, sent: str) -> None:
     """Positive control: a handler someone else set is kept, and this one is the default."""
     out_dir = tmp_path / "out"
     out_dir.mkdir()
-    keep_default = "import reveille.cli as c; c._exit_cleanly_on_sigterm = lambda: None"
+    keep_default = "import reveille.cli as c; c._exit_cleanly_when_stopped = lambda: None"
 
-    code = _generate(repo, out_dir / "r.html", default=keep_default)
+    code = _generate(repo, out_dir / "r.html", default=keep_default, sent=sent)
 
-    assert code == -signal.SIGTERM
+    assert code == -getattr(signal, sent)
     assert [p.suffix for p in out_dir.iterdir()] == [".tmp"]
 
 
