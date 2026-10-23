@@ -245,7 +245,8 @@ before release.
   commits (exit 1), and a HEAD naming no commit as empty; Git is asked, and damage exits 2. A
   caller's `GIT_WORK_TREE`, `GIT_INDEX_FILE` or `GIT_OBJECT_DIRECTORY`, as a hook sets them,
   changed what was read; each is pinned to the repository's own. Git misreads dates before 1970 or
-  after 2099, so none is passed to it.
+  after 2099, so none is passed to it, and a commit dated after 2099 is kept to the window by
+  Reveille itself.
 - **An answer that was not delivered was reported as delivered.** A full disk or a closed standard
   output exits 2; a reader that stops early (`| head`) exits 0, not 1.
 - **Errors named the wrong cause.** Git missing or a broken global Git configuration, a deleted

@@ -1005,6 +1005,11 @@ class GitReader:
             )
             if commit is None:
                 continue
+            # Git bounds dates only through 2099, so a window reaching past it is
+            # bounded here too; inside those years this drops nothing Git kept.
+            day = commit.timestamp.date()
+            if (until is not None and day > until) or (since is not None and day < since):
+                continue
             if dated_until is not None and commit.timestamp.date() > dated_until:
                 dated_after += 1
                 continue
@@ -3624,8 +3629,8 @@ def _selection(log_args: list[str]) -> list[str]:
 # Git reads a date only from 1970 through 2099 (Git 2.55, measured with
 # `git rev-parse --since=`): past 2099 `--before` matched no commit and `--since`
 # every one, and `@<seconds>` past it is read as another date. A bound outside
-# those years is dropped where nothing Git can date lies beyond it, and moved to
-# the nearest day Git reads where something could.
+# those years is dropped, or moved to the nearest day Git reads, and the read
+# checks each commit against the window again: a commit can be dated past 2099.
 _GIT_FIRST_DAY = datetime.date(1970, 1, 1)
 _GIT_LAST_DAY = datetime.date(2099, 12, 31)
 
