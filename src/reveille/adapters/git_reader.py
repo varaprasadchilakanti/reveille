@@ -1714,6 +1714,11 @@ class GitReader:
             return None
         return tuple(sorted(names))
 
+    def commit_date(self, sha: str) -> datetime.date | None:
+        """Return a commit's committer date (UTC), or None if it cannot be read."""
+        time = self._commit_time(sha)
+        return None if time is None else time.date()
+
     def _commit_time(self, sha: str) -> datetime.datetime | None:
         """Return a commit's committer time in UTC, or None if it cannot be read."""
         try:

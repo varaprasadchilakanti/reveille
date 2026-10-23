@@ -638,8 +638,12 @@ def brief_text(
             )
             if used
         ]
+        # A start dated after --until is allowed: dates need not follow the history.
+        dated = reader.commit_date(from_commit) if from_commit and config.until else None
+        late = dated is not None and config.until is not None and dated > config.until
+        after = f" {point} is dated {dated}, after it." if late else ""
         raise EmptyRepositoryError(
-            f"No commits since {point}{''.join(' ' + limit for limit in limits)}."
+            f"No commits since {point}{''.join(' ' + limit for limit in limits)}.{after}"
         ) from exc
     if reader.commits_dated_after and cutoff is not None:
         _notify(
