@@ -175,6 +175,9 @@ before release.
 - **Stopped with SIGTERM or SIGHUP while writing, a run left its `.tmp` file beside the
   output.** It now removes it and exits 143 or 129, as a terminated process does; a handler set by
   whatever runs Reveille is kept.
+- **The report said "The same history always produces the same sentences".** The window counts
+  too: a later `--until` turns "No commits in the last 30 days" into "273 days". It now says "the
+  same history over the same window". 0.9.0's report says the same.
 - **A signal sent to Reveille alone left the Git command it was waiting for running.** `kill
   <pid>` reaches Reveille, not its process group, as Ctrl-C in a terminal does; a Git blocked on a
   named pipe then ran on after Reveille exited, with no deadline (0.9.0 too, run against its tree).
