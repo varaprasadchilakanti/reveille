@@ -324,6 +324,9 @@
         var DAY_LABELS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
         var z = [], customdata = [], xLabels = [];
+        // One axis label per month, at the week that month's first day falls
+        // in; a label for every week ran to 53 rotated dates.
+        var tickVals = [], tickText = [];
         for (var d = 0; d < 7; d++) { z.push([]); customdata.push([]); }
 
         for (var w = 0; w < numWeeks; w++) {
@@ -333,6 +336,20 @@
                 MONTHS[wm.getUTCMonth()] + ' ' +
                 String(wm.getUTCDate()).padStart(2, '0')
             );
+            // A week holds a month's first day when its Sunday is the 1st to the 7th,
+            // and the label counts only if that day is in the window. The first week
+            // is labelled with the window's month unless that month ends within ten
+            // days, where its label would sit on the next one's.
+            var weekSun = new Date(weekMonMs + 6 * 86400000);
+            var first = new Date(firstMs);
+            var holdsFirst = weekSun.getUTCDate() <= 7 &&
+                weekSun.getTime() - (weekSun.getUTCDate() - 1) * 86400000 <= lastMs;
+            var opens = holdsFirst ? weekSun
+                : (w === 0 && first.getUTCDate() <= 21 ? first : null);
+            if (opens) {
+                tickVals.push(xLabels[w]);
+                tickText.push(MONTHS[opens.getUTCMonth()]);
+            }
 
             for (var d = 0; d < 7; d++) {
                 var cellMs = weekMonMs + d * 86400000;
@@ -351,7 +368,8 @@
             }
         }
 
-        return { z: z, x: xLabels, y: DAY_LABELS, customdata: customdata };
+        return { z: z, x: xLabels, y: DAY_LABELS, customdata: customdata,
+                 tickvals: tickVals, ticktext: tickText };
     }
 
     // ------------------------------------------------------------------
@@ -407,7 +425,8 @@
             // 'domain' on both axes: square cells shrink the plot area to the
             // weeks drawn. The default extends the x range instead, which
             // drew empty columns past the end of the window.
-            xaxis:      { type: 'category', tickangle: -45, constrain: 'domain' },
+            xaxis:      { type: 'category', tickangle: 0, constrain: 'domain',
+                          tickvals: grid.tickvals, ticktext: grid.ticktext },
             yaxis:      { autorange: 'reversed', scaleanchor: 'x',
                           constrain: 'domain' },
             showlegend: false,
@@ -579,7 +598,30 @@
     }
     window.addEventListener('afterprint', function () { fitChartsTo(false); });
 
+    // The contents list is built from the page's own headings, the caveats
+    // panel's and each section's, so it lists those this report has,
+    // whichever options made it.
+    function buildContents() {
+        var nav = document.getElementById('contents');
+        if (!nav) return;
+        var list = nav.querySelector('ol');
+        var headings = document.querySelectorAll('#caveats-title, h2.section-title');
+        for (var i = 0; i < headings.length; i++) {
+            var heading = headings[i];
+            if (!heading.id) heading.id = 'section-' + (i + 1);
+            var link = document.createElement('a');
+            link.href = '#' + heading.id;
+            // The first text node: a heading can carry a figure after its name.
+            link.textContent = heading.firstChild.textContent.trim();
+            var item = document.createElement('li');
+            item.appendChild(link);
+            list.appendChild(item);
+        }
+        nav.hidden = headings.length === 0;
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
+        buildContents();
         initAllCharts(initialTheme);
         var themeBtn = document.getElementById('theme-toggle');
         if (themeBtn) themeBtn.addEventListener('click', toggleTheme);
@@ -734,6 +776,45 @@
             padding-bottom: 24px;
             margin-bottom: 36px;
         }
+
+        .report-contents {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: baseline;
+            gap: 6px 14px;
+            margin: -20px 0 32px;
+            font-size: 13px;
+        }
+
+        .report-contents[hidden] { display: none; }
+
+        .report-contents-label {
+            font-weight: 600;
+            color: var(--color-text-secondary);
+        }
+
+        .report-contents ol {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px 16px;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+
+        .report-contents a {
+            color: var(--color-accent);
+            text-decoration: none;
+        }
+
+        .report-contents a:hover,
+        .report-contents a:focus-visible {
+            text-decoration: underline;
+        }
+
+        /* A heading reached from the contents is not left under the window's top edge. */
+        #caveats-title,
+        h2.section-title { scroll-margin-top: 16px; }
 
         .report-header-copy h1 {
             font-size: 22px;
@@ -1187,8 +1268,33 @@
             .heatmap-controls,
             .modebar,
             .table-count,
-            .heatmap-scroll-note {
+            .heatmap-scroll-note,
+            .report-contents {
                 display: none !important;
+            }
+
+            /* Margins a printer can reach, and a page number on each sheet, so
+               a printed report can be cited and reassembled. No size: the
+               reader's paper, A4 or Letter, is the browser's to choose. The
+               margin boxes print where the browser supports them (Chromium
+               does). Their grey is --color-text-secondary on white, which a
+               page box cannot read; a test holds the two equal. */
+            @page {
+                margin: 14mm 12mm 16mm;
+
+                @bottom-left {
+                    content: "Repository History Report";
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                    font-size: 8pt;
+                    color: #57606a;
+                }
+
+                @bottom-right {
+                    content: "Page " counter(page) " of " counter(pages);
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                    font-size: 8pt;
+                    color: #57606a;
+                }
             }
 
             /* A chart is kept whole; a section is not. Keeping every
@@ -1197,7 +1303,10 @@
                follows it, and a table breaks between rows. */
             .chart-container,
             .stat-card,
-            .ranking-table tr {
+            .ranking-table tr,
+            table.profile tr,
+            .findings li,
+            .caveats {
                 break-inside: avoid;
                 page-break-inside: avoid;
             }
@@ -1226,6 +1335,12 @@
 
             .ranking-table {
                 font-size: 10px !important;
+            }
+
+            /* The page is narrower than a screen; an unwrapped header ran past
+               its edge and lost its last letters. */
+            .profile thead th {
+                white-space: normal !important;
             }
 
             .ranking-table th,
@@ -1654,9 +1769,13 @@
                 {% endif %}
                 {% if data.metadata.analysed_branch == 'HEAD' and data.provenance.head_sha %}
                 {# A detached checkout has no branch; "HEAD" names none. #}
-                <span><strong>Branch:</strong> detached HEAD at {{ data.provenance.head_sha[:7] }}</span>
+                <span><strong>Branch:</strong> detached HEAD at <code>{{ data.provenance.head_sha[:12] }}</code></span>
                 {% else %}
                 <span><strong>Branch:</strong> {{ data.metadata.analysed_branch }}</span>
+                {% if data.provenance.head_sha %}
+                {# The commit the figures describe, so a forwarded report can be checked against it. #}
+                <span><strong>Commit:</strong> <code>{{ data.provenance.head_sha[:12] }}</code></span>
+                {% endif %}
                 {% endif %}
                 <span>
                     <strong>Period:</strong>
@@ -1742,6 +1861,13 @@
             Dark Mode
         </button>
     </header>
+
+    {# Filled by buildContents() from the section headings; hidden until then. #}
+    <nav id="contents" class="report-contents" aria-labelledby="contents-label" hidden>
+        <span id="contents-label" class="report-contents-label">Contents</span>
+        {#- role="list": Safari drops a list's semantics under list-style: none. #}
+        <ol role="list"></ol>
+    </nav>
 
     <!-- ============================================================
          Summary Cards
@@ -2226,13 +2352,15 @@
                         <td style="text-align:right">
                             {{ "{:,}".format(contributor.stats.commit_count) }}
                         </td>
-                        {# A zero carries no sign and no colour: "−0" in red read as
-                           a loss where there was none. #}
-                        <td style="text-align:right" class="{{ 'num-positive' if contributor.stats.lines_added else 'num-neutral' }}">
-                            {{ '+' if contributor.stats.lines_added }}{{ "{:,}".format(contributor.stats.lines_added) }}
+                        {# Added and deleted are counts, shown plain; only the net
+                           figure is a direction, so only it carries a sign and colour.
+                           Three coloured columns made every row read as a gain or a
+                           loss. A zero carries no sign and no colour. #}
+                        <td style="text-align:right">
+                            {{ "{:,}".format(contributor.stats.lines_added) }}
                         </td>
-                        <td style="text-align:right" class="{{ 'num-negative' if contributor.stats.lines_deleted else 'num-neutral' }}">
-                            {% if contributor.stats.lines_deleted %}&#8722;{% endif %}{{ "{:,}".format(contributor.stats.lines_deleted) }}
+                        <td style="text-align:right">
+                            {{ "{:,}".format(contributor.stats.lines_deleted) }}
                         </td>
                         <td style="text-align:right">
                             {% if contributor.stats.net_lines == 0 %}
@@ -2333,7 +2461,12 @@
          Footer
          ============================================================ -->
     <footer class="report-footer">
-        <span>Generated by Reveille</span>
+        {# What made the report and from what, for a reader who has only the file or a print. #}
+        <span>
+            Generated by Reveille {{ data.provenance.reveille_version }} on {{ generated_at }}{% if data.provenance.head_sha %},
+            from commit <code>{{ data.provenance.head_sha[:12] }}</code>{% endif %}.
+            Computed offline from Git history.
+        </span>
         <span>
             {{ data.metadata.analysis_since }} to {{ data.metadata.analysis_until }}
         </span>

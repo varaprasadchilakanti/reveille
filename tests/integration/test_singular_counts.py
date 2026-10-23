@@ -67,7 +67,11 @@ def test_the_lock_file_caption_says_one_line(repo: Path) -> None:
 
 @pytest.mark.integration
 def test_a_zero_carries_no_sign(tmp_path: Path) -> None:
-    """Only additions: deletions are 0, not a red minus zero that reads as a loss."""
+    """Only additions: deletions are a plain 0, not a red minus zero that reads as a loss.
+
+    Lines added and deleted are counts and carry no sign or colour; only the net
+    figure, a direction, does.
+    """
     path = tmp_path / "adds"
     path.mkdir()
     subprocess.run(["git", "init", "-q", "-b", "main"], cwd=path, check=True)
@@ -84,5 +88,11 @@ def test_a_zero_carries_no_sign(tmp_path: Path) -> None:
 
     html = CliRunner().invoke(app, ["generate", "--repo", str(path), "-o", "-"]).stdout
 
-    assert "&#8722;0" not in html
-    assert re.search(r'class="num-neutral">\s*0\s*</td>', html)
+    assert "&#8722;" not in html
+    assert re.search(
+        r'<td style="text-align:right">\s*1\s*</td>\s*<td style="text-align:right">\s*0\s*</td>',
+        html,
+    )
+    assert re.search(r'<span class="num-positive">\s*\+1\s*</span>', html), (
+        "net lines keep their sign"
+    )

@@ -102,7 +102,7 @@ class TestTheReportsOwnWords:
         )
         text = _render(data, tmp_path_factory)
 
-        assert "Branch:</strong> detached HEAD at 0123456" in text
+        assert "Branch:</strong> detached HEAD at <code>0123456789ab</code>" in text
 
 
 @pytest.mark.unit

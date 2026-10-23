@@ -63,7 +63,11 @@ before release.
   third-party licence notices, some of which name their authors with addresses, are unchanged;
   `provenance.emails_hidden` records it.
 - **In the report:** a "Read Before Using These Figures" panel on how the figures can mislead, and a
-  "Third-party licences" section.
+  "Third-party licences" section. The header names the commit the figures describe, a contents
+  list links each section, and the footer gives the Reveille version, when the report was
+  generated and from which commit. Printed from a Chromium-based browser, each sheet is numbered
+  "Page N of M", and a table row, a finding or the caveats panel is kept on one sheet where it
+  fits.
 - **In JSON:** the merge commits left out (`merge_commits_excluded`); `reveille_version` in the
   `summary`, `state`, `brief`, `who-changed` and `repos` documents; `analysed_commit` in
   `who-changed`; `automated` for each contributor in `generate` JSON and CSV (CSV's last column),
@@ -117,6 +121,9 @@ before release.
 - **A warning reads "Warning: ...", as the CLI's own do.** It was "WARNING
   reveille.adapters.git_reader: ...", naming the module that wrote it; a DEBUG line from
   `--verbose` still names it.
+- **The heatmap's axis names the months**, one label at the week each month begins, where it
+  gave every week's date, rotated. **The contributor table shows lines added and deleted as plain
+  counts**; only net lines carry a sign and a colour.
 - **Progress off a terminal** is one plain line per stage. A dark-mode reader no longer sees the
   report light first.
 - **`schema_version` is 1.3.** The brief is a new document and the others gain fields; every 1.1
