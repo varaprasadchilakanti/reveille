@@ -155,6 +155,9 @@ before release.
 - **`who-changed` answered "no commit changed it" (exit 1) for a path inside a submodule or a
   nested clone**, whose history is another repository's. It now exits 2 and gives the command that
   asks that repository; a path no commit here changed is still exit 1.
+- **On a new orphan branch, `summary` and `generate` said the repository "contains no
+  commits"**, although its other branches had some. They, and `brief` and `who-changed`, now say
+  the current branch has none yet and give a `--branch` that has. The exit is still 1.
 - **An empty window always suggested "removing author filters"**, whether or not any were given.
   It now suggests only what narrowed the read: the date range, `--exclude-author`, or
   `--exclude-path`.

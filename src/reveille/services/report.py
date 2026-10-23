@@ -180,6 +180,8 @@ def who_changed_text(
             path=path,
         )
     except EmptyRepositoryError as exc:
+        if tip is None and config.branch is None:
+            raise EmptyRepositoryError(reader.no_commits_reason()) from exc
         _refuse_a_path_in_another_repository(config.repo_path, path)
         said = f"No commit in the analysis window changed '{path}'"
         # A typo is the usual reason; a working tree can say nothing has that name.
@@ -592,7 +594,7 @@ def brief_text(
         if config.branch is not None:
             reader.resolve_commit(reader.branch_revision(config.branch))
         elif reader.resolve_head_sha() is None:
-            raise EmptyRepositoryError(f"Repository at '{config.repo_path}' contains no commits.")
+            raise EmptyRepositoryError(reader.no_commits_reason())
         # With --until, a tag after it would start the brief after its own end (ADR 0031).
         from_revision = reader.latest_tag(reader.branch_revision(config.branch), config.until)
         if from_revision is None:

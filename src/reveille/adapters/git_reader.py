@@ -952,10 +952,7 @@ class GitReader:
         # An unborn HEAD is a negative answer, not a read failure; a named branch
         # is read even then, and a missing one fails below.
         if branch is None and not self._head_is_born():
-            raise EmptyRepositoryError(
-                f"Repository at '{self._repo_path}' contains no commits. "
-                "There is nothing to read until the first commit is made."
-            )
+            raise EmptyRepositoryError(self.no_commits_reason())
 
         self._refuse_attribute_files_that_block(counts_lines=line_counts and not name_status)
         _logger.debug("git log %s", " ".join(log_args))
@@ -1207,6 +1204,26 @@ class GitReader:
         raise RepositoryError(
             f"HEAD in '{self._repo_path}' names an object that is missing or is not a "
             "commit, so the repository is damaged. Run `git fsck` to see what is wrong."
+        )
+
+    def no_commits_reason(self) -> str:
+        """Say why an unborn HEAD gives nothing to read, naming branches that have commits.
+
+        A new orphan branch is unborn while the repository's other branches are not.
+
+        Returns:
+            One or two sentences.
+        """
+        other = str(self._git().for_each_ref("--count=1", "--format=%(refname)", "refs/heads"))
+        if not other:
+            return (
+                f"Repository at '{self._repo_path}' contains no commits. "
+                "There is nothing to read until the first commit is made."
+            )
+        example = shlex.quote(_shown(other.removeprefix("refs/heads/")))
+        return (
+            f"The current branch '{self._resolve_active_branch()}' has no commits yet; "
+            f"other branches do. Name one, for example --branch {example}."
         )
 
     def _resolve_active_branch(self) -> str:
