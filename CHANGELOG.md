@@ -142,6 +142,18 @@ before release.
 - **Ctrl-C while Git was running took up to five minutes to take effect.** GitPython (3.2.1)
   leaves its deadline timer running when the wait is interrupted, and Python waits for that timer
   before exiting: measured at 300 s on a 200,000-commit `generate`, 0.06 s now. Exit is still 130.
+- **`generate --repo` given a Git directory or a file blamed the default output path made from
+  it.** It now says what `summary` says about the same `--repo`; a repository that opens still
+  gets the output path's own message.
+- **`who-changed` answered "no commit changed it" (exit 1) for a path inside a submodule or a
+  nested clone**, whose history is another repository's. It now exits 2 and gives the command that
+  asks that repository; a path no commit here changed is still exit 1.
+- **An empty window always suggested "removing author filters"**, whether or not any were given.
+  It now suggests only what narrowed the read: the date range, `--exclude-author`, or
+  `--exclude-path`.
+- **Stopped with SIGTERM while writing, a run left its `.tmp` file beside the output.** It now
+  removes it and exits 143, as a terminated process does; a SIGTERM handler set by whatever runs
+  Reveille is kept.
 - **A commit dated in the last week of 9999 stopped the HTML report** ("date value out of range",
   exit 2). Git accepts such a date. The weekly charts now end at that week. JSON and CSV were not
   affected.
@@ -278,6 +290,12 @@ Each entry has a test that fails without the fix. 0.9.0's exposure is stated whe
 - **A report could be written over Git's own files** through a hard link or a linked worktree's Git
   directory. Every report file, and `init`'s files, are written to a new file and moved into
   place, the Git directory is refused, and a new report is owner-only.
+- **`generate --output` and `init --output` could write into another repository's bare Git
+  directory**: a report in its `refs/heads/` became a broken branch, and `init --force` replaced
+  its `config`. Only a directory named `.git`, or the analysed repository's own, was refused. Any
+  directory holding `HEAD`, `objects` and `refs` now is, checked again from the open directory
+  when the file is written, so a directory swapped for a link in between is not written into (not
+  on Windows). 0.9.0 is affected (run against its code).
 - **An author name could add commits and people to every figure** by holding `git log`'s record
   separators and a real commit's hash. Each record is framed by its hash, and a hash with more than
   one record is counted as unreadable.

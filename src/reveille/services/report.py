@@ -16,6 +16,7 @@ import datetime
 import logging
 import os
 import re
+import shlex
 import threading
 import time
 from collections.abc import Callable, Iterator
@@ -177,6 +178,7 @@ def who_changed_text(
             path=path,
         )
     except EmptyRepositoryError as exc:
+        _refuse_a_path_in_another_repository(config.repo_path, path)
         said = f"No commit in the analysis window changed '{path}'"
         # A typo is the usual reason; a working tree can say nothing has that name.
         working_tree = os.path.lexists(config.repo_path / ".git")
@@ -458,6 +460,33 @@ def _repository_row(
         # The first sentence, with the repository's own path made relative.
         reason = str(exc).replace(str(path), relative).split(". ")[0].rstrip(".")
         return RepositoryActivity(relative, "not_read", reason=reason), set()
+
+
+def _refuse_a_path_in_another_repository(repo_path: Path, path: str) -> None:
+    """Exit 2, not "no commit changed it", for a path inside a submodule or nested clone.
+
+    That repository's history is not this one's, so "no" would be a false negative.
+    Asked only once no commit was found: a path changed here before it moved into
+    another repository is answered from this history.
+
+    Args:
+        repo_path: The repository read.
+        path: The repository-relative path asked about.
+
+    Raises:
+        RepositoryError: If a directory on the path is another repository.
+    """
+    parts = path.split("/")
+    for depth in range(1, len(parts) + 1):
+        nested = "/".join(parts[:depth])
+        if is_repository(repo_path / nested):
+            rest = shlex.quote("/".join(parts[depth:]) or ".")
+            other = shlex.quote(str(repo_path / nested))
+            raise RepositoryError(
+                f"'{path}' is inside '{nested}', another repository (a submodule or a nested "
+                "clone), whose history this one does not hold. Ask it: "
+                f"`reveille who-changed {rest} --repo {other}`."
+            )
 
 
 # An absolute path, POSIX or Windows, starting a word or after a quote or bracket.
