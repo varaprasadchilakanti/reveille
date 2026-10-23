@@ -158,6 +158,9 @@ before release.
 - **On a new orphan branch, `summary` and `generate` said the repository "contains no
   commits"**, although its other branches had some. They, and `brief` and `who-changed`, now say
   the current branch has none yet and give a `--branch` that has. The exit is still 1.
+- **A remote URL holding a byte that is not UTF-8, or a remote with no `url`, stopped `generate`
+  with a traceback** (exit 1 in 0.9.0, run against its code). The URL is now read through Git; such
+  a byte is shown as U+FFFD, and a remote with no URL is passed over.
 - **An empty window always suggested "removing author filters"**, whether or not any were given.
   It now suggests only what narrowed the read: the date range, `--exclude-author`, or
   `--exclude-path`.

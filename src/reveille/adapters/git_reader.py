@@ -2304,16 +2304,31 @@ class GitReader:
     def _resolve_remote_url(self) -> str | None:
         """Return the origin (or first) remote's URL, credentials removed.
 
+        Asked of Git: GitPython's own reading of the config stopped on a byte
+        that is not UTF-8, and on a remote with no `url`.
+
         Returns:
-            The remote URL string, or None if no remotes are configured.
+            The remote URL string, or None if no remote has a URL.
+
+        Raises:
+            RepositoryError: If Git cannot read the configuration.
         """
-        if not self._repo.remotes:
-            return None
         try:
-            url = str(self._repo.remotes["origin"].url)
-        except IndexError:
-            url = str(self._repo.remotes[0].url)
-        return _without_credentials(url)
+            out = str(self._git().config("-z", "--get-regexp", r"^remote\..*\.url$"))
+        except GitCommandError as exc:
+            if exc.status == 1:  # Git's "none found"
+                return None
+            raise RepositoryError(
+                f"Git could not read the remotes' URLs: {_git_error(exc)}"
+            ) from exc
+        urls: dict[str, str] = {}
+        for record in out.split("\0"):
+            key, _, url = record.partition("\n")
+            urls.setdefault(key, url)  # a remote's first url is the one Git fetches from
+        if not any(urls.values()):
+            return None
+        url = urls.get("remote.origin.url") or next(value for value in urls.values() if value)
+        return _without_credentials(_shown(url))
 
     def _working_mailmap(self) -> str | None:
         """Return the working tree's `.mailmap`, bounded by `_MAX_MAILMAP_BYTES`.
