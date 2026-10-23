@@ -491,16 +491,29 @@ def _refuse_a_path_in_another_repository(repo_path: Path, path: str) -> None:
         RepositoryError: If a directory on the path is another repository.
     """
     parts = path.split("/")
+    this_main = main_worktree_of(repo_path) or repo_path.resolve()
     for depth in range(1, len(parts) + 1):
         nested = "/".join(parts[:depth])
-        if is_repository(repo_path / nested):
-            rest = shlex.quote("/".join(parts[depth:]) or ".")
-            other = shlex.quote(str(repo_path / nested))
+        where = f"'{path}' is" if depth == len(parts) else f"'{path}' is inside '{nested}',"
+        if parts[depth - 1].casefold() == ".git":
             raise RepositoryError(
-                f"'{path}' is inside '{nested}', another repository (a submodule or a nested "
-                "clone), whose history this one does not hold. Ask it: "
-                f"`reveille who-changed {rest} --repo {other}`."
+                f"{where} Git's own directory, whose files no commit records. Give a path "
+                "in the working tree."
             )
+        candidate = repo_path / nested
+        if os.path.normpath(nested) == "." or not is_repository(candidate):
+            continue
+        rest = shlex.quote("/".join(parts[depth:]) or ".")
+        ask = f"Ask it: `reveille who-changed {rest} --repo {shlex.quote(str(candidate))}`."
+        if main_worktree_of(candidate) == this_main:
+            raise RepositoryError(
+                f"{where} another working tree of this repository, with a checkout of its own. "
+                f"{ask}"
+            )
+        raise RepositoryError(
+            f"{where} another repository (a submodule or a nested clone), whose history this "
+            f"one does not hold. {ask}"
+        )
 
 
 def _refuse_a_path_in_a_submodule_not_here(reader: GitReader, path: str, tip: str | None) -> None:
