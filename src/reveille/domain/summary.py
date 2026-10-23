@@ -30,7 +30,7 @@ _MINIMUM_COMMITS_FOR_SHAPE = 20
 #: A gap in calendar days that is worth naming rather than a normal pause.
 _QUIET_PERIOD_DAYS = 30
 
-#: Weekend share of commits above which the pattern is stated, as an
+#: Weekend share of commits at or above which the pattern is stated, as an
 #: observation, never a concern.
 _WEEKEND_SHARE_THRESHOLD = 0.15
 

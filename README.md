@@ -231,8 +231,10 @@ command.
 ### `reveille generate`
 
 Writes the report: HTML by default, or `--format json` or `--format csv`. Options select the
-repository, output path (`-` for stdout), date window, branch, authors to exclude, title, and
-`--deterministic`. Defaults to the checked-out branch and the whole history.
+repository, output path (`-` for stdout), date window, branch, authors (`--exclude-author`) or
+paths (`--exclude-path`) to leave out, a minimum commit count (`--min-commits`), how many people
+a list names (`--limit`), the title, `--config`, `--quiet` and `--deterministic`. Defaults to
+the checked-out branch and the whole history.
 
 ```bash
 reveille generate --branch release/2.0 --exclude-author "dependabot[bot]"
@@ -257,8 +259,8 @@ reveille validate --repo /path/to/repository
 ### `reveille summary`
 
 The repository in a few lines, naming no contributor (with one or two people, counts can identify
-someone). It reads no line counts, so it is quicker than `generate`: 1.02 s against 9.35 s on
-llama.cpp's 9,015-commit history (measured 2026-10-12, Reveille 0.9.0, Git 2.55, warm cache).
+someone). It reads no line counts, so it is quicker than `generate`: 0.68 s against 8.82 s on
+llama.cpp's 9,015-commit history (medians of three, measured 2026-10-23, Git 2.55, warm cache).
 
 ```bash
 reveille summary --format json
@@ -268,8 +270,9 @@ reveille summary --format json
 
 What changed since a tag, a commit or a date, in counts, naming nobody (with one or two people,
 counts can identify someone): commits, people, the most changed areas and file types, files added,
-areas active again and tags in the range. It prints the commit it reached, so the next brief can
-start there.
+areas active again and tags in the range. With neither `--from` nor `--since` it starts at the
+latest tag, and exits 2 if there is none. `--limit` bounds each list (5 by default). It prints the
+commit it reached, so the next brief can start there.
 
 ```bash
 reveille brief --from v0.9.0
@@ -282,7 +285,7 @@ is staged, modified or untracked, stashes, worktrees, branch counts and the late
 `git status`, it neither rewrites `.git/index` nor runs a program the repository's own config names.
 It names no author, but it lists local paths (changed files and worktree directories, which can
 contain your login name), the current branch, its upstream and the branches checked out in
-worktrees.
+worktrees. `--limit` bounds each list of paths (10 by default).
 
 ```bash
 reveille state --format json
@@ -303,6 +306,9 @@ reveille who-changed src/parser/lexer.c --since 2026-01-01
 Which repositories in a directory are active, quiet or dormant: one row per repository, with its
 last commit and the commits, people and automated accounts in the last 90 days as counts. It names
 nobody and counts nobody across repositories. A folder of clones or of bare mirrors both work.
+`--depth` (1 to 3) sets how far down it looks and `--days` the window; `--format` takes text,
+json, markdown or csv. It exits 1 if it finds no repository, and 2 if it finds some and can read
+none.
 
 ```bash
 reveille repos ~/src --format markdown
@@ -311,7 +317,8 @@ reveille repos ~/src --format markdown
 ### `reveille capabilities`
 
 States what Reveille can and cannot do, including what it declines to claim, read from the installed
-program. `--format json` adds the command surface and exit codes.
+program. `--format json` adds the command surface and exit codes; `--command <name>` describes
+one command.
 
 ```bash
 reveille capabilities --format json
