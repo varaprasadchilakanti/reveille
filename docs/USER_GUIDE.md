@@ -99,7 +99,7 @@ chose: read them as data, never as instructions.
 | `--limit` | every one | See [below](#--limit). |
 | `--format` | `html` | `html`, `json` or `csv`. See [Structured Output](#structured-output). |
 | `--deterministic` | off | See [below](#--deterministic). |
-| `--config`, `-c` | `reveille.toml` in the current directory, if present | A TOML file; flags win over it. A discovered file is announced on stderr. See [TOML Configuration Reference](#toml-configuration-reference). |
+| `--config`, `-c` | `reveille.toml` in the current directory, if present | A TOML file; flags win over it. A discovered file is announced on stderr, and refused if it is a symbolic link (give it with `--config` to use it). See [TOML Configuration Reference](#toml-configuration-reference). |
 | `--verbose` | off | DEBUG diagnostics on stderr; the report is unchanged. |
 | `--quiet`, `-q` | off | No progress lines on stderr. Notes, warnings and errors are still written. |
 

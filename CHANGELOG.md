@@ -282,6 +282,11 @@ Each entry has a test that fails without the fix. 0.9.0's exposure is stated whe
   repository inside the tree), and the run exited 0. A discovered file's `output` must now end in
   `.html`, and may replace only a Reveille report; otherwise the run stops (exit 2). `--output`
   and `--config` are unchanged. 0.9.0 is affected (read in its code).
+- **A `reveille.toml` committed as a symbolic link was followed**, so a repository could name any
+  file on the machine running `generate`: that file's report title reached the report, a refused
+  value reached stderr, and the tables of any TOML file were named. A discovered file that is a
+  link is now refused (exit 2), and one put in its place after the check is refused when opened;
+  the same file given with `--config` is still read. 0.9.0 is affected (run against its tree).
 - **Characters that do not display reached text, Markdown and line output unescaped.** Tag
   characters (U+E0000 to U+E007F) spell out words a person cannot see and a model can read. They,
   control and direction characters, the zero-width space, the word joiner and the byte order

@@ -10,6 +10,7 @@ and an optional TOML file; flags always take precedence.
 from __future__ import annotations
 
 import datetime
+import errno
 import json
 import os
 import stat
@@ -184,13 +185,19 @@ def output_path(text: str) -> Path:
     return Path(os.path.abspath(text)) if text != "-" and path == Path("-") else path
 
 
-def _read_config_bytes(path: Path) -> bytes:
+def _read_config_bytes(path: Path, *, follow_links: bool) -> bytes:
     """Read a configuration file that is a regular file of a plausible size.
 
     Opened without waiting, then checked on the open file, so a named pipe or a
     device (`/dev/zero` behind a link) is refused, not waited on or read without end.
+    Without `follow_links`, a link in its place when it is opened is refused too.
     """
-    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
+    if follow_links:
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
+    else:
+        descriptor = os.open(
+            path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
+        )
     with os.fdopen(descriptor, "rb") as handle:
         if not stat.S_ISREG(os.fstat(descriptor).st_mode):
             raise ConfigurationError(
@@ -288,11 +295,14 @@ def load_config_from_toml(path: Path) -> ReportConfigKwargs:
     return read_config_file(path)[0]
 
 
-def read_config_file(path: Path) -> tuple[ReportConfigKwargs, list[str]]:
+def read_config_file(
+    path: Path, *, follow_links: bool = True
+) -> tuple[ReportConfigKwargs, list[str]]:
     """Load a Reveille TOML file, and say which of its keys Reveille does not read.
 
     Args:
         path: Path to the TOML configuration file.
+        follow_links: False to refuse a symbolic link at `path` itself.
 
     Returns:
         ReportConfig keyword arguments, and each unknown table and key. An unknown
@@ -303,7 +313,7 @@ def read_config_file(path: Path) -> tuple[ReportConfigKwargs, list[str]]:
     """
     try:
         # "utf-8-sig": an editor that writes a byte-order mark still wrote UTF-8.
-        raw = tomllib.loads(_read_config_bytes(path).decode("utf-8-sig"))
+        raw = tomllib.loads(_read_config_bytes(path, follow_links=follow_links).decode("utf-8-sig"))
     except FileNotFoundError as exc:
         raise ConfigurationError(f"Configuration file not found: '{path}'.") from exc
     except tomllib.TOMLDecodeError as exc:
@@ -319,6 +329,10 @@ def read_config_file(path: Path) -> tuple[ReportConfigKwargs, list[str]]:
             f"Configuration file '{path}' is not UTF-8 text, which TOML requires."
         ) from exc
     except OSError as exc:
+        if exc.errno == errno.ELOOP and not follow_links:
+            raise ConfigurationError(
+                f"Configuration file '{path}' is a symbolic link, which is not followed."
+            ) from exc
         raise ConfigurationError(f"Configuration file '{path}' cannot be read: {exc}") from exc
 
     for section in ("report", "filters", "ranking", "areas"):
