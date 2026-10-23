@@ -108,18 +108,18 @@ flag, not a command: `reveille version` exits 2.
 
 ### Output path
 
-The parent directory must exist. A path inside a Git directory (this repository's or another's,
-a bare one included: any directory Git takes for one, holding `objects`, `refs` and a `HEAD` that
+The parent directory must exist. A path inside a Git directory (this repository's or another's, a
+bare one included: any directory Git takes for one, holding `objects`, `refs` and a `HEAD` that
 names a ref or a commit, but not a linked worktree Git keeps inside one), a path containing `..`,
-and a directory are refused (exit 2). The directory is checked again as the file is written, so
-one replaced by a link in between is not written into (not on Windows). Stopped with SIGTERM or SIGHUP, the
-command removes its temporary file and exits 143 or 129. The default path is inside the working tree, untracked, so
-`git add -A` would commit it; add it to `.gitignore` or choose another path. On POSIX systems a new
-report is readable and writable by its owner only (mode 600, tested on Linux), because it names
-people; a report written over an existing file keeps that file's permissions. A path outside the
-repository given with `--output` is written, with a warning on stderr; the same path set in `reveille.toml` is refused, because a configuration
-file is found automatically and may come from a repository you do not control. A bare repository
-needs an explicit path.
+and a directory are refused (exit 2). The directory is checked again as the file is written, so one
+replaced by a link in between is not written into (not on Windows). Stopped with SIGTERM or SIGHUP,
+the command removes its temporary file and exits 143 or 129. The default path is inside the working
+tree, untracked, so `git add -A` would commit it; add it to `.gitignore` or choose another path. On
+POSIX systems a new report is readable and writable by its owner only (mode 600, tested on Linux),
+because it names people; a report written over an existing file keeps that file's permissions. A
+path outside the repository given with `--output` is written, with a warning on stderr; the same
+path set in `reveille.toml` is refused, because a configuration file is found automatically and may
+come from a repository you do not control. A bare repository needs an explicit path.
 
 `--output -` writes the report to stdout, in any format, and nothing else goes there: progress,
 notes and errors are on stderr. CSV on stdout carries no byte-order mark. An output path ending in
@@ -366,16 +366,16 @@ reveille who-changed src/parser/lexer.c --since 2026-01-01
 
 Takes a path (literal, inside the repository; relative to the current directory when you run it
 inside the repository, else to the repository's root) and the options of `summary` except
-`--exclude-path` and `--format markdown`, plus `--limit` (default 20). The answer lists the path's authors alphabetically, the five who
-changed it most recently (the people to ask first), automated accounts and co-authors apart, and
-when the path was last changed. It gives no count or date per person: who changed a file is a
-fact the history records, and "who did the most" is not what this is for. It says who changed the
-code, not who knows or owns it. It reads only the commits that changed the path, and no line
-counts. A path that no commit in the window changed is a negative answer (exit 1), unless it is
-inside a submodule or a nested clone: that history is another repository's, so it is refused
-(exit 2) with the command to ask that repository. A submodule that is not checked out, or is in a
-bare repository, is found from the commit's tree and refused the same way. Renames are not followed: history from before a
-rename belongs to the old path.
+`--exclude-path` and `--format markdown`, plus `--limit` (default 20). The answer lists the path's
+authors alphabetically, the five who changed it most recently (the people to ask first), automated
+accounts and co-authors apart, and when the path was last changed. It gives no count or date per
+person: who changed a file is a fact the history records, and "who did the most" is not what this is
+for. It says who changed the code, not who knows or owns it. It reads only the commits that changed
+the path, and no line counts. A path that no commit in the window changed is a negative answer (exit
+1), unless it is inside a submodule or a nested clone: that history is another repository's, so it
+is refused (exit 2) with the command to ask that repository. A submodule that is not checked out, or
+is in a bare repository, is found from the commit's tree and refused the same way. Renames are not
+followed: history from before a rename belongs to the old path.
 
 ### `reveille repos`
 
@@ -482,8 +482,8 @@ options. `generate` keeps text on stderr, beside its progress lines.
 ### Diagnostics
 
 `--verbose` (on every command except `init`, `capabilities`, `skill` and `help`) writes DEBUG
-diagnostics to stderr: the resolved configuration after flags and the TOML file are merged, the
-`git log` invocation, how many commits were read, and every file written. Normal output is unchanged.
+diagnostics to stderr: the resolved configuration after flags and the TOML file are merged, the `git
+log` invocation, how many commits were read, and every file written. Normal output is unchanged.
 
 Progress also goes to stderr. On a terminal it animates; anywhere else (a CI log, a pipe, an
 assistant's tool call) each stage is one plain line. `--quiet` leaves progress out and keeps
@@ -763,12 +763,12 @@ risk.
 ### What the History Shows
 
 A few sentences generated from the report's figures by fixed rules, without a language model: the
-same history over the same window always gives the same sentences. They name nobody. With fewer than three people, a
-sentence that would in effect describe one identifiable person, such as a share of commits or a
-weekend-working pattern, is left out. With two people the Gini fixes each share, so the distribution
-sentence gives the number of people as its evidence, not the Gini. The Gini itself is still shown,
-in the Distribution card, the Contribution Distribution section and `summary`, because it is the
-repository's measure; the contributor table shows each share in any case.
+same history over the same window always gives the same sentences. They name nobody. With fewer than
+three people, a sentence that would in effect describe one identifiable person, such as a share of
+commits or a weekend-working pattern, is left out. With two people the Gini fixes each share, so the
+distribution sentence gives the number of people as its evidence, not the Gini. The Gini itself is
+still shown, in the Distribution card, the Contribution Distribution section and `summary`, because
+it is the repository's measure; the contributor table shows each share in any case.
 
 ### Contribution Distribution
 
