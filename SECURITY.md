@@ -207,7 +207,8 @@ entries are in [CHANGELOG.md](CHANGELOG.md) under Unreleased, Security; by class
 - **The offline property:** an author address could make the report request a URL when
   opened, and the Content-Security-Policy allowed any inline script; Plotly's
   "Share chart..." upload is switched off.
-- **Writing:** a report path hard-linked to a Git file, and a worktree's Git directory.
+- **Writing:** a report path hard-linked to a Git file, a worktree's Git directory, and
+  another repository's bare Git directory.
 - **Dependencies:** floors that allowed releases with published advisories.
 
 Before these fixes, the HTML report could request a URL when opened, and Git could fetch

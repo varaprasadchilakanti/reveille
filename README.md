@@ -291,7 +291,8 @@ reveille state --format json
 ### `reveille who-changed`
 
 Who changed a file or directory, and who changed it most recently. It says who changed the code,
-not who knows or owns it. A path no commit in the window changed exits 1.
+not who knows or owns it. A path no commit in the window changed exits 1; one inside a
+submodule or a nested clone exits 2, naming the command that asks that repository.
 
 ```bash
 reveille who-changed src/parser/lexer.c --since 2026-01-01

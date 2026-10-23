@@ -16,6 +16,7 @@ import itertools
 import json
 import logging
 import os
+import signal
 import stat
 import sys
 import threading
@@ -104,6 +105,8 @@ def _printable(text: str) -> str:
 #: Whether stderr carries JSON: set when the command was asked for `--format json`,
 #: and reset by the root callback for every invocation.
 _stderr_json = {"on": False}
+#: Whether stderr is silenced: only while a check runs to learn whether it would refuse.
+_stderr_muted = {"on": False}
 
 _LEVELS = {"Error: ": "error", "Warning: ": "warning", "Note: ": "note"}
 
@@ -118,6 +121,8 @@ def _err(message: str) -> None:
     Args:
         message: The message to print, starting "Error: ", "Warning: " or "Note: ".
     """
+    if _stderr_muted["on"]:
+        return
     if _stderr_json["on"]:
         level = "error" if message.startswith("Configuration error: ") else "note"
         text = message
@@ -652,6 +657,25 @@ def main(
 ) -> None:
     """Offline reports of a Git repository's history."""
     _stderr_json["on"] = False
+    _exit_cleanly_on_sigterm()
+
+
+def _stop(signum: int, frame: object) -> None:
+    """Exit as a terminated process does, through every `finally` on the way out."""
+    raise SystemExit(128 + signum)
+
+
+def _exit_cleanly_on_sigterm() -> None:
+    """Make SIGTERM exit 143 by raising, so a half-written temporary file is removed.
+
+    By default the process stops where it is, and the `.tmp` beside the output
+    stays. A handler someone else installed is left in place; only the main
+    thread can install one.
+    """
+    if threading.current_thread() is not threading.main_thread():
+        return
+    if signal.getsignal(signal.SIGTERM) is signal.SIG_DFL:
+        signal.signal(signal.SIGTERM, _stop)
 
 
 def _root(repo: Path) -> Path:
@@ -799,6 +823,31 @@ def _refuse_what_a_config_cannot_replace(output: Path, output_format: str) -> No
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
 
+def _in_a_git_directory(path: Path) -> bool:
+    """Return whether a directory above `path` is a Git directory, any repository's.
+
+    Git takes a directory holding `HEAD`, `objects` and `refs` as one; a bare
+    repository's has no `.git` in its name, and need not be the one read.
+
+    Args:
+        path: A resolved path.
+
+    Returns:
+        True when a parent of `path` holds all three.
+    """
+    for parent in path.parents:
+        try:
+            if (
+                (parent / "HEAD").is_file()
+                and (parent / "objects").is_dir()
+                and (parent / "refs").is_dir()
+            ):
+                return True
+        except OSError:
+            continue
+    return False
+
+
 def _validate_output_path(
     output: Path,
     repo_path: Path,
@@ -845,13 +894,14 @@ def _validate_output_path(
     inside_git_dir = any(
         output.resolve().is_relative_to(git_dir) for git_dir in _git_directories(repo_path)
     )
-    if inside_git_dir or any(
-        part.casefold() == ".git" for part in (*output.parts, *output.resolve().parts)
+    if (
+        inside_git_dir
+        or any(part.casefold() == ".git" for part in (*output.parts, *output.resolve().parts))
+        or _in_a_git_directory(output.resolve())
     ):
         _err(
-            f"Error: output path '{output}' is inside the repository's Git "
-            "directory. Reveille does not write into Git's own files. "
-            "Choose another path.",
+            f"Error: output path '{output}' is inside a Git directory. Reveille does "
+            "not write into Git's own files. Choose another path.",
         )
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
@@ -872,6 +922,33 @@ def _validate_output_path(
             f"Warning: output path resolves outside the repository root "
             f"'{repo_path}'. Verify this is intentional.",
         )
+
+
+def _output_path_refused(check: Callable[[], None]) -> bool:
+    """Return whether `check`, a call of `_validate_output_path`, refuses, saying nothing."""
+    _stderr_muted["on"] = True
+    try:
+        check()
+    except typer.Exit:
+        return True
+    finally:
+        _stderr_muted["on"] = False
+    return False
+
+
+def _refuse_a_repository_that_cannot_be_read(repo_path: Path) -> None:
+    """Exit 2, in the reader's words, if the repository cannot be opened.
+
+    Raises:
+        typer.Exit: ExitCode.CANNOT_RUN if it cannot.
+    """
+    from reveille.adapters.git_reader import GitReader
+
+    try:
+        GitReader(repo_path)
+    except ReveilleError as exc:
+        _err(f"Error: {exc}")
+        raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
 
 
 def _apply_ranking_flags(
@@ -1243,12 +1320,20 @@ def generate(
     # `--output -` writes only the report to stdout (ADR 0015); no path to check.
     to_stdout = str(merged.get("output_path", output)) == "-"
     if not to_stdout:
-        _validate_output_path(
-            Path(merged.get("output_path", output)),
-            merged["repo_path"],
-            from_config=_output_from_config,
-            output_format=str(merged.get("output_format", "html")),
-        )
+
+        def check() -> None:
+            _validate_output_path(
+                Path(merged.get("output_path", output)),
+                merged["repo_path"],
+                from_config=_output_from_config,
+                output_format=str(merged.get("output_format", "html")),
+            )
+
+        # The default path is made from `--repo`: when `--repo` is the problem, say
+        # so, not that the path made from it cannot be used.
+        if _output_path_refused(check):
+            _refuse_a_repository_that_cannot_be_read(merged["repo_path"])
+        check()
 
     try:
         report_config = ReportConfig(**merged)

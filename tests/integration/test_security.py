@@ -660,6 +660,49 @@ class TestSecondPassFindings:
         assert result.returncode == 2
         assert (bare / "HEAD").read_bytes() == head_before
 
+    @pytest.mark.parametrize(
+        ("command", "target"),
+        [
+            (["generate", "--output"], "refs/heads/report.html"),
+            (["generate", "--format", "json", "--output"], "objects/report.json"),
+            (["init", "--force", "--output"], "config"),
+        ],
+    )
+    def test_another_repositorys_bare_git_directory_is_not_written(
+        self, tmp_path: Path, command: list[str], target: str
+    ) -> None:
+        """Nothing in the path is named `.git`, and it is not this repository's."""
+        repo = _init_repo(tmp_path / "repo")
+        bare = tmp_path / "other.git"
+        subprocess.run(["git", "clone", "-q", "--bare", str(repo), str(bare)], check=True)
+        before = {p: p.read_bytes() for p in bare.rglob("*") if p.is_file()}
+
+        result = _run_console_script([*command, str(bare / target)], cwd=repo)
+
+        assert result.returncode == 2, result.stderr
+        assert "inside a Git directory" in result.stderr
+        assert {p: p.read_bytes() for p in bare.rglob("*") if p.is_file()} == before
+        assert (
+            subprocess.run(
+                ["git", "-C", str(bare), "fsck", "--no-progress"], capture_output=True
+            ).returncode
+            == 0
+        )
+
+    def test_a_directory_that_only_looks_like_part_of_one_is_written(self, tmp_path: Path) -> None:
+        """A `refs` directory beside a `HEAD` file is not a Git directory without `objects`."""
+        repo = _init_repo(tmp_path / "repo")
+        plain = tmp_path / "plain"
+        (plain / "refs").mkdir(parents=True)
+        (plain / "HEAD").write_text("notes\n", encoding="utf-8")
+
+        result = _run_console_script(
+            ["generate", "--output", str(plain / "refs" / "r.html")], cwd=repo
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert (plain / "refs" / "r.html").is_file()
+
     def test_a_separate_git_directory_is_protected(self, tmp_path: Path) -> None:
         """`--separate-git-dir` leaves a `.git` file pointing elsewhere."""
         work = tmp_path / "work"

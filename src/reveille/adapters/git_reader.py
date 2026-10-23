@@ -1054,7 +1054,12 @@ class GitReader:
             )
 
         if not commits:
-            raise _empty_window(dated_after, dated_until)
+            narrowed = {
+                "widening the date range": since is not None or until is not None,
+                "removing an --exclude-author value": bool(exclude_authors),
+                "removing an --exclude-path value": bool(exclude_paths),
+            }
+            raise _empty_window(dated_after, dated_until, [k for k, v in narrowed.items() if v])
 
         _logger.debug(
             "read %d commits from %s (%d git log records)", len(commits), rev, record_count
@@ -3226,12 +3231,16 @@ def _truncate(value: str, limit: int) -> str:
     return value[:limit] + _TRUNCATION_MARKER
 
 
-def _empty_window(dated_after: int, dated_until: datetime.date | None) -> EmptyRepositoryError:
+def _empty_window(
+    dated_after: int, dated_until: datetime.date | None, remedies: Sequence[str] = ()
+) -> EmptyRepositoryError:
     """Explain an empty analysis window, naming commits dated after it.
 
     Args:
         dated_after: Commits left out for being dated after `dated_until`.
         dated_until: The date they were measured against, if any.
+        remedies: What to try, one per filter that was given; none is suggested
+            that the read did not apply.
 
     Returns:
         The error to raise.
@@ -3242,9 +3251,11 @@ def _empty_window(dated_after: int, dated_until: datetime.date | None) -> EmptyR
             f"No commits found within the analysis window: {dated} dated after "
             f"{dated_until.isoformat()}. Pass --until with a later date to include them."
         )
+    if not remedies:
+        return EmptyRepositoryError("No commits found within the specified analysis window.")
+    tries = remedies[0] if len(remedies) == 1 else f"{', '.join(remedies[:-1])} or {remedies[-1]}"
     return EmptyRepositoryError(
-        "No commits found within the specified analysis window. "
-        "Try widening the date range or removing author filters."
+        f"No commits found within the specified analysis window. Try {tries}."
     )
 
 

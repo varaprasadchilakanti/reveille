@@ -108,8 +108,11 @@ flag, not a command: `reveille version` exits 2.
 
 ### Output path
 
-The parent directory must exist. A path inside the Git directory, a path containing `..`, and a
-directory are refused (exit 2). The default path is inside the working tree, untracked, so
+The parent directory must exist. A path inside a Git directory (this repository's or another's,
+a bare one included: any directory holding `HEAD`, `objects` and `refs`), a path containing `..`,
+and a directory are refused (exit 2). The directory is checked again as the file is written, so
+one replaced by a link in between is not written into (not on Windows). Stopped with SIGTERM, the
+command removes its temporary file and exits 143. The default path is inside the working tree, untracked, so
 `git add -A` would commit it; add it to `.gitignore` or choose another path. On POSIX systems a new
 report is readable and writable by its owner only (mode 600, tested on Linux), because it names
 people; a report written over an existing file keeps that file's permissions. A path outside the
@@ -364,8 +367,10 @@ changed it most recently (the people to ask first), automated accounts and co-au
 when the path was last changed. It gives no count or date per person: who changed a file is a
 fact the history records, and "who did the most" is not what this is for. It says who changed the
 code, not who knows or owns it. It reads only the commits that changed the path, and no line
-counts. A path that no commit in the window changed is a negative answer (exit 1). Renames are
-not followed: history from before a rename belongs to the old path.
+counts. A path that no commit in the window changed is a negative answer (exit 1), unless it is
+inside a submodule or a nested clone: that history is another repository's, so it is refused
+(exit 2) with the command to ask that repository. Renames are not followed: history from before a
+rename belongs to the old path.
 
 ### `reveille repos`
 
@@ -634,7 +639,7 @@ set. A `.mailmap` Reveille cannot read is reported on stderr and not applied.
 For regular runs with the same parameters. Pass the path with `--config`, or
 name the file `reveille.toml` in the directory you run from, where it is loaded without being
 asked for. That is announced on stderr with every setting applied, because the directory may
-belong to someone else. An output path inside the Git directory is refused (exit 2), whether it
+belong to someone else. An output path inside a Git directory is refused (exit 2), whether it
 comes from the file or a flag. A discovered file's `output` must also stay inside the repository,
 end in `.html` (the JSON and CSV names follow from it), and replace nothing but a Reveille report;
 otherwise the run stops with exit 2, and `--output` writes there instead. All sections and keys are optional; an absent key takes the
