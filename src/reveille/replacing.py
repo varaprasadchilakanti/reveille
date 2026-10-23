@@ -24,6 +24,9 @@ _DIRECTORY_DESCRIPTORS = (
     and {os.open, os.stat, os.unlink, os.rename} <= os.supports_dir_fd
 )
 
+#: How a directory is opened to work in: `O_PATH` (Linux) needs no permission to list it.
+_SEARCH_ONLY = getattr(os, "O_PATH", os.O_RDONLY)
+
 
 def write_replacing(path: Path, text: str, *, encoding: str) -> None:
     """Write `text` to a new file and move it over `path`.
@@ -50,7 +53,7 @@ def write_replacing(path: Path, text: str, *, encoding: str) -> None:
     if not _DIRECTORY_DESCRIPTORS:  # pragma: no cover - Windows
         _write_in(None, path, path.with_name(_temporary_name(path)), text, encoding)
         return
-    directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    directory = os.open(path.parent, _SEARCH_ONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
         if _in_a_git_directory(directory):
             raise OSError(errno.EPERM, "inside a Git directory", str(path))
@@ -108,7 +111,7 @@ def _in_a_git_directory(directory: int) -> bool:
         while True:
             if _holds_a_git_directory(current):
                 return True
-            parent = os.open("..", os.O_RDONLY | os.O_DIRECTORY, dir_fd=current)
+            parent = os.open("..", _SEARCH_ONLY | os.O_DIRECTORY, dir_fd=current)
             here, above = os.fstat(current), os.fstat(parent)
             os.close(current)
             current = parent
