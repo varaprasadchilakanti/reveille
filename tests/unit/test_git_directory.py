@@ -15,7 +15,12 @@ from pathlib import Path
 
 import pytest
 
-from reveille.git_directory import holds_a_git_directory, holds_a_git_directory_open
+from reveille.git_directory import (
+    holds_a_git_directory,
+    holds_a_git_directory_open,
+    is_a_linked_worktree,
+    is_a_linked_worktree_open,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -115,3 +120,51 @@ def test_a_head_that_cannot_be_read_is_taken_as_git_s(tmp_path: Path) -> None:
         assert _both(git)
     finally:
         (git / "HEAD").chmod(0o644)
+
+
+def test_objects_that_is_a_file_makes_none(tmp_path: Path) -> None:
+    (tmp_path / "objects").write_text("", encoding="utf-8")
+    (tmp_path / "refs").mkdir()
+    (tmp_path / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+
+    assert _both(tmp_path) is False
+    (tmp_path / "objects").unlink()
+    (tmp_path / "objects").mkdir()
+    assert _both(tmp_path) is True, "positive control: a directory"
+
+
+def _worktree(tmp_path: Path, dot_git: str, back: str | None) -> Path:
+    """A checkout whose `.git` file holds `dot_git`, and a Git directory linking `back`."""
+    tree, git_dir = tmp_path / "wt", tmp_path / "store" / "worktrees" / "wt"
+    tree.mkdir()
+    git_dir.mkdir(parents=True)
+    (tree / ".git").write_text(dot_git, encoding="utf-8")
+    if back is not None:
+        (git_dir / "gitdir").write_text(back, encoding="utf-8")
+    return tree
+
+
+def _linked(path: Path) -> bool:
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        opened = is_a_linked_worktree_open(descriptor)
+    finally:
+        os.close(descriptor)
+    assert opened == is_a_linked_worktree(path), "the two forms agree"
+    return opened
+
+
+def test_a_worktree_whose_git_directory_has_no_gitdir_file_is_not_linked(tmp_path: Path) -> None:
+    tree = _worktree(tmp_path, f"gitdir: {tmp_path / 'store/worktrees/wt'}\n", None)
+
+    assert _linked(tree) is False
+    (tmp_path / "store/worktrees/wt/gitdir").write_text(f"{tree / '.git'}\n", encoding="utf-8")
+    assert _linked(tree) is True, "positive control: the back-link written"
+
+
+def test_a_git_file_naming_no_path_is_not_linked(tmp_path: Path) -> None:
+    """An empty path would name the checkout itself, so a `gitdir` there must not count."""
+    tree = _worktree(tmp_path, "gitdir:   \n", None)
+    (tree / "gitdir").write_text(f"{tree / '.git'}\n", encoding="utf-8")
+
+    assert _linked(tree) is False

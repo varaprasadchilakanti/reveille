@@ -94,3 +94,9 @@ def test_a_config_git_cannot_read_cannot_run(repo: Path, monkeypatch: pytest.Mon
 
     with pytest.raises(RepositoryError, match="Git could not read the remotes' URLs"):
         reader._resolve_remote_url()
+
+
+def test_a_remote_whose_url_is_empty_gives_none(repo: Path) -> None:
+    _config(repo, b'[remote "origin"]\n\turl =\n')
+
+    assert GitReader(repo)._resolve_remote_url() is None
