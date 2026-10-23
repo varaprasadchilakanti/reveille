@@ -1972,7 +1972,9 @@ class GitReader:
                 "is read by git as an option."
             )
         try:
-            sha = str(self._git().rev_parse("--verify", "--quiet", f"{revision}^{{commit}}"))
+            # Named first, then peeled: after `:/`, a `^{commit}` would be searched for.
+            named = str(self._git().rev_parse("--verify", "--quiet", revision)).strip()
+            sha = str(self._git().rev_parse("--verify", "--quiet", f"{named}^{{commit}}"))
         except GitCommandError as exc:
             raise RepositoryError(
                 f"'{revision}' does not name a commit in this repository."
