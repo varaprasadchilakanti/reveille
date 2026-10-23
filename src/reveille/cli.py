@@ -40,7 +40,7 @@ from reveille.exceptions import (
     NoRepositoryReadError,
     ReveilleError,
 )
-from reveille.git_directory import holds_a_git_directory
+from reveille.git_directory import holds_a_git_directory, is_a_linked_worktree
 from reveille.undecoded import json_text
 
 _logger = logging.getLogger("reveille.cli")
@@ -936,15 +936,26 @@ def _in_a_git_directory(path: Path) -> bool:
     """Return whether a directory above `path` is a Git directory, any repository's.
 
     Told by its files, as Git tells one; a bare repository's has no `.git` in its
-    name, and need not be the one read.
+    name, and need not be the one read. The walk stops at a linked worktree's
+    root: its files are a checkout, though Git may keep it inside its directory.
 
     Args:
         path: A resolved path.
 
     Returns:
-        True when a parent of `path` is one.
+        True when a parent of `path`, below any linked worktree root, is one.
     """
-    return any(holds_a_git_directory(parent) for parent in path.parents)
+    for parent in path.parents:
+        if holds_a_git_directory(parent):
+            return True
+        if is_a_linked_worktree(parent):
+            return False
+    return False
+
+
+def _linked_worktree_of(path: Path) -> Path | None:
+    """Return the root of the linked worktree a resolved `path` is in, or None."""
+    return next((parent for parent in path.parents if is_a_linked_worktree(parent)), None)
 
 
 def _validate_output_path(
@@ -990,8 +1001,12 @@ def _validate_output_path(
 
     # Writing into a Git directory can corrupt the repository, so it is
     # refused whoever chose the path: flag, config file, or symlink.
+    # A linked worktree's checkout may lie inside its Git directory; its files are not Git's.
+    checkout = _linked_worktree_of(output.resolve())
     inside_git_dir = any(
-        output.resolve().is_relative_to(git_dir) for git_dir in _git_directories(repo_path)
+        output.resolve().is_relative_to(git_dir)
+        and not (checkout is not None and checkout.is_relative_to(git_dir))
+        for git_dir in _git_directories(repo_path)
     )
     if (
         inside_git_dir

@@ -16,7 +16,7 @@ import secrets
 import stat
 from pathlib import Path
 
-from reveille.git_directory import holds_a_git_directory_open
+from reveille.git_directory import holds_a_git_directory_open, is_a_linked_worktree_open
 
 #: Whether files can be made and moved relative to an open directory (not on Windows).
 _DIRECTORY_DESCRIPTORS = (
@@ -99,7 +99,8 @@ def _write_in(directory: int | None, name: Path, temporary: Path, text: str, enc
 def _in_a_git_directory(directory: int) -> bool:
     """Return whether the open `directory`, or one above it, is a Git directory.
 
-    One Git takes for its own (`reveille.git_directory`). Walked through
+    One Git takes for its own (`reveille.git_directory`), below the root of any
+    linked worktree the path is in. Walked through
     `..` from the directory itself, so a name changed meanwhile cannot hide one.
 
     Args:
@@ -113,6 +114,8 @@ def _in_a_git_directory(directory: int) -> bool:
         while True:
             if holds_a_git_directory_open(current):
                 return True
+            if is_a_linked_worktree_open(current):
+                return False  # a checkout, though Git may keep it inside its directory
             parent = os.open("..", _SEARCH_ONLY | os.O_DIRECTORY, dir_fd=current)
             here, above = os.fstat(current), os.fstat(parent)
             os.close(current)
