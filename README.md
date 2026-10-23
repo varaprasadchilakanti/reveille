@@ -259,8 +259,8 @@ reveille validate --repo /path/to/repository
 ### `reveille summary`
 
 The repository in a few lines, naming no contributor (with one or two people, counts can identify
-someone). It reads no line counts, so it is quicker than `generate`: 0.68 s against 8.82 s on
-llama.cpp's 9,015-commit history (medians of three, measured 2026-10-23, Git 2.55, warm cache).
+someone). It reads no line counts, so it is quicker than `generate`: 0.46 s against 8.68 s on
+llama.cpp's 9,015-commit history (medians of five, measured 2026-10-23, Git 2.55, warm cache).
 
 ```bash
 reveille summary --format json
