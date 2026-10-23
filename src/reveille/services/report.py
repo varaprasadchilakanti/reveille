@@ -183,6 +183,7 @@ def who_changed_text(
         if tip is None and config.branch is None:
             raise EmptyRepositoryError(reader.no_commits_reason()) from exc
         _refuse_a_path_in_another_repository(config.repo_path, path)
+        _refuse_a_path_in_a_submodule_not_here(reader, path, tip)
         said = f"No commit in the analysis window changed '{path}'"
         # A typo is the usual reason; a working tree can say nothing has that name.
         working_tree = os.path.lexists(config.repo_path / ".git")
@@ -500,6 +501,23 @@ def _refuse_a_path_in_another_repository(repo_path: Path, path: str) -> None:
                 "clone), whose history this one does not hold. Ask it: "
                 f"`reveille who-changed {rest} --repo {other}`."
             )
+
+
+def _refuse_a_path_in_a_submodule_not_here(reader: GitReader, path: str, tip: str | None) -> None:
+    """Exit 2 for a path in a submodule the analysed commit records but no directory holds.
+
+    Not checked out, or in a bare repository, the submodule has no files here, so
+    the working-tree check above cannot see it.
+
+    Raises:
+        RepositoryError: If a prefix of `path` is a submodule in the tip's tree.
+    """
+    submodule = reader.submodule_holding(path, tip) if tip is not None else None
+    if submodule is not None:
+        raise RepositoryError(
+            f"'{path}' is inside '{submodule}', a submodule, whose history this repository "
+            "does not hold, and it is not checked out here. Ask its own repository."
+        )
 
 
 # An absolute path, POSIX or Windows, starting a word or after a quote or bracket.

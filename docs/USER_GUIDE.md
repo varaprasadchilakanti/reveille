@@ -373,7 +373,8 @@ fact the history records, and "who did the most" is not what this is for. It say
 code, not who knows or owns it. It reads only the commits that changed the path, and no line
 counts. A path that no commit in the window changed is a negative answer (exit 1), unless it is
 inside a submodule or a nested clone: that history is another repository's, so it is refused
-(exit 2) with the command to ask that repository. Renames are not followed: history from before a
+(exit 2) with the command to ask that repository. A submodule that is not checked out, or is in a
+bare repository, is found from the commit's tree and refused the same way. Renames are not followed: history from before a
 rename belongs to the old path.
 
 ### `reveille repos`

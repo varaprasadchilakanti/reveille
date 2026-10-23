@@ -1207,6 +1207,44 @@ class GitReader:
             "commit, so the repository is damaged. Run `git fsck` to see what is wrong."
         )
 
+    def submodule_holding(self, path: str, rev: str) -> str | None:
+        """Return the submodule a path lies inside, from a commit's tree, or None.
+
+        Read from Git, not the working tree: a submodule not checked out leaves
+        an empty directory, and a bare repository has no files at all. The
+        submodule itself is not inside one: its commits are this history's.
+
+        Args:
+            path: A repository-relative path.
+            rev: The commit whose tree is read.
+
+        Returns:
+            The submodule's path, as repository text, or None.
+
+        Raises:
+            RepositoryError: If Git cannot read the tree.
+        """
+        parts = path.split("/")
+        prefixes = ["/".join(parts[:depth]) for depth in range(1, len(parts))]
+        if not prefixes:
+            return None
+        specs = [f":(literal){prefix}" for prefix in prefixes]
+        try:
+            out = str(
+                self._git().ls_tree("-z", "--full-tree", "--end-of-options", rev, "--", *specs)
+            )
+        except GitCommandError as exc:
+            raise RepositoryError(
+                f"Git could not read the tree of {rev}: {_git_error(exc)}"
+            ) from exc
+        for record in out.split("\0"):
+            meta, _, name = record.partition("\t")
+            # A gitlink names another repository's commit. Given `a` and `a/b`, Git
+            # lists all of `a`, so only an entry that is one of the prefixes counts.
+            if meta.startswith("160000 ") and name in prefixes:
+                return name
+        return None
+
     def no_commits_reason(self) -> str:
         """Say why an unborn HEAD gives nothing to read, naming branches that have commits.
 
