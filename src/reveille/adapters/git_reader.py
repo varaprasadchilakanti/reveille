@@ -20,7 +20,6 @@ import logging
 import os
 import re
 import secrets
-import shlex
 import stat
 import sys
 import tempfile
@@ -50,6 +49,8 @@ from reveille.domain.models import (
 from reveille.domain.repositories import MAX_SEARCH_DEPTH
 from reveille.domain.state import RepositoryState, Worktree, quiet_branches
 from reveille.exceptions import EmptyRepositoryError, RepositoryError
+from reveille.git_directory import holds_a_git_directory
+from reveille.undecoded import shell_word
 
 # Separators for the `git log` read: 0x1E and 0x1F are rare, not impossible.
 # Git does not strip them from author fields, so a crafted commit can split a
@@ -442,6 +443,7 @@ def _parse_worktrees(output: str, *, nul: bool = True) -> list[Worktree]:
                 branch=branch,
                 locked="locked" in values,
                 prunable="prunable" in values,
+                bare="bare" in values,
             )
         )
     return found
@@ -707,7 +709,7 @@ class GitReader:
                 raise RepositoryError(
                     f"'{repo_path}' has a .git file naming '{named}', which does not exist: "
                     "the repository it belongs to was moved or deleted. If it was moved, run "
-                    f"`git worktree repair {shlex.quote(str(repo_path))}` in its new place."
+                    f"`git worktree repair {shell_word(str(repo_path))}` in its new place."
                 ) from exc
             if git_dir.is_dir() and not os.access(git_dir, os.R_OK | os.X_OK):
                 raise RepositoryError(
@@ -952,10 +954,7 @@ class GitReader:
         # An unborn HEAD is a negative answer, not a read failure; a named branch
         # is read even then, and a missing one fails below.
         if branch is None and not self._head_is_born():
-            raise EmptyRepositoryError(
-                f"Repository at '{self._repo_path}' contains no commits. "
-                "There is nothing to read until the first commit is made."
-            )
+            raise EmptyRepositoryError(self.no_commits_reason())
 
         self._refuse_attribute_files_that_block(counts_lines=line_counts and not name_status)
         _logger.debug("git log %s", " ".join(log_args))
@@ -1006,6 +1005,11 @@ class GitReader:
             )
             if commit is None:
                 continue
+            # Git bounds dates only through 2099, so a window reaching past it is
+            # bounded here too; inside those years this drops nothing Git kept.
+            day = commit.timestamp.date()
+            if (until is not None and day > until) or (since is not None and day < since):
+                continue
             if dated_until is not None and commit.timestamp.date() > dated_until:
                 dated_after += 1
                 continue
@@ -1041,7 +1045,7 @@ class GitReader:
             co_author_records, authentic_order, commits, mailmap, exclude_set, matched
         )
 
-        # A filter that matched nothing is almost always a typo; say so. A value
+        # A filter that matched nothing is usually a typo; say so. A value
         # matched when any form it expanded to did, and only values given are named.
         # Assigned unconditionally so a reused reader never reports stale values.
         found = matched | set(reached)
@@ -1207,6 +1211,82 @@ class GitReader:
         raise RepositoryError(
             f"HEAD in '{self._repo_path}' names an object that is missing or is not a "
             "commit, so the repository is damaged. Run `git fsck` to see what is wrong."
+        )
+
+    def ever_changed(self, path: str, rev: str) -> bool | None:
+        """Return whether any commit reachable from `rev` changed a path, or None if unknown.
+
+        Args:
+            path: A repository-relative path, read literally.
+            rev: The commit the history is read from.
+
+        Returns:
+            True or False, or None when Git could not say.
+        """
+        try:
+            out = str(
+                self._git().rev_list("-1", "--end-of-options", rev, "--", f":(top,literal){path}")
+            )
+        except GitCommandError:
+            return None
+        return bool(out.strip())
+
+    def submodule_holding(self, path: str, rev: str) -> str | None:
+        """Return the submodule a path lies inside, from a commit's tree, or None.
+
+        Read from Git, not the working tree: a submodule not checked out leaves
+        an empty directory, and a bare repository has no files at all. The
+        submodule itself is not inside one: its commits are this history's.
+
+        Args:
+            path: A repository-relative path.
+            rev: The commit whose tree is read.
+
+        Returns:
+            The submodule's path, as repository text, or None.
+
+        Raises:
+            RepositoryError: If Git cannot read the tree.
+        """
+        parts = path.split("/")
+        prefixes = ["/".join(parts[:depth]) for depth in range(1, len(parts))]
+        if not prefixes:
+            return None
+        specs = [f":(literal){prefix}" for prefix in prefixes]
+        try:
+            out = str(
+                self._git().ls_tree("-z", "--full-tree", "--end-of-options", rev, "--", *specs)
+            )
+        except GitCommandError as exc:
+            raise RepositoryError(
+                f"Git could not read the tree of {rev}: {_git_error(exc)}"
+            ) from exc
+        for record in out.split("\0"):
+            meta, _, name = record.partition("\t")
+            # A gitlink names another repository's commit. Given `a` and `a/b`, Git
+            # lists all of `a`, so only an entry that is one of the prefixes counts.
+            if meta.startswith("160000 ") and name in prefixes:
+                return name
+        return None
+
+    def no_commits_reason(self) -> str:
+        """Say why an unborn HEAD gives nothing to read, naming branches that have commits.
+
+        A new orphan branch is unborn while the repository's other branches are not.
+
+        Returns:
+            One or two sentences.
+        """
+        other = str(self._git().for_each_ref("--count=1", "--format=%(refname)", "refs/heads"))
+        if not other:
+            return (
+                f"Repository at '{self._repo_path}' contains no commits. "
+                "There is nothing to read until the first commit is made."
+            )
+        example = shell_word(other.removeprefix("refs/heads/"))
+        return (
+            f"The current branch '{self._resolve_active_branch()}' has no commits yet; "
+            f"other branches do. Name one, for example --branch {example}."
         )
 
     def _resolve_active_branch(self) -> str:
@@ -1501,7 +1581,7 @@ class GitReader:
             return exc
 
     def _paths_never_changed(self, rev: str, paths: Sequence[str]) -> tuple[str, ...]:
-        """Return the excluded paths no commit on `rev` ever changed: almost always a typo.
+        """Return the excluded paths no commit on `rev` ever changed: usually a typo.
 
         Args:
             rev: The analysed revision.
@@ -1714,6 +1794,11 @@ class GitReader:
             return None
         return tuple(sorted(names))
 
+    def commit_date(self, sha: str) -> datetime.date | None:
+        """Return a commit's committer date (UTC), or None if it cannot be read."""
+        time = self._commit_time(sha)
+        return None if time is None else time.date()
+
     def _commit_time(self, sha: str) -> datetime.datetime | None:
         """Return a commit's committer time in UTC, or None if it cannot be read."""
         try:
@@ -1756,10 +1841,36 @@ class GitReader:
             try:
                 # `-z` needs Git 2.36; older Git gives newline-separated records.
                 output = str(self._git().worktree("list", "--porcelain"))
-            except GitCommandError:
-                return []
+            except GitCommandError as exc:
+                raise RepositoryError(
+                    f"Git could not list the worktrees: {_git_error(exc)}"
+                ) from exc
             found = _parse_worktrees(output, nul=False)
+        recorded = self._recorded_worktree_path()
+        if recorded is not None:
+            return [replace(w, current=w.path == recorded) for w in found]
         return [replace(w, current=_same_directory(w.path, self._repo_path)) for w in found]
+
+    def _recorded_worktree_path(self) -> str | None:
+        """Return the path Git lists for the linked worktree read, or None.
+
+        Matched by Git directory, not by path: a worktree moved without `git
+        worktree move` is still listed at its old path, which its Git directory's
+        `gitdir` file holds. None for the main worktree, which Git lists where it is.
+        """
+        git_dir = Path(self._repo.git_dir)
+        if _same_directory(str(git_dir), Path(self._repo.common_dir)):
+            return None
+        try:
+            descriptor = os.open(git_dir / "gitdir", os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
+            with os.fdopen(descriptor, "rb") as handle:
+                text = handle.read(_MAX_GITFILE_BYTES)
+        except OSError:
+            return None
+        if not text.endswith(b"\n") or not text.strip():
+            return None
+        dot_git = git_dir / os.fsdecode(text[:-1])  # relative to it, from --relative-paths
+        return os.path.normpath(dot_git.parent)
 
     def _branch_tips(self) -> dict[str, datetime.datetime]:
         """Map each local branch to its last commit time (UTC)."""
@@ -1790,6 +1901,9 @@ class GitReader:
 
         Returns:
             The tag name, as repository text.
+
+        Raises:
+            RepositoryError: If Git fails for any reason other than finding no tag.
         """
         try:
             if until is not None:
@@ -1798,11 +1912,20 @@ class GitReader:
                 rev = str(self._git().rev_list("-1", *bound, "--end-of-options", rev, "--")).strip()
                 if not rev:
                     return None
-            return str(
-                self._git().describe("--tags", "--abbrev=0", "--end-of-options", rev)
-            ).strip()
-        except GitCommandError:
-            return None
+            try:
+                return str(
+                    self._git().describe("--tags", "--abbrev=0", "--end-of-options", rev)
+                ).strip()
+            except GitCommandError:
+                # Git's "no names found" is translated, so ask whether a tag is reachable.
+                reachable = str(
+                    self._git().for_each_ref("--count=1", f"--merged={rev}", "refs/tags")
+                ).strip()
+                if reachable:
+                    raise
+                return None
+        except GitCommandError as exc:
+            raise RepositoryError(f"Git could not find the latest tag: {_git_error(exc)}") from exc
 
     def _latest_tag(self, head: str | None) -> tuple[str | None, int | None]:
         """Return the nearest reachable tag and the non-merge commits after it."""
@@ -1820,8 +1943,10 @@ class GitReader:
                     "--",
                 )
             ).strip()
-        except GitCommandError:
-            return None, None
+        except GitCommandError as exc:
+            raise RepositoryError(
+                f"Git could not count the commits since {tag}: {_git_error(exc)}"
+            ) from exc
         return tag, int(count) if count.isdigit() else None
 
     def resolve_commit(self, revision: str) -> str:
@@ -1847,7 +1972,9 @@ class GitReader:
                 "is read by git as an option."
             )
         try:
-            sha = str(self._git().rev_parse("--verify", "--quiet", f"{revision}^{{commit}}"))
+            # Named first, then peeled: after `:/`, a `^{commit}` would be searched for.
+            named = str(self._git().rev_parse("--verify", "--quiet", revision)).strip()
+            sha = str(self._git().rev_parse("--verify", "--quiet", f"{named}^{{commit}}"))
         except GitCommandError as exc:
             raise RepositoryError(
                 f"'{revision}' does not name a commit in this repository."
@@ -2184,16 +2311,31 @@ class GitReader:
     def _resolve_remote_url(self) -> str | None:
         """Return the origin (or first) remote's URL, credentials removed.
 
+        Asked of Git: GitPython's own reading of the config stopped on a byte
+        that is not UTF-8, and on a remote with no `url`.
+
         Returns:
-            The remote URL string, or None if no remotes are configured.
+            The remote URL string, or None if no remote has a URL.
+
+        Raises:
+            RepositoryError: If Git cannot read the configuration.
         """
-        if not self._repo.remotes:
-            return None
         try:
-            url = str(self._repo.remotes["origin"].url)
-        except IndexError:
-            url = str(self._repo.remotes[0].url)
-        return _without_credentials(url)
+            out = str(self._git().config("-z", "--get-regexp", r"^remote\..*\.url$"))
+        except GitCommandError as exc:
+            if exc.status == 1:  # Git's "none found"
+                return None
+            raise RepositoryError(
+                f"Git could not read the remotes' URLs: {_git_error(exc)}"
+            ) from exc
+        urls: dict[str, str] = {}
+        for record in out.split("\0"):
+            key, _, url = record.partition("\n")
+            urls.setdefault(key, url)  # a remote's first url is the one Git fetches from
+        if not any(urls.values()):
+            return None
+        url = urls.get("remote.origin.url") or next(value for value in urls.values() if value)
+        return _without_credentials(_shown(url))
 
     def _working_mailmap(self) -> str | None:
         """Return the working tree's `.mailmap`, bounded by `_MAX_MAILMAP_BYTES`.
@@ -2835,12 +2977,21 @@ def _git_directory_of(tree: Path) -> Path | None:
         # reads as empty), and read to a bound, so a device cannot read for ever.
         descriptor = os.open(dotgit, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
         with os.fdopen(descriptor, "rb") as handle:
-            line = handle.read(_MAX_GITFILE_BYTES).split(b"\n", 1)[0].decode()
-    except (OSError, UnicodeDecodeError):
+            line = _gitfile_value(handle.read(_MAX_GITFILE_BYTES))
+    except OSError:
         return None
     if not line.startswith("gitdir: "):
         return None
-    return (tree / line.removeprefix("gitdir: ").strip()).resolve()
+    return (tree / line.removeprefix("gitdir: ")).resolve()
+
+
+def _gitfile_value(raw: bytes) -> str:
+    """Return what a `.git` or `commondir` file holds, as Git reads it.
+
+    Git strips only the line ends after it, so a path holding a newline or a
+    byte that is not UTF-8 is kept whole; the byte decodes as the path it is.
+    """
+    return os.fsdecode(raw.rstrip(b"\r\n"))
 
 
 def main_worktree_of(tree: Path) -> Path | None:
@@ -2862,12 +3013,14 @@ def main_worktree_of(tree: Path) -> Path | None:
         return None
     try:
         with (git_directory / "commondir").open("rb") as handle:
-            line = handle.read(_MAX_GITFILE_BYTES).split(b"\n", 1)[0].decode().strip()
-    except (OSError, UnicodeDecodeError):
+            line = _gitfile_value(handle.read(_MAX_GITFILE_BYTES))
+    except OSError:
         return None
     if not line:
         return None
     common = (git_directory / line).resolve()
+    if not common.is_dir():
+        return None  # named, but not there: no main tree can be said
     return common.parent if common.name == ".git" else common
 
 
@@ -2880,9 +3033,7 @@ def is_repository(path: Path) -> bool:
     try:
         if os.path.lexists(path / ".git"):
             return True
-        return (
-            (path / "HEAD").is_file() and (path / "objects").is_dir() and (path / "refs").is_dir()
-        )
+        return holds_a_git_directory(path)
     except OSError:
         return False
 
@@ -3108,7 +3259,7 @@ def _git_dir_of(start: Path, *, search_up: bool) -> Path | None:
             if not pointer.startswith("gitdir:"):
                 return None
             return directory / pointer.removeprefix("gitdir:").strip()
-        if all((directory / name).exists() for name in ("HEAD", "objects", "refs")):
+        if holds_a_git_directory(directory):
             return directory
     return None
 
@@ -3480,8 +3631,8 @@ def _selection(log_args: list[str]) -> list[str]:
 # Git reads a date only from 1970 through 2099 (Git 2.55, measured with
 # `git rev-parse --since=`): past 2099 `--before` matched no commit and `--since`
 # every one, and `@<seconds>` past it is read as another date. A bound outside
-# those years is dropped where nothing Git can date lies beyond it, and moved to
-# the nearest day Git reads where something could.
+# those years is dropped, or moved to the nearest day Git reads, and the read
+# checks each commit against the window again: a commit can be dated past 2099.
 _GIT_FIRST_DAY = datetime.date(1970, 1, 1)
 _GIT_LAST_DAY = datetime.date(2099, 12, 31)
 

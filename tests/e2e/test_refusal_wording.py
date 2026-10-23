@@ -220,13 +220,14 @@ def test_a_thread_other_than_the_main_one_installs_no_handler(
     installed: list[object] = []
     monkeypatch.setattr(signal, "signal", lambda *args: installed.append(args))
     monkeypatch.setattr(signal, "getsignal", lambda _: signal.SIG_DFL)
-    worker = threading.Thread(target=cli._exit_cleanly_on_sigterm)
+    worker = threading.Thread(target=cli._exit_cleanly_when_stopped)
     worker.start()
     worker.join()
     assert installed == []
 
-    cli._exit_cleanly_on_sigterm()
-    assert len(installed) == 1, "positive control: the main thread installs it"
+    cli._exit_cleanly_when_stopped()
+    stopping = [getattr(signal, n) for n in ("SIGTERM", "SIGHUP") if hasattr(signal, n)]
+    assert [args[0] for args in installed] == stopping, "positive control: the main thread"
 
 
 @pytest.mark.skipif(

@@ -80,3 +80,62 @@ def test_a_bare_repository_is_its_own_current_entry(trees: Path) -> None:
         ("store.git", True),
         ("checkout", False),
     ]
+
+
+def test_a_worktree_moved_without_git_is_still_the_one_read(trees: Path) -> None:
+    """Git lists it at its old path; its Git directory's `gitdir` file holds that path."""
+    moved = trees / "moved"
+    (trees / "side").rename(moved)
+
+    worktrees = json.loads(_state(moved, "json"))["worktrees"]
+    text = _state(moved, "text")
+
+    current = {Path(w["path"]).name: w["current"] for w in worktrees}
+    assert current == {"main": False, "side": True, "third": False}
+    assert f"2 other worktrees: {trees / 'main'} (main), {trees / 'third'} (third)." in text
+
+
+def test_the_main_worktree_is_the_one_read_when_another_was_moved(trees: Path) -> None:
+    (trees / "side").rename(trees / "moved")
+
+    worktrees = json.loads(_state(trees / "main", "json"))["worktrees"]
+
+    assert [w["current"] for w in worktrees] == [True, False, False]
+
+
+def test_a_bare_repository_s_entry_is_bare_not_detached(trees: Path) -> None:
+    """Git lists a bare main repository with `bare`, and no branch or HEAD of its own."""
+    store = trees / "store.git"
+    _git(trees, "clone", "-q", "--bare", str(trees / "main"), str(store))
+    _git(store, "worktree", "add", "-q", str(trees / "checkout"), "main")
+    checkout = trees / "checkout"
+
+    worktrees = json.loads(_state(checkout, "json"))["worktrees"]
+    text = _state(checkout, "text")
+    markdown = _state(checkout, "markdown")
+
+    assert [(Path(w["path"]).name, w["bare"]) for w in worktrees] == [
+        ("store.git", True),
+        ("checkout", False),
+    ]
+    assert f"1 other worktree: {store} (bare)." in text
+    assert f"`{store} (bare)`" in markdown
+    assert "detached" not in text + markdown
+
+
+@pytest.mark.parametrize("gitdir", [None, b"/no/newline/.git"])
+def test_a_gitdir_file_missing_or_cut_short_records_no_path(
+    trees: Path, gitdir: bytes | None
+) -> None:
+    """Git writes the file with a newline; one without may be cut short, so it is not used."""
+    from reveille.adapters.git_reader import GitReader
+
+    recorded = trees / "main" / ".git" / "worktrees" / "side" / "gitdir"
+    assert GitReader(trees / "side")._recorded_worktree_path() is not None, "positive control"
+    reader = GitReader(trees / "side")
+    if gitdir is None:
+        recorded.unlink()
+    else:
+        recorded.write_bytes(gitdir)
+
+    assert reader._recorded_worktree_path() is None

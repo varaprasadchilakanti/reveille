@@ -16,6 +16,8 @@ import secrets
 import stat
 from pathlib import Path
 
+from reveille.git_directory import holds_a_git_directory_open, is_a_linked_worktree_open
+
 #: Whether files can be made and moved relative to an open directory (not on Windows).
 _DIRECTORY_DESCRIPTORS = (
     hasattr(os, "O_DIRECTORY")
@@ -23,6 +25,9 @@ _DIRECTORY_DESCRIPTORS = (
     # `os.replace` takes the same descriptors as `os.rename`, which the set lists.
     and {os.open, os.stat, os.unlink, os.rename} <= os.supports_dir_fd
 )
+
+#: How a directory is opened to work in: `O_PATH` (Linux) needs no permission to list it.
+_SEARCH_ONLY = getattr(os, "O_PATH", os.O_RDONLY)
 
 
 def write_replacing(path: Path, text: str, *, encoding: str) -> None:
@@ -50,7 +55,7 @@ def write_replacing(path: Path, text: str, *, encoding: str) -> None:
     if not _DIRECTORY_DESCRIPTORS:  # pragma: no cover - Windows
         _write_in(None, path, path.with_name(_temporary_name(path)), text, encoding)
         return
-    directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    directory = os.open(path.parent, _SEARCH_ONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
         if _in_a_git_directory(directory):
             raise OSError(errno.EPERM, "inside a Git directory", str(path))
@@ -94,21 +99,24 @@ def _write_in(directory: int | None, name: Path, temporary: Path, text: str, enc
 def _in_a_git_directory(directory: int) -> bool:
     """Return whether the open `directory`, or one above it, is a Git directory.
 
-    One holding `HEAD`, `objects` and `refs`, as Git takes it. Walked through
+    One Git takes for its own (`reveille.git_directory`), below the root of any
+    linked worktree the path is in. Walked through
     `..` from the directory itself, so a name changed meanwhile cannot hide one.
 
     Args:
         directory: An open directory.
 
     Returns:
-        True when it, or a directory above it, holds all three.
+        True when it, or a directory above it, is one.
     """
     current = os.dup(directory)
     try:
         while True:
-            if _holds_a_git_directory(current):
+            if holds_a_git_directory_open(current):
                 return True
-            parent = os.open("..", os.O_RDONLY | os.O_DIRECTORY, dir_fd=current)
+            if is_a_linked_worktree_open(current):
+                return False  # a checkout, though Git may keep it inside its directory
+            parent = os.open("..", _SEARCH_ONLY | os.O_DIRECTORY, dir_fd=current)
             here, above = os.fstat(current), os.fstat(parent)
             os.close(current)
             current = parent
@@ -116,15 +124,3 @@ def _in_a_git_directory(directory: int) -> bool:
                 return False  # the root is its own parent
     finally:
         os.close(current)
-
-
-def _holds_a_git_directory(directory: int) -> bool:
-    """Return whether the open `directory` holds a `HEAD` file and `objects` and `refs`."""
-    kinds = {"HEAD": stat.S_ISREG, "objects": stat.S_ISDIR, "refs": stat.S_ISDIR}
-    for name, kind in kinds.items():
-        try:
-            if not kind(os.stat(name, dir_fd=directory).st_mode):
-                return False
-        except OSError:
-            return False
-    return True

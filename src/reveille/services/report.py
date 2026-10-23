@@ -16,14 +16,13 @@ import datetime
 import logging
 import os
 import re
-import shlex
 import threading
 import time
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 from reveille import __version__
 from reveille.adapters.git_reader import (
@@ -54,6 +53,7 @@ from reveille.exceptions import (
     RepositoryError,
     ReveilleError,
 )
+from reveille.undecoded import shell_word
 
 _logger = logging.getLogger(__name__)
 
@@ -167,7 +167,9 @@ def who_changed_text(
     tip = reader.resolve_head_sha(config.branch)
     cutoff = _today() if config.until is None and not config.deterministic else None
     try:
-        commits = reader.read_commits(
+        commits = _read_noting_shallow(
+            reader,
+            on_notice,
             branch=config.branch,
             since=config.since,
             until=config.until,
@@ -178,12 +180,20 @@ def who_changed_text(
             path=path,
         )
     except EmptyRepositoryError as exc:
+        if tip is None and config.branch is None:
+            raise EmptyRepositoryError(reader.no_commits_reason()) from exc
         _refuse_a_path_in_another_repository(config.repo_path, path)
+        _refuse_a_path_in_a_submodule_not_here(reader, path, tip)
         said = f"No commit in the analysis window changed '{path}'"
-        # A typo is the usual reason; a working tree can say nothing has that name.
+        # Not on disk is a typo only if no commit ever had it: a sparse checkout leaves
+        # files out, and a deleted file is gone.
         working_tree = os.path.lexists(config.repo_path / ".git")
-        if working_tree and not os.path.lexists(config.repo_path / path):
-            said += ", and nothing by that name is in the working tree: check the path"
+        if working_tree and not os.path.lexists(config.repo_path / path) and tip is not None:
+            ever = reader.ever_changed(path, tip)
+            if ever is False:
+                said += ", and nothing by that name is in the working tree: check the path"
+            elif ever:
+                said += "; commits outside the window or the filters did"
         raise EmptyRepositoryError(f"{said}.") from exc
     if reader.commits_dated_after and cutoff is not None:
         _notify(
@@ -191,7 +201,7 @@ def who_changed_text(
             f"{_count(reader.commits_dated_after)} dated after {cutoff.isoformat()} and not counted.",
         )
     if reader.is_shallow():
-        _notify(on_notice, "This is a shallow clone, so only the history it holds is analysed.")
+        _notify(on_notice, _SHALLOW_NOTE)
     first = min(c.timestamp.date() for c in commits)
     window_end = cutoff if cutoff is not None else _resolve_window_end(config, commits)
     window = (max(config.since, first) if config.since else first, window_end)
@@ -257,6 +267,15 @@ def repositories_text(
     except OverflowError:
         start = datetime.date.min  # a window reaching past the calendar's first day
     found, unreadable = find_repositories(directory, depth)
+    if not found and unreadable:
+        # A directory not listed may hold one, so "none found" is not an answer.
+        raise RepositoryError(
+            f"No Git repository found in '{directory}' within {depth} "
+            f"{'level' if depth == 1 else 'levels'}, but "
+            f"{'1 directory' if len(unreadable) == 1 else f'{len(unreadable):,} directories'} "
+            "could not be listed, and may hold one. "
+            "Make it readable, or search a directory that is."
+        )
     if unreadable:
         _notify(
             on_notice,
@@ -477,16 +496,46 @@ def _refuse_a_path_in_another_repository(repo_path: Path, path: str) -> None:
         RepositoryError: If a directory on the path is another repository.
     """
     parts = path.split("/")
+    this_main = main_worktree_of(repo_path) or repo_path.resolve()
     for depth in range(1, len(parts) + 1):
         nested = "/".join(parts[:depth])
-        if is_repository(repo_path / nested):
-            rest = shlex.quote("/".join(parts[depth:]) or ".")
-            other = shlex.quote(str(repo_path / nested))
+        where = f"'{path}' is" if depth == len(parts) else f"'{path}' is inside '{nested}',"
+        if parts[depth - 1].casefold() == ".git":
             raise RepositoryError(
-                f"'{path}' is inside '{nested}', another repository (a submodule or a nested "
-                "clone), whose history this one does not hold. Ask it: "
-                f"`reveille who-changed {rest} --repo {other}`."
+                f"{where} Git's own directory, whose files no commit records. Give a path "
+                "in the working tree."
             )
+        candidate = repo_path / nested
+        if os.path.normpath(nested) == "." or not is_repository(candidate):
+            continue
+        rest = shell_word("/".join(parts[depth:]) or ".")
+        ask = f"Ask it: `reveille who-changed {rest} --repo {shell_word(str(candidate))}`."
+        if main_worktree_of(candidate) == this_main:
+            raise RepositoryError(
+                f"{where} another working tree of this repository, with a checkout of its own. "
+                f"{ask}"
+            )
+        raise RepositoryError(
+            f"{where} another repository (a submodule or a nested clone), whose history this "
+            f"one does not hold. {ask}"
+        )
+
+
+def _refuse_a_path_in_a_submodule_not_here(reader: GitReader, path: str, tip: str | None) -> None:
+    """Exit 2 for a path in a submodule the analysed commit records but no directory holds.
+
+    Not checked out, or in a bare repository, the submodule has no files here, so
+    the working-tree check above cannot see it.
+
+    Raises:
+        RepositoryError: If a prefix of `path` is a submodule in the tip's tree.
+    """
+    submodule = reader.submodule_holding(path, tip) if tip is not None else None
+    if submodule is not None:
+        raise RepositoryError(
+            f"'{path}' is inside '{submodule}', a submodule, whose history this repository "
+            "does not hold, and it is not checked out here. Ask its own repository."
+        )
 
 
 # An absolute path, POSIX or Windows, starting a word or after a quote or bracket.
@@ -581,7 +630,7 @@ def brief_text(
         if config.branch is not None:
             reader.resolve_commit(reader.branch_revision(config.branch))
         elif reader.resolve_head_sha() is None:
-            raise EmptyRepositoryError(f"Repository at '{config.repo_path}' contains no commits.")
+            raise EmptyRepositoryError(reader.no_commits_reason())
         # With --until, a tag after it would start the brief after its own end (ADR 0031).
         from_revision = reader.latest_tag(reader.branch_revision(config.branch), config.until)
         if from_revision is None:
@@ -602,7 +651,9 @@ def brief_text(
     )
     point = from_revision if from_revision is not None else str(config.since)
     try:
-        commits = reader.read_commits(
+        commits = _read_noting_shallow(
+            reader,
+            on_notice,
             branch=config.branch,
             since=None if from_commit is not None else config.since,
             until=config.until,
@@ -625,8 +676,12 @@ def brief_text(
             )
             if used
         ]
+        # A start dated after --until is allowed: dates need not follow the history.
+        dated = reader.commit_date(from_commit) if from_commit and config.until else None
+        late = dated is not None and config.until is not None and dated > config.until
+        after = f" {point} is dated {dated}, after it." if late else ""
         raise EmptyRepositoryError(
-            f"No commits since {point}{''.join(' ' + limit for limit in limits)}."
+            f"No commits since {point}{''.join(' ' + limit for limit in limits)}.{after}"
         ) from exc
     if reader.commits_dated_after and cutoff is not None:
         _notify(
@@ -634,7 +689,7 @@ def brief_text(
             f"{_count(reader.commits_dated_after)} dated after {cutoff.isoformat()} and not counted.",
         )
     if reader.is_shallow():
-        _notify(on_notice, "This is a shallow clone, so only the history it holds is analysed.")
+        _notify(on_notice, _SHALLOW_NOTE)
     tip = reader.resolve_head_sha(config.branch) or ""
     if from_commit is not None and not reader.is_ancestor(from_commit, tip):
         _notify(
@@ -703,7 +758,9 @@ def build_report_data(
     # figure, stated, and never stretch the window. An explicit `--until` is
     # taken as asked; deterministic mode closes on the last commit (ADR 0008).
     cutoff = _today() if config.until is None and not config.deterministic else None
-    commits = reader.read_commits(
+    commits = _read_noting_shallow(
+        reader,
+        on_notice,
         branch=config.branch,
         since=config.since,
         until=config.until,
@@ -900,6 +957,34 @@ def _note_cut_csv(
             f"The CSV lists {config.limit:,} of {listed:,} contributors (--limit); "
             "the JSON states the totals.",
         )
+
+
+#: Said when a shallow clone is read, since the history it does not hold is not counted.
+_SHALLOW_NOTE = "This is a shallow clone, so only the history it holds is analysed."
+
+
+def _read_noting_shallow(
+    reader: GitReader, on_notice: Callable[[str], None] | None, **options: Any
+) -> list[Commit]:
+    """Read commits; when none are found in a shallow clone, say the clone may hold too few.
+
+    Args:
+        reader: The repository's reader.
+        on_notice: Where the note goes.
+        **options: As for `GitReader.read_commits`.
+
+    Returns:
+        The commits.
+
+    Raises:
+        EmptyRepositoryError: When none are found, after the note.
+    """
+    try:
+        return reader.read_commits(**options)
+    except EmptyRepositoryError:
+        if reader.is_shallow():
+            _notify(on_notice, _SHALLOW_NOTE)
+        raise
 
 
 def _notify(on_notice: Callable[[str], None] | None, message: str) -> None:

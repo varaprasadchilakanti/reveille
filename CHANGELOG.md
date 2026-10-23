@@ -36,7 +36,7 @@ before release.
   `--from` next time.
 - **`reveille repos <directory>`** gives one row per repository: active, quiet or dormant, its last
   commit, and counts for a window (90 days by default). It finds working trees and bare mirrors to
-  `--depth` levels without following links and reads four at once; one it cannot read is a
+  `--depth` levels without following links and reads up to four at once; one it cannot read is a
   `not_read` row with the reason (ADR 0026). A linked worktree's row names its main working tree
   (`worktree_of`).
 - **`reveille skill`** prints a section for `AGENTS.md` or `CLAUDE.md`, or a `SKILL.md` with
@@ -101,6 +101,17 @@ before release.
 - **`who-changed` says when nothing by the name given is in the working tree.** A typo answered
   only "No commit in the analysis window changed 'nosuch.txt'", exit 1; the answer is still 1 and
   now adds "and nothing by that name is in the working tree: check the path".
+- **`who-changed` says the recent authors are listed alphabetically.** "Changed it most recently:
+  A, B, C" read as ordered by date; it is "The 5 who changed it most recently, alphabetically: A,
+  B, C".
+- **`generate --format` refuses a format in the words every other command uses:** "--format must
+  be html, json or csv, not 'xml'", where it gave Pydantic's "Input should be ...". A refused
+  choice in `reveille.toml` (`report.format = "xml"`) now names the value given too. A byte in it
+  that is not UTF-8 is written `\xff`, as every other line writes one, not `\udcff`, and a
+  suggested command naming such a path quotes it `$'...'`, so bash reads the byte back.
+- **A warning reads "Warning: ...", as the CLI's own do.** It was "WARNING
+  reveille.adapters.git_reader: ...", naming the module that wrote it; a DEBUG line from
+  `--verbose` still names it.
 - **Progress off a terminal** is one plain line per stage. A dark-mode reader no longer sees the
   report light first.
 - **`schema_version` is 1.3.** The brief is a new document and the others gain fields; every 1.1
@@ -116,7 +127,8 @@ before release.
 - **`repos` exits 2 when it found repositories and could read none of them.** It used to exit 0,
   the affirmative answer, over a table of `not_read` rows. The rows are still written, since each
   says why; one readable repository, even an empty one, keeps exit 0
-  ([ADR 0028](docs/adr/0028-repos-exits-2-when-nothing-was-read.md)).
+  ([ADR 0028](docs/adr/0028-repos-exits-2-when-nothing-was-read.md)). None found where a directory
+  could not be listed is exit 2 too, not "none found".
 - **`init -o -` prints the file on stdout**, as `generate -o -` does, instead of writing a file
   named `-`.
 - **A key or table in `reveille.toml` that Reveille does not read is named in a note.** A
@@ -148,12 +160,21 @@ before release.
 - **`who-changed` answered "no commit changed it" (exit 1) for a path inside a submodule or a
   nested clone**, whose history is another repository's. It now exits 2 and gives the command that
   asks that repository; a path no commit here changed is still exit 1.
+- **On a new orphan branch, `summary` and `generate` said the repository "contains no
+  commits"**, although its other branches had some. They, and `brief` and `who-changed`, now say
+  the current branch has none yet and give a `--branch` that has. The exit is still 1.
+- **A remote URL holding a byte that is not UTF-8, or a remote with no `url`, stopped `generate`
+  with a traceback** (exit 1 in 0.9.0, run against its code). The URL is now read through Git; such
+  a byte is shown as U+FFFD, and a remote with no URL is passed over.
+- **`--output ./-` wrote to standard output**, as `--output -` does (0.9.0 too, run against its
+  code), and `output = "./-"` in a `reveille.toml` did the same, past the checks a configured
+  output path gets. Only `-` itself now means standard output; `./-` is a file named `-`.
 - **An empty window always suggested "removing author filters"**, whether or not any were given.
   It now suggests only what narrowed the read: the date range, `--exclude-author`, or
   `--exclude-path`.
-- **Stopped with SIGTERM while writing, a run left its `.tmp` file beside the output.** It now
-  removes it and exits 143, as a terminated process does; a SIGTERM handler set by whatever runs
-  Reveille is kept.
+- **Stopped with SIGTERM or SIGHUP while writing, a run left its `.tmp` file beside the
+  output.** It now removes it and exits 143 or 129, as a terminated process does; a handler set by
+  whatever runs Reveille is kept.
 - **A commit dated in the last week of 9999 stopped the HTML report** ("date value out of range",
   exit 2). Git accepts such a date. The weekly charts now end at that week. JSON and CSV were not
   affected.
@@ -185,6 +206,15 @@ before release.
 - **An output path ending in `/` is refused.** `-o reports/` wrote a file named `reports`.
 - **A `reveille.toml` that starts with a byte-order mark is read.** It was reported as "Invalid
   statement" at line 1.
+- **Help did not follow the exit-code contract.** `--help`, `-h`, `help [<command>]` and a bare
+  `reveille` exited 120 with a "defect" message when stdout was full, 1 when the reader stopped
+  early, and 0 when stdout was closed. They now exit 2, 0 and 2, as an answer does; a bare
+  `reveille` still exits 2. `generate -o <file>` with a full stdout exited 2 though the file was
+  written; the path it prints is a confirmation, left out as with a closed stdout, and the exit is
+  0.
+- **A shallow clone's empty window was a plain "no".** `summary`, `brief`, `who-changed` and
+  `generate` exited 1 without the note that the clone holds only part of the history, which may be
+  why. The note is now given with the answer; a note raised before any refusal is printed with it.
 - **A path that is not UTF-8 reached JSON as a lone surrogate** (`"caf\udcff.txt"` from
   `who-changed`), which a strict JSON parser refuses. Such a byte is written as `\xNN`
   (`caf\xff.txt`), in JSON as text output writes it, in `who-changed`, `state` and `repos` and in
@@ -220,7 +250,8 @@ before release.
   commits (exit 1), and a HEAD naming no commit as empty; Git is asked, and damage exits 2. A
   caller's `GIT_WORK_TREE`, `GIT_INDEX_FILE` or `GIT_OBJECT_DIRECTORY`, as a hook sets them,
   changed what was read; each is pinned to the repository's own. Git misreads dates before 1970 or
-  after 2099, so none is passed to it.
+  after 2099, so none is passed to it, and a commit dated after 2099 is kept to the window by
+  Reveille itself.
 - **An answer that was not delivered was reported as delivered.** A full disk or a closed standard
   output exits 2; a reader that stops early (`| head`) exits 0, not 1.
 - **Errors named the wrong cause.** Git missing or a broken global Git configuration, a deleted
@@ -293,9 +324,13 @@ Each entry has a test that fails without the fix. 0.9.0's exposure is stated whe
 - **`generate --output` and `init --output` could write into another repository's bare Git
   directory**: a report in its `refs/heads/` became a broken branch, and `init --force` replaced
   its `config`. Only a directory named `.git`, or the analysed repository's own, was refused. Any
-  directory holding `HEAD`, `objects` and `refs` now is, checked again from the open directory
-  when the file is written, so a directory swapped for a link in between is not written into (not
-  on Windows). 0.9.0 is affected (run against its code).
+  directory Git takes for one now is: `objects`, `refs`, and a `HEAD` naming a ref or a commit,
+  or a symbolic link into `refs/` even where it dangles, as it does when only `packed-refs`
+  holds the branch. A directory merely holding files of those names is not, and a linked
+  worktree made inside a Git directory is written into: its `.git` file must be named back by its
+  Git directory. It is checked again from the open directory when the file is written, so a
+  directory swapped for a link in between is not written into (not on Windows). 0.9.0 is affected
+  (run against its code).
 - **An author name could add commits and people to every figure** by holding `git log`'s record
   separators and a real commit's hash. Each record is framed by its hash, and a hash with more than
   one record is counted as unreadable.
@@ -306,9 +341,10 @@ Each entry has a test that fails without the fix. 0.9.0's exposure is stated whe
   tag and its output drafts the Release. The SBOM artifact is downloaded into a directory of its
   own rather than over the checkout. Two runs for one tag queue rather than race. These checks live
   in the workflow file, so a pushed tag on a commit that edits the workflow is not stopped by them.
-- **Dependency floors allowed versions with published advisories.** The floors are GitPython 3.1.62
-  (GHSA-239g-whfq-7xj9, repository content posing as the Git directory), Jinja2 3.1.6 and Pydantic
-  2.4; a test fails if one is lowered.
+- **Dependency floors allowed versions with published advisories.** The floors are GitPython 3.2.1
+  (GHSA-239g-whfq-7xj9, repository content posing as the Git directory; GHSA-83vg-56qc-22m7, a
+  submodule cloned into `.git/hooks` by `create_submodule`, which Reveille never calls), Jinja2
+  3.1.6 and Pydantic 2.4; a test fails if one is lowered.
 - **Closed before release, in what 0.9.0 lacks:** `core.worktree` could redirect `--repo` to another
   repository; `state` ran a filter with an empty name, suggested an unquoted tag and a tag name
   Git reads as another revision, and a pipe in a reflog or a worktree held it; a file name could

@@ -114,3 +114,30 @@ def test_the_lookup_writes_nothing_and_starts_no_program(repo: Path, tmp_path: P
     assert not marker.exists()
     subprocess.run(["git", "status"], cwd=repo, capture_output=True, check=True)
     assert marker.exists(), "positive control: plain git status runs core.fsmonitor"
+
+
+def test_a_start_dated_after_until_is_named_as_the_cause(repo: Path) -> None:
+    code, _, stderr = _brief(repo, "--from", "v2", "--until", "2026-02-01")
+
+    assert code == ExitCode.NEGATIVE, stderr
+    assert "No commits since v2 up to 2026-02-01 (--until). v2 is dated 2026-03-05, after it." in (
+        " ".join(stderr.split())
+    )
+
+
+def test_a_start_dated_on_the_until_day_is_not_said_to_be_after_it(repo: Path) -> None:
+    _, _, stderr = _brief(repo, "--from", "v2", "--until", "2026-03-05")
+
+    assert "No commits since v2" in stderr
+    assert "after it" not in stderr
+
+
+def test_a_start_dated_after_until_can_still_have_commits_before_it(repo: Path) -> None:
+    """Why it is a negative answer, not a refusal: dates need not follow the history."""
+    _commit(repo, "e", "2026-01-25")
+
+    code, document, stderr = _brief(repo, "--from", "v2", "--until", "2026-02-01")
+
+    assert code == ExitCode.SUCCESS, stderr
+    assert document is not None
+    assert document["totals"]["commits"] == 1

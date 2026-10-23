@@ -135,5 +135,40 @@ def test_an_empty_or_unreadable_commondir_names_no_main_tree(workspace: Path) ->
 
     commondir.write_bytes(b"\n")
     assert main_worktree_of(linked) is None
-    commondir.write_bytes(b"\xff\n")
+    commondir.write_bytes(b"\xff\n")  # read as Git reads it: a directory not there
     assert main_worktree_of(linked) is None
+
+
+def _hostile_name(tmp_path: Path, name: bytes) -> Path:
+    """Return a path named `name`, or skip where the file system refuses the bytes."""
+    path = Path(os.fsdecode(bytes(tmp_path) + b"/" + name))
+    try:
+        path.mkdir()
+        path.rmdir()
+    except (OSError, UnicodeEncodeError):
+        pytest.skip("this file system refuses the name")
+    return path
+
+
+def test_a_worktree_whose_path_is_not_utf8_names_its_main_tree(tmp_path: Path) -> None:
+    """Its `.git` file was decoded strictly, and the main tree was dropped."""
+    root = tmp_path / "team"
+    main = _repo(root / "api")
+    worktree = _hostile_name(root, b"wt\xff")
+    _git(main, "worktree", "add", "-q", str(worktree), "-b", "b")
+
+    assert main_worktree_of(worktree) == main.resolve()
+
+
+def test_a_separate_git_dir_whose_path_is_not_utf8_is_not_a_row(tmp_path: Path) -> None:
+    """The working tree that uses it is the row; the Git directory is not one of its own."""
+    root = tmp_path / "team"
+    root.mkdir()
+    store = _hostile_name(root, b"store\xff.git")
+    _git(root, "init", "-q", "-b", "main", "--separate-git-dir", str(store), str(root / "tree"))
+
+    result = CliRunner().invoke(app, ["repos", str(root), "--format", "json"])
+
+    assert result.exit_code == ExitCode.SUCCESS, result.output
+    paths = [row["path"] for row in json.loads(result.stdout)["repositories"]]
+    assert paths == ["tree"]

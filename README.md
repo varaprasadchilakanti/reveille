@@ -184,7 +184,7 @@ jobs:
       - run: pipx run reveille generate --output reveille-report.html
       - run: |
           { echo '```'; pipx run reveille summary; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: reveille-report
           path: reveille-report.html
@@ -258,7 +258,7 @@ reveille validate --repo /path/to/repository
 
 The repository in a few lines, naming no contributor (with one or two people, counts can identify
 someone). It reads no line counts, so it is quicker than `generate`: 1.02 s against 9.35 s on
-llama.cpp's 9,015-commit history (measured 2026-10-12, Git 2.55, warm cache).
+llama.cpp's 9,015-commit history (measured 2026-10-12, Reveille 0.9.0, Git 2.55, warm cache).
 
 ```bash
 reveille summary --format json

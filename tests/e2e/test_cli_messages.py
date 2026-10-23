@@ -139,8 +139,8 @@ def test_a_warning_starts_its_own_line(capsys: pytest.CaptureFixture[str]) -> No
     spinner.complete()
 
     err = capsys.readouterr().err
-    assert "WARNING" in err, "positive control: the warning was printed"
-    assert not re.search(r"[^\n]WARNING", err), err
+    assert "Warning:" in err, "positive control: the warning was printed"
+    assert not re.search(r"[^\n]Warning:", err), err
 
 
 @pytest.mark.e2e
@@ -257,3 +257,39 @@ def test_the_last_representable_date_is_refused_cleanly(tmp_path: Path, flag: st
     assert result.exit_code == ExitCode.CANNOT_RUN
     assert "Error:" in result.stderr and "9999-12-31" in result.stderr
     assert "defect" not in result.stderr
+
+
+@pytest.mark.e2e
+def test_a_warning_reads_as_the_cli_s_own_without_the_module_name(tmp_path: Path) -> None:
+    """It was printed as "WARNING reveille.adapters.git_reader: ...", naming a module."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    identity = ["-c", "user.name=A", "-c", "user.email=a@e.test"]
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    (repo / "a.txt").write_text("a", encoding="utf-8")
+    subprocess.run(["git", "add", "a.txt"], cwd=repo, check=True)
+    subprocess.run(["git", *identity, "commit", "-qm", "a"], cwd=repo, check=True)
+
+    result = CliRunner().invoke(app, ["summary", "--repo", str(repo), "--exclude-path", "nope/"])
+
+    assert result.exit_code == ExitCode.SUCCESS, result.stderr
+    assert "Warning: --exclude-path matched no file in the history of" in result.stderr
+    assert "reveille." not in result.stderr
+
+
+def test_a_debug_line_keeps_the_module_that_wrote_it() -> None:
+    """Positive control: only a warning loses the module name."""
+    import logging
+
+    from reveille.cli import _EscapingFormatter
+
+    formatter = _EscapingFormatter("%(levelname)s %(name)s: %(message)s")
+    debug = logging.makeLogRecord(
+        {"name": "reveille.x", "levelname": "DEBUG", "levelno": logging.DEBUG, "msg": "m"}
+    )
+    warning = logging.makeLogRecord(
+        {"name": "reveille.x", "levelname": "WARNING", "levelno": logging.WARNING, "msg": "m"}
+    )
+
+    assert formatter.format(debug) == "DEBUG reveille.x: m"
+    assert formatter.format(warning) == "Warning: m"

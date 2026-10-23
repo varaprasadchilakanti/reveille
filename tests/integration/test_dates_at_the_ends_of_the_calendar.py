@@ -106,3 +106,64 @@ def test_a_commit_in_the_last_week_of_the_calendar_is_drawn(tmp_path: Path) -> N
 
     assert result.exit_code == ExitCode.SUCCESS, result.stderr
     assert "9999-12-27" in out.read_text(encoding="utf-8")
+
+
+def _commit_dated(repo: Path, when: str, message: str) -> None:
+    """Commit dated `when` (UTC), written raw: Git's date parser stops at 2099."""
+    import datetime
+
+    stamp = int(datetime.datetime.fromisoformat(f"{when}T12:00:00+00:00").timestamp())
+    tree = subprocess.run(
+        ["git", "rev-parse", "HEAD^{tree}"], cwd=repo, check=True, capture_output=True, text=True
+    ).stdout.strip()
+    parent = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True
+    ).stdout.strip()
+    body = (
+        f"tree {tree}\nparent {parent}\nauthor A <a@e.test> {stamp} +0000\n"
+        f"committer A <a@e.test> {stamp} +0000\n\n{message}\n\nCo-authored-by: Bea <b@e.test>\n"
+    )
+    sha = subprocess.run(
+        ["git", "hash-object", "-t", "commit", "-w", "--stdin"],
+        cwd=repo,
+        input=body,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    subprocess.run(["git", "update-ref", "refs/heads/main", sha], cwd=repo, check=True)
+
+
+@pytest.mark.parametrize(
+    ("window", "expected"),
+    [
+        (("--until", "2099-12-31"), 1),
+        (("--until", "2150-01-01"), 1),
+        (("--until", "2150-06-01"), 2),
+        (("--since", "2100-01-01", "--until", "2200-01-01"), 1),
+        (("--since", "2150-06-02", "--until", "2200-01-01"), 0),
+        (("--since", "2100-01-01", "--until", "2150-05-31"), 0),
+    ],
+)
+def test_a_commit_dated_past_2099_is_bounded_by_the_window(
+    workspace: Path, window: tuple[str, ...], expected: int
+) -> None:
+    """Past 2099 Git's bound was dropped (`--until`) or moved to 2099 (`--since`)."""
+    _commit_dated(workspace / "r", "2150-06-01", "far")
+
+    code, commits = _commits(workspace / "r", *window)
+
+    assert code == (ExitCode.SUCCESS if expected else ExitCode.NEGATIVE)
+    assert commits == expected
+
+
+def test_a_co_author_past_the_window_is_not_credited(workspace: Path) -> None:
+    _commit_dated(workspace / "r", "2150-06-01", "far")
+
+    result = CliRunner().invoke(
+        app,
+        ["summary", "--repo", str(workspace / "r"), "--format", "json", "--until", "2099-12-31"],
+    )
+
+    assert result.exit_code == ExitCode.SUCCESS, result.stderr
+    assert json.loads(result.stdout)["totals"]["commits_with_co_authors"] == 0

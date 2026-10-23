@@ -65,6 +65,8 @@ _MODULE_RULES: dict[str, frozenset[str]] = {
     "reveille.init": _IO_AND_PRESENTATION,
     # Writes a file by replacing its name; the standard library only.
     "reveille.replacing": _IO_AND_PRESENTATION,
+    # Tells a Git directory by its files; the standard library only.
+    "reveille.git_directory": _IO_AND_PRESENTATION,
     # Writes undecoded bytes as escapes in JSON; the standard library only.
     "reveille.undecoded": _IO_AND_PRESENTATION,
     # The text `reveille skill` prints; nothing to read or render.

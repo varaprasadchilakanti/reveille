@@ -23,14 +23,15 @@ import threading
 import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Annotated, Any, ClassVar, NoReturn, TextIO, cast
+from typing import Annotated, Any, ClassVar, NoReturn, TextIO, cast, get_args
 
 import typer
-from typer.core import TyperGroup
+from typer.core import TyperCommand, TyperGroup
 from typer.main import get_command
+from typer.models import CommandFunctionType
 
 from reveille import __version__
-from reveille.config import OutputFormat, ReportConfig, ReportConfigKwargs
+from reveille.config import OutputFormat, ReportConfig, ReportConfigKwargs, output_path
 from reveille.domain.models import ProgressEvent
 from reveille.domain.repositories import MAX_SEARCH_DEPTH
 from reveille.exceptions import (
@@ -39,7 +40,8 @@ from reveille.exceptions import (
     NoRepositoryReadError,
     ReveilleError,
 )
-from reveille.undecoded import json_text
+from reveille.git_directory import holds_a_git_directory, is_a_linked_worktree
+from reveille.undecoded import json_text, quoted
 
 _logger = logging.getLogger("reveille.cli")
 
@@ -165,8 +167,53 @@ def _say(text: str, *, nl: bool = True, answer: bool = True) -> None:
         raise typer.Exit(code=ExitCode.SUCCESS) from exc
     except OSError as exc:
         _discard_stdout()
+        if not answer:
+            return
         _err(f"Error: the output could not be written to standard output: {exc.strerror}.")
         raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
+
+
+def _show_help(ctx: Any) -> None:
+    """Write a command's help to stdout, failing as `_say` does when it cannot be written.
+
+    Typer's help is printed by Rich from inside `get_help`, so the writing is
+    caught around that call, not around an echo of what it returns.
+
+    Args:
+        ctx: The Click context of the command whose help is wanted.
+
+    Raises:
+        typer.Exit: SUCCESS for a reader that stopped, CANNOT_RUN when the help
+            cannot be written.
+    """
+    if sys.stdout is None:
+        _err("Error: standard output is closed, so the answer has nowhere to go.")
+        raise typer.Exit(code=ExitCode.CANNOT_RUN)
+    try:
+        text = ctx.get_help()
+        if text:  # without Rich, Click returns the help instead of printing it
+            typer.echo(text)
+        sys.stdout.flush()
+    except BrokenPipeError as exc:
+        _discard_stdout()
+        raise typer.Exit(code=ExitCode.SUCCESS) from exc
+    except SystemExit as exc:
+        # Rich's own answer to a broken pipe (`Console.on_broken_pipe`) is exit 1,
+        # the negative answer; a reader that stopped early chose to, so it is 0.
+        if exc.code != 1:
+            raise
+        raise typer.Exit(code=ExitCode.SUCCESS) from exc
+    except OSError as exc:
+        _discard_stdout()
+        _err(f"Error: the output could not be written to standard output: {exc.strerror}.")
+        raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
+
+
+def _help_option_callback(ctx: Any, _param: Any, value: bool) -> None:
+    """Show the help for `--help` or `-h`, through `_show_help`."""
+    if value and not ctx.resilient_parsing:
+        _show_help(ctx)
+        ctx.exit()
 
 
 def _discard_stdout() -> None:
@@ -214,6 +261,9 @@ def _describe_config_error(exc: Exception) -> str:
     described = []
     for error in errors():
         message = str(error.get("msg", "")).removeprefix("Value error, ")
+        if error.get("type") == "literal_error":
+            # A choice, as `--format` refusals say: name the value given.
+            message += f", not {error.get('input')!r}"
         fields = [str(part) for part in error.get("loc", ())]
         option = ", ".join(_option_label(f) for f in fields)
         described.append(f"{option}: {message}" if option else message)
@@ -237,7 +287,11 @@ def _option_label(field: str) -> str:
 
 
 class _EscapingFormatter(logging.Formatter):
-    """A log formatter that escapes terminal control characters in quoted values."""
+    """A log formatter that escapes terminal control characters in quoted values.
+
+    A warning reads as the CLI's own do, `Warning: ...`; a lower level keeps the
+    module that wrote it, for whoever is diagnosing with `--verbose`.
+    """
 
     def format(self, record: logging.LogRecord) -> str:
         """Format the record, then escape it.
@@ -248,6 +302,8 @@ class _EscapingFormatter(logging.Formatter):
         Returns:
             The formatted, escaped line.
         """
+        if record.levelno >= logging.WARNING:
+            return _printable(f"{record.levelname.capitalize()}: {record.getMessage()}")
         return _printable(super().format(record))
 
 
@@ -327,6 +383,8 @@ def _exit_as_defect(exc: Exception) -> NoReturn:
     """
     _logger.debug("Unexpected error", exc_info=True)
     _err(f"Error: {type(exc).__name__}: {exc}. This is a defect in Reveille; please report it.")
+    # A last flush of a stdout that cannot be written would turn the exit into 120.
+    _discard_stdout()
     sys.exit(ExitCode.CANNOT_RUN)
 
 
@@ -351,7 +409,7 @@ def _file_path(value: str | Path) -> Path:
             f"{text!r} ends with {text[-1]!r}, so it names a directory, not a file. "
             "Give a file name in it."
         )
-    return Path(text)
+    return output_path(text)
 
 
 #: The commands whose stderr is JSON lines under `--format json`.
@@ -393,7 +451,24 @@ class _Group(TyperGroup):
             What Click's parser leaves for the subcommand.
         """
         ctx.meta["reveille.words"] = list(args)
+        if not args and self.no_args_is_help and not ctx.resilient_parsing:
+            # No command is not a command: the help is given, and the exit is 2 however
+            # the help went.
+            with contextlib.suppress(typer.Exit):
+                _show_help(ctx)
+            raise typer.Exit(code=ExitCode.CANNOT_RUN)
         return super().parse_args(ctx, args)
+
+    def get_help_option(self, ctx: Any) -> Any:
+        """Return `--help`, shown through `_show_help`.
+
+        Args:
+            ctx: The group's context.
+
+        Returns:
+            The help option.
+        """
+        return _through_show_help(super().get_help_option(ctx))
 
     def invoke(self, ctx: Any) -> Any:
         """Run the subcommand; under `--format json`, its usage errors are JSON too.
@@ -423,6 +498,28 @@ class _Group(TyperGroup):
                 "--format json` for its options."
             )
             raise typer.Exit(ExitCode.CANNOT_RUN) from exc
+
+
+def _through_show_help(option: Any) -> Any:
+    """Point a help option at `_show_help`; None stays None."""
+    if option is not None:
+        option.callback = _help_option_callback
+    return option
+
+
+class _Command(TyperCommand):
+    """A command whose `--help` is shown through `_show_help`."""
+
+    def get_help_option(self, ctx: Any) -> Any:
+        """Return `--help`, shown through `_show_help`.
+
+        Args:
+            ctx: The command's context.
+
+        Returns:
+            The help option.
+        """
+        return _through_show_help(super().get_help_option(ctx))
 
 
 class _App(typer.Typer):
@@ -455,6 +552,21 @@ class _App(typer.Typer):
             sys.exit(ExitCode.CANNOT_RUN)
         except Exception as exc:
             _exit_as_defect(exc)
+
+    def command(
+        self, name: str | None = None, *, cls: type[TyperCommand] | None = None, **kwargs: Any
+    ) -> Callable[[CommandFunctionType], CommandFunctionType]:
+        """Register a command, as `_Command` unless another class is given.
+
+        Args:
+            name: The command's name.
+            cls: Its class; `_Command` when not given.
+            **kwargs: As for `typer.Typer.command`.
+
+        Returns:
+            Typer's decorator.
+        """
+        return super().command(name, cls=cls or _Command, **kwargs)
 
 
 app = _App(
@@ -658,7 +770,7 @@ def main(
 ) -> None:
     """Offline reports of a Git repository's history."""
     _stderr_json["on"] = False
-    _exit_cleanly_on_sigterm()
+    _exit_cleanly_when_stopped()
 
 
 def _stop(signum: int, frame: object) -> None:
@@ -666,17 +778,19 @@ def _stop(signum: int, frame: object) -> None:
     raise SystemExit(128 + signum)
 
 
-def _exit_cleanly_on_sigterm() -> None:
-    """Make SIGTERM exit 143 by raising, so a half-written temporary file is removed.
+def _exit_cleanly_when_stopped() -> None:
+    """Make SIGTERM and SIGHUP exit 128 + N by raising, so a half-written file is removed.
 
     By default the process stops where it is, and the `.tmp` beside the output
-    stays. A handler someone else installed is left in place; only the main
-    thread can install one.
+    stays. SIGHUP is sent when a terminal closes; Windows has none. A handler
+    someone else installed is left in place; only the main thread can install one.
     """
     if threading.current_thread() is not threading.main_thread():
         return
-    if signal.getsignal(signal.SIGTERM) is signal.SIG_DFL:
-        signal.signal(signal.SIGTERM, _stop)
+    for name in ("SIGTERM", "SIGHUP"):
+        signum = getattr(signal, name, None)
+        if signum is not None and signal.getsignal(signum) is signal.SIG_DFL:
+            signal.signal(signum, _stop)
 
 
 def _root(repo: Path) -> Path:
@@ -725,7 +839,7 @@ def _git_directories(repo_path: Path) -> list[Path]:
         if not pointer.startswith("gitdir:"):
             return []
         git_dir = (repo_path / pointer.removeprefix("gitdir:").strip()).resolve()
-    elif (repo_path / "HEAD").is_file() and (repo_path / "objects").is_dir():
+    elif holds_a_git_directory(repo_path):
         git_dir = repo_path.resolve()
     else:
         return []
@@ -827,26 +941,27 @@ def _refuse_what_a_config_cannot_replace(output: Path, output_format: str) -> No
 def _in_a_git_directory(path: Path) -> bool:
     """Return whether a directory above `path` is a Git directory, any repository's.
 
-    Git takes a directory holding `HEAD`, `objects` and `refs` as one; a bare
-    repository's has no `.git` in its name, and need not be the one read.
+    Told by its files, as Git tells one; a bare repository's has no `.git` in its
+    name, and need not be the one read. The walk stops at a linked worktree's
+    root: its files are a checkout, though Git may keep it inside its directory.
 
     Args:
         path: A resolved path.
 
     Returns:
-        True when a parent of `path` holds all three.
+        True when a parent of `path`, below any linked worktree root, is one.
     """
     for parent in path.parents:
-        try:
-            if (
-                (parent / "HEAD").is_file()
-                and (parent / "objects").is_dir()
-                and (parent / "refs").is_dir()
-            ):
-                return True
-        except OSError:
-            continue
+        if holds_a_git_directory(parent):
+            return True
+        if is_a_linked_worktree(parent):
+            return False
     return False
+
+
+def _linked_worktree_of(path: Path) -> Path | None:
+    """Return the root of the linked worktree a resolved `path` is in, or None."""
+    return next((parent for parent in path.parents if is_a_linked_worktree(parent)), None)
 
 
 def _validate_output_path(
@@ -892,8 +1007,12 @@ def _validate_output_path(
 
     # Writing into a Git directory can corrupt the repository, so it is
     # refused whoever chose the path: flag, config file, or symlink.
+    # A linked worktree's checkout may lie inside its Git directory; its files are not Git's.
+    checkout = _linked_worktree_of(output.resolve())
     inside_git_dir = any(
-        output.resolve().is_relative_to(git_dir) for git_dir in _git_directories(repo_path)
+        output.resolve().is_relative_to(git_dir)
+        and not (checkout is not None and checkout.is_relative_to(git_dir))
+        for git_dir in _git_directories(repo_path)
     )
     if (
         inside_git_dir
@@ -1077,10 +1196,12 @@ def _run_report(report_config: ReportConfig, *, to_stdout: bool, quiet: bool = F
             written = generate_report(report_config, on_progress=progress, on_notice=notices.append)
     except EmptyRepositoryError as exc:
         spinner.complete()
+        _print_notices(notices)
         _err(f"Error: {exc}")
         raise typer.Exit(code=ExitCode.NEGATIVE) from exc
     except ReveilleError as exc:
         spinner.complete()
+        _print_notices(notices)
         _err(f"Error: {exc}")
         raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
     spinner.complete()
@@ -1266,6 +1387,7 @@ def generate(
     from reveille.config import describe_unknown_keys, read_config_file
 
     _configure_logging(verbose)
+    _check_report_format(output_format)
 
     config_kwargs: ReportConfigKwargs = cast(ReportConfigKwargs, {})
     _auto_discovered = config is None
@@ -1407,6 +1529,9 @@ def _run_query(produce: Callable[[Callable[[str], None]], str]) -> None:
     try:
         text = produce(notices.append)
     except EmptyRepositoryError as exc:
+        # A note can change how a negative answer reads (a shallow clone, a
+        # directory not searched), so it is given with it.
+        _print_notices(notices)
         _err(f"Error: {exc}")
         raise typer.Exit(code=ExitCode.NEGATIVE) from exc
     except NoRepositoryReadError as exc:
@@ -1419,6 +1544,7 @@ def _run_query(produce: Callable[[Callable[[str], None]], str]) -> None:
         _err(f"Error: {exc}")
         raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
     except ReveilleError as exc:
+        _print_notices(notices)
         _err(f"Error: {exc}")
         raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
     _print_notices(notices)
@@ -1433,8 +1559,18 @@ def _check_query_format(output_format: str, allowed: tuple[str, ...] = ("text", 
     _stderr_json["on"] = output_format == "json" and "json" in allowed
     if output_format not in allowed:
         choices = ", ".join(allowed[:-1]) + f" or {allowed[-1]}"
-        _err(f"Error: --format must be {choices}, not {output_format!r}.")
+        _err(f"Error: --format must be {choices}, not {quoted(output_format)}.")
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
+
+
+def _check_report_format(output_format: str | None) -> None:
+    """Refuse a `generate --format` it does not offer, as the other commands refuse one.
+
+    Only a refused one goes through `_check_query_format`: a valid `json` there would
+    turn stderr to JSON, which `generate` does not do.
+    """
+    if output_format is not None and output_format not in get_args(OutputFormat):
+        _check_query_format(output_format, get_args(OutputFormat))
 
 
 _RepoOption = Annotated[
@@ -1544,7 +1680,7 @@ def state(
     ] = 10,
     verbose: _VerboseOption = False,
 ) -> None:
-    """Say where the repository stands now: branch, work in progress, changes, worktrees.
+    """Say where the repository stands now: branch, work in progress, changes, latest tag.
 
     Names no author, but lists local paths (changed files and worktree
     directories, which can contain your login name), the current branch, its
@@ -1880,7 +2016,7 @@ def help(
     """Display help information for all available commands, or for one."""
     root = ctx.parent if ctx.parent is not None else ctx
     if command is None:
-        typer.echo(root.get_help())
+        _show_help(root)
         return
     group = root.command
     sub = group.get_command(root, command) if isinstance(group, TyperGroup) else None
@@ -1888,7 +2024,7 @@ def help(
         known = ", ".join(group.list_commands(root)) if isinstance(group, TyperGroup) else ""
         _err(f"Error: no command {command!r}; the commands are {known}.")
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
-    typer.echo(sub.get_help(type(ctx)(sub, info_name=command, parent=root)))
+    _show_help(type(ctx)(sub, info_name=command, parent=root))
 
 
 def _parse_date(value: str, flag_name: str) -> datetime.date:

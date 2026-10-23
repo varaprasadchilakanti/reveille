@@ -154,3 +154,50 @@ def test_a_head_that_is_a_directory_is_no_git_directory(tmp_path: Path) -> None:
     write_replacing(tmp_path / "refs" / "r.html", "<html>", encoding="utf-8")
 
     assert (tmp_path / "refs" / "r.html").is_file()
+
+
+_AS_ROOT = hasattr(os, "geteuid") and os.geteuid() == 0
+
+
+@pytest.mark.skipif(_AS_ROOT or not hasattr(os, "O_PATH"), reason="root reads any directory")
+@pytest.mark.parametrize("unreadable", ["out", "."], ids=["its directory", "one above"])
+def test_a_directory_that_cannot_be_listed_is_still_written_into(
+    tmp_path: Path, unreadable: str
+) -> None:
+    """Making a file needs write and search permission; listing the directory is not needed."""
+    out = tmp_path / "out"
+    out.mkdir()
+    locked = tmp_path / unreadable
+    locked.chmod(0o300)
+    try:
+        write_replacing(out / "r.html", "x", encoding="utf-8")
+    finally:
+        locked.chmod(0o700)
+
+    assert (out / "r.html").read_text(encoding="utf-8") == "x"
+
+
+@pytest.mark.skipif(_AS_ROOT or not hasattr(os, "O_PATH"), reason="root reads any directory")
+def test_a_git_directory_that_cannot_be_listed_is_still_refused(tmp_path: Path) -> None:
+    git = tmp_path / ".git"
+    for name in ("objects", "refs"):
+        (git / name).mkdir(parents=True)
+    (git / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    git.chmod(0o300)
+    try:
+        with pytest.raises(OSError, match="inside a Git directory"):
+            write_replacing(git / "objects" / "r.html", "x", encoding="utf-8")
+    finally:
+        git.chmod(0o700)
+
+
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="links")
+def test_a_git_directory_whose_head_link_dangles_is_refused(tmp_path: Path) -> None:
+    """Git reads a `HEAD` linked to a branch only `packed-refs` holds."""
+    git = tmp_path / "bare.git"
+    for name in ("objects", "refs"):
+        (git / name).mkdir(parents=True)
+    (git / "HEAD").symlink_to("refs/heads/main")
+
+    with pytest.raises(OSError, match="inside a Git directory"):
+        write_replacing(git / "objects" / "r.html", "x", encoding="utf-8")

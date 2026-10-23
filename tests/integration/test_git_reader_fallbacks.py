@@ -65,16 +65,65 @@ def test_old_git_lists_worktrees_without_z(repo: Path, monkeypatch: pytest.Monke
     assert [w.path for w in reader._worktrees()] == ["/r", "/w"]
 
 
-def test_worktrees_that_cannot_be_listed_are_none(
+def test_worktrees_that_cannot_be_listed_cannot_run(
     repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Not "no other worktrees": that is an answer, and Git did not give it."""
     reader = GitReader(repo)
     real = reader._git()
     monkeypatch.setattr(
         reader, "_git", lambda extra=(): _Runner(real, {"worktree-z": 129, "worktree": 128})
     )
 
-    assert reader._worktrees() == []
+    with pytest.raises(RepositoryError, match="Git could not list the worktrees: exit 128"):
+        reader.read_state()
+
+
+def _tag(repo: Path, name: str) -> None:
+    subprocess.run(["git", "update-ref", f"refs/tags/{name}", "HEAD"], cwd=repo, check=True)
+
+
+@pytest.mark.parametrize("failing", ["describe", "rev_list"])
+def test_a_tag_that_cannot_be_read_cannot_run(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, failing: str
+) -> None:
+    """Not "no tag": state would say so, and brief would refuse for the wrong reason."""
+    _tag(repo, "v1")
+    reader = GitReader(repo)
+    real = reader._git()
+    monkeypatch.setattr(reader, "_git", lambda extra=(): _Runner(real, {failing: 128}))
+
+    with pytest.raises(RepositoryError, match=r"Git could not .* exit 128"):
+        reader.read_state()
+
+
+def test_a_tag_lookup_that_cannot_run_is_not_no_tag(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _tag(repo, "v1")
+    reader = GitReader(repo)
+    real = reader._git()
+    monkeypatch.setattr(reader, "_git", lambda extra=(): _Runner(real, {"describe": 128}))
+
+    with pytest.raises(RepositoryError, match="Git could not find the latest tag"):
+        reader.latest_tag("HEAD")
+
+
+def test_no_tag_is_none_when_git_finds_none(repo: Path) -> None:
+    assert GitReader(repo).latest_tag("HEAD") is None
+
+
+def test_a_tag_on_another_history_is_none(repo: Path) -> None:
+    """Git's message differs from "no names found", and is translated: neither is read."""
+    _tag(repo, "elsewhere")
+    subprocess.run(["git", "checkout", "-q", "--orphan", "other"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "-c", "user.name=A", "-c", "user.email=a@e.test", "commit", "-qm", "b"],
+        cwd=repo,
+        check=True,
+    )
+
+    assert GitReader(repo).latest_tag("HEAD") is None
 
 
 def test_an_unreadable_git_version_is_none(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:

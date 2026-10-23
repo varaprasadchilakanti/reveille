@@ -23,7 +23,6 @@ import itertools
 import json
 import math
 import re
-import shlex
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable, Sequence
 from html import unescape
@@ -69,7 +68,7 @@ from reveille.domain.state import QUIET_BRANCH_DAYS, RepositoryState, Worktree
 from reveille.domain.summary import Finding, longest_quiet_run, summarise
 from reveille.exceptions import OutputPathError, RenderError
 from reveille.replacing import write_replacing
-from reveille.undecoded import json_text
+from reveille.undecoded import json_text, shell_word
 
 # Label of the aggregated residual slice, referenced where its colour is chosen.
 _OTHER_LABEL: str = "Other Contributors"
@@ -681,9 +680,13 @@ class Renderer:
             f"from {window[0].isoformat()} to {answer.last_changed.isoformat()}, "
             f"in a window ending {window[1].isoformat()}.",
         ]
-        # A subset of the authors; with every author in it, it repeats them.
+        # A subset of the authors; with every author in it, it repeats them. It is in
+        # alphabetical order, so the line says so: read as a list, it looks ranked by date.
         if len(answer.recently_active) < len(answer.authors):
-            lines.append(f"Changed it most recently: {names(answer.recently_active)}.")
+            lines.append(
+                f"The {len(answer.recently_active):,} who changed it most recently, "
+                f"alphabetically: {names(answer.recently_active)}."
+            )
         if answer.authors:
             lines.append(f"Authors: {names(answer.authors)}.")
         if answer.automated:
@@ -1297,19 +1300,18 @@ def _repository_line(row: RepositoryActivity) -> str:
 
 
 def _repository_markdown_row(row: RepositoryActivity) -> str:
-    """One repository's row in a Markdown table."""
-    status = f"not read: {row.reason}" if row.status == "not_read" else row.status
+    """One repository's row in a Markdown table; one not read has no counts to give."""
+    unread = row.status == "not_read"
     last = row.last_commit.isoformat() if row.last_commit else ""
     days = "" if row.days_since_last_commit is None else f"{row.days_since_last_commit:,}"
     linked = f" (worktree of {_md(row.worktree_of)})" if row.worktree_of else ""
+    counts = (row.commits, row.people, row.automated_accounts)
     cells = [
         _md(row.path) + linked,
-        _md(status) if row.status == "not_read" else status,
+        f"not read: {_md(row.reason or '')}" if unread else row.status,
         last,
         days,
-        f"{row.commits:,}",
-        f"{row.people:,}",
-        f"{row.automated_accounts:,}",
+        *("" if unread else f"{count:,}" for count in counts),
     ]
     return "| " + " | ".join(cell.replace("|", "\\|") for cell in cells) + " |"
 
@@ -1365,7 +1367,7 @@ def _brief_from(tag: str) -> str:
     shadow, or one `--from` would refuse as an option, is given by its full ref name.
     """
     revision = f"refs/tags/{tag}" if _SHADOWED_TAG.fullmatch(tag) else tag
-    return f"reveille brief --from {shlex.quote(revision)}"
+    return f"reveille brief --from {shell_word(revision)}"
 
 
 def _counted(n: int, singular: str) -> str:
@@ -2485,6 +2487,7 @@ def _state_document(
                 "locked": w.locked,
                 "prunable": w.prunable,
                 "current": w.current,  # schema 1.3
+                "bare": w.bare,  # schema 1.3
             }
             for w in state.worktrees[:limit]
         ],
@@ -2504,11 +2507,20 @@ def _state_document(
     }
 
 
-def _other_worktrees(state: RepositoryState) -> list[Worktree]:
-    """The worktrees other than the one read; all but the main one if none is marked."""
+def _checked_out(worktree: Worktree) -> str:
+    """What a worktree has checked out: its branch, `detached`, or `bare`."""
+    return "bare" if worktree.bare else worktree.branch or "detached"
+
+
+def _other_worktrees(state: RepositoryState) -> tuple[list[Worktree], str]:
+    """The worktrees other than the one read, and what to call them.
+
+    When none is marked, which one was read is not known, so all are listed as
+    worktrees, none as "other".
+    """
     if any(w.current for w in state.worktrees):
-        return [w for w in state.worktrees if not w.current]
-    return list(state.worktrees[1:])
+        return [w for w in state.worktrees if not w.current], "other worktree"
+    return list(state.worktrees) if len(state.worktrees) > 1 else [], "worktree"
 
 
 def _state_lines(
@@ -2533,9 +2545,10 @@ def _state_lines(
         lines.append(f"Conflicted: {_listed(state.conflicted, limit)}.")
     lines.extend(_working_tree_lines(state, limit))
     extra = ["1 stash" if state.stashes == 1 else f"{state.stashes:,} stashes"]
-    others = [f"{w.path} ({w.branch or 'detached'})" for w in _other_worktrees(state)]
+    worktrees, called = _other_worktrees(state)
+    others = [f"{w.path} ({_checked_out(w)})" for w in worktrees]
     if others:
-        extra.append(f"{_counted(len(others), 'other worktree')}: {_listed(others, limit)}")
+        extra.append(f"{_counted(len(others), called)}: {_listed(others, limit)}")
     lines.append("; ".join(extra) + ".")
     lines.append(
         f"Branches: {state.branches:,} local, {state.branches_merged:,} merged into this commit, "
@@ -2721,9 +2734,10 @@ def _state_markdown(state: RepositoryState, name: str, history_replaced: bool, l
         if items and not (state.bare or state.working_tree_unread):
             lines.append(f"  - {label}: {_md_listed(items, limit)}")
     lines.append(f"- **Stashes:** {state.stashes:,}")
-    others = [f"{w.path} ({w.branch or 'detached'})" for w in _other_worktrees(state)]
+    worktrees, called = _other_worktrees(state)
+    others = [f"{w.path} ({_checked_out(w)})" for w in worktrees]
     if others:
-        lines.append(f"- **Other worktrees:** {_md_listed(others, limit)}")
+        lines.append(f"- **{called.capitalize()}s:** {_md_listed(others, limit)}")
     lines.append(
         f"- **Branches:** {state.branches:,} local, {state.branches_merged:,} merged into this "
         f"commit, {state.branches_quiet:,} with no commit in {QUIET_BRANCH_DAYS} days before it"
