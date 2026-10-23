@@ -124,6 +124,19 @@ def test_a_refused_repository_is_a_row_with_its_reason_and_the_rest_are_read(
     assert str(workspace) not in str(refused["reason"])
 
 
+def test_a_markdown_row_not_read_gives_no_counts(workspace: Path) -> None:
+    """It gave 0 commits, 0 people and 0 automated accounts, counts never made."""
+    code, out, err = _repos(workspace, "--format", "markdown")
+
+    assert code == ExitCode.SUCCESS, err
+    [row] = [line for line in out.splitlines() if line.startswith("| `refused` |")]
+    cells = [cell.strip() for cell in row.strip("|").split(" | ")]
+    assert cells[1].startswith("not read: `") and "partial clone" in cells[1], cells
+    assert cells[2:] == [""] * 5, cells
+    [api] = [line for line in out.splitlines() if line.startswith("| `api` |")]
+    assert api.endswith("| 3 | 2 | 1 |"), "positive control: a row read gives its counts"
+
+
 def test_a_reason_names_no_path_outside_the_directory(tmp_path: Path) -> None:
     """A row is meant to be shared, and a path on this machine can hold a login name."""
     root = tmp_path / "ws"

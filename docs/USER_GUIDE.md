@@ -407,6 +407,8 @@ The rules are stated in every format ([ADR 0026](adr/0026-many-repositories-one-
   is reported once on stderr.
 - **A repository that cannot be read** (a partial clone, a SHA-256 repository, a corrupt one) is a
   row with status `not_read` and the reason; the others are still read, and the exit code is 0.
+  Its counts are 0 in JSON and CSV, where the status says they were not made, and blank in
+  Markdown and absent from text.
   When none of the repositories found could be read, the rows are still written and the exit code
   is 2, because there is no answer about any of them
   ([ADR 0028](adr/0028-repos-exits-2-when-nothing-was-read.md)). A repository with no commits was

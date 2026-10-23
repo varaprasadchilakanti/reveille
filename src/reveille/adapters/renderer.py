@@ -1300,19 +1300,18 @@ def _repository_line(row: RepositoryActivity) -> str:
 
 
 def _repository_markdown_row(row: RepositoryActivity) -> str:
-    """One repository's row in a Markdown table."""
-    status = f"not read: {row.reason}" if row.status == "not_read" else row.status
+    """One repository's row in a Markdown table; one not read has no counts to give."""
+    unread = row.status == "not_read"
     last = row.last_commit.isoformat() if row.last_commit else ""
     days = "" if row.days_since_last_commit is None else f"{row.days_since_last_commit:,}"
     linked = f" (worktree of {_md(row.worktree_of)})" if row.worktree_of else ""
+    counts = (row.commits, row.people, row.automated_accounts)
     cells = [
         _md(row.path) + linked,
-        _md(status) if row.status == "not_read" else status,
+        f"not read: {_md(row.reason or '')}" if unread else row.status,
         last,
         days,
-        f"{row.commits:,}",
-        f"{row.people:,}",
-        f"{row.automated_accounts:,}",
+        *("" if unread else f"{count:,}" for count in counts),
     ]
     return "| " + " | ".join(cell.replace("|", "\\|") for cell in cells) + " |"
 
