@@ -122,7 +122,8 @@ before release.
 - **`repos` exits 2 when it found repositories and could read none of them.** It used to exit 0,
   the affirmative answer, over a table of `not_read` rows. The rows are still written, since each
   says why; one readable repository, even an empty one, keeps exit 0
-  ([ADR 0028](docs/adr/0028-repos-exits-2-when-nothing-was-read.md)).
+  ([ADR 0028](docs/adr/0028-repos-exits-2-when-nothing-was-read.md)). None found where a directory
+  could not be listed is exit 2 too, not "none found".
 - **`init -o -` prints the file on stdout**, as `generate -o -` does, instead of writing a file
   named `-`.
 - **A key or table in `reveille.toml` that Reveille does not read is named in a note.** A
@@ -197,6 +198,9 @@ before release.
   `reveille` still exits 2. `generate -o <file>` with a full stdout exited 2 though the file was
   written; the path it prints is a confirmation, left out as with a closed stdout, and the exit is
   0.
+- **A shallow clone's empty window was a plain "no".** `summary`, `brief`, `who-changed` and
+  `generate` exited 1 without the note that the clone holds only part of the history, which may be
+  why. The note is now given with the answer; a note raised before any refusal is printed with it.
 - **A path that is not UTF-8 reached JSON as a lone surrogate** (`"caf\udcff.txt"` from
   `who-changed`), which a strict JSON parser refuses. Such a byte is written as `\xNN`
   (`caf\xff.txt`), in JSON as text output writes it, in `who-changed`, `state` and `repos` and in

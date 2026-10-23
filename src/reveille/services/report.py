@@ -23,7 +23,7 @@ from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 from reveille import __version__
 from reveille.adapters.git_reader import (
@@ -167,7 +167,9 @@ def who_changed_text(
     tip = reader.resolve_head_sha(config.branch)
     cutoff = _today() if config.until is None and not config.deterministic else None
     try:
-        commits = reader.read_commits(
+        commits = _read_noting_shallow(
+            reader,
+            on_notice,
             branch=config.branch,
             since=config.since,
             until=config.until,
@@ -191,7 +193,7 @@ def who_changed_text(
             f"{_count(reader.commits_dated_after)} dated after {cutoff.isoformat()} and not counted.",
         )
     if reader.is_shallow():
-        _notify(on_notice, "This is a shallow clone, so only the history it holds is analysed.")
+        _notify(on_notice, _SHALLOW_NOTE)
     first = min(c.timestamp.date() for c in commits)
     window_end = cutoff if cutoff is not None else _resolve_window_end(config, commits)
     window = (max(config.since, first) if config.since else first, window_end)
@@ -257,6 +259,15 @@ def repositories_text(
     except OverflowError:
         start = datetime.date.min  # a window reaching past the calendar's first day
     found, unreadable = find_repositories(directory, depth)
+    if not found and unreadable:
+        # A directory not listed may hold one, so "none found" is not an answer.
+        raise RepositoryError(
+            f"No Git repository found in '{directory}' within {depth} "
+            f"{'level' if depth == 1 else 'levels'}, but "
+            f"{'1 directory' if len(unreadable) == 1 else f'{len(unreadable):,} directories'} "
+            "could not be listed, and may hold one. "
+            "Make it readable, or search a directory that is."
+        )
     if unreadable:
         _notify(
             on_notice,
@@ -602,7 +613,9 @@ def brief_text(
     )
     point = from_revision if from_revision is not None else str(config.since)
     try:
-        commits = reader.read_commits(
+        commits = _read_noting_shallow(
+            reader,
+            on_notice,
             branch=config.branch,
             since=None if from_commit is not None else config.since,
             until=config.until,
@@ -634,7 +647,7 @@ def brief_text(
             f"{_count(reader.commits_dated_after)} dated after {cutoff.isoformat()} and not counted.",
         )
     if reader.is_shallow():
-        _notify(on_notice, "This is a shallow clone, so only the history it holds is analysed.")
+        _notify(on_notice, _SHALLOW_NOTE)
     tip = reader.resolve_head_sha(config.branch) or ""
     if from_commit is not None and not reader.is_ancestor(from_commit, tip):
         _notify(
@@ -703,7 +716,9 @@ def build_report_data(
     # figure, stated, and never stretch the window. An explicit `--until` is
     # taken as asked; deterministic mode closes on the last commit (ADR 0008).
     cutoff = _today() if config.until is None and not config.deterministic else None
-    commits = reader.read_commits(
+    commits = _read_noting_shallow(
+        reader,
+        on_notice,
         branch=config.branch,
         since=config.since,
         until=config.until,
@@ -900,6 +915,34 @@ def _note_cut_csv(
             f"The CSV lists {config.limit:,} of {listed:,} contributors (--limit); "
             "the JSON states the totals.",
         )
+
+
+#: Said when a shallow clone is read, since the history it does not hold is not counted.
+_SHALLOW_NOTE = "This is a shallow clone, so only the history it holds is analysed."
+
+
+def _read_noting_shallow(
+    reader: GitReader, on_notice: Callable[[str], None] | None, **options: Any
+) -> list[Commit]:
+    """Read commits; when none are found in a shallow clone, say the clone may hold too few.
+
+    Args:
+        reader: The repository's reader.
+        on_notice: Where the note goes.
+        **options: As for `GitReader.read_commits`.
+
+    Returns:
+        The commits.
+
+    Raises:
+        EmptyRepositoryError: When none are found, after the note.
+    """
+    try:
+        return reader.read_commits(**options)
+    except EmptyRepositoryError:
+        if reader.is_shallow():
+            _notify(on_notice, _SHALLOW_NOTE)
+        raise
 
 
 def _notify(on_notice: Callable[[str], None] | None, message: str) -> None:

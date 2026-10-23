@@ -1182,10 +1182,12 @@ def _run_report(report_config: ReportConfig, *, to_stdout: bool, quiet: bool = F
             written = generate_report(report_config, on_progress=progress, on_notice=notices.append)
     except EmptyRepositoryError as exc:
         spinner.complete()
+        _print_notices(notices)
         _err(f"Error: {exc}")
         raise typer.Exit(code=ExitCode.NEGATIVE) from exc
     except ReveilleError as exc:
         spinner.complete()
+        _print_notices(notices)
         _err(f"Error: {exc}")
         raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
     spinner.complete()
@@ -1513,6 +1515,9 @@ def _run_query(produce: Callable[[Callable[[str], None]], str]) -> None:
     try:
         text = produce(notices.append)
     except EmptyRepositoryError as exc:
+        # A note can change how a negative answer reads (a shallow clone, a
+        # directory not searched), so it is given with it.
+        _print_notices(notices)
         _err(f"Error: {exc}")
         raise typer.Exit(code=ExitCode.NEGATIVE) from exc
     except NoRepositoryReadError as exc:
@@ -1525,6 +1530,7 @@ def _run_query(produce: Callable[[Callable[[str], None]], str]) -> None:
         _err(f"Error: {exc}")
         raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
     except ReveilleError as exc:
+        _print_notices(notices)
         _err(f"Error: {exc}")
         raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
     _print_notices(notices)
