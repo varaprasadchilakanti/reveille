@@ -470,7 +470,9 @@ A command stopped by a signal exits 128 plus the signal's number, as a shell rep
 Ctrl-C (SIGINT), 143 for SIGTERM, 129 for SIGHUP (a closed terminal). None of these is an answer.
 A handler for SIGTERM or SIGHUP that whatever runs Reveille installed is kept, and decides instead.
 A Git command running when the signal arrives is stopped too, also when the signal was sent to
-Reveille alone and not to its process group (checked on Linux; not run on Windows).
+Reveille alone and not to its process group (checked on Linux; not run on Windows). `repos`,
+which reads several repositories side by side, stops the Git of every read under way, so it
+exits without waiting for those reads to finish.
 
 With `--format json`, `summary`, `brief`, `state`, `who-changed`, `repos` and `capabilities`
 write each stderr message as one JSON object per line, `{"level": "error", "message": "..."}`
