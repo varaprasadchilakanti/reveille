@@ -139,6 +139,7 @@ def test_state_json_keeps_the_upstream_and_worktrees() -> None:
         "locked": True,
         "prunable": False,
         "current": False,
+        "bare": False,
     }
 
 

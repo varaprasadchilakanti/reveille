@@ -2489,6 +2489,7 @@ def _state_document(
                 "locked": w.locked,
                 "prunable": w.prunable,
                 "current": w.current,  # schema 1.3
+                "bare": w.bare,  # schema 1.3
             }
             for w in state.worktrees[:limit]
         ],
@@ -2506,6 +2507,11 @@ def _state_document(
         "working_tree_read": not (state.bare or state.working_tree_unread),
         "notice": _STATE_NOTICE,
     }
+
+
+def _checked_out(worktree: Worktree) -> str:
+    """What a worktree has checked out: its branch, `detached`, or `bare`."""
+    return "bare" if worktree.bare else worktree.branch or "detached"
 
 
 def _other_worktrees(state: RepositoryState) -> tuple[list[Worktree], str]:
@@ -2542,7 +2548,7 @@ def _state_lines(
     lines.extend(_working_tree_lines(state, limit))
     extra = ["1 stash" if state.stashes == 1 else f"{state.stashes:,} stashes"]
     worktrees, called = _other_worktrees(state)
-    others = [f"{w.path} ({w.branch or 'detached'})" for w in worktrees]
+    others = [f"{w.path} ({_checked_out(w)})" for w in worktrees]
     if others:
         extra.append(f"{_counted(len(others), called)}: {_listed(others, limit)}")
     lines.append("; ".join(extra) + ".")
@@ -2731,7 +2737,7 @@ def _state_markdown(state: RepositoryState, name: str, history_replaced: bool, l
             lines.append(f"  - {label}: {_md_listed(items, limit)}")
     lines.append(f"- **Stashes:** {state.stashes:,}")
     worktrees, called = _other_worktrees(state)
-    others = [f"{w.path} ({w.branch or 'detached'})" for w in worktrees]
+    others = [f"{w.path} ({_checked_out(w)})" for w in worktrees]
     if others:
         lines.append(f"- **{called.capitalize()}s:** {_md_listed(others, limit)}")
     lines.append(

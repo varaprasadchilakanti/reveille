@@ -101,3 +101,23 @@ def test_the_main_worktree_is_the_one_read_when_another_was_moved(trees: Path) -
     worktrees = json.loads(_state(trees / "main", "json"))["worktrees"]
 
     assert [w["current"] for w in worktrees] == [True, False, False]
+
+
+def test_a_bare_repository_s_entry_is_bare_not_detached(trees: Path) -> None:
+    """Git lists a bare main repository with `bare`, and no branch or HEAD of its own."""
+    store = trees / "store.git"
+    _git(trees, "clone", "-q", "--bare", str(trees / "main"), str(store))
+    _git(store, "worktree", "add", "-q", str(trees / "checkout"), "main")
+    checkout = trees / "checkout"
+
+    worktrees = json.loads(_state(checkout, "json"))["worktrees"]
+    text = _state(checkout, "text")
+    markdown = _state(checkout, "markdown")
+
+    assert [(Path(w["path"]).name, w["bare"]) for w in worktrees] == [
+        ("store.git", True),
+        ("checkout", False),
+    ]
+    assert f"1 other worktree: {store} (bare)." in text
+    assert f"`{store} (bare)`" in markdown
+    assert "detached" not in text + markdown

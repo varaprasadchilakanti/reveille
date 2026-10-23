@@ -27,6 +27,7 @@ class Worktree:
         locked: Whether it is locked against pruning.
         prunable: Whether Git would prune it (its directory is gone).
         current: Whether it is the one read.
+        bare: Whether it is a bare repository's entry, which checks nothing out.
     """
 
     path: str
@@ -34,6 +35,7 @@ class Worktree:
     locked: bool
     prunable: bool
     current: bool = False
+    bare: bool = False
 
 
 @dataclass(frozen=True)

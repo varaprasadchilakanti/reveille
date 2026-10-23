@@ -443,6 +443,7 @@ def _parse_worktrees(output: str, *, nul: bool = True) -> list[Worktree]:
                 branch=branch,
                 locked="locked" in values,
                 prunable="prunable" in values,
+                bare="bare" in values,
             )
         )
     return found
