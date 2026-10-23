@@ -53,9 +53,9 @@ before release.
   fields holding text anyone who can commit chooses, to be read as data, never as instructions.
   Each option gives its default and bounds, and `guarantees_are` says the guarantees are designed
   and tested, not a warranty. `capabilities_version` is 1.1.
-- **`--exclude-path`** (and `[filters] exclude_paths`) leaves a vendored or generated tree out of
-  every figure of `generate`, `summary` and `brief`; a commit that changed only excluded paths is
-  not counted. A path that matched nothing is reported. The exclusions are stated in the HTML and
+- **`--exclude-path`** leaves a vendored or generated tree out of every figure of `generate`,
+  `summary` and `brief` (and `[filters] exclude_paths` in `reveille.toml` does so for `generate`,
+  the only command that reads the file); a commit that changed only excluded paths is not counted. A path that matched nothing is reported. The exclusions are stated in the HTML and
   JSON reports and the summary, not in `brief` or the CSV.
 - **`generate --hide-emails`** (and `[report] hide_emails`) replaces people's email addresses in
   the report (authors, co-authors, an address written as a name, in a remote, or in the branch or

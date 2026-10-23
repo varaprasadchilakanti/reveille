@@ -180,7 +180,8 @@ A commit that changed only excluded paths is not counted at all; a commit that a
 something else is counted, without the excluded lines. A path no commit on the branch ever
 changed is reported on stderr, since it is usually a typo. The paths are stated in the
 report header, the summary and the JSON `provenance.filters.exclude_paths`. `generate`,
-`summary` and `brief` accept it; in `reveille.toml` it is `[filters] exclude_paths`.
+`summary` and `brief` accept it; in `reveille.toml`, which only `generate` reads, it is
+`[filters] exclude_paths`.
 
 ```bash
 reveille generate --exclude-path vendor --exclude-path docs/generated

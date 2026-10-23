@@ -1,6 +1,6 @@
 # 0027 — The report embeds a pinned plotly.js cartesian bundle, with its licences
 
-**Status:** Proposed (2026-10-18). Supersedes the bundle source in 0006; the rest of 0006 stands.
+**Status:** Accepted (2026-10-23). Proposed 2026-10-18. Supersedes the bundle source in 0006; the rest of 0006 stands.
 
 ## Context
 

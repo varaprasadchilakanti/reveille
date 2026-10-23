@@ -1,6 +1,6 @@
 # 0023 — GitHub noreply addresses fold on the account number
 
-**Status:** Proposed (2026-10-12). Partly supersedes ADR 0002 (its second normalisation).
+**Status:** Accepted (2026-10-23). Proposed 2026-10-12. Partly supersedes ADR 0002 (its second normalisation).
 
 ## Context
 

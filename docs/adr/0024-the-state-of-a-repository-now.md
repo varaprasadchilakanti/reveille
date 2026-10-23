@@ -1,6 +1,6 @@
 # 0024 — The state of a repository now: `reveille state`
 
-**Status:** Proposed (2026-10-12).
+**Status:** Accepted (2026-10-23). Proposed 2026-10-12.
 
 ## Context
 

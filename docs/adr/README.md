@@ -10,8 +10,8 @@ A record is written when a decision is hard to infer from the code.
 Routine choices do not need one.
 
 Records are immutable once accepted. A decision that changes gets a new
-record that supersedes the old one; the old record stays, marked
-superseded. The history is the point.
+record that supersedes the old one; the old record stays unedited, and
+this index marks it superseded. The history is the point.
 
 ## Format
 
@@ -30,10 +30,10 @@ in part), or Deprecated.
 | [0004](0004-single-pass-numstat-read.md) | History is read in a single `git log --numstat` pass | Superseded by 0019 |
 | [0005](0005-commit-concentration-not-bus-factor.md) | The concentration metric is not called a bus factor | Accepted |
 | [0006](0006-offline-single-file-report.md) | The report is a single offline file | Accepted; bundle source superseded by 0027 |
-| [0007](0007-apache-2-0-licence.md) | The licence moves from MIT to Apache-2.0 | Accepted |
+| [0007](0007-apache-2-0-licence.md) | The licence moves from MIT to Apache-2.0 | Accepted; §5 qualified by 0009 |
 | [0008](0008-output-provenance-and-schema-version.md) | Output records its own provenance and declares a schema version | Accepted; partly superseded by 0021 |
 | [0009](0009-contributor-licence-agreement.md) | A contributor licence agreement is required for pull requests | Accepted |
-| [0010](0010-ranking-is-opt-in.md) | The contributor ranking is opt-in, and distribution is measured instead | Accepted |
+| [0010](0010-ranking-is-opt-in.md) | The contributor ranking is opt-in, and distribution is measured instead | Accepted; Lorenz population changed by 0017 |
 | [0011](0011-filters-choose-the-listing-not-the-analysis.md) | A filter chooses who is listed, not what the figures are about | Accepted; partly superseded by 0017 |
 | [0012](0012-the-repository-profile-is-a-table.md) | The repository profile is three measures in a table, not five on a radar | Accepted; partly superseded by 0016 |
 | [0013](0013-who-changes-what-is-opt-in-and-area-first.md) | "Who changes what" is opt-in, and organised by area, not by person | Accepted |
@@ -46,15 +46,15 @@ in part), or Deprecated.
 | [0020](0020-exclude-author-removes-a-person-by-address.md) | `--exclude-author` removes a person by every address the value reaches | Accepted |
 | [0021](0021-what-provenance-records-about-filters-and-time.md) | What provenance records about filters and time | Accepted |
 | [0022](0022-a-brief-from-a-point.md) | A brief from a point: `reveille brief --from` | Accepted; partly superseded by 0025 |
-| [0023](0023-noreply-addresses-fold-on-the-account-number.md) | GitHub noreply addresses fold on the account number | Proposed |
-| [0024](0024-the-state-of-a-repository-now.md) | The state of a repository now: `reveille state` | Proposed |
-| [0025](0025-brief-starts-at-the-latest-tag.md) | `brief` starts at the latest tag when no point is given | Proposed; which tag with `--until`, superseded by 0031 |
-| [0026](0026-many-repositories-one-row-each.md) | Many repositories, one row each: `reveille repos` | Proposed; exit-code consequence superseded by 0028, what counts as a working tree by 0030 |
-| [0027](0027-the-report-embeds-a-pinned-cartesian-bundle.md) | The report embeds a pinned plotly.js cartesian bundle, with its licences | Proposed |
-| [0028](0028-repos-exits-2-when-nothing-was-read.md) | `repos` exits 2 when no repository it found could be read | Proposed |
-| [0029](0029-the-html-names-a-bounded-list.md) | The HTML report names at most 1,000 people, or `--limit` | Proposed |
-| [0030](0030-repos-reads-a-git-link-and-no-store-twice.md) | `repos` reads a `.git` link, and gives a used Git directory no row of its own | Proposed |
-| [0031](0031-brief-until-starts-at-a-tag-before-it.md) | `brief --until` starts at the latest tag on or before that day | Proposed |
+| [0023](0023-noreply-addresses-fold-on-the-account-number.md) | GitHub noreply addresses fold on the account number | Accepted |
+| [0024](0024-the-state-of-a-repository-now.md) | The state of a repository now: `reveille state` | Accepted |
+| [0025](0025-brief-starts-at-the-latest-tag.md) | `brief` starts at the latest tag when no point is given | Accepted; which tag with `--until`, superseded by 0031 |
+| [0026](0026-many-repositories-one-row-each.md) | Many repositories, one row each: `reveille repos` | Accepted; exit-code consequence superseded by 0028, what counts as a working tree by 0030 |
+| [0027](0027-the-report-embeds-a-pinned-cartesian-bundle.md) | The report embeds a pinned plotly.js cartesian bundle, with its licences | Accepted |
+| [0028](0028-repos-exits-2-when-nothing-was-read.md) | `repos` exits 2 when no repository it found could be read | Accepted |
+| [0029](0029-the-html-names-a-bounded-list.md) | The HTML report names at most 1,000 people, or `--limit` | Accepted |
+| [0030](0030-repos-reads-a-git-link-and-no-store-twice.md) | `repos` reads a `.git` link, and gives a used Git directory no row of its own | Accepted |
+| [0031](0031-brief-until-starts-at-a-tag-before-it.md) | `brief --until` starts at the latest tag on or before that day | Accepted |
 
 ## Drift since acceptance
 
@@ -72,12 +72,33 @@ supersedes it, and the table says so.
 - **0005.** The report labels the figure "Hold Half the Commits".
 - **0006.** The bundled Plotly (7.1.0) is about 4.8 MB, not 3.5, and holds 55 `https://` strings,
   not 16, some of them map-tile endpoints. What keeps them unused is the trace-type allowlist
-  (bar, pie, scatter), which the tests enforce. Offline at run time is recorded in 0019. This
-  describes the full bundle of the installed plotly; from 0.10.0 the report embeds the pinned
-  plotly.js 4.1.1 cartesian bundle instead (0027): 1.5 MB, with 11 `https://` strings, none of
-  them a map-tile endpoint (measured 2026-10-23).
-- **0007.** The Poetry version named is the one at the time.
+  for the figures built in Python (bar, pie, scatter), which the tests enforce; the page script
+  also draws a heatmap (see 0012). Offline at run time is recorded in 0019. This describes the
+  full bundle of the installed plotly; from 0.10.0 the report embeds the pinned plotly.js 4.1.1
+  cartesian bundle instead (0027): 1.5 MB, with 11 `https://` strings, none of them a map-tile
+  endpoint (measured 2026-10-23). The bundle is still read once per process, now by
+  `_vendored()`; `get_plotlyjs()` and `_PLOTLY_JS_BUNDLE` are gone.
+- **0007.** The Poetry version named is the one at the time. From 0.10.0 Reveille vendors the
+  plotly.js bundle (0027), with its licences in `THIRD-PARTY-NOTICES.txt`; Reveille's own
+  `NOTICE` is still not created.
+- **0009.** "Its third bullet" means 0007's second, §5. The Linux Foundation page reads "they
+  desire for the project to have the ability..."; the friction it names is under its own
+  heading, "What complications can arise from using a CLA?", not in the same paragraph.
 - **0010.** Its DORA sentence is not supported by the DORA guide and was removed from the
   published documents in 0.9.0. A `rank` field, in table order, remains in JSON and CSV with
-  ranking off; a known issue.
+  ranking off; a known issue. Commit concentration was not removed: the report shows it as
+  "Hold Half the Commits" beside the Gini. Like 0005's figure, it counts the fewest contributors
+  holding at least half the commits, not a majority.
+- **0012.** The figures built in Python are bar, pie and scatter; the page script also draws a
+  heatmap, which the tests check is registered in the bundle.
+- **0018, 0024.** "Every Git command" means every read of the repository. The calls that find
+  it and read no objects and no index (`git version`, `rev-parse --show-toplevel` and
+  `--absolute-git-dir`, `config --file --no-includes`) run before the pins are set.
+- **0019.** Every run also counts the merges left out (`rev-list --count --merges`) and reads
+  author addresses for noreply folding (0023): five history reads, none of them per commit.
+- **0022, 0024.** Schema 1.2 was never released; the brief and state documents first ship
+  together as `schema_version` 1.3, in 0.10.0.
+- **0028.** "No repository found" is exit 1 only when every directory in the search was listed.
+  Finding none while a directory could not be listed is exit 2, and the message says how many
+  were not searched, since they may hold one.
 - Undated measurements in 0004, 0005 and 0006 were measured when each record was written.

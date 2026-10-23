@@ -1,6 +1,6 @@
 # 0025 — `brief` starts at the latest tag when no point is given
 
-**Status:** Proposed (2026-10-13). Partly supersedes ADR 0022 (its "exactly one of").
+**Status:** Accepted (2026-10-23). Proposed 2026-10-13. Partly supersedes ADR 0022 (its "exactly one of").
 
 ## Context
 
