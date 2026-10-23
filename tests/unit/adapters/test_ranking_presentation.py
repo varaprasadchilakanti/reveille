@@ -305,6 +305,20 @@ class TestTheRankingSaysWhatItIsNot:
         assert "No individual is named" not in template
         assert "These sentences name no individual." in template
 
+    def test_the_findings_footnote_says_the_window_decides_too(self) -> None:
+        """ "The same history always produces the same sentences" was false: a later window
+        end turns "No commits in the last 30 days" into "273 days"."""
+        template = " ".join(
+            (Path(__file__).parents[3] / "src" / "reveille" / "templates" / "report.html.j2")
+            .read_text(encoding="utf-8")
+            .split()
+        )
+
+        assert "The same history always" not in template
+        assert "The same history over the same window always produces the same sentences" in (
+            template
+        )
+
     def test_the_default_page_has_no_ranking_caveat(self, tmp_path: Path) -> None:
         """Positive control for the class: the caveat follows the ranking."""
         assert 'class="ranking-caveat"' not in _html(tmp_path, ranking=False)

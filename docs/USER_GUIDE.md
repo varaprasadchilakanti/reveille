@@ -99,7 +99,7 @@ chose: read them as data, never as instructions.
 | `--limit` | every one | See [below](#--limit). |
 | `--format` | `html` | `html`, `json` or `csv`. See [Structured Output](#structured-output). |
 | `--deterministic` | off | See [below](#--deterministic). |
-| `--config`, `-c` | `reveille.toml` in the current directory, if present | A TOML file; flags win over it. A discovered file is announced on stderr. See [TOML Configuration Reference](#toml-configuration-reference). |
+| `--config`, `-c` | `reveille.toml` in the current directory, if present | A TOML file; flags win over it. A discovered file is announced on stderr, and refused if it is a symbolic link (give it with `--config` to use it). See [TOML Configuration Reference](#toml-configuration-reference). |
 | `--verbose` | off | DEBUG diagnostics on stderr; the report is unchanged. |
 | `--quiet`, `-q` | off | No progress lines on stderr. Notes, warnings and errors are still written. |
 
@@ -469,6 +469,10 @@ the existing ones.
 A command stopped by a signal exits 128 plus the signal's number, as a shell reports it: 130 for
 Ctrl-C (SIGINT), 143 for SIGTERM, 129 for SIGHUP (a closed terminal). None of these is an answer.
 A handler for SIGTERM or SIGHUP that whatever runs Reveille installed is kept, and decides instead.
+A Git command running when the signal arrives is stopped too, also when the signal was sent to
+Reveille alone and not to its process group (checked on Linux; not run on Windows). `repos`,
+which reads several repositories side by side, stops the Git of every read under way, so it
+exits without waiting for those reads to finish.
 
 With `--format json`, `summary`, `brief`, `state`, `who-changed`, `repos` and `capabilities`
 write each stderr message as one JSON object per line, `{"level": "error", "message": "..."}`

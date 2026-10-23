@@ -37,11 +37,20 @@ def repo(tmp_path: Path) -> Path:
     return path
 
 
-def _generate(repo: Path) -> subprocess.CompletedProcess[str] | None:
+def _generate(repo: Path, *extra: str) -> subprocess.CompletedProcess[str] | None:
     """Run `generate` where the config is found; None if it had to be killed."""
     try:
         return subprocess.run(
-            [sys.executable, "-c", _CHILD, "generate", "--output", str(repo / "r.html"), "-q"],
+            [
+                sys.executable,
+                "-c",
+                _CHILD,
+                "generate",
+                "--output",
+                str(repo / "r.html"),
+                "-q",
+                *extra,
+            ],
             cwd=repo,
             capture_output=True,
             text=True,
@@ -56,13 +65,14 @@ def _generate(repo: Path) -> subprocess.CompletedProcess[str] | None:
 @pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="named pipes and /dev/zero are POSIX")
 @pytest.mark.parametrize("kind", ["pipe", "device"])
 def test_a_config_that_is_not_a_regular_file_is_refused(repo: Path, kind: str) -> None:
+    """A discovered link is refused as a link, so `/dev/zero` is given with `--config`."""
     config = repo / "reveille.toml"
     if kind == "pipe":
         os.mkfifo(config)
+        done = _generate(repo)
     else:
         config.symlink_to("/dev/zero")
-
-    done = _generate(repo)
+        done = _generate(repo, "--config", str(config))
 
     assert done is not None, "Reveille waited on it"
     assert done.returncode == 2, done.stderr

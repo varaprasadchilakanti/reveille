@@ -365,3 +365,18 @@ class TestGenerateReport:
         assert events[0].elapsed_seconds == pytest.approx(0.0)
         for event in events[1:]:
             assert event.elapsed_seconds >= 0.0
+
+
+def test_a_stopped_read_of_rows_leaves_git_able_to_run(tmp_path: Path) -> None:
+    """The stop that ends the workers' Git is lifted once they are done."""
+    from reveille.adapters.git_reader import _TimedGit
+    from reveille.services.report import _read_rows
+
+    day = datetime.date(2026, 10, 1)
+    with (
+        patch("reveille.services.report._repository_row", side_effect=KeyboardInterrupt),
+        pytest.raises(KeyboardInterrupt),
+    ):
+        _read_rows([tmp_path / "a"], tmp_path, day, day, 1, [])
+
+    assert "git version" in _TimedGit().execute(["git", "version"])

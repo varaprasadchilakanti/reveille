@@ -175,6 +175,13 @@ before release.
 - **Stopped with SIGTERM or SIGHUP while writing, a run left its `.tmp` file beside the
   output.** It now removes it and exits 143 or 129, as a terminated process does; a handler set by
   whatever runs Reveille is kept.
+- **The report said "The same history always produces the same sentences".** The window counts
+  too: a later `--until` turns "No commits in the last 30 days" into "273 days". It now says "the
+  same history over the same window". 0.9.0's report says the same.
+- **A signal sent to Reveille alone left the Git command it was waiting for running.** `kill
+  <pid>` reaches Reveille, not its process group, as Ctrl-C in a terminal does; a Git blocked on a
+  named pipe then ran on after Reveille exited, with no deadline (0.9.0 too, run against its tree).
+  The command is now stopped with it, checked on Linux with SIGTERM, SIGHUP and SIGINT.
 - **A commit dated in the last week of 9999 stopped the HTML report** ("date value out of range",
   exit 2). Git accepts such a date. The weekly charts now end at that week. JSON and CSV were not
   affected.
@@ -278,6 +285,15 @@ Each entry has a test that fails without the fix. 0.9.0's exposure is stated whe
   repository inside the tree), and the run exited 0. A discovered file's `output` must now end in
   `.html`, and may replace only a Reveille report; otherwise the run stops (exit 2). `--output`
   and `--config` are unchanged. 0.9.0 is affected (read in its code).
+- **A `reveille.toml` committed as a symbolic link was followed**, so a repository could name a
+  file outside it that the user running `generate` can read: that file's report title reached the
+  report, a refused value reached stderr, and the tables of a TOML file there were named. A
+  discovered file that is a link is now refused (exit 2), and one put in its place after the
+  check is refused when opened; the same file given with `--config` is still read. 0.9.0 is
+  affected (run against its tree).
+  The working tree's `.mailmap` was checked for a link and then opened following one; it is now
+  refused when opened, so one put in its place after the check is not read either (0.9.0 has the
+  same order, read in its code).
 - **Characters that do not display reached text, Markdown and line output unescaped.** Tag
   characters (U+E0000 to U+E007F) spell out words a person cannot see and a model can read. They,
   control and direction characters, the zero-width space, the word joiner and the byte order

@@ -587,13 +587,35 @@ _CONVENTIONAL_CONFIG: str = "reveille.toml"
 
 
 def _discover_config() -> Path | None:
-    """Return reveille.toml in the working directory, if present.
+    """Return reveille.toml in the working directory, if present; refuse a link there.
 
     Returns:
         Its path, or None.
     """
     candidate = Path(_CONVENTIONAL_CONFIG)
-    return candidate if candidate.exists() else None
+    if not os.path.lexists(candidate):
+        return None
+    _refuse_a_discovered_link(candidate)
+    return candidate
+
+
+def _refuse_a_discovered_link(path: Path) -> None:
+    """Refuse a discovered reveille.toml that is a symbolic link.
+
+    Git checks a committed link out as a link, so a repository's file could name
+    any file on this machine, and its values reach the report and stderr. Git
+    refuses a linked `.gitattributes`, `.gitignore` and `.mailmap` for this reason.
+
+    Raises:
+        typer.Exit: CANNOT_RUN when it is one.
+    """
+    if path.is_symlink():
+        _err(
+            f"Error: the auto-discovered {_CONVENTIONAL_CONFIG} is a symbolic link, so it is "
+            "not read: a discovered file may come from a repository, and a link can name any "
+            "file. To use the file it names, give it with --config."
+        )
+        raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
 
 # Each setting's reveille.toml key, so a notice names it as the user writes it.
@@ -1394,7 +1416,9 @@ def generate(
     _config_path = config if config is not None else _discover_config()
     if _config_path is not None:
         try:
-            config_kwargs, unknown_keys = read_config_file(_config_path)
+            config_kwargs, unknown_keys = read_config_file(
+                _config_path, follow_links=not _auto_discovered
+            )
         except ConfigurationError as exc:
             if _auto_discovered:
                 _err(

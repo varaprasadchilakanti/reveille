@@ -30,6 +30,8 @@ from reveille.adapters.git_reader import (
     find_repositories,
     is_repository,
     main_worktree_of,
+    resume_git,
+    stop_running_git,
 )
 from reveille.adapters.renderer import Renderer
 from reveille.config import ReportConfig
@@ -233,6 +235,47 @@ def state_text(repo_path: Path, output_format: str, limit: int) -> str:
     )
 
 
+def _read_rows(
+    found: list[Path],
+    directory: Path,
+    start: datetime.date,
+    end: datetime.date,
+    days: int,
+    exclude_authors: list[str],
+) -> tuple[list[RepositoryActivity], set[str]]:
+    """Read each repository's row, side by side, and the --exclude-author values matched."""
+    rows: list[RepositoryActivity] = []
+    matched: set[str] = set()
+    # Most of a row's time is spent waiting for Git, so rows are read side by
+    # side. Each has its own reader, and so its own Git runner; rows, and the
+    # warnings each gives, keep the order the repositories were found in.
+    held = _HeldWarnings()
+
+    def read_row(path: Path) -> tuple[RepositoryActivity, set[str], list[logging.LogRecord]]:
+        with held.on_this_thread() as records:
+            row, matched_here = _repository_row(
+                path, path.relative_to(directory).as_posix(), start, end, days, exclude_authors
+            )
+        return _as_shared(row, path, directory), matched_here, records
+
+    try:
+        with held.installed(), ThreadPoolExecutor(max_workers=_repository_workers()) as pool:
+            try:
+                for row, matched_here, records in pool.map(read_row, found):
+                    rows.append(row)
+                    matched |= matched_here
+                    for record in records:
+                        logging.getLogger(record.name).handle(record)
+            except BaseException:
+                # Stopped (a signal, Ctrl-C): the pool waits for its workers on the way out,
+                # so their Git is stopped first, or each read under way would run to its end.
+                stop_running_git()
+                raise
+    finally:
+        resume_git()  # the workers are done; a caller that goes on may run Git again
+    return rows, matched
+
+
 def repositories_text(
     directory: Path,
     *,
@@ -295,26 +338,7 @@ def repositories_text(
             f"No Git repository found in '{directory}' within {depth} "
             f"{'level' if depth == 1 else 'levels'}.{hint}"
         )
-    rows: list[RepositoryActivity] = []
-    matched: set[str] = set()
-    # Most of a row's time is spent waiting for Git, so rows are read side by
-    # side. Each has its own reader, and so its own Git runner; rows, and the
-    # warnings each gives, keep the order the repositories were found in.
-    held = _HeldWarnings()
-
-    def read_row(path: Path) -> tuple[RepositoryActivity, set[str], list[logging.LogRecord]]:
-        with held.on_this_thread() as records:
-            row, matched_here = _repository_row(
-                path, path.relative_to(directory).as_posix(), start, end, days, exclude_authors
-            )
-        return _as_shared(row, path, directory), matched_here, records
-
-    with held.installed(), ThreadPoolExecutor(max_workers=_repository_workers()) as pool:
-        for row, matched_here, records in pool.map(read_row, found):
-            rows.append(row)
-            matched |= matched_here
-            for record in records:
-                logging.getLogger(record.name).handle(record)
+    rows, matched = _read_rows(found, directory, start, end, days, exclude_authors)
     unmatched = [value for value in exclude_authors if value not in matched]
     if unmatched:
         _notify(

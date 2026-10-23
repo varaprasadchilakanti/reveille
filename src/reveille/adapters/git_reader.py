@@ -15,17 +15,20 @@ from __future__ import annotations
 
 import contextlib
 import datetime
+import errno
 import functools
 import logging
 import os
 import re
 import secrets
+import signal
 import stat
 import sys
 import tempfile
 import threading
 import time
 import unicodedata
+import weakref
 from collections import defaultdict
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from collections.abc import Set as AbstractSet
@@ -2345,20 +2348,28 @@ class GitReader:
             a symbolic link, or too large.
         """
         mailmap_path = self._repo_path / ".mailmap"
-        # Git refuses a symlinked .mailmap; one could point at /dev/zero.
-        if mailmap_path.is_symlink() or not mailmap_path.is_file():
+        # Git refuses a symlinked .mailmap; one could point at /dev/zero. Checked on the
+        # open file, so a link or a pipe put there after a look is not read either.
+        try:
+            descriptor = os.open(
+                mailmap_path,
+                os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0),
+            )
+        except OSError as exc:
+            if exc.errno in {errno.ENOENT, errno.ELOOP, errno.ENOTDIR}:
+                return None  # absent or a link: not applied, as Git applies neither
+            _mailmap_unreadable(exc)
+            return None
+        # Checked before `fdopen`, which refuses a directory with an error of its own.
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            os.close(descriptor)
             return None
         try:
-            # Read one byte past the limit: the file can grow after a size check.
-            with mailmap_path.open("rb") as handle:
+            with os.fdopen(descriptor, "rb") as handle:
+                # Read one byte past the limit: the file can grow after a size check.
                 raw = handle.read(_MAX_MAILMAP_BYTES + 1)
         except OSError as exc:
-            # Said, not skipped: unmerged identities change every count. No path, which can
-            # hold a login name.
-            _logger.warning(
-                "The working-tree .mailmap could not be read (%s) and was not applied.",
-                exc.strerror or type(exc).__name__,
-            )
+            _mailmap_unreadable(exc)
             return None
         if len(raw) > _MAX_MAILMAP_BYTES:
             _logger.warning(
@@ -2756,6 +2767,18 @@ def _timed_out(command: object) -> RepositoryError:
     )
 
 
+def _mailmap_unreadable(exc: OSError) -> None:
+    """Say the working tree's `.mailmap` was not applied, and why, without its path.
+
+    Said, not skipped: unmerged identities change every count. No path, which can
+    hold a login name.
+    """
+    _logger.warning(
+        "The working-tree .mailmap could not be read (%s) and was not applied.",
+        exc.strerror or type(exc).__name__,
+    )
+
+
 class _TimedGit(Git):
     """GitPython's runner, with a deadline on every command it waits for.
 
@@ -2773,8 +2796,12 @@ class _TimedGit(Git):
 
         GitPython (3.2.1) cancels its deadline timer only when the wait returns.
         Interrupted, the timer outlives the command, and the interpreter waits for
-        it before exiting: Ctrl-C took the full deadline to take effect.
+        it before exiting: Ctrl-C took the full deadline to take effect. The
+        command is stopped too: a signal sent to Reveille alone, not its process
+        group, left a Git blocked on a named pipe running after Reveille exited.
         """
+        if _STOPPING.is_set():
+            raise RepositoryError("Reveille is stopping, so Git was not run.")
         running = set(threading.enumerate())
         try:
             return self._execute_timed(*args, **kwargs)
@@ -2782,6 +2809,7 @@ class _TimedGit(Git):
             for thread in set(threading.enumerate()) - running:
                 if isinstance(thread, threading.Timer):
                     thread.cancel()
+                    _stop_child(thread)
             raise
 
     def _execute_timed(self, *args: Any, **kwargs: Any) -> Any:
@@ -2801,10 +2829,76 @@ class _TimedGit(Git):
             raise
 
 
+def stop_running_git() -> None:
+    """Stop every Git command still running, in any thread, without waiting for it.
+
+    For a run that is stopping: a worker thread waiting on its command then sees
+    it end and finishes at once, instead of after the read it was making. A
+    command started after this is stopped as it starts, so a worker between two
+    commands does not run the next one to its end.
+    """
+    _STOPPING.set()
+    for silence in list(_RUNNING):
+        silence.kill()
+    for thread in threading.enumerate():
+        if isinstance(thread, threading.Timer):
+            pid = _watched_pid(thread)
+            if pid is not None and _still_running(pid):
+                with contextlib.suppress(ProcessLookupError):
+                    os.kill(pid, signal.SIGKILL)
+
+
+def resume_git() -> None:
+    """Let Git commands run again after `stop_running_git`, once the threads it stopped are done."""
+    _STOPPING.clear()
+
+
+def _watched_pid(watchdog: threading.Timer) -> int | None:
+    """Return the process ID a GitPython watchdog holds (`Timer(..., args=(proc.pid,))`)."""
+    pid = next(iter(getattr(watchdog, "args", ())), None)
+    return pid if isinstance(pid, int) else None
+
+
+def _still_running(pid: int) -> bool:
+    """Return whether `pid` is a child of this process that has not exited, reaping nothing.
+
+    `WNOWAIT` leaves an exited child for the thread that waits on it, so an ID
+    already waited for, which another process may now hold, is never signalled.
+    """
+    if not hasattr(os, "waitid"):
+        return False
+    try:
+        return os.waitid(os.P_PID, pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is None
+    except ChildProcessError:
+        return False
+
+
+def _stop_child(watchdog: threading.Timer) -> None:
+    """Stop the command a GitPython watchdog was set for, if it is still this process's child.
+
+    Asking with `WNOHANG` first means an ID already waited for, which another
+    process may now hold, is never signalled. The command is waited for here:
+    the call that would have is the one interrupted.
+    """
+    pid = _watched_pid(watchdog)
+    if pid is None or not hasattr(os, "WNOHANG"):
+        return
+    with contextlib.suppress(ChildProcessError, ProcessLookupError):
+        if os.waitpid(pid, os.WNOHANG) == (0, 0):
+            os.kill(pid, signal.SIGKILL)
+            os.waitpid(pid, 0)
+
+
 class _TimedRepo(Repo):
     """A repository whose Git commands run with a deadline."""
 
     GitCommandWrapperType = _TimedGit
+
+
+#: The streamed Git commands not yet garbage, so `stop_running_git` reaches them in any thread.
+_RUNNING: weakref.WeakSet[_Silence] = weakref.WeakSet()
+#: Set by `stop_running_git`: the run is stopping, and no Git command is to run to its end.
+_STOPPING = threading.Event()
 
 
 class _Silence:
@@ -2823,7 +2917,15 @@ class _Silence:
         self._process = process
         self._last = time.monotonic()
         self.expired = False
+        _RUNNING.add(self)  # before the check, so a stop either sees this or is seen here
+        if _STOPPING.is_set():
+            self.kill()
         threading.Thread(target=self._watch, daemon=True).start()
+
+    def kill(self) -> None:
+        """Stop the process now; its reader sees the output end."""
+        with contextlib.suppress(OSError):
+            self._process.kill()
 
     def heard(self) -> None:
         """Note that the process wrote something."""

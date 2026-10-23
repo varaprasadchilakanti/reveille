@@ -4,7 +4,7 @@
 """A written summary of a repository's history, generated from its numbers.
 
 Data-to-text generation (Reiter and Dale, 2000): rules over computed statistics,
-fixed templates, no model or network. Same history, same sentences; every claim
+fixed templates, no model or network. Same history and window, same sentences; every claim
 is a threshold over a number in the report. Findings never name or evaluate a
 person (ADR 0010), never call a number good or bad, and never predict.
 """
