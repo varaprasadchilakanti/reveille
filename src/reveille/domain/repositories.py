@@ -41,6 +41,8 @@ class RepositoryActivity:
         automated_accounts: Distinct automated identities in the window.
         shallow: Whether only part of the history is present.
         reason: Why the repository was not read, for "not_read".
+        worktree_of: For a linked worktree, the main working tree: relative to
+            the directory searched, or "(a path outside the directory)".
     """
 
     path: str
@@ -53,6 +55,7 @@ class RepositoryActivity:
     automated_accounts: int = 0
     shallow: bool = False
     reason: str | None = None
+    worktree_of: str | None = None
 
 
 def status_of(days_since_last_commit: int | None, window_days: int) -> Status:

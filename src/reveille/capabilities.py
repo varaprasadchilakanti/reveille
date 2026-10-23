@@ -446,6 +446,7 @@ REPOSITORY_TEXT: dict[str, tuple[str, ...]] = {
         "repositories[].path",
         "repositories[].branch",
         "repositories[].reason",
+        "repositories[].worktree_of",
     ),
     "state": (
         "repository.name",

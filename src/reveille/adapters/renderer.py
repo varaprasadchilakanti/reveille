@@ -25,7 +25,7 @@ import math
 import re
 import shlex
 from collections import Counter, defaultdict
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from html import unescape
 from pathlib import Path
 from typing import Any, cast
@@ -65,10 +65,11 @@ from reveille.domain.repositories import (
     RepositoryActivity,
     status_counts,
 )
-from reveille.domain.state import QUIET_BRANCH_DAYS, RepositoryState
+from reveille.domain.state import QUIET_BRANCH_DAYS, RepositoryState, Worktree
 from reveille.domain.summary import Finding, longest_quiet_run, summarise
 from reveille.exceptions import OutputPathError, RenderError
 from reveille.replacing import write_replacing
+from reveille.undecoded import json_text
 
 # Label of the aggregated residual slice, referenced where its colour is chosen.
 _OTHER_LABEL: str = "Other Contributors"
@@ -447,6 +448,8 @@ class Renderer:
                     "first_commit_date": r.stats.first_commit_date.isoformat(),
                     "last_commit_date": r.stats.last_commit_date.isoformat(),
                     "co_authored_commits": r.stats.co_authored_commits,
+                    # Schema 1.3: the `[bot]` rule `derived.automated_accounts` counts by.
+                    "automated": is_automated(r.stats.name, r.stats.email),
                 }
                 for i, r in enumerate(data.ranked_contributors[: data.provenance.limit])
             ],
@@ -512,7 +515,7 @@ class Renderer:
                 for a in _area_statements(data)
             ]
 
-        return json.dumps(payload, indent=2)
+        return json_text(payload, indent=2)
 
     def summary_document(self, data: ReportData) -> dict[str, Any]:
         """Describe the repository in about 2 KB, naming no contributor.
@@ -578,7 +581,7 @@ class Renderer:
         """
         document = self.summary_document(data)
         if output_format == "json":
-            return json.dumps(document, indent=2)
+            return json_text(document, indent=2)
         if output_format == "markdown":
             return _summary_markdown(document)
         repo = document["repository"]
@@ -641,7 +644,7 @@ class Renderer:
             }
 
         if output_format == "json":
-            return json.dumps(
+            return json_text(
                 {
                     "schema_version": SCHEMA_VERSION,
                     "document": "who-changed",
@@ -727,7 +730,7 @@ class Renderer:
 
         named, commit = point
         if output_format == "json":
-            return json.dumps(
+            return json_text(
                 {
                     "schema_version": SCHEMA_VERSION,
                     "document": "brief",
@@ -822,7 +825,7 @@ class Renderer:
             "not add up to a number of people."
         )
         if output_format == "json":
-            return json.dumps(
+            return json_text(
                 {
                     "schema_version": SCHEMA_VERSION,
                     "document": "repos",
@@ -893,7 +896,7 @@ class Renderer:
             The state; text stays under 2 KB.
         """
         if output_format == "json":
-            return json.dumps(_state_document(state, name, history_replaced, limit), indent=2)
+            return json_text(_state_document(state, name, history_replaced, limit), indent=2)
         if output_format == "markdown":
             return _state_markdown(state, name, history_replaced, limit)
         if output_format == "line":
@@ -959,6 +962,8 @@ class Renderer:
         if ranked:
             fieldnames[3:3] = ["designation", "tier"]
             fieldnames += ["composite_score", "percentile"]
+        # Last, so every earlier column keeps its position.
+        fieldnames.append("automated")
 
         buffer = io.StringIO(newline="")
         writer = csv.DictWriter(buffer, fieldnames=fieldnames)
@@ -975,6 +980,7 @@ class Renderer:
                 "active_days": r.stats.active_days,
                 "last_commit_date": r.stats.last_commit_date.isoformat(),
                 "co_authored_commits": r.stats.co_authored_commits,
+                "automated": "true" if is_automated(r.stats.name, r.stats.email) else "false",
             }
             if ranked:
                 row["designation"] = _neutralise_csv_cell(r.tier_designation)
@@ -1261,15 +1267,17 @@ def _repository_json(row: RepositoryActivity) -> dict[str, Any]:
         "automated_accounts": row.automated_accounts,
         "shallow_clone": row.shallow,
         "reason": row.reason,
+        "worktree_of": row.worktree_of,  # schema 1.3
     }
 
 
 def _repository_line(row: RepositoryActivity) -> str:
     """One repository's row as a plain line."""
+    linked = f"; worktree of {row.worktree_of}" if row.worktree_of else ""
     if row.status == "not_read":
-        return f"- {row.path}: not read ({row.reason})"
+        return f"- {row.path}: not read ({row.reason}){linked}"
     if row.last_commit is None:
-        return f"- {row.path}: empty"
+        return f"- {row.path}: empty{linked}"
     automated = (
         f" and {_counted(row.automated_accounts, 'automated account')}"
         if row.automated_accounts
@@ -1284,7 +1292,7 @@ def _repository_line(row: RepositoryActivity) -> str:
     shallow = "; shallow clone" if row.shallow else ""
     return (
         f"- {row.path}: {row.status}, last commit {row.last_commit.isoformat()} "
-        f"({_counted(row.days_since_last_commit or 0, 'day')} ago){activity}{shallow}"
+        f"({_counted(row.days_since_last_commit or 0, 'day')} ago){activity}{shallow}{linked}"
     )
 
 
@@ -1293,8 +1301,9 @@ def _repository_markdown_row(row: RepositoryActivity) -> str:
     status = f"not read: {row.reason}" if row.status == "not_read" else row.status
     last = row.last_commit.isoformat() if row.last_commit else ""
     days = "" if row.days_since_last_commit is None else f"{row.days_since_last_commit:,}"
+    linked = f" (worktree of {_md(row.worktree_of)})" if row.worktree_of else ""
     cells = [
-        _md(row.path),
+        _md(row.path) + linked,
         _md(status) if row.status == "not_read" else status,
         last,
         days,
@@ -1321,6 +1330,7 @@ def _repositories_csv(rows: list[RepositoryActivity]) -> str:
             "automated_accounts",
             "shallow_clone",
             "reason",
+            "worktree_of",
         ]
     )
     for row in rows:
@@ -1336,6 +1346,7 @@ def _repositories_csv(rows: list[RepositoryActivity]) -> str:
                 row.automated_accounts,
                 "true" if row.shallow else "false",
                 _neutralise_csv_cell(row.reason or ""),
+                _neutralise_csv_cell(row.worktree_of or ""),
             ]
         )
     return buffer.getvalue()
@@ -1532,27 +1543,37 @@ def _commit_span(commits: list[Commit]) -> tuple[datetime.date, datetime.date]:
     return min(dates), max(dates)
 
 
-def _week_starts(first: datetime.date, last: datetime.date) -> list[str]:
-    """Every Monday from the week containing `first` to the week containing `last`.
+def _week_starts(
+    first: datetime.date, last: datetime.date, active: Iterable[datetime.date]
+) -> list[str]:
+    """The Mondays a weekly line is drawn through, from `first`'s week to `last`'s.
 
-    Quiet weeks are drawn as zero, not bridged by a line implying activity.
+    Those two weeks, each week with a commit, and the weeks either side of one.
+    Quiet weeks are drawn as zero, not bridged by a line implying activity: the
+    line runs from the zero at a quiet stretch's first week to the zero at its
+    last, so the weeks between need no point, and the chart grows with the weeks
+    that have commits, not with the calendar span.
 
     Args:
         first: The first day to cover.
         last: The last day to cover.
+        active: The Mondays of the weeks with a commit, between the two.
 
     Returns:
-        ISO dates of each week's Monday, in order.
+        ISO dates of those Mondays, in order.
     """
-    monday = first - datetime.timedelta(days=first.weekday())
-    weeks: list[str] = []
+    low = first - datetime.timedelta(days=first.weekday())
+    high = last - datetime.timedelta(days=last.weekday())
     step = datetime.timedelta(weeks=1)
-    while monday <= last:
-        weeks.append(monday.isoformat())
-        if monday > datetime.date.max - step:
-            break  # 9999-12-27, the last Monday a date can hold; Git accepts a commit after it.
-        monday += step
-    return weeks
+    weeks = {low, high}
+    for monday in active:
+        weeks.add(monday)
+        # Mondays both, so a step inside the bounds cannot leave the calendar.
+        if monday > low:
+            weeks.add(monday - step)
+        if monday < high:
+            weeks.add(monday + step)
+    return sorted(week.isoformat() for week in weeks if low <= week <= high)
 
 
 def _build_timeline_chart(
@@ -1571,14 +1592,13 @@ def _build_timeline_chart(
     if not commits:
         return "null"
 
-    weekly: dict[str, int] = defaultdict(int)
+    weekly: dict[datetime.date, int] = defaultdict(int)
     for commit in commits:
         d = commit.timestamp.date()
-        week_start = d - datetime.timedelta(days=d.weekday())
-        weekly[week_start.isoformat()] += 1
+        weekly[d - datetime.timedelta(days=d.weekday())] += 1
 
-    sorted_weeks = _week_starts(*(window or _commit_span(commits)))
-    counts = [weekly.get(w, 0) for w in sorted_weeks]
+    sorted_weeks = _week_starts(*(window or _commit_span(commits)), weekly)
+    counts = [weekly.get(datetime.date.fromisoformat(w), 0) for w in sorted_weeks]
 
     fig = go.Figure()
     fig.add_trace(
@@ -1642,7 +1662,10 @@ def _build_contributor_timeline_chart(
 
     if not any(weekly_per_email.values()):
         return "null"
-    all_weeks = _week_starts(*(window or _commit_span(commits)))
+    active = {
+        datetime.date.fromisoformat(week) for bins in weekly_per_email.values() for week in bins
+    }
+    all_weeks = _week_starts(*(window or _commit_span(commits)), active)
 
     fig = go.Figure()
     for i, r in enumerate(shown):
@@ -2456,7 +2479,13 @@ def _state_document(
         "untracked": bounded(state.untracked),
         "stashes": state.stashes,
         "worktrees": [
-            {"path": w.path, "branch": w.branch, "locked": w.locked, "prunable": w.prunable}
+            {
+                "path": w.path,
+                "branch": w.branch,
+                "locked": w.locked,
+                "prunable": w.prunable,
+                "current": w.current,  # schema 1.3
+            }
             for w in state.worktrees[:limit]
         ],
         "worktrees_total": len(state.worktrees),
@@ -2473,6 +2502,13 @@ def _state_document(
         "working_tree_read": not (state.bare or state.working_tree_unread),
         "notice": _STATE_NOTICE,
     }
+
+
+def _other_worktrees(state: RepositoryState) -> list[Worktree]:
+    """The worktrees other than the one read; all but the main one if none is marked."""
+    if any(w.current for w in state.worktrees):
+        return [w for w in state.worktrees if not w.current]
+    return list(state.worktrees[1:])
 
 
 def _state_lines(
@@ -2497,8 +2533,8 @@ def _state_lines(
         lines.append(f"Conflicted: {_listed(state.conflicted, limit)}.")
     lines.extend(_working_tree_lines(state, limit))
     extra = ["1 stash" if state.stashes == 1 else f"{state.stashes:,} stashes"]
-    if len(state.worktrees) > 1:
-        others = [f"{w.path} ({w.branch or 'detached'})" for w in state.worktrees[1:]]
+    others = [f"{w.path} ({w.branch or 'detached'})" for w in _other_worktrees(state)]
+    if others:
         extra.append(f"{_counted(len(others), 'other worktree')}: {_listed(others, limit)}")
     lines.append("; ".join(extra) + ".")
     lines.append(
@@ -2685,8 +2721,8 @@ def _state_markdown(state: RepositoryState, name: str, history_replaced: bool, l
         if items and not (state.bare or state.working_tree_unread):
             lines.append(f"  - {label}: {_md_listed(items, limit)}")
     lines.append(f"- **Stashes:** {state.stashes:,}")
-    if len(state.worktrees) > 1:
-        others = [f"{w.path} ({w.branch or 'detached'})" for w in state.worktrees[1:]]
+    others = [f"{w.path} ({w.branch or 'detached'})" for w in _other_worktrees(state)]
+    if others:
         lines.append(f"- **Other worktrees:** {_md_listed(others, limit)}")
     lines.append(
         f"- **Branches:** {state.branches:,} local, {state.branches_merged:,} merged into this "

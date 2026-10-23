@@ -22,8 +22,8 @@ before release.
 - **`reveille state`** says where a repository stands now: the branch, upstream ahead/behind as of
   the last fetch (Reveille never fetches), a merge, rebase, `git am`, cherry-pick, revert or bisect
   in progress, conflicts, staged, modified, deleted, renamed and untracked files (bounded by
-  `--limit`), stashes, worktrees, branch counts, and the latest tag with the commits since it
-  (ADR 0024). Unlike `git status`, it neither rewrites `.git/index` nor runs `core.fsmonitor` or a
+  `--limit`), stashes, worktrees (in JSON, `current` marks the one read), branch counts, and the
+  latest tag with the commits since it (ADR 0024). Unlike `git status`, it neither rewrites `.git/index` nor runs `core.fsmonitor` or a
   content filter the repository's own config defines (a driver in your global config still runs);
   tests check both. It names no author, but lists local paths (changed files, and worktree
   directories, which can contain your login name) and branch names. Off Windows, `git status` is
@@ -31,12 +31,14 @@ before release.
 - **`reveille brief`** says what changed since a tag, a commit or a date (`--from`, `--since`), in
   counts, naming no author: commits, people, automated accounts, the most changed areas and file
   types, files added, areas active again after 90 quiet days, and tags in the range. With neither
-  option it starts at the latest tag, and with no tag exits 2 (ADR 0022, ADR 0025). It prints the
-  commit it reached, to pass as `--from` next time.
+  option it starts at the latest tag (with `--until`, the latest on or before that day), and with
+  no such tag exits 2 (ADR 0022, ADR 0025, ADR 0031). It prints the commit it reached, to pass as
+  `--from` next time.
 - **`reveille repos <directory>`** gives one row per repository: active, quiet or dormant, its last
   commit, and counts for a window (90 days by default). It finds working trees and bare mirrors to
   `--depth` levels without following links and reads four at once; one it cannot read is a
-  `not_read` row with the reason (ADR 0026).
+  `not_read` row with the reason (ADR 0026). A linked worktree's row names its main working tree
+  (`worktree_of`).
 - **`reveille skill`** prints a section for `AGENTS.md` or `CLAUDE.md`, or a `SKILL.md` with
   `--format skill`, naming the commands a coding agent should run. A test runs every command it
   names.
@@ -58,8 +60,9 @@ before release.
   "Third-party licences" section.
 - **In JSON:** the merge commits left out (`merge_commits_excluded`); `reveille_version` in the
   `summary`, `state`, `brief`, `who-changed` and `repos` documents; `analysed_commit` in
-  `who-changed`. With `--format json`, those commands and `capabilities` write stderr messages as
-  JSON objects; exit codes are unchanged.
+  `who-changed`; `automated` for each contributor in `generate` JSON and CSV (CSV's last column),
+  by the rule `derived.automated_accounts` counts by. With `--format json`, those commands and
+  `capabilities` write stderr messages as JSON objects; exit codes are unchanged.
 - **Any directory inside a working tree** can be `--repo` or the current directory (`init`
   excepted), found as Git finds it, and `who-changed` takes a path relative to the current
   directory. A repository whose config sets `core.worktree` is refused (exit 2).
@@ -85,19 +88,29 @@ before release.
   pinned in `src/reveille/vendor/` with its notices, not the full bundle of whichever plotly is
   installed ([ADR 0027](docs/adr/0027-the-report-embeds-a-pinned-cartesian-bundle.md)). In headless
   Chromium all 24 chart renderings draw the same SVG as before.
+- **The weekly charts grow with the weeks that have commits, not with the calendar span.** A quiet
+  stretch is drawn through a zero at each end instead of a point for every week, so the line is
+  the same; the charts' hidden tables say that a week not listed had none. A history with one
+  commit dated 1970 and one in 9997, read with `--until 9998-01-01`, gives a 1.8 MB report in
+  0.4 s; 0.9.0 had not written it after 20 minutes.
 - **Faster, with less memory, on long histories.** On 100,000 synthetic commits by about 500
   authors, against 0.9.0 (medians of three, 2026-10-18, Git 2.55, Reveille's own peak memory):
   `generate` 6.0 s and 207 MB to 4.9 s and 115 MB, `summary` 2.4 s and 183 MB to 2.0 s and 107 MB,
   `who-changed` 5.0 s and 183 MB to 3.9 s and 107 MB. Each change was checked to leave the output
   byte-identical.
+- **`who-changed` says when nothing by the name given is in the working tree.** A typo answered
+  only "No commit in the analysis window changed 'nosuch.txt'", exit 1; the answer is still 1 and
+  now adds "and nothing by that name is in the working tree: check the path".
 - **Progress off a terminal** is one plain line per stage. A dark-mode reader no longer sees the
   report light first.
-- **`schema_version` is 1.2.** The brief is a new document and the others gain fields; every 1.1
+- **`schema_version` is 1.3.** The brief is a new document and the others gain fields; every 1.1
   field is unchanged.
 - **Release checks.** A tag is published only from `main` with a matching version, and packages are
   built in a job that cannot obtain the PyPI token.
 - **Documentation** was corrected by running each statement. SECURITY.md no longer promises a
-  response time.
+  response time. USER_GUIDE.md has a table of the keys that name the same fact differently in
+  different documents (`analysed_commit`, `head`, `repository.head_sha`), and says that
+  `analysis_since` is the first commit's day, not the day asked for.
 - **`--min-commits` above everyone's count says so.** The report is still written with an empty
   contributor table and exit 0, and a note gives the highest count.
 - **`repos` exits 2 when it found repositories and could read none of them.** It used to exit 0,
@@ -129,6 +142,18 @@ before release.
 - **Ctrl-C while Git was running took up to five minutes to take effect.** GitPython (3.2.1)
   leaves its deadline timer running when the wait is interrupted, and Python waits for that timer
   before exiting: measured at 300 s on a 200,000-commit `generate`, 0.06 s now. Exit is still 130.
+- **`generate --repo` given a Git directory or a file blamed the default output path made from
+  it.** It now says what `summary` says about the same `--repo`; a repository that opens still
+  gets the output path's own message.
+- **`who-changed` answered "no commit changed it" (exit 1) for a path inside a submodule or a
+  nested clone**, whose history is another repository's. It now exits 2 and gives the command that
+  asks that repository; a path no commit here changed is still exit 1.
+- **An empty window always suggested "removing author filters"**, whether or not any were given.
+  It now suggests only what narrowed the read: the date range, `--exclude-author`, or
+  `--exclude-path`.
+- **Stopped with SIGTERM while writing, a run left its `.tmp` file beside the output.** It now
+  removes it and exits 143, as a terminated process does; a SIGTERM handler set by whatever runs
+  Reveille is kept.
 - **A commit dated in the last week of 9999 stopped the HTML report** ("date value out of range",
   exit 2). Git accepts such a date. The weekly charts now end at that week. JSON and CSV were not
   affected.
@@ -160,6 +185,10 @@ before release.
 - **An output path ending in `/` is refused.** `-o reports/` wrote a file named `reports`.
 - **A `reveille.toml` that starts with a byte-order mark is read.** It was reported as "Invalid
   statement" at line 1.
+- **A path that is not UTF-8 reached JSON as a lone surrogate** (`"caf\udcff.txt"` from
+  `who-changed`), which a strict JSON parser refuses. Such a byte is written as `\xNN`
+  (`caf\xff.txt`), in JSON as text output writes it, in `who-changed`, `state` and `repos` and in
+  stderr messages under `--format json`.
 - **Names and dates.** A name that is not UTF-8 stopped the HTML and CSV reports; it is shown as
   U+FFFD, and a directory or file name as `\xNN` in text output. A commit dated year 10000 is
   counted as unreadable, not dropped without a word, and `--since` or `--until 9999-12-31` exits 2.
@@ -261,6 +290,12 @@ Each entry has a test that fails without the fix. 0.9.0's exposure is stated whe
 - **A report could be written over Git's own files** through a hard link or a linked worktree's Git
   directory. Every report file, and `init`'s files, are written to a new file and moved into
   place, the Git directory is refused, and a new report is owner-only.
+- **`generate --output` and `init --output` could write into another repository's bare Git
+  directory**: a report in its `refs/heads/` became a broken branch, and `init --force` replaced
+  its `config`. Only a directory named `.git`, or the analysed repository's own, was refused. Any
+  directory holding `HEAD`, `objects` and `refs` now is, checked again from the open directory
+  when the file is written, so a directory swapped for a link in between is not written into (not
+  on Windows). 0.9.0 is affected (run against its code).
 - **An author name could add commits and people to every figure** by holding `git log`'s record
   separators and a real commit's hash. Each record is framed by its hash, and a hash with more than
   one record is counted as unreadable.

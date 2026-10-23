@@ -285,3 +285,16 @@ class TestTheProfileNeedsNoTextAlternative:
         )
         for name in AXIS_ORDER:
             assert name in table, f"{name} is missing from the profile table"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "caption",
+    [
+        "Commits per week; a week not listed had none",
+        "Commits per week, per contributor; a week not listed had none",
+    ],
+)
+def test_a_weekly_table_says_the_weeks_it_leaves_out_had_none(rendered: str, caption: str) -> None:
+    """The tables list the weeks the line is drawn through, not every week."""
+    assert f"<caption>{caption}</caption>" in rendered

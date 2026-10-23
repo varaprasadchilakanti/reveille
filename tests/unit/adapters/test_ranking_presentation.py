@@ -188,7 +188,8 @@ class TestCsvWithRankingOn:
         header = out.read_text(encoding="utf-8-sig").splitlines()[0]
         assert header == (
             "rank,name,email,designation,tier,commits,lines_added,lines_deleted,"
-            "net_lines,active_days,last_commit_date,co_authored_commits,composite_score,percentile"
+            "net_lines,active_days,last_commit_date,co_authored_commits,composite_score,percentile,"
+            "automated"
         )
 
     def test_ranking_values_are_present(self, tmp_path: Path) -> None:

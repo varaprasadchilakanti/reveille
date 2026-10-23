@@ -257,8 +257,8 @@ reveille validate --repo /path/to/repository
 ### `reveille summary`
 
 The repository in a few lines, naming no contributor (with one or two people, counts can identify
-someone). It reads no line counts, so it is quicker than `generate`: 1.02 s against 9.35 s on a
-9,015-commit history (measured 2026-10-12).
+someone). It reads no line counts, so it is quicker than `generate`: 1.02 s against 9.35 s on
+llama.cpp's 9,015-commit history (measured 2026-10-12, Git 2.55, warm cache).
 
 ```bash
 reveille summary --format json
@@ -291,7 +291,8 @@ reveille state --format json
 ### `reveille who-changed`
 
 Who changed a file or directory, and who changed it most recently. It says who changed the code,
-not who knows or owns it. A path no commit in the window changed exits 1.
+not who knows or owns it. A path no commit in the window changed exits 1; one inside a
+submodule or a nested clone exits 2, naming the command that asks that repository.
 
 ```bash
 reveille who-changed src/parser/lexer.c --since 2026-01-01

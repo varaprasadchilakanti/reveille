@@ -15,7 +15,7 @@ pytestmark = pytest.mark.unit
 
 
 def test_the_weeks_stop_at_the_last_monday_a_date_can_hold() -> None:
-    weeks = _week_starts(datetime.date(9999, 12, 20), datetime.date.max)
+    weeks = _week_starts(datetime.date(9999, 12, 20), datetime.date.max, [])
 
     assert weeks == ["9999-12-20", "9999-12-27"]
 

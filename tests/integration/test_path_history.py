@@ -153,7 +153,7 @@ class TestExcludePath:
 
         assert "sid@e.test" in json.dumps(document["contributors"])
 
-    @pytest.mark.parametrize("value", ["/etc", "../x", "a/../../b", "", "  ", ".", "a\tb", "C:/x"])
+    @pytest.mark.parametrize("value", ["/etc", "../x", "a/../../b", "", "  ", ".", "C:/x"])
     def test_a_path_git_could_not_match_as_meant_is_refused(
         self, vendored: Path, value: str
     ) -> None:
@@ -234,3 +234,32 @@ class TestExcludePath:
         assert result.exit_code == ExitCode.SUCCESS, result.stderr
         html = out.read_text(encoding="utf-8")
         assert "Paths not counted:" in html
+
+
+_CONTROL = "d\tt\nn\x1b[31mx"
+
+
+def test_a_path_holding_a_tab_or_a_newline_can_be_excluded(tmp_path: Path) -> None:
+    """Git and `who-changed` read such a path; the exclusion matched it only by refusing."""
+    path = tmp_path / "c"
+    (path / _CONTROL).mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=path, check=True)
+    (path / "keep").write_text("1\n", encoding="utf-8")
+    _commit(path, "Ana", "ana@e.test", "base")
+    (path / _CONTROL / "f").write_text("1\n", encoding="utf-8")
+    _commit(path, "Vic", "vic@e.test", "control only")
+
+    document, _ = _generate(path, "--exclude-path", _CONTROL)
+
+    assert document["metadata"]["total_commits"] == 1  # type: ignore[index]
+    assert document["provenance"]["filters"]["exclude_paths"] == [_CONTROL]  # type: ignore[index]
+    summary = CliRunner().invoke(app, ["summary", "--repo", str(path), "--exclude-path", _CONTROL])
+    assert summary.exit_code == ExitCode.SUCCESS, summary.stderr
+    assert "Not counted, by request: d\tt\\nn\\u001b[31mx.\n" in summary.stdout
+
+
+def test_a_path_holding_nul_is_refused(tmp_path: Path) -> None:
+    result = CliRunner().invoke(app, ["summary", "--repo", str(tmp_path), "--exclude-path", "a\0b"])
+
+    assert result.exit_code == ExitCode.CANNOT_RUN
+    assert "NUL" in result.stderr

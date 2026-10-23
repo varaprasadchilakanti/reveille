@@ -358,6 +358,7 @@ class TestBranchesAndWorktrees:
             "branch": "side",
             "locked": False,
             "prunable": False,
+            "current": False,
         }
 
     def test_another_worktree_is_listed(self, repo: Path, tmp_path: Path) -> None:

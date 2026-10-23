@@ -101,7 +101,7 @@ class ReportConfig(BaseModel):
 
         Raises:
             ValueError: If a path is empty, absolute, climbs out with `..`, or
-                carries a control character.
+                carries a NUL character.
         """
         normalised: list[str] = []
         for raw in paths:
@@ -116,8 +116,10 @@ class ReportConfig(BaseModel):
                 )
             if ".." in path.split("/"):
                 raise ValueError(f"an excluded path must not contain '..': {raw!r}.")
-            if any(ord(c) < 0x20 or ord(c) == 0x7F for c in path):
-                raise ValueError(f"an excluded path carries a control character: {raw!r}.")
+            # A tab or a newline is a byte a path may hold, and every output escapes
+            # it; NUL is the one no path, and no argument to Git, can carry.
+            if "\0" in path:
+                raise ValueError(f"an excluded path carries a NUL character: {raw!r}.")
             normalised.append(path)
         return normalised
 

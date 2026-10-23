@@ -101,8 +101,8 @@ Then:
 3. **Check `schema_version` before parsing**, and carry `provenance`
    (in `generate --format json`) into whatever you produce; two reports
    that disagree are reconciled from it. The other commands give
-   `reveille_version` and the commit read (`analysed_commit`, or `head`
-   for `state`); `summary` names no commit.
+   `reveille_version` and the commit read (`analysed_commit`, `head` for
+   `state`, `repository.head_sha` for `summary`).
 4. **Pass `--deterministic`** for anything cached, diffed, or compared.
 5. **Never present a ranking as an assessment**, and never name an
    individual in a summary the default report does not name. The
