@@ -1756,8 +1756,10 @@ class GitReader:
             try:
                 # `-z` needs Git 2.36; older Git gives newline-separated records.
                 output = str(self._git().worktree("list", "--porcelain"))
-            except GitCommandError:
-                return []
+            except GitCommandError as exc:
+                raise RepositoryError(
+                    f"Git could not list the worktrees: {_git_error(exc)}"
+                ) from exc
             found = _parse_worktrees(output, nul=False)
         return [replace(w, current=_same_directory(w.path, self._repo_path)) for w in found]
 
@@ -1790,6 +1792,9 @@ class GitReader:
 
         Returns:
             The tag name, as repository text.
+
+        Raises:
+            RepositoryError: If Git fails for any reason other than finding no tag.
         """
         try:
             if until is not None:
@@ -1798,11 +1803,20 @@ class GitReader:
                 rev = str(self._git().rev_list("-1", *bound, "--end-of-options", rev, "--")).strip()
                 if not rev:
                     return None
-            return str(
-                self._git().describe("--tags", "--abbrev=0", "--end-of-options", rev)
-            ).strip()
-        except GitCommandError:
-            return None
+            try:
+                return str(
+                    self._git().describe("--tags", "--abbrev=0", "--end-of-options", rev)
+                ).strip()
+            except GitCommandError:
+                # Git's "no names found" is translated, so ask whether a tag is reachable.
+                reachable = str(
+                    self._git().for_each_ref("--count=1", f"--merged={rev}", "refs/tags")
+                ).strip()
+                if reachable:
+                    raise
+                return None
+        except GitCommandError as exc:
+            raise RepositoryError(f"Git could not find the latest tag: {_git_error(exc)}") from exc
 
     def _latest_tag(self, head: str | None) -> tuple[str | None, int | None]:
         """Return the nearest reachable tag and the non-merge commits after it."""
@@ -1820,8 +1834,10 @@ class GitReader:
                     "--",
                 )
             ).strip()
-        except GitCommandError:
-            return None, None
+        except GitCommandError as exc:
+            raise RepositoryError(
+                f"Git could not count the commits since {tag}: {_git_error(exc)}"
+            ) from exc
         return tag, int(count) if count.isdigit() else None
 
     def resolve_commit(self, revision: str) -> str:
