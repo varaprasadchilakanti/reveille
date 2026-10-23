@@ -23,7 +23,7 @@ import threading
 import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Annotated, Any, ClassVar, NoReturn, TextIO, cast
+from typing import Annotated, Any, ClassVar, NoReturn, TextIO, cast, get_args
 
 import typer
 from typer.core import TyperGroup
@@ -214,6 +214,9 @@ def _describe_config_error(exc: Exception) -> str:
     described = []
     for error in errors():
         message = str(error.get("msg", "")).removeprefix("Value error, ")
+        if error.get("type") == "literal_error":
+            # A choice, as `--format` refusals say: name the value given.
+            message += f", not {error.get('input')!r}"
         fields = [str(part) for part in error.get("loc", ())]
         option = ", ".join(_option_label(f) for f in fields)
         described.append(f"{option}: {message}" if option else message)
@@ -1266,6 +1269,7 @@ def generate(
     from reveille.config import describe_unknown_keys, read_config_file
 
     _configure_logging(verbose)
+    _check_report_format(output_format)
 
     config_kwargs: ReportConfigKwargs = cast(ReportConfigKwargs, {})
     _auto_discovered = config is None
@@ -1435,6 +1439,16 @@ def _check_query_format(output_format: str, allowed: tuple[str, ...] = ("text", 
         choices = ", ".join(allowed[:-1]) + f" or {allowed[-1]}"
         _err(f"Error: --format must be {choices}, not {output_format!r}.")
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
+
+
+def _check_report_format(output_format: str | None) -> None:
+    """Refuse a `generate --format` it does not offer, as the other commands refuse one.
+
+    Only a refused one goes through `_check_query_format`: a valid `json` there would
+    turn stderr to JSON, which `generate` does not do.
+    """
+    if output_format is not None and output_format not in get_args(OutputFormat):
+        _check_query_format(output_format, get_args(OutputFormat))
 
 
 _RepoOption = Annotated[

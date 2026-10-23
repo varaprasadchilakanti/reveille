@@ -101,6 +101,12 @@ before release.
 - **`who-changed` says when nothing by the name given is in the working tree.** A typo answered
   only "No commit in the analysis window changed 'nosuch.txt'", exit 1; the answer is still 1 and
   now adds "and nothing by that name is in the working tree: check the path".
+- **`who-changed` says the recent authors are listed alphabetically.** "Changed it most recently:
+  A, B, C" read as ordered by date; it is "The 5 who changed it most recently, alphabetically: A,
+  B, C".
+- **`generate --format` refuses a format in the words every other command uses:** "--format must
+  be html, json or csv, not 'xml'", where it gave Pydantic's "Input should be ...". A refused
+  choice in `reveille.toml` (`report.format = "xml"`) now names the value given too.
 - **Progress off a terminal** is one plain line per stage. A dark-mode reader no longer sees the
   report light first.
 - **`schema_version` is 1.3.** The brief is a new document and the others gain fields; every 1.1

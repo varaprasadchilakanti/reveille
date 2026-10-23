@@ -681,9 +681,13 @@ class Renderer:
             f"from {window[0].isoformat()} to {answer.last_changed.isoformat()}, "
             f"in a window ending {window[1].isoformat()}.",
         ]
-        # A subset of the authors; with every author in it, it repeats them.
+        # A subset of the authors; with every author in it, it repeats them. It is in
+        # alphabetical order, so the line says so: read as a list, it looks ranked by date.
         if len(answer.recently_active) < len(answer.authors):
-            lines.append(f"Changed it most recently: {names(answer.recently_active)}.")
+            lines.append(
+                f"The {len(answer.recently_active):,} who changed it most recently, "
+                f"alphabetically: {names(answer.recently_active)}."
+            )
         if answer.authors:
             lines.append(f"Authors: {names(answer.authors)}.")
         if answer.automated:

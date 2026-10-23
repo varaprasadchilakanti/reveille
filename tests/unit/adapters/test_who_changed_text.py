@@ -43,14 +43,17 @@ def _text(answer: PathAnswer) -> str:
 def test_with_every_author_recent_the_line_is_left_out() -> None:
     text = _text(_answer(authors=3, recent=3))
 
-    assert "Changed it most recently" not in text
+    assert "most recently" not in text
     assert "Authors: Person 0, Person 1, Person 2." in text
 
 
 def test_with_more_authors_than_recent_the_line_is_printed() -> None:
     text = _text(_answer(authors=7, recent=5))
 
-    assert "Changed it most recently: Person 0, Person 1, Person 2, Person 3, Person 4." in text
+    assert (
+        "The 5 who changed it most recently, alphabetically: "
+        "Person 0, Person 1, Person 2, Person 3, Person 4."
+    ) in text.splitlines()
 
 
 def test_json_carries_the_recent_list_either_way() -> None:
