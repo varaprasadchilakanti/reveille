@@ -2970,12 +2970,21 @@ def _git_directory_of(tree: Path) -> Path | None:
         # reads as empty), and read to a bound, so a device cannot read for ever.
         descriptor = os.open(dotgit, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
         with os.fdopen(descriptor, "rb") as handle:
-            line = handle.read(_MAX_GITFILE_BYTES).split(b"\n", 1)[0].decode()
-    except (OSError, UnicodeDecodeError):
+            line = _gitfile_value(handle.read(_MAX_GITFILE_BYTES))
+    except OSError:
         return None
     if not line.startswith("gitdir: "):
         return None
-    return (tree / line.removeprefix("gitdir: ").strip()).resolve()
+    return (tree / line.removeprefix("gitdir: ")).resolve()
+
+
+def _gitfile_value(raw: bytes) -> str:
+    """Return what a `.git` or `commondir` file holds, as Git reads it.
+
+    Git strips only the line ends after it, so a path holding a newline or a
+    byte that is not UTF-8 is kept whole; the byte decodes as the path it is.
+    """
+    return os.fsdecode(raw.rstrip(b"\r\n"))
 
 
 def main_worktree_of(tree: Path) -> Path | None:
@@ -2997,12 +3006,14 @@ def main_worktree_of(tree: Path) -> Path | None:
         return None
     try:
         with (git_directory / "commondir").open("rb") as handle:
-            line = handle.read(_MAX_GITFILE_BYTES).split(b"\n", 1)[0].decode().strip()
-    except (OSError, UnicodeDecodeError):
+            line = _gitfile_value(handle.read(_MAX_GITFILE_BYTES))
+    except OSError:
         return None
     if not line:
         return None
     common = (git_directory / line).resolve()
+    if not common.is_dir():
+        return None  # named, but not there: no main tree can be said
     return common.parent if common.name == ".git" else common
 
 
