@@ -22,6 +22,19 @@ steps to reproduce it, and the version of Reveille and Python in use.
 Reveille has one maintainer and no on-call rota. Reports are normally
 acknowledged within a few days; no response time is promised.
 
+## Vulnerabilities in Dependencies
+
+The runtime dependencies are declared as version ranges: Typer `>=0.18,<0.28`, GitPython
+`^3.2.1`, Jinja2 `^3.1.6`, Plotly `>=7.0,<8.0` and Pydantic `^2.4`. When a dependency publishes a
+fix inside its range, upgrading that package in the environment Reveille is installed in applies
+it, with no new Reveille release. When the fix lies outside the range, or the floor admits a
+vulnerable version, the range is changed in a patch release of the supported version, and the
+CHANGELOG names the advisory under Security.
+
+The plotly.js 4.1.1 bundle in `src/reveille/vendor/` is not in `poetry.lock`, so Dependabot and the
+osv-scanner job do not cover it. A vulnerability in it is fixed by replacing the bundle in a patch
+release.
+
 ## Regulatory status
 
 Reveille is supplied free of charge by one individual, outside any commercial activity. This process is voluntary. If you build Reveille into a product you supply commercially, report vulnerabilities in Reveille here; your own obligations remain yours. See docs/COMPLIANCE.md.
@@ -245,4 +258,4 @@ contents. Git, which Reveille runs, obeys the repository's own `.git/config`
 (see Threat Model above). The primary attack surface is maliciously crafted Git
 repository content that could affect the HTML output, or
 vulnerabilities in the runtime dependency chain (GitPython, Jinja2,
-Plotly, Typer).
+Plotly, Pydantic, Typer, and the plotly.js bundle the report embeds).
