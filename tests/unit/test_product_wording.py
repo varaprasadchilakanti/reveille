@@ -18,6 +18,9 @@ import pytest
 
 _ROOT = pathlib.Path(__file__).resolve().parents[2]
 
+# The first words of the GitHub About text; the README and PyPI open with them.
+_TAGLINE = "Offline reports of a Git repository's commit activity"
+
 # Everything a stranger or a package index reads. `CHANGELOG.md` and
 # `docs/adr/` are excluded deliberately: both are historical records, the
 # changelog states that the phrase was removed, and an ADR is immutable
@@ -88,14 +91,14 @@ class TestTheOutputIsNotCalledAPerformanceReport:
         # The tagline is the first bold line under the title.
         taglines = [line for line in readme if line.startswith("**")][:1]
         assert taglines, "the README has no tagline"
-        assert "Offline Git history reports" in taglines[0], (
+        assert _TAGLINE in taglines[0], (
             f"the README tagline no longer says what the tool does: {taglines[0]!r}"
         )
 
         pyproject = (_ROOT / "pyproject.toml").read_text(encoding="utf-8").splitlines()
         descriptions = [line for line in pyproject if line.startswith("description = ")]
         assert len(descriptions) == 1, f"expected one description, found {len(descriptions)}"
-        assert "commit activity" in descriptions[0], (
+        assert descriptions[0].startswith(f'description = "{_TAGLINE}'), (
             f"the package description no longer says what the tool does: {descriptions[0]!r}"
         )
 

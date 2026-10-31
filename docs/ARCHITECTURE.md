@@ -56,6 +56,10 @@ one that imports Typer. Reading history from another source, or rendering anothe
 means writing one adapter. `tests/unit/test_layering.py` enforces this by importing each layer in a
 clean interpreter and asserting which frameworks appear in `sys.modules`.
 
+The ports are implicit. There are no interface classes (`typing.Protocol` or abstract bases):
+`services/report.py` imports `GitReader` and `Renderer` directly, and the layering holds by these
+import rules and the test that enforces them.
+
 ### One exception
 
 `domain/ranking.py` imports `RankingWeights` from `config.py`, which is a Pydantic model. So the
@@ -337,7 +341,7 @@ Almost nothing here is novel. Each choice below names the established technique 
 
 | In this codebase | Established as |
 |---|---|
-| `CLI → Service → Domain ← Adapters` | **Ports and adapters** (Cockburn, 2005), or *hexagonal architecture*. The domain depends on no I/O and no presentation framework. |
+| `CLI → Service → Domain ← Adapters` | **Ports and adapters** (Cockburn, 2005), or *hexagonal architecture*. The domain depends on no I/O and no presentation framework. The ports are implicit: no interface classes, see [The dependency rule](#the-dependency-rule). |
 | `test_layering.py`, `test_workflow_pins.py`, `test_lockfile.py`, `test_licence.py`, `test_capabilities.py`, `test_docs_links.py` | **Architectural fitness functions** (Ford, Parsons and Kua, *Building Evolutionary Architectures*, 2017): the build fails when a structural property stops holding, not only when a feature breaks. |
 | Refusing a revision that begins with `-`; accepting only object names `git rev-list` produced; refusing to write through a symlink; guards that exit non-zero when they cannot check | **Fail-safe defaults** and **complete mediation** (Saltzer and Schroeder, 1975): the default is refusal, and every write passes the same check. |
 | `AnalysisProvenance` on every JSON report | **Data provenance**: a figure that cannot state what it measured, over what, with which filters, is not evidence. |
