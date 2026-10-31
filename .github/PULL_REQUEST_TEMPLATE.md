@@ -4,7 +4,7 @@
 
 ## Why
 
-<!-- The problem it solves. If it fixes a bug, say how the bug was found. -->
+<!-- The problem it solves. If it fixes a bug, say how to reproduce it. -->
 
 ## Verified
 

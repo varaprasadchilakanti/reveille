@@ -21,8 +21,8 @@ GUIDE = """\
 ## Git history and state: Reveille
 
 Reveille reads this repository's Git history on this machine. It makes no network call of its
-own, never changes Git data, and prints bounded JSON. Prefer it to raw `git log` and `git status`
-output.
+own, never changes Git data, and prints bounded JSON. It excludes merge commits and applies
+`.mailmap`.
 
 - Starting a task, where the repository stands: `reveille state --format json` (branch, upstream,
   work in progress, stashes, worktrees, the latest tag).

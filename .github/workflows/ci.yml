@@ -220,10 +220,7 @@ jobs:
   # therefore cannot block anything. This can, and the same scan gates
   # the release in publish.yml.
   #
-  # osv-scanner rather than pip-audit: pip-audit does not read
-  # poetry.lock -- upstream closed that request as not planned -- so it
-  # would need a `poetry export` first, and a scan of an exported file
-  # is a scan of something other than the lock we ship.
+  # osv-scanner reads poetry.lock directly.
   # ----------------------------------------------------------------
   vulnerabilities:
     name: Known vulnerabilities (osv-scanner)
@@ -240,12 +237,8 @@ jobs:
   # ----------------------------------------------------------------
   # Build reproducibility
   #
-  # SOURCE_DATE_EPOCH is set here because, on the pinned Poetry 2.4.2, it
-  # is actually honoured: measured, wheel entry timestamps track the value
-  # exactly. It was deliberately *not* set while the pin was Poetry 1.8.2,
-  # where it is inert -- entries pinned to (1980, 1, 1) whatever the
-  # variable said, and setting it would have looked meaningful while doing
-  # nothing.
+  # SOURCE_DATE_EPOCH is set here: on the pinned Poetry 2.4.2, wheel entry
+  # timestamps track it.
   #
   # The epoch is derived from the analysed commit, the same convention the
   # `--deterministic` report flag uses, so a build and a report generated

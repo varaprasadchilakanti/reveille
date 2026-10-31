@@ -122,7 +122,7 @@ scope. The maintainer would then be its manufacturer (Art. 3(13) includes a natu
 would any company that markets it under its own name or trademark. Art. 14's reporting duties would
 apply at once, to versions already released as well (Art. 69(3)), and the remaining obligations
 from 11 December 2027. The Commission's non-binding guidance C(2026) 5252 of 27 July 2026 addresses
-free and open-source software; this document has not yet been checked against it.
+free and open-source software; this document does not yet reflect it.
 
 ## Product Liability Directive — Directive (EU) 2024/2853
 

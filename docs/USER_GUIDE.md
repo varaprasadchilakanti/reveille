@@ -29,9 +29,7 @@ Install and first run: [README](../README.md).
 **Reading.** Reveille opens the repository and reads the commit log for the branch and date
 range in one `git log --numstat` pass, beside a `git rev-list` that authenticates each record and
 a second `git log` that reads only `Co-authored-by` trailers. The read scales with commits, not
-with changed files. Measured 2026-10-12, Reveille 0.9.0, Git 2.55, warm cache, one 20-core
-machine: on llama.cpp (9,015 commits) `generate --format json` took 9.35 s and `summary`, which
-skips the line counts, 1.02 s; on git.git (61,112 commits), 22.6 s and 2.58 s.
+with changed files. `summary` skips the line counts, so it is quicker than `generate`.
 
 **Merge commits are excluded.** A merge repeats work already counted in the commits it joins, and
 counting it would credit whoever merged. A change made only in a merge, such as a conflict
@@ -541,8 +539,7 @@ them. It does not read source code, diff content or any other part of a commit m
 
 ## Starting a Session, and the `reveille skill` Command
 
-The word reveille is the call that starts a soldier's day, and the commands for an agent, or a
-person, starting work follow the same order:
+For an agent, or a person, starting work, the commands go in this order:
 
 1. `reveille state --format json`: where the repository stands now, before anything changes.
 2. `reveille brief --format json`: what changed since the latest tag, or with `--from <commit>`
@@ -551,8 +548,7 @@ person, starting work follow the same order:
    exits 2; give `--since <YYYY-MM-DD>` instead.
 3. `reveille who-changed <path> --format json`, before changing a file or directory: whom to ask.
 
-The army's morning report recorded people; `brief` and `state` name nobody, and `repos` lists
-repositories, never people.
+`brief` and `state` name nobody, and `repos` lists repositories, never people.
 
 `reveille skill` prints this as a section to paste into `AGENTS.md`, `CLAUDE.md` or another
 instructions file, since an agent uses a tool its instructions name. `--format skill` prints it as
@@ -640,8 +636,7 @@ without it `rank` is table order only. Each JSON contributor carries `automated`
 
 **HTML** is one self-contained file of about 1.7 MB, most of it the embedded chart library (the
 plotly.js cartesian bundle, pinned) and its third-party licences, which the report carries in a
-collapsed section after its footer: 1.69 MB for a one-commit repository and 1.70 MB for this one
-(measured 2026-10-18; 0.9.0's reports were 4.9 MB). Its header names the branch, the commit and
+collapsed section after its footer: about 1.7 MB. Its header names the branch, the commit and
 the period the figures describe, and its footer the Reveille version that made it and when, so a
 report passed on can be checked against the repository. Printed from a Chromium-based browser,
 each sheet is numbered, on the paper size the print dialog is set to.

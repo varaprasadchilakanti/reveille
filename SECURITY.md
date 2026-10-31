@@ -132,7 +132,7 @@ deliberately. What partly compensates, without replacing it:
 
 Fuzzing. Scorecard's Fuzzing check credits OSS-Fuzz membership, ClusterFuzzLite, or a harness
 in a language it recognises: Go, Haskell, JavaScript and TypeScript, Erlang, C# and F#. Python is
-not among them. Fuzzing would be worthwhile here and has not been done. Reveille parses untrusted input (author names, addresses
+not among them. Reveille is not fuzzed. It parses untrusted input (author names, addresses
 and `.mailmap` contents from an arbitrary repository) and renders it into HTML and CSV, and v0.8.0 had five real issues in that surface.
 
 ## Threat Model
@@ -144,8 +144,7 @@ history is then attacker-supplied text: author names, email addresses,
 root, because `generate` discovers that file automatically from the working
 directory, and its values reach the same places the flags do.
 
-v0.8.0 closed five issues under that model, each reproduced against a real
-malicious repository before being fixed: argument injection into `git log` that
+v0.8.0 closed five issues under that model: argument injection into `git log` that
 allowed arbitrary file overwrite, CSV formula injection, contributor forgery
 through separator injection into author fields, an output-path validation bypass
 combined with symlink-following writes, and an unhandled crash on a forged
