@@ -12,7 +12,7 @@ import itertools
 
 import pytest
 
-from reveille.domain.concentration import gini_coefficient, lorenz_curve
+from reveille.domain.concentration import commit_concentration, gini_coefficient, lorenz_curve
 
 
 @pytest.mark.unit
@@ -111,3 +111,36 @@ class TestLorenzCurve:
         """Undefined, same as the coefficient."""
         with pytest.raises(ValueError, match="negative"):
             lorenz_curve([5, -2])
+
+
+@pytest.mark.unit
+class TestComputeCommitConcentration:
+    """Tests for the commit concentration derived metric helper.
+
+    Takes commit counts rather than ranked contributors, because the
+    population it describes includes contributors held back from the
+    listing by `min_commits`, who have no rank.
+    """
+
+    def test_empty_population_returns_zero(self) -> None:
+        assert commit_concentration([]) == 0
+
+    def test_single_contributor_returns_one(self) -> None:
+        assert commit_concentration([20]) == 1
+
+    def test_two_equal_contributors_returns_one(self) -> None:
+        assert commit_concentration([10, 10]) == 1
+
+    def test_skewed_distribution_returns_one(self) -> None:
+        assert commit_concentration([90, 5, 5]) == 1
+
+    def test_even_distribution_across_four_returns_two(self) -> None:
+        assert commit_concentration([25, 25, 25, 25]) == 2
+
+    def test_zero_total_commits_returns_zero(self) -> None:
+        assert commit_concentration([0]) == 0
+
+    def test_order_does_not_matter(self) -> None:
+        """The helper sorts internally, so a caller need not."""
+        assert commit_concentration([5, 90, 5]) == 1
+        assert commit_concentration([5, 5, 90]) == 1

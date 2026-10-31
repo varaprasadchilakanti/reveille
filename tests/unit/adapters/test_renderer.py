@@ -31,7 +31,6 @@ from reveille.adapters.renderer import (
     _build_contributor_timeline_chart,
     _build_heatmap_data,
     _build_timeline_chart,
-    _compute_commit_concentration,
     _sanitise_chart_label,
     _to_json,
 )
@@ -276,44 +275,6 @@ class TestRenderCsv:
         output = tmp_path / "nonexistent" / "report.csv"
         with pytest.raises(OutputPathError):
             self._renderer().render_csv(self._sample_data(), output)
-
-
-# ------------------------------------------------------------------
-# _compute_commit_concentration
-# ------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestComputeCommitConcentration:
-    """Tests for the commit concentration derived metric helper.
-
-    Takes commit counts rather than ranked contributors, because the
-    population it describes includes contributors held back from the
-    listing by `min_commits`, who have no rank.
-    """
-
-    def test_empty_population_returns_zero(self) -> None:
-        assert _compute_commit_concentration([]) == 0
-
-    def test_single_contributor_returns_one(self) -> None:
-        assert _compute_commit_concentration([20]) == 1
-
-    def test_two_equal_contributors_returns_one(self) -> None:
-        assert _compute_commit_concentration([10, 10]) == 1
-
-    def test_skewed_distribution_returns_one(self) -> None:
-        assert _compute_commit_concentration([90, 5, 5]) == 1
-
-    def test_even_distribution_across_four_returns_two(self) -> None:
-        assert _compute_commit_concentration([25, 25, 25, 25]) == 2
-
-    def test_zero_total_commits_returns_zero(self) -> None:
-        assert _compute_commit_concentration([0]) == 0
-
-    def test_order_does_not_matter(self) -> None:
-        """The helper sorts internally, so a caller need not."""
-        assert _compute_commit_concentration([5, 90, 5]) == 1
-        assert _compute_commit_concentration([5, 5, 90]) == 1
 
 
 # ------------------------------------------------------------------

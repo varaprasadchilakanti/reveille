@@ -47,7 +47,7 @@ from reveille import __version__
 from reveille.domain.areas import AreaStatement, PathAnswer, describe_areas, is_automated
 from reveille.domain.brief import QUIET_DAYS, Brief
 from reveille.domain.coauthors import commits_with_co_authors
-from reveille.domain.concentration import gini_coefficient, lorenz_curve
+from reveille.domain.concentration import commit_concentration, gini_coefficient, lorenz_curve
 from reveille.domain.files import extension_breakdown, generated_churn, hotspots
 from reveille.domain.models import (
     SCHEMA_VERSION,
@@ -1017,7 +1017,7 @@ class Renderer:
         population = [stats.commit_count for stats in _people(data)]
         automated = [s for s in everyone if is_automated(s.name, s.email)]
         return {
-            "commit_concentration": _compute_commit_concentration(population),
+            "commit_concentration": commit_concentration(population),
             # Two places: a third decimal would imply unwarranted precision.
             "gini_coefficient": round(gini_coefficient(population), 2),
             # The sample maximum is (n-1)/n, so the reader needs the ceiling.
@@ -2159,33 +2159,6 @@ def _build_lorenz_chart(counts: list[int]) -> str:
         height=320,
     )
     return _to_json(fig)
-
-
-def _compute_commit_concentration(counts: list[int]) -> int:
-    """Count the fewest contributors who between them authored half the commits.
-
-    Not a bus factor: that measures knowledge concentration, a property of line
-    ownership, not of commit counts. Counts include unlisted contributors.
-
-    Args:
-        counts: Commit count per contributor, in any order.
-
-    Returns:
-        An integer in [1, len(counts)], or 0 when `counts` is empty or sums to zero.
-    """
-    if not counts:
-        return 0
-    total = sum(counts)
-    if total == 0:
-        return 0
-    threshold = total * 0.5
-    cumulative = 0
-    # The loop always returns (guarded above); the tail satisfies mypy --strict.
-    for position, count in enumerate(sorted(counts, reverse=True), start=1):  # pragma: no branch
-        cumulative += count
-        if cumulative >= threshold:
-            return position
-    return len(counts)  # pragma: no cover - unreachable, see above
 
 
 # ------------------------------------------------------------------

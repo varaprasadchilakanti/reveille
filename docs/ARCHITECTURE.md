@@ -91,7 +91,7 @@ src/reveille/
     domain/
         models.py     frozen dataclasses; no behaviour beyond derived properties
         ranking.py    scoring and tiering (opt-in)
-        concentration.py  Lorenz curve and Gini coefficient; names no author
+        concentration.py  Lorenz curve, Gini coefficient, fewest holding half the commits; names no author
         summary.py    the written findings, by fixed rules over the numbers
         files.py      churn per path, hotspots, change by file type
         profile.py    the six-axis repository profile
