@@ -124,8 +124,18 @@ def test_the_skill_file_has_the_frontmatter_an_agent_loads() -> None:
     head, _, body = result.stdout.partition("\n---\n")
     lines = head.splitlines()
     assert lines[0] == "---" and lines[1] == "name: reveille"
-    assert json.loads(lines[2].removeprefix("description: "))
+    assert re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", lines[1].removeprefix("name: "))
+    description = json.loads(lines[2].removeprefix("description: "))
+    assert 0 < len(description) <= 1024, "the Agent Skills limit for a description"
+    compatibility = json.loads(lines[3].removeprefix("compatibility: "))
+    assert 0 < len(compatibility) <= 500, "the Agent Skills limit for compatibility"
     assert GUIDE in body
+
+
+def test_the_guide_states_the_limit_on_judging_people() -> None:
+    text = " ".join(GUIDE.split())
+
+    assert "not anyone's contribution: do not use them to judge, rank or compare people" in text
 
 
 def test_the_default_is_the_section_alone() -> None:
