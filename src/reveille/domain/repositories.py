@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti
 # SPDX-License-Identifier: Apache-2.0
 
-"""Many repositories, one row each, about the repository and never a person (ADR 0026)."""
+"""Many repositories, one row each, describing the repository, not a person (ADR 0026)."""
 
 from __future__ import annotations
 
@@ -31,17 +31,17 @@ class RepositoryActivity:
 
     Attributes:
         path: Relative to the directory searched, with `/` separators.
-        status: By the days since the last commit; see `status_of`.
+        status: See `status_of`.
         branch: The checked-out branch, or None when not read or detached.
-        last_commit: The date (UTC) of the last non-merge commit counted, if
-            any; with `--exclude-author`, the last one not excluded.
+        last_commit: Date (UTC) of the last non-merge commit counted, if any;
+            with `--exclude-author`, the last not excluded.
         days_since_last_commit: From that date to the window's end.
         commits: Non-merge commits in the window.
-        people: Distinct identities in the window, automated accounts apart.
+        people: Distinct non-automated identities in the window.
         automated_accounts: Distinct automated identities in the window.
         shallow: Whether only part of the history is present.
         reason: Why the repository was not read, for "not_read".
-        worktree_of: For a linked worktree, the main working tree: relative to
+        worktree_of: For a linked worktree, the main working tree, relative to
             the directory searched, or "(a path outside the directory)".
     """
 
@@ -93,7 +93,7 @@ def describe_repository(
     Args:
         path: Relative to the directory searched.
         branch: The checked-out branch.
-        last_commit: The last non-merge commit's date, or None with none.
+        last_commit: The last non-merge commit's date, or None.
         in_window: The commits in the window.
         until: The window's last day.
         window_days: The window's length.
@@ -120,7 +120,7 @@ def describe_repository(
 
 
 def status_counts(rows: list[RepositoryActivity]) -> dict[Status, int]:
-    """Count the rows by status, every status present, in `STATUSES` order.
+    """Count rows by status, every status present, in `STATUSES` order.
 
     Args:
         rows: The repositories.

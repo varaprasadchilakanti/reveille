@@ -58,18 +58,13 @@ class ExitCode(enum.IntEnum):
     """The command ran and its answer is affirmative."""
 
     NEGATIVE = 1
-    """The command ran correctly and its answer is negative.
-
-    Reveille worked as intended and the repository state does not satisfy
-    the request: currently, an analysis window containing no commits.
-    """
+    """The command ran and its answer is negative: currently, a window with no commits."""
 
     CANNOT_RUN = 2
-    """The command could not run at all.
+    """The command could not run: the fault is in the inputs or environment, not the answer.
 
-    Invalid invocation, invalid configuration, a path that is not a
-    readable Git repository, or an output location that cannot be written.
-    The fault is in the inputs or the environment, not in the answer.
+    Invalid invocation or configuration, a path that is not a readable Git
+    repository, or an output location that cannot be written.
     """
 
 
@@ -97,38 +92,29 @@ _TERMINAL_UNSAFE: dict[int, str] = {
 
 
 def _printable(text: str) -> str:
-    """Show terminal control characters as escapes instead of obeying them.
-
-    Args:
-        text: A message that may quote configuration values.
-
-    Returns:
-        The message with each unsafe character written as a hexadecimal escape.
-    """
+    """Return `text` with terminal control characters as hexadecimal escapes, not obeyed."""
     if any("\udc80" <= ch <= "\udcff" for ch in text):
         # A byte Git output held that is not UTF-8 (read with surrogateescape).
         text = text.encode("utf-8", "surrogateescape").decode("utf-8", "backslashreplace")
     return text.translate(_TERMINAL_UNSAFE)
 
 
-#: Whether stderr carries JSON: set when the command was asked for `--format json`,
-#: and reset by the root callback for every invocation.
+#: Whether stderr carries JSON (`--format json`); reset by the root callback per invocation.
 _stderr_json = {"on": False}
-#: Whether stderr is silenced: only while a check runs to learn whether it would refuse.
+#: Whether stderr is silenced: only while a check runs to learn if it would refuse.
 _stderr_muted = {"on": False}
 
 _LEVELS = {"Error: ": "error", "Warning: ": "warning", "Note: ": "note"}
 
 
 def _err(message: str) -> None:
-    """Write one message to stderr, with terminal control characters escaped.
+    """Write one message to stderr, terminal control characters escaped.
 
-    Under `--format json` the message is one JSON object on its own line,
-    `{"level": "error" | "warning" | "note", "message": ...}`: a configuration
-    error is an error, and any other message without a prefix is a note.
+    Under `--format json` it is one line, `{"level": "error" | "warning" | "note",
+    "message": ...}`; "Configuration error: " is an error, other unprefixed text a note.
 
     Args:
-        message: The message to print, starting "Error: ", "Warning: " or "Note: ".
+        message: Starting "Error: ", "Warning: " or "Note: ".
     """
     if _stderr_muted["on"]:
         return
@@ -146,16 +132,15 @@ def _err(message: str) -> None:
 def _say(text: str, *, nl: bool = True, answer: bool = True) -> None:
     """Write to stdout, and say so when it cannot be done.
 
-    A reader that stopped early (`| head`) ends the run quietly with exit 0, as
-    it chose. A full disk, or a closed stdout for an answer, cannot deliver the
-    answer, so it exits 2 rather than 0 or Click's 1. Stdout is then pointed at
-    the null device, so the interpreter's last flush cannot fail again.
+    A reader that stopped early (`| head`) ends the run quietly with exit 0. A
+    full disk, or a closed stdout for an answer, exits 2 rather than 0 or Click's
+    1; stdout then points at the null device so the last flush cannot fail again.
 
     Args:
         text: What to write.
         nl: Whether to end it with a newline.
         answer: False for a confirmation, such as a written file's path, which is
-            left out, not an error, when stdout is closed.
+            dropped, not an error, when stdout is closed.
 
     Raises:
         typer.Exit: SUCCESS for a reader that stopped, CANNOT_RUN otherwise.
@@ -180,17 +165,12 @@ def _say(text: str, *, nl: bool = True, answer: bool = True) -> None:
 
 
 def _show_help(ctx: Any) -> None:
-    """Write a command's help to stdout, failing as `_say` does when it cannot be written.
+    """Write the help of `ctx`'s command to stdout, failing as `_say` does.
 
-    Typer's help is printed by Rich from inside `get_help`, so the writing is
-    caught around that call, not around an echo of what it returns.
-
-    Args:
-        ctx: The Click context of the command whose help is wanted.
+    Rich prints Typer's help inside `get_help`, so failures are caught around that call.
 
     Raises:
-        typer.Exit: SUCCESS for a reader that stopped, CANNOT_RUN when the help
-            cannot be written.
+        typer.Exit: SUCCESS for a reader that stopped, CANNOT_RUN otherwise.
     """
     if sys.stdout is None:
         _err("Error: standard output is closed, so the answer has nowhere to go.")
@@ -204,8 +184,8 @@ def _show_help(ctx: Any) -> None:
         _discard_stdout()
         raise typer.Exit(code=ExitCode.SUCCESS) from exc
     except SystemExit as exc:
-        # Rich's own answer to a broken pipe (`Console.on_broken_pipe`) is exit 1,
-        # the negative answer; a reader that stopped early chose to, so it is 0.
+        # Rich exits 1 on a broken pipe (`Console.on_broken_pipe`); a reader that
+        # stopped early gets 0.
         if exc.code != 1:
             raise
         raise typer.Exit(code=ExitCode.SUCCESS) from exc
@@ -251,12 +231,7 @@ _OPTION_NAMES = {
 
 
 def _describe_config_error(exc: Exception) -> str:
-    """Say what is wrong with a configuration in plain words.
-
-    Keeps only the reason and the option, not Pydantic's dump of every input.
-
-    Args:
-        exc: The error raised while building the configuration.
+    """Say what is wrong with a configuration: the reason and option, not Pydantic's dump.
 
     Returns:
         One sentence per problem, joined with "; ".
@@ -268,7 +243,7 @@ def _describe_config_error(exc: Exception) -> str:
     for error in errors():
         message = str(error.get("msg", "")).removeprefix("Value error, ")
         if error.get("type") == "literal_error":
-            # A choice, as `--format` refusals say: name the value given.
+            # Name the value given, as `--format` refusals do.
             message += f", not {error.get('input')!r}"
         fields = [str(part) for part in error.get("loc", ())]
         option = ", ".join(_option_label(f) for f in fields)
@@ -277,13 +252,10 @@ def _describe_config_error(exc: Exception) -> str:
 
 
 def _option_label(field: str) -> str:
-    """Name a configuration field as both a flag and a reveille.toml key.
-
-    Args:
-        field: A ReportConfig field name.
+    """Name a ReportConfig field as flag and TOML key, "--area-depth / areas.depth".
 
     Returns:
-        For example "--area-depth / areas.depth", or the field unchanged.
+        Whichever of the two exist, or the field unchanged.
     """
     flag = _OPTION_NAMES.get(field)
     key = _TOML_KEYS.get(field)
@@ -293,21 +265,14 @@ def _option_label(field: str) -> str:
 
 
 class _EscapingFormatter(logging.Formatter):
-    """A log formatter that escapes terminal control characters in quoted values.
+    """A log formatter that escapes terminal control characters.
 
-    A warning reads as the CLI's own do, `Warning: ...`; a lower level keeps the
-    module that wrote it, for whoever is diagnosing with `--verbose`.
+    A warning reads as the CLI's own, `Warning: ...`; a lower level keeps the
+    module that wrote it, for diagnosing with `--verbose`.
     """
 
     def format(self, record: logging.LogRecord) -> str:
-        """Format the record, then escape it.
-
-        Args:
-            record: The log record.
-
-        Returns:
-            The formatted, escaped line.
-        """
+        """Format the record, then escape it."""
         if record.levelno >= logging.WARNING:
             return _printable(f"{record.levelname.capitalize()}: {record.getMessage()}")
         return _printable(super().format(record))
@@ -317,7 +282,7 @@ class _StderrHandler(logging.StreamHandler):  # type: ignore[type-arg]
     """A stderr handler that resolves the stream at emit time.
 
     The handler outlives one invocation, so a stream captured at construction
-    could be closed beneath it ("I/O operation on closed file").
+    could be closed beneath it.
     """
 
     @property
@@ -330,11 +295,7 @@ class _StderrHandler(logging.StreamHandler):  # type: ignore[type-arg]
         """Ignore assignment; the stream is always the current `sys.stderr`."""
 
     def emit(self, record: logging.LogRecord) -> None:
-        """Write the record, on a line of its own if the progress line is open.
-
-        Args:
-            record: The log record.
-        """
+        """Write the record, on a line of its own if the progress line is open."""
         if _StageSpinner.line_open:
             _StageSpinner.line_open = False
             self.stream.write("\n")
@@ -346,17 +307,14 @@ class _StderrHandler(logging.StreamHandler):  # type: ignore[type-arg]
 
 
 def _configure_logging(verbose: bool) -> None:
-    """Attach the stderr log handler; `verbose` chooses the level.
+    """Attach the stderr log handler, the only place one is; `verbose` adds DEBUG.
 
-    The only place a handler is attached. Always attached, so a warning such as
-    an `--exclude-author` matching nobody shows without `--verbose`.
-
-    Args:
-        verbose: True to emit DEBUG-level diagnostics as well as warnings.
+    Always attached, so a warning (such as an `--exclude-author` matching
+    nobody) shows without `--verbose`.
     """
     level = logging.DEBUG if verbose else logging.WARNING
     package_logger = logging.getLogger("reveille")
-    # Idempotent: a second call must not duplicate every diagnostic line.
+    # A second call must not duplicate every line.
     if any(isinstance(h, _StderrHandler) for h in package_logger.handlers):
         package_logger.setLevel(level)
         return
@@ -367,13 +325,10 @@ def _configure_logging(verbose: bool) -> None:
 
 
 def _why_git_cannot_start(message: str) -> str:
-    """Return Git's own reason from GitPython's import-time failure, or a plain one.
-
-    Args:
-        message: The ImportError text GitPython raises when `git version` fails.
+    """Return Git's first error line from GitPython's ImportError when `git version` fails.
 
     Returns:
-        Git's first error line, or a sentence saying no Git was found on PATH.
+        That line, or a sentence saying no Git was found on PATH.
     """
     _, found, stderr = message.partition("stderr: '")
     lines = [line.strip() for line in stderr.rstrip("'").splitlines()] if found else []
@@ -382,11 +337,7 @@ def _why_git_cannot_start(message: str) -> str:
 
 
 def _exit_as_defect(exc: Exception) -> NoReturn:
-    """Say an error nobody anticipated is a defect, and exit 2, never 1.
-
-    Args:
-        exc: The error.
-    """
+    """Report an unanticipated error as a defect, and exit 2, not 1."""
     _logger.debug("Unexpected error", exc_info=True)
     _err(f"Error: {type(exc).__name__}: {exc}. This is a defect in Reveille; please report it.")
     # A last flush of a stdout that cannot be written would turn the exit into 120.
@@ -397,14 +348,7 @@ def _exit_as_defect(exc: Exception) -> NoReturn:
 def _file_path(value: str | Path) -> Path:
     """Read `--output` as a file's path, refusing one spelt as a directory.
 
-    `Path` drops a trailing slash, so `-o reports/` would have written a file
-    named `reports`.
-
-    Args:
-        value: The option as given, or its default.
-
-    Returns:
-        The path.
+    `Path` drops a trailing slash, so `-o reports/` would write a file `reports`.
 
     Raises:
         typer.BadParameter: If the path ends with a separator.
@@ -447,43 +391,21 @@ class _Group(TyperGroup):
     """The command group: a usage error is a JSON line where the command's messages are."""
 
     def parse_args(self, ctx: Any, args: list[str]) -> list[str]:
-        """Keep the command line, which Click consumes before a subcommand fails on it.
-
-        Args:
-            ctx: The group's context.
-            args: The words after the program name.
-
-        Returns:
-            What Click's parser leaves for the subcommand.
-        """
+        """Keep the command line, which Click consumes before a subcommand fails on it."""
         ctx.meta["reveille.words"] = list(args)
         if not args and self.no_args_is_help and not ctx.resilient_parsing:
-            # No command is not a command: the help is given, and the exit is 2 however
-            # the help went.
+            # No command: show the help, then exit 2 however the help went.
             with contextlib.suppress(typer.Exit):
                 _show_help(ctx)
             raise typer.Exit(code=ExitCode.CANNOT_RUN)
         return super().parse_args(ctx, args)
 
     def get_help_option(self, ctx: Any) -> Any:
-        """Return `--help`, shown through `_show_help`.
-
-        Args:
-            ctx: The group's context.
-
-        Returns:
-            The help option.
-        """
+        """Return `--help`, shown through `_show_help`."""
         return _through_show_help(super().get_help_option(ctx))
 
     def invoke(self, ctx: Any) -> Any:
         """Run the subcommand; under `--format json`, its usage errors are JSON too.
-
-        Args:
-            ctx: The group's context.
-
-        Returns:
-            What the subcommand returns.
 
         Raises:
             typer.Exit: CANNOT_RUN, after the JSON error line.
@@ -517,14 +439,7 @@ class _Command(TyperCommand):
     """A command whose `--help` is shown through `_show_help`."""
 
     def get_help_option(self, ctx: Any) -> Any:
-        """Return `--help`, shown through `_show_help`.
-
-        Args:
-            ctx: The command's context.
-
-        Returns:
-            The help option.
-        """
+        """Return `--help`, shown through `_show_help`."""
         return _through_show_help(super().get_help_option(ctx))
 
 
@@ -532,10 +447,10 @@ class _App(typer.Typer):
     """The Typer application, with an exit code for errors nobody anticipated."""
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        """Run the CLI; an uncaught exception exits 2 (cannot run), never 1.
+        """Run the CLI; an uncaught exception exits 2 (cannot run), not 1.
 
-        Python exits 1 on an uncaught exception, which the contract reserves for
-        a negative answer. The traceback goes to the debug log (`--verbose`).
+        Python's 1 is reserved by the contract for a negative answer. The
+        traceback goes to the debug log (`--verbose`).
         """
         try:
             os.getcwd()
@@ -562,16 +477,7 @@ class _App(typer.Typer):
     def command(
         self, name: str | None = None, *, cls: type[TyperCommand] | None = None, **kwargs: Any
     ) -> Callable[[CommandFunctionType], CommandFunctionType]:
-        """Register a command, as `_Command` unless another class is given.
-
-        Args:
-            name: The command's name.
-            cls: Its class; `_Command` when not given.
-            **kwargs: As for `typer.Typer.command`.
-
-        Returns:
-            Typer's decorator.
-        """
+        """Register a command, as `_Command` unless `cls` is given; otherwise as Typer does."""
         return super().command(name, cls=cls or _Command, **kwargs)
 
 
@@ -593,11 +499,7 @@ _CONVENTIONAL_CONFIG: str = "reveille.toml"
 
 
 def _discover_config() -> Path | None:
-    """Return reveille.toml in the working directory, if present; refuse a link there.
-
-    Returns:
-        Its path, or None.
-    """
+    """Return reveille.toml in the working directory, or None; refuse a link there."""
     candidate = Path(_CONVENTIONAL_CONFIG)
     if not os.path.lexists(candidate):
         return None
@@ -608,9 +510,9 @@ def _discover_config() -> Path | None:
 def _refuse_a_discovered_link(path: Path) -> None:
     """Refuse a discovered reveille.toml that is a symbolic link.
 
-    Git checks a committed link out as a link, so a repository's file could name
-    any file on this machine, and its values reach the report and stderr. Git
-    refuses a linked `.gitattributes`, `.gitignore` and `.mailmap` for this reason.
+    Git checks out a committed link as a link, so a repository's file could name
+    any file on this machine, whose values reach the report and stderr. Git
+    refuses a linked `.gitattributes`, `.gitignore` and `.mailmap` likewise.
 
     Raises:
         typer.Exit: CANNOT_RUN when it is one.
@@ -646,25 +548,16 @@ _TOML_KEYS: dict[str, str] = {
 
 
 def _announce_discovered_settings(path: Path, settings: Mapping[str, object]) -> None:
-    """Say on stderr that a configuration file was picked up, and what it set.
+    """Say on stderr which `ReportConfig` settings a discovered file set.
 
-    An auto-discovered file may come from someone else's repository, so it must
-    not change what the report says silently.
-
-    Args:
-        path: The configuration file that was loaded.
-        settings: The settings it supplied, keyed by `ReportConfig` field.
+    It may come from someone else's repository, so it must not change the report silently.
     """
     keys = ", ".join(_TOML_KEYS.get(name, name) for name in settings)
     _err(f"Loaded settings from {path}: {keys}. Command-line options override them.")
 
 
 def _print_notices(notices: list[str]) -> None:
-    """Print each notice the service raised, on stderr, after the spinner.
-
-    Args:
-        notices: Plain sentences, in the order the service raised them.
-    """
+    """Print the service's notices on stderr, in order, after the spinner."""
     for notice in notices:
         _err(f"Note: {notice}")
 
@@ -683,11 +576,7 @@ class _StageSpinner:
     line_open: ClassVar[bool] = False
 
     def __init__(self, *, animate: bool | None = None) -> None:
-        """Create a spinner.
-
-        Args:
-            animate: Whether to animate; None means "if stderr is a terminal".
-        """
+        """Create a spinner; `animate` None means "if stderr is a terminal"."""
         self._animate: bool = sys.stderr.isatty() if animate is None else animate
         self._active: bool = False
         self._stop_event: threading.Event = threading.Event()
@@ -698,11 +587,7 @@ class _StageSpinner:
         self._start_time: float = 0.0
 
     def begin(self, label: str) -> None:
-        """Start the animated indicator for a new pipeline stage.
-
-        Args:
-            label: Human-readable stage name written to stderr.
-        """
+        """Start the indicator for a new pipeline stage named `label`."""
         self._label = label
         self._elapsed_seconds = 0.0
         self._items_processed = None
@@ -722,8 +607,8 @@ class _StageSpinner:
         """Stop the animation and write the completion line; no-op if none is running.
 
         Args:
-            elapsed_seconds: Time to display; None measures from begin().
-            items_processed: Optional item count for the completion line.
+            elapsed_seconds: Time to show; None measures from begin().
+            items_processed: Commit count for the line, if any.
         """
         if not self._active:
             return
@@ -761,14 +646,7 @@ class _StageSpinner:
 
 
 def _make_progress_callback(spinner: _StageSpinner) -> Callable[[ProgressEvent], None]:
-    """Return a progress callback that completes one stage and begins the next.
-
-    Args:
-        spinner: The _StageSpinner instance to drive.
-
-    Returns:
-        An on_progress callable for generate_report.
-    """
+    """Return an `on_progress` callback for `spinner`: complete one stage, begin the next."""
 
     def _callback(event: ProgressEvent) -> None:
         spinner.complete(event.elapsed_seconds, event.items_processed)
@@ -824,9 +702,9 @@ def _stop(signum: int, frame: object) -> None:
 def _exit_cleanly_when_stopped() -> None:
     """Make SIGTERM and SIGHUP exit 128 + N by raising, so a half-written file is removed.
 
-    By default the process stops where it is, and the `.tmp` beside the output
-    stays. SIGHUP is sent when a terminal closes; Windows has none. A handler
-    someone else installed is left in place; only the main thread can install one.
+    By default the process stops where it is, leaving the `.tmp` beside the output.
+    SIGHUP is sent when a terminal closes; Windows has none. Another handler is
+    left in place; only the main thread can install one.
     """
     if threading.current_thread() is not threading.main_thread():
         return
@@ -844,15 +722,7 @@ def _root(repo: Path) -> Path:
 
 
 def _resolve_output_path(output: Path, repo_path: Path) -> Path:
-    """Return the resolved output path; the default is relative to the repository.
-
-    Args:
-        output: The output path value received from the CLI flag.
-        repo_path: The resolved repository root path.
-
-    Returns:
-        The resolved output path.
-    """
+    """Return `output`, with the default placed in the repository root `repo_path`."""
     if output == Path("reveille-report.html"):
         return repo_path / "reveille-report.html"
     return output
@@ -862,11 +732,7 @@ def _git_directories(repo_path: Path) -> list[Path]:
     """Find where the repository keeps Git's own files, in any layout.
 
     Covers `.git`, a bare repository's top level, `--separate-git-dir`, and a
-    linked worktree's `commondir`; matching a `.git` component alone let a
-    report overwrite HEAD.
-
-    Args:
-        repo_path: The resolved repository root.
+    linked worktree's `commondir`; a `.git` path component alone misses these.
 
     Returns:
         The repository's Git directory, then the common one if different.
@@ -899,11 +765,9 @@ def _git_directories(repo_path: Path) -> list[Path]:
 
 
 def _refuse_what_is_not_a_file(output: Path, example: str) -> None:
-    """Refuse an output path that is a directory, a device, a pipe or a socket, or unusable.
+    """Refuse an output path that is a directory, device, pipe, socket, or unusable.
 
-    Args:
-        output: The output path as given.
-        example: A file name to suggest when it is a directory.
+    `example` is the file name suggested for a directory.
 
     Raises:
         typer.Exit: ExitCode.CANNOT_RUN if the path is refused.
@@ -929,7 +793,7 @@ def _refuse_what_is_not_a_file(output: Path, example: str) -> None:
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
 
-#: How each report Reveille writes begins. The HTML title has stood since the first renderer.
+#: How each Reveille report begins, including those older versions wrote.
 _REPORT_STARTS = {
     "html": ("<!DOCTYPE html>", "Reveille Report</title>"),
     "json": ('{\n  "schema_version"', '"schema_version"'),
@@ -956,10 +820,10 @@ def _written_by_reveille(path: Path, output_format: str) -> bool:
 
 
 def _refuse_what_a_config_cannot_replace(output: Path, output_format: str) -> None:
-    """Refuse a discovered config's output that is not a report, or would replace another file.
+    """Refuse a discovered config's output that is not .html, or would replace a non-report.
 
-    A committed `reveille.toml` could name `src/app.py` or an ignored `.env`, and the
-    report replaced it; or `vendor.git/HEAD`, a bare repository's own file.
+    Otherwise a committed `reveille.toml` could replace `src/app.py`, an ignored
+    `.env`, or `vendor.git/HEAD`, a bare repository's own file.
 
     Raises:
         typer.Exit: ExitCode.CANNOT_RUN if the path is refused.
@@ -982,17 +846,11 @@ def _refuse_what_a_config_cannot_replace(output: Path, output_format: str) -> No
 
 
 def _in_a_git_directory(path: Path) -> bool:
-    """Return whether a directory above `path` is a Git directory, any repository's.
+    """Return whether a directory above resolved `path` is any repository's Git directory.
 
-    Told by its files, as Git tells one; a bare repository's has no `.git` in its
-    name, and need not be the one read. The walk stops at a linked worktree's
-    root: its files are a checkout, though Git may keep it inside its directory.
-
-    Args:
-        path: A resolved path.
-
-    Returns:
-        True when a parent of `path`, below any linked worktree root, is one.
+    Told by its files, as Git does: a bare repository's has no `.git` in its name,
+    and need not be the one read. The walk stops at a linked worktree's root,
+    whose files are a checkout even when Git keeps it inside its directory.
     """
     for parent in path.parents:
         if holds_a_git_directory(parent):
@@ -1015,10 +873,9 @@ def _validate_output_path(
     example: str = "reveille-report.html",
     output_format: str = "html",
 ) -> None:
-    """Validate the output path for traversal and the repository boundary.
+    """Refuse `..`, a Git directory, a directory, device, pipe or socket, or an unusable path.
 
-    Refuses `..`, a Git directory, a directory, a device, a pipe or a socket, and a
-    path the system cannot use; warns outside the repository.
+    Warns when the path is outside the repository.
 
     Args:
         output: The output path as given, before resolution.
@@ -1048,9 +905,8 @@ def _validate_output_path(
             )
             raise typer.Exit(code=ExitCode.CANNOT_RUN)
 
-    # Writing into a Git directory can corrupt the repository, so it is
-    # refused whoever chose the path: flag, config file, or symlink.
-    # A linked worktree's checkout may lie inside its Git directory; its files are not Git's.
+    # Writing into a Git directory can corrupt the repository, so it is refused
+    # whoever chose the path. A linked worktree's checkout inside it is not Git's.
     checkout = _linked_worktree_of(output.resolve())
     inside_git_dir = any(
         output.resolve().is_relative_to(git_dir)
@@ -1100,11 +956,7 @@ def _output_path_refused(check: Callable[[], None]) -> bool:
 
 
 def _refuse_a_repository_that_cannot_be_read(repo_path: Path) -> None:
-    """Exit 2, in the reader's words, if the repository cannot be opened.
-
-    Raises:
-        typer.Exit: ExitCode.CANNOT_RUN if it cannot.
-    """
+    """Exit 2 with the reader's error if the repository cannot be opened."""
     from reveille.adapters.git_reader import GitReader
 
     try:
@@ -1120,15 +972,9 @@ def _apply_ranking_flags(
     ranking: bool,
     no_ranking: bool,
 ) -> None:
-    """Resolve the two ranking flags against the configuration file.
+    """Apply `--ranking` and `--no-ranking` to `merged`, over the configuration file.
 
-    Flags win over the file; if both are given, `--no-ranking` wins, as the
-    more conservative reading.
-
-    Args:
-        merged: The configuration mapping being assembled, modified in place.
-        ranking: Whether `--ranking` was passed.
-        no_ranking: Whether `--no-ranking` was passed.
+    With both, `--no-ranking`, the more conservative, wins.
     """
     if ranking:
         merged["ranking_enabled"] = True
@@ -1156,33 +1002,13 @@ def _merge_cli_flags(
     exclude_path: list[str] | None = None,
     hide_emails: bool = False,
 ) -> ReportConfigKwargs:
-    """Merge CLI flag values over the configuration file's values.
+    """Merge CLI flag values over the configuration file's, `config_kwargs`.
 
-    A flag left at its default applies only when the file set no value.
-
-    Args:
-        config_kwargs: Base kwargs loaded from a TOML file, or empty mapping.
-        repo: Resolved repository path from --repo flag.
-        output: Output path from --output flag.
-        since: Raw since date string, or None if not provided.
-        until: Raw until date string, or None if not provided.
-        branch: Branch name, or None if not provided.
-        title: Report title override, or None if not provided.
-        exclude_author: List of authors to exclude, or None.
-        min_commits: Minimum commit threshold, or None if not provided.
-        no_ranking: Whether ranking is explicitly disabled.
-        ranking: Whether ranking is explicitly enabled.
-        output_format: Output format, or None if the flag was not given, so the
-            file's value is not overwritten by the default.
-        deterministic: Whether to produce byte-reproducible output.
-        area_authors: Whether --area-authors was given; it only switches on.
-        area_depth: Area depth, or None if the flag was not given.
-        limit: The most entries per list of people in JSON and CSV, or None.
-        exclude_path: Paths to leave out of every figure, or None.
-        hide_emails: Whether --hide-emails was given; it only switches on.
+    A flag not given (None, empty, False, or the default output path) leaves the
+    file's value.
 
     Returns:
-        A merged ReportConfigKwargs ready for ReportConfig construction.
+        Keyword arguments for ReportConfig.
     """
     merged: dict[str, Any] = dict(config_kwargs)
     resolved_repo = _root(repo)
@@ -1218,10 +1044,7 @@ def _merge_cli_flags(
 def _run_report(report_config: ReportConfig, *, to_stdout: bool, quiet: bool = False) -> None:
     """Run the pipeline with a progress indicator, then print the outcome.
 
-    Args:
-        report_config: The validated configuration.
-        to_stdout: Whether the report goes to stdout (`--output -`).
-        quiet: Omit progress lines; notes, warnings and errors still print.
+    `to_stdout` is `--output -`; `quiet` omits progress, not notes, warnings or errors.
 
     Raises:
         typer.Exit: NEGATIVE for an empty window, CANNOT_RUN otherwise.
@@ -1259,13 +1082,7 @@ def _run_report(report_config: ReportConfig, *, to_stdout: bool, quiet: bool = F
 def _apply_area_flags(
     merged: dict[str, Any], *, area_authors: bool, area_depth: int | None
 ) -> None:
-    """Apply --area-authors and --area-depth over the configuration file.
-
-    Args:
-        merged: The configuration being assembled; mutated in place.
-        area_authors: Whether --area-authors was given.
-        area_depth: The --area-depth value, or None if it was not given.
-    """
+    """Apply `--area-authors` and `--area-depth` to `merged`, over the configuration file."""
     if area_authors:
         merged["area_authors_enabled"] = True
     if area_depth is not None:
@@ -1477,9 +1294,8 @@ def generate(
         hide_emails,
     )
 
-    # Validate the effective path, which a reveille.toml may have supplied.
-    # Only an auto-discovered config is untrusted; `--config` is typed, like
-    # `--output`, so it gets a warning rather than a refusal.
+    # Validate the effective path, which a reveille.toml may have supplied. Only an
+    # auto-discovered config is untrusted; `--config`, typed like `--output`, gets a warning.
     _output_from_config = (
         _auto_discovered
         and "output_path" in config_kwargs
@@ -1497,8 +1313,7 @@ def generate(
                 output_format=str(merged.get("output_format", "html")),
             )
 
-        # The default path is made from `--repo`: when `--repo` is the problem, say
-        # so, not that the path made from it cannot be used.
+        # The default path derives from `--repo`; when `--repo` is the fault, say that.
         if _output_path_refused(check):
             _refuse_a_repository_that_cannot_be_read(merged["repo_path"])
         check()
@@ -1536,9 +1351,9 @@ def _query_config(
     deterministic: bool,
     exclude_path: list[str] | None = None,
 ) -> ReportConfig:
-    """Build the configuration for `summary`, `brief` and `who-changed` from options.
+    """Build the configuration for `summary`, `brief` and `who-changed` from options alone.
 
-    No reveille.toml is read, so the answer depends only on the options passed.
+    No reveille.toml is read.
 
     Raises:
         typer.Exit: CANNOT_RUN if an option is invalid.
@@ -1562,10 +1377,7 @@ def _query_config(
 
 
 def _run_query(produce: Callable[[Callable[[str], None]], str]) -> None:
-    """Run a query command and print its answer, and only its answer, on stdout.
-
-    Args:
-        produce: Called with a notice sink; returns the text to print.
+    """Print on stdout only the answer `produce(notice_sink)` returns.
 
     Raises:
         typer.Exit: NEGATIVE for an empty answer, CANNOT_RUN otherwise.
@@ -1574,14 +1386,13 @@ def _run_query(produce: Callable[[Callable[[str], None]], str]) -> None:
     try:
         text = produce(notices.append)
     except EmptyRepositoryError as exc:
-        # A note can change how a negative answer reads (a shallow clone, a
-        # directory not searched), so it is given with it.
+        # A note (a shallow clone, a directory not searched) can change how a
+        # negative answer reads.
         _print_notices(notices)
         _err(f"Error: {exc}")
         raise typer.Exit(code=ExitCode.NEGATIVE) from exc
     except NoRepositoryReadError as exc:
-        # The rows are the diagnosis, so they are given before the exit says
-        # that nothing was read.
+        # The rows are the diagnosis, so they go out before the error.
         _print_notices(notices)
         answer = _printable(exc.answer)
         with contextlib.suppress(typer.Exit):  # delivered or not, nothing was read
@@ -1593,8 +1404,7 @@ def _run_query(produce: Callable[[Callable[[str], None]], str]) -> None:
         _err(f"Error: {exc}")
         raise typer.Exit(code=ExitCode.CANNOT_RUN) from exc
     _print_notices(notices)
-    # The text carries repository-chosen names, so it is escaped like
-    # stderr; json.dumps already escapes control characters.
+    # Repository-chosen names are escaped as on stderr; json.dumps escapes its own.
     text = _printable(text)
     _say(text, nl=not text.endswith("\n"))
 
@@ -1609,9 +1419,9 @@ def _check_query_format(output_format: str, allowed: tuple[str, ...] = ("text", 
 
 
 def _check_report_format(output_format: str | None) -> None:
-    """Refuse a `generate --format` it does not offer, as the other commands refuse one.
+    """Refuse a `generate --format` it does not offer, as other commands do.
 
-    Only a refused one goes through `_check_query_format`: a valid `json` there would
+    Only a refused one reaches `_check_query_format`, where a valid `json` would
     turn stderr to JSON, which `generate` does not do.
     """
     if output_format is not None and output_format not in get_args(OutputFormat):
@@ -1868,7 +1678,7 @@ def who_changed(
     from reveille.adapters.git_reader import GitReader
 
     try:
-        # Opened first: "outside the repository '/tmp'" named a repository that is not one.
+        # Opened first, so a path error does not call a non-repository "the repository".
         GitReader(root)
     except ReveilleError as exc:
         _err(f"Error: {exc}")
@@ -2082,17 +1892,10 @@ def help(
 
 
 def _parse_date(value: str, flag_name: str) -> datetime.date:
-    """Parse a YYYY-MM-DD string into a date object.
-
-    Args:
-        value: The string value to parse.
-        flag_name: The CLI flag name, used in the error message.
-
-    Returns:
-        A datetime.date instance.
+    """Parse the YYYY-MM-DD `value` of `flag_name` into a date.
 
     Raises:
-        typer.Exit: ExitCode.CANNOT_RUN if the format is invalid.
+        typer.Exit: CANNOT_RUN if it is invalid or the last representable date.
     """
     try:
         parsed = datetime.date.fromisoformat(value)

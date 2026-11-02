@@ -3,8 +3,8 @@
 
 """Configuration model for Reveille report generation.
 
-ReportConfig is the one validated input from CLI to service, built from flags
-and an optional TOML file; flags always take precedence.
+ReportConfig is the validated input from CLI to service, built from an optional
+TOML file and flags; flags take precedence.
 """
 
 from __future__ import annotations
@@ -29,10 +29,9 @@ OutputFormat = Literal["html", "json", "csv"]
 class RankingWeights(BaseModel):
     """Weights for the ranking composite score; they must sum to 1.0.
 
-    **The defaults are a documented judgement, not a derived model**; the
-    reasoning is in docs/USER_GUIDE.md. The composite measures volume and
-    regularity of commits, not contribution.
-
+    The defaults are a documented judgement, not a derived model (reasoning in
+    docs/USER_GUIDE.md). The composite measures volume and regularity of
+    commits, not contribution.
     """
 
     commits: float = Field(default=0.30, ge=0.0, le=1.0)
@@ -42,10 +41,10 @@ class RankingWeights(BaseModel):
 
     @model_validator(mode="after")
     def weights_must_sum_to_one(self) -> RankingWeights:
-        """Validate that all four weights sum to 1.0 within floating point tolerance.
+        """Validate that the four weights sum to 1.0.
 
         Returns:
-            The validated RankingWeights instance.
+            This instance.
 
         Raises:
             ValueError: If the sum deviates from 1.0 by more than 1e-6.
@@ -60,7 +59,7 @@ class RankingWeights(BaseModel):
 
 
 class ReportConfig(BaseModel):
-    """Validated configuration for a single report generation run.
+    """Validated configuration for one report run.
 
     Raises:
         ValueError: If since > until.
@@ -76,8 +75,8 @@ class ReportConfig(BaseModel):
     # Repository-relative paths left out of every figure, matched literally.
     exclude_paths: list[str] = Field(default_factory=list)
     min_commits: int = Field(default=1, ge=1)
-    # Off by default: it scores named individuals, inviting the use the docs
-    # forbid. Opt in with --ranking or `[ranking] enabled = true` (ADR 0010).
+    # Off by default because it scores named individuals (ADR 0010). Opt in with
+    # --ranking or `[ranking] enabled = true`.
     ranking_enabled: bool = Field(default=False)
     ranking_weights: RankingWeights = Field(default_factory=RankingWeights)
     # Off by default and not implied by the ranking: it names people (ADR 0013).
@@ -87,7 +86,7 @@ class ReportConfig(BaseModel):
     deterministic: bool = Field(default=False)
     # Bounds every list of people in JSON and CSV (ADR 0015); None keeps all.
     limit: int | None = Field(default=None, ge=1)
-    # Every address replaced by a per-report token, for a report that is shared.
+    # Replaces each address with a per-report token, for a shared report.
     hide_emails: bool = Field(default=False)
 
     @field_validator("exclude_paths")
@@ -99,7 +98,7 @@ class ReportConfig(BaseModel):
             paths: The paths as given.
 
         Returns:
-            The paths with surrounding spaces and trailing slashes removed.
+            The paths without surrounding spaces or trailing slashes.
 
         Raises:
             ValueError: If a path is empty, absolute, climbs out with `..`, or
@@ -118,8 +117,8 @@ class ReportConfig(BaseModel):
                 )
             if ".." in path.split("/"):
                 raise ValueError(f"an excluded path must not contain '..': {raw!r}.")
-            # A tab or a newline is a byte a path may hold, and every output escapes
-            # it; NUL is the one no path, and no argument to Git, can carry.
+            # Tabs and newlines are valid path bytes and every output escapes them;
+            # NUL cannot be in a path or a Git argument.
             if "\0" in path:
                 raise ValueError(f"an excluded path carries a NUL character: {raw!r}.")
             normalised.append(path)
@@ -127,10 +126,10 @@ class ReportConfig(BaseModel):
 
     @model_validator(mode="after")
     def since_must_precede_until(self) -> ReportConfig:
-        """Validate that the since date does not exceed the until date.
+        """Validate that since is not after until.
 
         Returns:
-            The validated ReportConfig instance.
+            This instance.
 
         Raises:
             ValueError: If since is later than until.
@@ -141,10 +140,10 @@ class ReportConfig(BaseModel):
 
 
 class ReportConfigKwargs(TypedDict, total=False):
-    """Typed keyword arguments for ReportConfig, assembled from TOML then flags.
+    """Typed keyword arguments for ReportConfig, from TOML then flags.
 
-    total=False: an absent key takes the field default. since and until are
-    plain dates because, when present, they are never None.
+    An absent key takes the field default; since and until, when present, are
+    not None.
     """
 
     repo_path: Path
@@ -173,8 +172,8 @@ _MAX_CONFIG_BYTES = 1_048_576
 def output_path(text: str) -> Path:
     """Return the output path `text` names; only `-` itself means standard output.
 
-    `Path` reads `./-` as `-`, so it would have gone to stdout, not to a file
-    named `-`. Such a spelling is made absolute, as the current directory gives it.
+    `Path` reads `./-` as `-`; such a spelling is made absolute so it names a
+    file, not stdout.
 
     Args:
         text: The path as given.
@@ -189,9 +188,9 @@ def output_path(text: str) -> Path:
 def _read_config_bytes(path: Path, *, follow_links: bool) -> bytes:
     """Read a configuration file that is a regular file of a plausible size.
 
-    Opened without waiting, then checked on the open file, so a named pipe or a
-    device (`/dev/zero` behind a link) is refused, not waited on or read without end.
-    Without `follow_links`, a link in its place when it is opened is refused too.
+    Opened non-blocking and checked on the descriptor, so a named pipe or device
+    (`/dev/zero` behind a link) is refused rather than waited on or read without
+    end. Without `follow_links`, a link at `path` is refused too.
     """
     if follow_links:
         descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
@@ -224,12 +223,12 @@ _KNOWN_KEYS: dict[str, frozenset[str]] = {
     "areas": frozenset({"enabled", "depth"}),
 }
 
-#: Unknown keys named in full before the rest are counted, so the note stays one line.
+#: Unknown keys named before the rest are only counted, to keep the note one line.
 _UNKNOWN_KEYS_NAMED = 10
 
 
 def _toml_key(key: str) -> str:
-    """Return a key as TOML would write it: bare when it can be, quoted otherwise."""
+    """Return a key as TOML writes it: bare if possible, else quoted."""
     if key and all(c.isascii() and (c.isalnum() or c in "_-") for c in key):
         return key
     return json.dumps(key)
@@ -239,7 +238,7 @@ def _unknown_keys(raw: dict[str, Any]) -> list[str]:
     """Return each table and key in the file that Reveille does not read.
 
     Args:
-        raw: The parsed document, its four tables already checked to be tables.
+        raw: The parsed document, its four tables already checked.
 
     Returns:
         Each unknown table as `[name]` and key as `[table] key`, in file order.
@@ -283,7 +282,7 @@ def load_config_from_toml(path: Path) -> ReportConfigKwargs:
     Only keys present in the file are returned, so absent keys override nothing.
 
     Args:
-        path: Path to the TOML configuration file.
+        path: The TOML file.
 
     Returns:
         ReportConfig keyword arguments.
@@ -297,15 +296,15 @@ def load_config_from_toml(path: Path) -> ReportConfigKwargs:
 def read_config_file(
     path: Path, *, follow_links: bool = True
 ) -> tuple[ReportConfigKwargs, list[str]]:
-    """Load a Reveille TOML file, and say which of its keys Reveille does not read.
+    """Load a Reveille TOML file and list the keys Reveille does not read.
 
     Args:
-        path: Path to the TOML configuration file.
+        path: The TOML file.
         follow_links: False to refuse a symbolic link at `path` itself.
 
     Returns:
-        ReportConfig keyword arguments, and each unknown table and key. An unknown
-        key is not an error, so a file written for another version still runs.
+        ReportConfig keyword arguments, and each unknown table and key. Unknown
+        keys are not errors, so a file written for another version still runs.
 
     Raises:
         ConfigurationError: If the file is missing, unreadable, not TOML, or invalid.
@@ -322,7 +321,7 @@ def read_config_file(
             f"Configuration file '{path}' is nested too deeply to be a configuration."
         ) from exc
     # Caught so they exit as configuration errors, not tracebacks with exit 1
-    # ("negative answer"). TOML must be UTF-8; a directory is not a file.
+    # ("negative answer").
     except UnicodeDecodeError as exc:
         raise ConfigurationError(
             f"Configuration file '{path}' is not UTF-8 text, which TOML requires."
@@ -348,19 +347,19 @@ def read_config_file(
 
 
 def _parse_report_section(report: dict[str, Any]) -> dict[str, Any]:
-    """Parse the [report] section of a Reveille TOML configuration file.
+    """Parse the [report] table.
 
     Args:
-        report: The raw [report] table from the parsed TOML document.
+        report: The raw table.
 
     Returns:
-        A partial kwargs dict for ReportConfig construction.
+        Partial ReportConfig kwargs.
 
     Raises:
-        ConfigurationError: If a date field contains an invalid ISO 8601 string.
+        ConfigurationError: If a value has the wrong type or a date is not ISO 8601.
     """
     kwargs: dict[str, Any] = {}
-    # Type-checked: `str()` on a table or array would succeed with nonsense.
+    # Type-checked: `str()` on a table or array gives nonsense.
     for key, field in (("title", "title"), ("output", "output_path"), ("branch", "branch")):
         if key not in report:
             continue
@@ -371,7 +370,7 @@ def _parse_report_section(report: dict[str, Any]) -> dict[str, Any]:
                 f"file: expected a string, got {type(value).__name__}."
             )
         if field == "output_path" and value.endswith(("/", os.sep)):
-            # `Path` drops the separator, and the report would take the directory's name.
+            # `Path` drops the separator, so the report would take the directory's name.
             raise ConfigurationError(
                 f"[report] output {value!r} names a directory, not a file. Give a file name in it."
             )
@@ -395,7 +394,7 @@ def _parse_report_section(report: dict[str, Any]) -> dict[str, Any]:
 
 
 def _parse_report_switches(report: dict[str, Any]) -> dict[str, Any]:
-    """Parse the [report] keys that are a boolean or a whole number, strictly.
+    """Parse the boolean and integer [report] keys, strictly.
 
     Args:
         report: The raw [report] table.
@@ -455,13 +454,13 @@ def _strict_int(section: str, key: str, value: object) -> int:
 
 
 def _parse_filters_section(filters: dict[str, Any]) -> dict[str, Any]:
-    """Parse the [filters] section of a Reveille TOML configuration file.
+    """Parse the [filters] table.
 
     Args:
-        filters: The raw [filters] table from the parsed TOML document.
+        filters: The raw table.
 
     Returns:
-        A partial kwargs dict for ReportConfig construction.
+        Partial ReportConfig kwargs.
 
     Raises:
         ConfigurationError: If a value has the wrong type.
@@ -493,13 +492,13 @@ def _parse_filters_section(filters: dict[str, Any]) -> dict[str, Any]:
 
 
 def _parse_areas_section(areas: dict[str, Any]) -> dict[str, Any]:
-    """Parse the [areas] section of a Reveille TOML configuration file.
+    """Parse the [areas] table.
 
     Args:
-        areas: The raw [areas] table from the parsed TOML document.
+        areas: The raw table.
 
     Returns:
-        A partial kwargs dict for ReportConfig construction.
+        Partial ReportConfig kwargs.
 
     Raises:
         ConfigurationError: If `enabled` or `depth` has the wrong type.
@@ -524,13 +523,16 @@ def _parse_areas_section(areas: dict[str, Any]) -> dict[str, Any]:
 
 
 def _parse_ranking_section(ranking: dict[str, Any]) -> dict[str, Any]:
-    """Parse the [ranking] section of a Reveille TOML configuration file.
+    """Parse the [ranking] table.
 
     Args:
-        ranking: The raw [ranking] table from the parsed TOML document.
+        ranking: The raw table.
 
     Returns:
-        A partial kwargs dict for ReportConfig construction.
+        Partial ReportConfig kwargs.
+
+    Raises:
+        ConfigurationError: If a value has the wrong type or the weights are invalid.
     """
     kwargs: dict[str, Any] = {}
     if "enabled" in ranking:
@@ -550,8 +552,7 @@ def _parse_ranking_section(ranking: dict[str, Any]) -> dict[str, Any]:
                 f"[ranking] weights must be a table of named weights, not {w!r}."
             )
         for name in ("commits", "lines", "consistency", "recency"):
-            # A number, as TOML writes one: `float(True)` is 1.0, and a quoted
-            # value is a string, refused as `enabled = "false"` is.
+            # A TOML number only: `float(True)` is 1.0, and a quoted value is a string.
             if name in w and (isinstance(w[name], bool) or not isinstance(w[name], int | float)):
                 raise ConfigurationError(
                     f"[ranking] weights {name} must be a number, not {w[name]!r}."
@@ -565,7 +566,7 @@ def _parse_ranking_section(ranking: dict[str, Any]) -> dict[str, Any]:
                 }
             )
         except ValidationError as exc:
-            # Pydantic's own text carries its input dump and a link to its site.
+            # Pydantic's own text includes an input dump and a link to its site.
             errors = exc.errors()
             reasons = " ".join(
                 f"{error['loc'][0]}: {error['msg']}."

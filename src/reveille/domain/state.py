@@ -27,7 +27,7 @@ class Worktree:
         locked: Whether it is locked against pruning.
         prunable: Whether Git would prune it (its directory is gone).
         current: Whether it is the one read.
-        bare: Whether it is a bare repository's entry, which checks nothing out.
+        bare: Whether it is a bare repository's entry (no checkout).
     """
 
     path: str
@@ -65,10 +65,10 @@ class RepositoryState:
         last_commit: Date of the current commit.
         bare: Whether the repository has no working tree.
         shallow: Whether only part of the history is present.
-        filters_not_run: Content filters the repository's own config names, which
-            status was computed without; files they cover may show as modified.
-        working_tree_unread: Whether the working tree was not compared, because a
-            filter the repository's config names could not be switched off.
+        filters_not_run: Content filters the repository's config names, not run
+            for status; files they cover may show as modified.
+        working_tree_unread: Whether the working tree was not compared because
+            such a filter could not be switched off.
     """
 
     branch: str | None
@@ -112,7 +112,7 @@ class RepositoryState:
 def quiet_branches(tips: list[datetime.datetime], reference: datetime.datetime | None) -> int:
     """Count branches whose last commit is `QUIET_BRANCH_DAYS` or more before the reference.
 
-    Measured from the current commit, not the clock, so the count depends on the
+    Measured from the current commit, not the clock, so it depends on the
     repository alone.
 
     Args:

@@ -8,9 +8,9 @@ that is a symbolic link into `refs/`, or a file naming a ref under `refs/` or
 an object. A `HEAD` linked to a branch only `packed-refs` holds is a dangling
 link, and still counts; a file named `HEAD` holding anything else does not.
 
-A linked worktree can be made inside a Git directory (`git -C bare.git worktree
-add wt`). Its files are a checkout, not Git's own, so a walk up from them stops
-at its root, told by a `.git` file whose Git directory names that file back.
+A linked worktree can sit inside a Git directory (`git -C bare.git worktree add
+wt`). Its files are a checkout, so a walk up from them stops at its root: a
+`.git` file whose Git directory names that file back.
 """
 
 from __future__ import annotations

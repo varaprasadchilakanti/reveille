@@ -3,9 +3,8 @@
 
 """Open a file for reading, refusing a symbolic link at the end of its path.
 
-Where the platform has `O_NOFOLLOW`, the open itself refuses the link. Windows
-has no such flag, so there the path is checked first: a link put in its place
-between the check and the open is followed.
+With `O_NOFOLLOW` the open itself refuses the link. Windows lacks it, so the
+path is checked first; a link swapped in between check and open is followed.
 """
 
 from __future__ import annotations

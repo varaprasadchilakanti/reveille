@@ -24,11 +24,11 @@ from collections import defaultdict
 from reveille.config import RankingWeights
 from reveille.domain.models import Commit, ContributorStats, RankedContributor
 
-# Recency decay applied per calendar week moving back from the most recent week.
+# Recency decay per calendar week back from the most recent week.
 _RECENCY_DECAY: float = 0.85
 
-# (exclusive lower bound, tier, designation), evaluated top-down; the first
-# threshold strictly below the percentile applies.
+# (exclusive lower bound, tier, designation), top-down; the first threshold
+# below the percentile applies.
 _TIER_BOUNDARIES: list[tuple[float, int, str]] = [
     (95.0, 7, "Commander"),
     (88.0, 6, "Major"),
@@ -51,17 +51,17 @@ def rank_contributors(
     window_start: datetime.date,
     window_end: datetime.date,
 ) -> list[RankedContributor]:
-    """Compute composite scores and assign tier designations to all contributors.
+    """Compute composite scores and assign tiers.
 
     Args:
         contributors: Stats per contributor in the window; at least one.
         commits: Commits in the same window, for recency.
-        weights: Configured metric weights. Must sum to 1.0.
+        weights: Metric weights summing to 1.0.
         window_start: First date of the window, inclusive.
         window_end: Last date of the window, inclusive.
 
     Returns:
-        RankedContributor instances, highest composite_score first.
+        Highest composite_score first.
 
     Raises:
         ValueError: If contributors is empty.
@@ -100,16 +100,16 @@ def rank_contributors(
 
 
 def assign_tier(percentile: float) -> tuple[int, str]:
-    """Map a percentile value to a tier number and designation.
+    """Map a percentile to a tier number and designation.
 
     Args:
         percentile: Position within the population, in [0.0, 100.0].
 
     Returns:
-        A tuple of (tier_number, tier_designation).
+        `(tier_number, tier_designation)`.
 
     Raises:
-        ValueError: If percentile is outside the range [0.0, 100.0].
+        ValueError: If percentile is outside [0.0, 100.0].
     """
     if not 0.0 <= percentile <= 100.0:
         raise ValueError(f"percentile must be in [0.0, 100.0], got {percentile}.")
@@ -123,17 +123,14 @@ def assign_tier(percentile: float) -> tuple[int, str]:
     )
 
 
-# Private computation helpers.
-
-
 def _build_commit_index(commits: list[Commit]) -> dict[str, list[Commit]]:
-    """Group commits by lowercased author email for O(1) lookup.
+    """Group commits by lower-cased author email.
 
     Args:
-        commits: Raw commit list for the analysis window.
+        commits: Commits in the window.
 
     Returns:
-        A dict mapping lowercased email to the contributor's commits.
+        Lower-cased email to that contributor's commits.
     """
     index: dict[str, list[Commit]] = defaultdict(list)
     for commit in commits:
@@ -150,13 +147,13 @@ def _compute_raw_scores(
     """Compute the four raw metrics; consistency = active_days / total_days.
 
     Args:
-        contributors: Contributor stats for the analysis window.
-        commit_index: Commits grouped by lowercased author email.
-        total_days: Total calendar days in the analysis window.
-        window_end: End of the analysis window, used as the recency anchor.
+        contributors: Contributor stats for the window.
+        commit_index: Commits by lower-cased author email.
+        total_days: Calendar days in the window.
+        window_end: End of the window, the recency anchor.
 
     Returns:
-        Lowercased email to {metric name: raw value}.
+        Lower-cased email to {metric name: raw value}.
     """
     raw: dict[str, dict[str, float]] = {}
     for contributor in contributors:
@@ -181,11 +178,11 @@ def _compute_recency_score(
     containing window_end.
 
     Args:
-        commits: All commits for a single contributor in the analysis window.
-        window_end: The anchor date from which decay is measured.
+        commits: One contributor's commits in the window.
+        window_end: The date decay is measured from.
 
     Returns:
-        A non-negative float. Zero if the contributor has no commits.
+        A non-negative float; zero with no commits.
     """
     if not commits:
         return 0.0
@@ -210,16 +207,15 @@ def _compute_recency_score(
 def _normalise_scores(
     raw: dict[str, dict[str, float]],
 ) -> dict[str, dict[str, float]]:
-    """Apply min-max normalisation to commits, lines, and recency metrics.
+    """Min-max normalise commits, lines and recency; consistency passes through.
 
-    Consistency passes through unchanged. A metric where max == min
-    normalises to 1.0 for everyone.
+    A metric where max == min normalises to 1.0 for everyone.
 
     Args:
-        raw: Raw metric values keyed by lowercased email.
+        raw: Raw metric values by lower-cased email.
 
     Returns:
-        A dict with the same structure where every value is in [0.0, 1.0].
+        The same structure, every value in [0.0, 1.0].
     """
     metrics = ["commits", "lines", "recency"]
     min_max: dict[str, tuple[float, float]] = {}
@@ -244,14 +240,14 @@ def _compute_composite(
     normalised: dict[str, dict[str, float]],
     weights: RankingWeights,
 ) -> dict[str, float]:
-    """Compute the weighted composite score for each contributor.
+    """Compute each contributor's weighted composite score.
 
     Args:
-        normalised: Normalised metric scores in [0.0, 1.0] per contributor.
-        weights: Configured metric weights.
+        normalised: Metric scores in [0.0, 1.0] per contributor.
+        weights: Metric weights.
 
     Returns:
-        A dict mapping lowercased email to composite score in [0.0, 1.0].
+        Lower-cased email to composite score in [0.0, 1.0].
     """
     composite: dict[str, float] = {}
     for email, scores in normalised.items():
@@ -265,16 +261,16 @@ def _compute_composite(
 
 
 def _compute_percentiles(composite: dict[str, float]) -> dict[str, float]:
-    """Assign a percentile rank to each contributor based on composite score.
+    """Assign each contributor a percentile by composite score.
 
-    Lower-bound rank via bisect_left, so ties share a percentile (ADR 0003).
-    A population of one is the 100th percentile.
+    Lower-bound rank via bisect_left, so ties share a percentile (ADR 0003). A
+    population of one is the 100th percentile.
 
     Args:
-        composite: Composite scores keyed by lowercased email.
+        composite: Composite scores by lower-cased email.
 
     Returns:
-        A dict mapping lowercased email to percentile in [0.0, 100.0].
+        Lower-cased email to percentile in [0.0, 100.0].
     """
     emails = list(composite.keys())
     n = len(emails)

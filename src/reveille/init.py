@@ -1,10 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti
 # SPDX-License-Identifier: Apache-2.0
 
-"""Config scaffolding for `reveille init`: the reveille.toml and .mailmap templates.
-
-Knows nothing of the CLI: it takes paths and a force flag, and writes files.
-"""
+"""Templates and writers for `reveille init`: reveille.toml and .mailmap; no CLI imports."""
 
 from __future__ import annotations
 
@@ -301,7 +298,7 @@ def write_mailmap_template(output_path: Path, *, force: bool = False) -> Path | 
         force: Overwrite an existing file.
 
     Returns:
-        The resolved path written, or None if the file existed and force was False.
+        The resolved path, or None if the file existed and force was False.
 
     Raises:
         OutputPathError: If the parent is missing or the write fails.
@@ -347,13 +344,13 @@ def refuse_symlink(path: Path) -> None:
 
 
 def refuse_unreplaceable(path: Path, *, force: bool) -> None:
-    """Refuse a destination that writing it would refuse, before anything is written.
+    """Refuse, before anything is written, a destination the write would refuse.
 
-    `init --mailmap` writes two files; checked first, a refusal of the second
-    leaves the first as it was.
+    `init --mailmap` writes two files; checking first means a refusal of the
+    second leaves the first unchanged.
 
     Args:
-        path: The destination as supplied, before resolution.
+        path: The destination, before resolution.
         force: Whether an existing file would be replaced, not skipped.
 
     Raises:

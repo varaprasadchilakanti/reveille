@@ -3,9 +3,9 @@
 
 """What changed between a point and the analysed branch, in counts (ADR 0022).
 
-Names nobody and measures no period: no Gini, concentration or quiet run,
-which mislead over a short range. People and automated accounts are counted
-apart, as in the distribution figures (ADR 0017).
+Names nobody and measures no period: no Gini, concentration or quiet run, which
+mislead over a short range. People and automated accounts are counted apart
+(ADR 0017).
 """
 
 from __future__ import annotations
@@ -32,8 +32,8 @@ class Brief:
         people: Distinct people who authored them.
         automated: Distinct automated accounts that authored them.
         co_authored: Commits crediting a co-author.
-        first: Date of the earliest commit in the range.
-        last: Date of the latest commit in the range.
+        first: Date of the earliest commit.
+        last: Date of the latest commit.
         areas: `(area, commits)`, most commits first, then by name.
         file_types: `(type, file changes)`, most first, then by name.
         files_added: Files added in the range.
@@ -62,7 +62,7 @@ def describe_range(
     """Count what changed in a range of commits.
 
     Args:
-        commits: The range's commits, merges and exclusions already removed.
+        commits: The range's commits, without merges and exclusions.
         files: Per-path commit counts in the range.
         areas: Per-area activity in the range.
         files_added: Files added in the range.

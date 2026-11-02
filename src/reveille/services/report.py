@@ -5,8 +5,7 @@
 
 Reads commits, aggregates and optionally ranks contributors, and renders HTML,
 JSON or CSV. Imports no GitPython, Jinja2, Plotly or Typer; progress goes to a
-`ProgressEvent` callback whose display is the CLI's decision.
-
+`ProgressEvent` callback the CLI displays.
 """
 
 from __future__ import annotations
@@ -73,7 +72,7 @@ def generate_report(
         on_notice: Called with one sentence per caveat about how the report was produced.
 
     Returns:
-        The absolute paths of the written files.
+        The absolute paths written.
 
     Raises:
         RepositoryError: If the target path is not a readable Git repository.
@@ -100,15 +99,9 @@ def report_text(
     on_progress: Callable[[ProgressEvent], None] | None = None,
     on_notice: Callable[[str], None] | None = None,
 ) -> str:
-    """Generate the report and return it as text, for `--output -` (ADR 0015).
+    """Return the report as text in the configured format, for `--output -` (ADR 0015).
 
-    Args:
-        config: Validated report configuration; its output path is unused.
-        on_progress: As for generate_report.
-        on_notice: As for generate_report.
-
-    Returns:
-        The report in the configured format.
+    Arguments as for `generate_report`; the output path is unused.
     """
     report_data = build_report_data(config, on_progress, on_notice)
     _note_cut_csv(config, report_data, on_notice)
@@ -125,17 +118,10 @@ def summary_text(
     output_format: str,
     on_notice: Callable[[str], None] | None = None,
 ) -> str:
-    """Summarise the repository, naming nobody, as JSON or text (ADR 0015).
+    """Summarise the repository, naming nobody, as "json", "markdown" or "text" (ADR 0015).
 
-    Reads no line counts, so it costs a fraction of a full report.
-
-    Args:
-        config: Validated configuration; output settings are unused.
-        output_format: "json" or "text".
-        on_notice: As for generate_report.
-
-    Returns:
-        The summary.
+    Reads no line counts, so it costs a fraction of a full report. Output
+    settings in `config` are unused; `on_notice` is as for `generate_report`.
     """
     data = build_report_data(config, on_notice=on_notice, line_counts=False)
     return Renderer().summary_text(data, output_format)
@@ -150,7 +136,7 @@ def who_changed_text(
 ) -> str:
     """State who changed one path in the window (ADR 0015).
 
-    Reads only commits touching the path, without line counts, so it is fast.
+    Reads only commits touching the path, without line counts.
 
     Args:
         config: Validated configuration; output settings are unused.
@@ -158,9 +144,6 @@ def who_changed_text(
         output_format: "json" or "text".
         limit: The most names any list carries.
         on_notice: As for generate_report.
-
-    Returns:
-        The answer.
 
     Raises:
         EmptyRepositoryError: If no commit in the window changed the path.
@@ -213,15 +196,12 @@ def who_changed_text(
 
 
 def state_text(repo_path: Path, output_format: str, limit: int) -> str:
-    """Say where a repository stands now, changing nothing (ADR 0024).
+    """Say where the repository at `repo_path` stands now, changing nothing (ADR 0024).
 
     Args:
         repo_path: The repository root.
         output_format: "json", "text", "markdown" or "line".
         limit: The most paths any list carries.
-
-    Returns:
-        The state.
     """
     reader = GitReader(repo_path)
     state = reader.read_state()
@@ -243,12 +223,11 @@ def _read_rows(
     days: int,
     exclude_authors: list[str],
 ) -> tuple[list[RepositoryActivity], set[str]]:
-    """Read each repository's row, side by side, and the --exclude-author values matched."""
+    """Read each repository's row, and the --exclude-author values matched."""
     rows: list[RepositoryActivity] = []
     matched: set[str] = set()
-    # Most of a row's time is spent waiting for Git, so rows are read side by
-    # side. Each has its own reader, and so its own Git runner; rows, and the
-    # warnings each gives, keep the order the repositories were found in.
+    # Read in parallel, as a row mostly waits for Git. Each has its own reader and
+    # Git runner; rows and their warnings keep the order the repositories were found in.
     held = _HeldWarnings()
 
     def read_row(path: Path) -> tuple[RepositoryActivity, set[str], list[logging.LogRecord]]:
@@ -267,8 +246,8 @@ def _read_rows(
                     for record in records:
                         logging.getLogger(record.name).handle(record)
             except BaseException:
-                # Stopped (a signal, Ctrl-C): the pool waits for its workers on the way out,
-                # so their Git is stopped first, or each read under way would run to its end.
+                # On a signal or Ctrl-C the pool waits for its workers, so stop their Git
+                # first, or each read under way would run to its end.
                 stop_running_git()
                 raise
     finally:
@@ -296,9 +275,6 @@ def repositories_text(
         exclude_authors: Applied in every repository, as `summary` applies them.
         output_format: "text", "json", "markdown" or "csv".
         on_notice: As for generate_report.
-
-    Returns:
-        The answer.
 
     Raises:
         EmptyRepositoryError: If no repository is found.
@@ -374,11 +350,7 @@ class _HeldWarnings(logging.Filter):
 
     @contextlib.contextmanager
     def installed(self) -> Iterator[None]:
-        """Filter every handler a `reveille` record reaches, until the block ends.
-
-        Yields:
-            Nothing.
-        """
+        """Filter every handler a `reveille` record reaches, until the block ends."""
         handlers: list[logging.Handler] = []
         logger: logging.Logger | None = logging.getLogger("reveille")
         while logger is not None:
@@ -394,11 +366,7 @@ class _HeldWarnings(logging.Filter):
 
     @contextlib.contextmanager
     def on_this_thread(self) -> Iterator[list[logging.LogRecord]]:
-        """Hold what this thread logs in the block.
-
-        Yields:
-            The records held, in the order they were logged.
-        """
+        """Hold what this thread logs in the block; yield the records, in order."""
         records: list[logging.LogRecord] = []
         self._local.records = records
         try:
@@ -407,14 +375,7 @@ class _HeldWarnings(logging.Filter):
             self._local.records = None
 
     def filter(self, record: logging.LogRecord) -> bool:
-        """Hold the record if its thread asked; pass it on otherwise.
-
-        Args:
-            record: What was logged.
-
-        Returns:
-            False for a record held, True for one to emit now.
-        """
+        """Hold the record (False) if its thread asked; otherwise pass it on (True)."""
         records: list[logging.LogRecord] | None = getattr(self._local, "records", None)
         if records is None:
             return True
@@ -424,24 +385,19 @@ class _HeldWarnings(logging.Filter):
 
 
 def _repository_workers() -> int:
-    """Return how many repositories `repos` reads at once.
+    """Return how many repositories `repos` reads at once: one per CPU, at most 4.
 
-    Returns:
-        One per CPU, at most 4: each read in flight holds its own history in
-        memory, and 8 or 16 were measured slower than 4 (commit a9ead3b).
+    Each read in flight holds its own history in memory, and 8 or 16 measured
+    slower than 4 (commit a9ead3b).
     """
     return max(1, min(4, _usable_cpus() or 1))
 
 
 def _usable_cpus() -> int | None:
-    """Return how many CPUs this process may run on, not how many the machine has.
+    """Return how many CPUs this process may run on (its affinity mask), or None if unknown.
 
-    A container or a CI job pinned to one CPU still sees every CPU in
-    `os.cpu_count()`. The affinity mask is what the process may use; Python
-    3.13 reads it as `os.process_cpu_count()`.
-
-    Returns:
-        The count, or None if it cannot be known.
+    A container or CI job pinned to one CPU still sees every CPU in
+    `os.cpu_count()`. Python 3.13 reads the mask as `os.process_cpu_count()`.
     """
     counted = getattr(os, "process_cpu_count", None)
     if counted is not None:
@@ -459,15 +415,7 @@ def _repository_row(
     days: int,
     exclude_authors: list[str],
 ) -> tuple[RepositoryActivity, set[str]]:
-    """Read one repository's row, or say why it could not be read.
-
-    Args:
-        path: The repository.
-        relative: Its path relative to the directory searched.
-        start: The window's first day.
-        end: The window's last day.
-        days: The window's length.
-        exclude_authors: The exclusion values.
+    """Read the row of repository `path` (`relative` to the directory searched), or say why not.
 
     Returns:
         The row, and the exclusion values that matched something in it.
@@ -508,13 +456,9 @@ def _repository_row(
 def _refuse_a_path_in_another_repository(repo_path: Path, path: str) -> None:
     """Exit 2, not "no commit changed it", for a path inside a submodule or nested clone.
 
-    That repository's history is not this one's, so "no" would be a false negative.
-    Asked only once no commit was found: a path changed here before it moved into
-    another repository is answered from this history.
-
-    Args:
-        repo_path: The repository read.
-        path: The repository-relative path asked about.
+    That history is not this one's, so "no" would be a false negative. Asked only
+    once no commit was found: a path changed here before it moved into another
+    repository is answered from this history.
 
     Raises:
         RepositoryError: If a directory on the path is another repository.
@@ -548,8 +492,8 @@ def _refuse_a_path_in_another_repository(repo_path: Path, path: str) -> None:
 def _refuse_a_path_in_a_submodule_not_here(reader: GitReader, path: str, tip: str | None) -> None:
     """Exit 2 for a path in a submodule the analysed commit records but no directory holds.
 
-    Not checked out, or in a bare repository, the submodule has no files here, so
-    the working-tree check above cannot see it.
+    Not checked out, or in a bare repository, it has no files here, so
+    `_refuse_a_path_in_another_repository` cannot see it.
 
     Raises:
         RepositoryError: If a prefix of `path` is a submodule in the tip's tree.
@@ -581,9 +525,9 @@ def _without_local_paths(reason: str, directory: Path) -> str:
 
 
 def _as_shared(row: RepositoryActivity, path: Path, directory: Path) -> RepositoryActivity:
-    """Return the row with the main tree of a linked worktree, and no path outside `directory`.
+    """Return the row naming a linked worktree's main tree, with no path outside `directory`.
 
-    A path on this machine can hold a login name, and the row is meant to be shared.
+    As for `_without_local_paths`.
     """
     if row.reason is not None:
         row = replace(row, reason=_without_local_paths(row.reason, directory))
@@ -645,9 +589,6 @@ def brief_text(
         on_notice: As for generate_report.
         carried: The options the suggested next brief repeats, as the caller gave them.
 
-    Returns:
-        The brief.
-
     Raises:
         EmptyRepositoryError: If nothing changed after the point.
     """
@@ -693,7 +634,7 @@ def brief_text(
             name_status=True,
         )
     except EmptyRepositoryError as exc:
-        # Each limit the caller set is named, since any of them can be the cause.
+        # Name each limit set; any can be the cause.
         limits = [f"up to {config.until} (--until)"] if config.until is not None else []
         limits += [
             f"with {flag} applied"
@@ -768,23 +709,17 @@ def build_report_data(
 ) -> ReportData:
     """Read the repository and assemble everything a report states.
 
-    Args:
-        config: Validated report configuration.
-        on_progress: As for generate_report.
-        on_notice: As for generate_report.
-        line_counts: Read per-file line counts; False when nothing about lines is stated.
-
-    Returns:
-        The complete report dataset, ready for any renderer.
+    Arguments as for `generate_report`; `line_counts` False skips per-file line
+    counts when nothing about lines is stated.
     """
     _logger.debug("pipeline start: repo=%s", config.repo_path)
     reader = GitReader(config.repo_path)
     stage_start = time.monotonic()
 
     _emit(on_progress, "Reading commit history", 0.0)
-    # A default window ends today; later-dated commits are left out of every
-    # figure, stated, and never stretch the window. An explicit `--until` is
-    # taken as asked; deterministic mode closes on the last commit (ADR 0008).
+    # A default window ends today; later-dated commits are left out of every figure,
+    # stated, and do not stretch it. `--until` is taken as asked; deterministic mode
+    # closes on the last commit (ADR 0008).
     cutoff = _today() if config.until is None and not config.deterministic else None
     commits = _read_noting_shallow(
         reader,
@@ -809,8 +744,8 @@ def build_report_data(
 
     window_end = cutoff if cutoff is not None else _resolve_window_end(config, commits)
 
-    # The window starts at the first commit, however early `--since` was: days
-    # before it are not quiet days. `requested_since` keeps what was asked for.
+    # The window starts no earlier than the first commit: days before it are not
+    # quiet days. `requested_since` keeps what was asked for.
     first_commit = min(c.timestamp.date() for c in commits)
     window_start = max(config.since, first_commit) if config.since is not None else first_commit
 
@@ -949,14 +884,7 @@ def _emit(
     elapsed_seconds: float,
     items_processed: int | None = None,
 ) -> None:
-    """Emit a progress event if anybody is listening.
-
-    Args:
-        on_progress: The optional callback.
-        stage: Label of the stage now starting.
-        elapsed_seconds: Duration of the stage that just completed.
-        items_processed: Optional item count from the completed stage.
-    """
+    """Report `stage` starting, with the last stage's seconds and items, if anybody listens."""
     if on_progress is None:
         return
     on_progress(
@@ -971,13 +899,7 @@ def _emit(
 def _note_cut_csv(
     config: ReportConfig, data: ReportData, on_notice: Callable[[str], None] | None
 ) -> None:
-    """Say when --limit cut the CSV, which has nowhere to carry a total.
-
-    Args:
-        config: The configuration, for the format and the limit.
-        data: The report dataset.
-        on_notice: Where the sentence goes.
-    """
+    """Say when --limit cut the CSV, which has nowhere to carry a total."""
     listed = len(data.ranked_contributors)
     if config.output_format == "csv" and config.limit is not None and listed > config.limit:
         _notify(
@@ -994,15 +916,7 @@ _SHALLOW_NOTE = "This is a shallow clone, so only the history it holds is analys
 def _read_noting_shallow(
     reader: GitReader, on_notice: Callable[[str], None] | None, **options: Any
 ) -> list[Commit]:
-    """Read commits; when none are found in a shallow clone, say the clone may hold too few.
-
-    Args:
-        reader: The repository's reader.
-        on_notice: Where the note goes.
-        **options: As for `GitReader.read_commits`.
-
-    Returns:
-        The commits.
+    """Read commits (`options` as for `GitReader.read_commits`), noting a shallow clone if none.
 
     Raises:
         EmptyRepositoryError: When none are found, after the note.
@@ -1016,12 +930,7 @@ def _read_noting_shallow(
 
 
 def _notify(on_notice: Callable[[str], None] | None, message: str) -> None:
-    """Pass a notice to the caller, if anybody is listening.
-
-    Args:
-        on_notice: The optional callback.
-        message: One plain sentence.
-    """
+    """Pass one plain sentence to the caller, if anybody is listening."""
     if on_notice is not None:
         on_notice(message)
 
@@ -1036,10 +945,6 @@ def _resolve_window_end(config: ReportConfig, commits: list[Commit]) -> datetime
 
     Deterministic mode closes on the last commit, not today: today feeds the
     ranking's recency, so scores would change from day to day.
-
-    Args:
-        config: The validated report configuration.
-        commits: The commits in the window, for their timestamps.
 
     Returns:
         An explicit `--until`, else the last commit date if deterministic, else today.
@@ -1057,11 +962,7 @@ def _plural_refs(n: int) -> str:
 
 
 def _today() -> datetime.date:
-    """Return today's date in UTC, the zone every commit timestamp is read in.
-
-    Returns:
-        The current UTC calendar date.
-    """
+    """Return today's date in UTC, the zone every commit timestamp is read in."""
     return datetime.datetime.now(datetime.UTC).date()
 
 
@@ -1074,14 +975,8 @@ def _build_provenance(
 
     Filters are recorded as requested, not resolved: only `requested_since`
     beside `analysis_since` tells a filtered report from an unfiltered one.
-
-    Args:
-        config: The validated report configuration.
-        head_sha: SHA at the tip of the analysed ref, or None if unresolvable.
-        mailmap_applied: Whether a non-empty `.mailmap` was applied.
-
-    Returns:
-        A populated AnalysisProvenance instance.
+    `head_sha` is None if the ref cannot be resolved; `mailmap_applied` means a
+    non-empty `.mailmap`.
     """
     return AnalysisProvenance(
         reveille_version=__version__,

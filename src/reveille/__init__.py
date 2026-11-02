@@ -3,10 +3,8 @@
 
 """Reveille: offline reports of a Git repository's history.
 
-A CLI tool that reports a local Git repository's commit activity.
-
-The `reveille` logger gets a NullHandler: a library must not impose logging
-policy on its host. The CLI adds a stderr handler under `--verbose`.
+The `reveille` logger gets a NullHandler so a host keeps its own logging
+policy; the CLI adds a stderr handler under `--verbose`.
 """
 
 import logging
