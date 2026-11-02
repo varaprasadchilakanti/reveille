@@ -178,6 +178,7 @@ select = [
     "SIM",  # flake8-simplify
     "D",    # pydocstyle
     "RUF",  # ruff-specific rules
+    "TD",   # flake8-todos: the TODO format
 ]
 ignore = [
     "E501",  # line too long (handled by formatter)
@@ -186,6 +187,8 @@ ignore = [
     "D104",  # missing docstring in public package
     "D203",  # blank line before class docstring (conflicts with D211)
     "D213",  # multi-line summary second line (conflicts with D212)
+    "TD002", # a scout-rule TODO names no author
+    "TD003", # nor an issue: it is a note where the work is
 ]
 
 [tool.ruff.lint.per-file-ignores]
