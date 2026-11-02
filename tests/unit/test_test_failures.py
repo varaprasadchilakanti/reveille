@@ -91,3 +91,23 @@ def test_a_name_outside_the_code_page_is_written(tmp_path: Path) -> None:
     )
 
     assert "1x failure: 名前" in done.stdout.decode("utf-8")
+
+
+def test_a_long_summary_is_split_across_annotations(tmp_path: Path) -> None:
+    cases = "".join(
+        f'<testcase classname="m" name="t{i}"><failure message="cause {"q" * (60 + i)} {"z" * 60}"/></testcase>'
+        for i in range(60)
+    )
+    report = tmp_path / "pytest.xml"
+    report.write_text(f"<testsuite>{cases}</testsuite>", encoding="utf-8")
+    out = subprocess.run(
+        [sys.executable, str(_SCRIPT), str(report), "--annotate"],
+        capture_output=True,
+        check=True,
+        encoding="utf-8",
+    ).stdout
+
+    annotations = [x for x in out.splitlines() if x.startswith("::error")]
+    assert len(annotations) > 1
+    assert all(len(x.encode()) < 4200 for x in annotations)
+    assert "t59" in "".join(annotations)

@@ -125,7 +125,9 @@ def test_the_command_it_suggests_runs_for_a_name_that_is_not_utf8(tmp_path: Path
     code, stderr = _who(repo, os.fsdecode(b"in\xff/f"))
     [command] = re.findall(r"Ask it: `reveille (.*)`\.", stderr)
     words = subprocess.run(
-        ["bash", "-c", f"printf '%s\\0' {command}"], check=True, capture_output=True
+        [shutil.which("bash") or "bash", "-c", f"printf '%s\\0' {command}"],
+        check=True,
+        capture_output=True,
     ).stdout.split(b"\0")[:-1]
     asked = CliRunner().invoke(app, [os.fsdecode(word) for word in words])
 

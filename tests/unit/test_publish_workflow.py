@@ -59,6 +59,8 @@ def _step_script(step_name: str) -> str:
 
 def _run(script: str, cwd: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     """Run an extracted script with a controlled environment."""
+    if os.name == "nt":
+        pytest.skip("the step runs on Linux; `bash` on Windows is WSL's")
     environment = {"PATH": os.environ["PATH"], "HOME": str(cwd)}
     environment.update(env)
     return subprocess.run(

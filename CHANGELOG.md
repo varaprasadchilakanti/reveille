@@ -20,6 +20,10 @@ before 0.8.0 predate the convention and are left as they were released.
 - On Windows, `generate -o -` as HTML stopped on every repository, and CSV and `who-changed` on a
   name outside the locale's code page, with "This is a defect in Reveille".
 - On Windows, `state` in a linked worktree marked no worktree as current: Git lists `C:/a/b`.
+- On Windows, a commit dated after the year 3000 was skipped as undatable; Python's
+  `fromtimestamp` stops there. Git takes dates to 9999.
+- On Windows, `repos` stopped on a `.git` or `commondir` file naming a path that is not UTF-8;
+  such a path names nothing there.
 
 ### Changed
 

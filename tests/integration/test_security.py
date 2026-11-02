@@ -297,7 +297,9 @@ def _run_console_script(args: list[str], *, cwd: Path) -> subprocess.CompletedPr
     The console script, not `python -m reveille.cli`: the module has no
     __main__ guard, so `-m` imports it, runs nothing and exits 0.
     """
-    console_script = Path(sys.executable).parent / "reveille"
+    console_script = Path(sys.executable).parent / (
+        "reveille.exe" if os.name == "nt" else "reveille"
+    )
     return subprocess.run([str(console_script), *args], cwd=cwd, capture_output=True, text=True)
 
 
@@ -610,7 +612,9 @@ class TestSecondPassFindings:
         # The installed console script, not `python -m reveille.cli`: the
         # module has no __main__ guard, so `-m` imports it, runs nothing and
         # exits 0 -- which would make this test pass against the vulnerability.
-        console_script = Path(sys.executable).parent / "reveille"
+        console_script = Path(sys.executable).parent / (
+            "reveille.exe" if os.name == "nt" else "reveille"
+        )
         result = subprocess.run(
             [str(console_script), "generate"],
             cwd=repo,

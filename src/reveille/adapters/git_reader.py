@@ -453,6 +453,18 @@ def _parse_worktrees(output: str, *, nul: bool = True) -> list[Worktree]:
     return found
 
 
+_EPOCH = datetime.datetime(1970, 1, 1, tzinfo=datetime.UTC)
+
+
+def _utc(seconds: int) -> datetime.datetime:
+    """Return a Unix time in UTC. Unlike `fromtimestamp`, Windows reads past the year 3000.
+
+    Raises:
+        OverflowError: Outside the years 1 to 9999.
+    """
+    return _EPOCH + datetime.timedelta(seconds=seconds)
+
+
 def _same_directory(recorded: str, directory: Path) -> bool:
     """Return whether the path Git recorded is `directory`; False if it is gone."""
     try:
@@ -1809,7 +1821,7 @@ class GitReader:
             out = str(self._git().log("-1", "--format=%ct", "--end-of-options", sha, "--")).strip()
         except GitCommandError:
             return None
-        return datetime.datetime.fromtimestamp(int(out), tz=datetime.UTC) if out.isdigit() else None
+        return _utc(int(out)) if out.isdigit() else None
 
     def _operation_in_progress(self) -> str | None:
         """Name the operation Git has stopped in, from its own files, or None."""
@@ -1874,7 +1886,10 @@ class GitReader:
             return None
         if not text.endswith(b"\n") or not text.strip():
             return None
-        dot_git = git_dir / os.fsdecode(text[:-1])  # relative to it, from --relative-paths
+        recorded = _gitfile_value(text)
+        if not recorded:
+            return None
+        dot_git = git_dir / recorded  # relative to it, from --relative-paths
         return os.path.normpath(dot_git.parent)
 
     def _branch_tips(self) -> dict[str, datetime.datetime]:
@@ -1886,7 +1901,7 @@ class GitReader:
         for line in out.splitlines():
             stamp, _, ref = line.partition("\0")
             if stamp.isdigit():
-                tips[ref] = datetime.datetime.fromtimestamp(int(stamp), tz=datetime.UTC)
+                tips[ref] = _utc(int(stamp))
         return tips
 
     def _merged_branch_count(self, head: str | None) -> int:
@@ -2117,7 +2132,7 @@ class GitReader:
                     header = header_re.fullmatch(token)
                     if header is not None:
                         stamp = int(header.group(1))
-                        when = datetime.datetime.fromtimestamp(stamp, tz=datetime.UTC).date()
+                        when = _utc(stamp).date()
                         continue
                     path = token.lstrip(b"\n").decode("utf-8", "replace")
                     # An area a path is in is one of its prefixes ending at a `/`, or
@@ -2154,7 +2169,7 @@ class GitReader:
         latest: datetime.date | None = None
         for value in set(output.split()):
             try:
-                day = datetime.datetime.fromtimestamp(int(value), tz=datetime.UTC).date()
+                day = _utc(int(value)).date()
             except (ValueError, OverflowError, OSError):
                 continue  # skipped as read_commits skips it
             latest = day if latest is None else max(latest, day)
@@ -3091,8 +3106,12 @@ def _gitfile_value(raw: bytes) -> str:
 
     Git strips only the line ends after it, so a path holding a newline or a
     byte that is not UTF-8 is kept whole; the byte decodes as the path it is.
+    Empty where no path can hold it (Windows file names are UTF-16).
     """
-    return os.fsdecode(raw.rstrip(b"\r\n"))
+    try:
+        return os.fsdecode(raw.rstrip(b"\r\n"))
+    except UnicodeDecodeError:
+        return ""
 
 
 def main_worktree_of(tree: Path) -> Path | None:
@@ -3697,7 +3716,7 @@ def _parse_log_record(
         return None
 
     try:
-        timestamp = datetime.datetime.fromtimestamp(int(committed_at), tz=datetime.UTC)
+        timestamp = _utc(int(committed_at))
     except (ValueError, OverflowError, OSError):
         # One unusable timestamp skips one record, not the report, and is counted.
         _logger.debug("skipping commit %s: unparseable timestamp", sha[:12])

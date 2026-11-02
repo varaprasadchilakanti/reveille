@@ -23,7 +23,7 @@ from reveille import __version__
 def _installed_command() -> Path:
     """The console script beside this interpreter, as `pip` and `poetry` place it."""
     bindir = Path(sys.executable).parent
-    for name in ("reveille", "reveille.exe"):
+    for name in ("reveille.exe", "reveille"):  # on Windows, `reveille` is a script for Git Bash
         if (bindir / name).is_file():
             return bindir / name
     pytest.fail(
@@ -102,7 +102,7 @@ class TestTheInstalledCommand:
 def test_reile_is_the_same_command(repo: Path) -> None:
     """`reile` is a second name for `reveille`, for when another tool owns that one."""
     bindir = Path(sys.executable).parent
-    reile = next((bindir / n for n in ("reile", "reile.exe") if (bindir / n).is_file()), None)
+    reile = next((bindir / n for n in ("reile.exe", "reile") if (bindir / n).is_file()), None)
     assert reile is not None, f"no installed `reile` command beside {sys.executable}"
 
     version = subprocess.run([str(reile), "--version"], capture_output=True, text=True, check=False)

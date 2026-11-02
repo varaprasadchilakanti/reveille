@@ -349,7 +349,10 @@ class TestAnalysisWindowIsTimezoneIndependent:
         """
         result = subprocess.run(
             [
-                str(Path(sys.executable).parent / "reveille"),
+                str(
+                    Path(sys.executable).parent
+                    / ("reveille.exe" if os.name == "nt" else "reveille")
+                ),
                 "generate",
                 "--repo",
                 str(boundary_repo),
@@ -375,7 +378,10 @@ class TestAnalysisWindowIsTimezoneIndependent:
         out = tmp_path / f"{timezone.replace('/', '_')}-in.html"
         result = subprocess.run(
             [
-                str(Path(sys.executable).parent / "reveille"),
+                str(
+                    Path(sys.executable).parent
+                    / ("reveille.exe" if os.name == "nt" else "reveille")
+                ),
                 "generate",
                 "--repo",
                 str(boundary_repo),

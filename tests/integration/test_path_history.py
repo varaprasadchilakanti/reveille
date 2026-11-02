@@ -81,7 +81,7 @@ def test_who_changed_counts_a_commit_on_a_branch_merged_without_its_change(repo:
 
 @pytest.fixture
 def vendored(tmp_path: Path) -> Path:
-    """`base` (src), `vendor only`, `both` (src and vendor), `notes` (a `*.md`-named file)."""
+    """`base` (src), `vendor only`, `both` (src and vendor), `notes` (`[a].md`, a glob as a name, and `a.md`)."""
     path = tmp_path / "v"
     (path / "src").mkdir(parents=True)
     (path / "vendor" / "lib").mkdir(parents=True)
@@ -93,22 +93,8 @@ def vendored(tmp_path: Path) -> Path:
     (path / "src" / "a.py").write_text("2\n", encoding="utf-8")
     (path / "vendor" / "lib" / "v.js").write_text("w\n" * 50, encoding="utf-8")
     _commit(path, "Ana", "ana@e.test", "both")
-    # `*.md` goes into the index with no file behind it, as Windows refuses the name.
-    blob = (
-        subprocess.run(
-            ["git", "hash-object", "-w", "--stdin"],
-            cwd=path,
-            input=b"literal\n",
-            capture_output=True,
-            check=True,
-        )
-        .stdout.decode()
-        .strip()
-    )
-    index = ["git", "update-index"]
-    subprocess.run([*index, "--add", "--cacheinfo", f"100644,{blob},*.md"], cwd=path, check=True)
-    subprocess.run([*index, "--skip-worktree", "--", "*.md"], cwd=path, check=True)
-    (path / "README.md").write_text("readme\n", encoding="utf-8")
+    (path / "[a].md").write_text("literal\n", encoding="utf-8")
+    (path / "a.md").write_text("plain\nplain\n", encoding="utf-8")
     _commit(path, "Ana", "ana@e.test", "notes")
     return path
 
@@ -132,8 +118,8 @@ class TestExcludePath:
         document, _ = _generate(vendored, "--exclude-path", "vendor")
 
         ana = next(c for c in document["contributors"] if c["email"] == "ana@e.test")  # type: ignore[union-attr]
-        # src/a.py twice (1 + 1 added, 1 deleted), `*.md` and README.md once each.
-        assert (ana["lines_added"], ana["lines_deleted"]) == (4, 1)
+        # src/a.py twice (1 + 1 added, 1 deleted), `[a].md` once, `a.md` twice.
+        assert (ana["lines_added"], ana["lines_deleted"]) == (5, 1)
 
     def test_the_paths_are_recorded_in_the_provenance(self, vendored: Path) -> None:
         document, _ = _generate(vendored, "--exclude-path", "vendor/", "--exclude-path", "./src")
@@ -142,11 +128,11 @@ class TestExcludePath:
         assert filters["exclude_paths"] == ["vendor", "src"]
 
     def test_a_path_is_matched_literally_not_as_a_wildcard(self, vendored: Path) -> None:
-        document, _ = _generate(vendored, "--exclude-path", "*.md")
+        document, _ = _generate(vendored, "--exclude-path", "[a].md")
 
         ana = next(c for c in document["contributors"] if c["email"] == "ana@e.test")  # type: ignore[union-attr]
-        # 1 + 1 (src), 50 (vendor), 1 (README.md): only the file named `*.md` goes.
-        assert ana["lines_added"] == 53
+        # 1 + 1 (src), 50 (vendor), 2 (`a.md`, which `[a].md` read as a glob would match): only `[a].md` goes.
+        assert ana["lines_added"] == 54
 
     def test_a_path_that_matches_nothing_is_named(self, vendored: Path) -> None:
         _, stderr = _generate(vendored, "--exclude-path", "vendr")

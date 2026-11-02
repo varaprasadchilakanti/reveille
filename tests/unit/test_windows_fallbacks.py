@@ -116,3 +116,17 @@ def test_a_regular_file_opens_without_the_flag(tmp_path: Path) -> None:
         assert os.read(descriptor, 64) == b"A <a@example.com>\n"
     finally:
         os.close(descriptor)
+
+
+def test_a_git_file_naming_a_path_that_is_not_utf8_names_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Windows decodes file names strictly: no directory there can have that name."""
+    from reveille.adapters import git_reader
+
+    monkeypatch.setattr(os, "fsdecode", lambda raw: raw.decode("utf-8"))
+    tree = tmp_path / "wt"
+    tree.mkdir()
+    (tree / ".git").write_bytes(b"gitdir: /x\xff\n")
+
+    assert git_reader.main_worktree_of(tree) is None

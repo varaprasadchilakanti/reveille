@@ -141,11 +141,11 @@ def test_an_empty_or_unreadable_commondir_names_no_main_tree(workspace: Path) ->
 
 def _hostile_name(tmp_path: Path, name: bytes) -> Path:
     """Return a path named `name`, or skip where the file system refuses the bytes."""
-    path = Path(os.fsdecode(bytes(tmp_path) + b"/" + name))
     try:
+        path = Path(os.fsdecode(bytes(tmp_path) + b"/" + name))
         path.mkdir()
         path.rmdir()
-    except (OSError, UnicodeEncodeError):
+    except (OSError, UnicodeError):
         pytest.skip("this file system refuses the name")
     return path
 

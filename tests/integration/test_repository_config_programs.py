@@ -42,7 +42,7 @@ def hostile(tmp_path: Path) -> tuple[Path, Path]:
     repo.mkdir()
     marker = tmp_path / "ran"
     program = tmp_path / "fake-gpg"
-    program.write_text(f"#!/bin/sh\ntouch '{marker}'\nexit 1\n", encoding="utf-8")
+    program.write_text(f"#!/bin/sh\ntouch '{marker.as_posix()}'\nexit 1\n", encoding="utf-8")
     program.chmod(program.stat().st_mode | stat.S_IEXEC)
 
     _git(repo, "init", "-q", "-b", "main")
@@ -59,7 +59,7 @@ def hostile(tmp_path: Path) -> tuple[Path, Path]:
     sha = _git(repo, "hash-object", "-t", "commit", "-w", "--stdin", stdin=signed)
     _git(repo, "update-ref", "refs/heads/main", sha)
     _git(repo, "config", "log.showSignature", "true")
-    _git(repo, "config", "gpg.program", str(program))
+    _git(repo, "config", "gpg.program", program.as_posix())
 
     # Guard the guard: plain Git does run it.
     subprocess.run(["git", "log", "-1"], cwd=repo, capture_output=True, check=False)
