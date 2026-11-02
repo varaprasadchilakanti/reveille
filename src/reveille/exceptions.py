@@ -40,7 +40,7 @@ class RepositoryError(ReveilleError):
 
 
 class EmptyRepositoryError(RepositoryError):
-    """Raised when no commits exist within the specified analysis window."""
+    """Raised when the analysis window holds no commits."""
 
 
 class NoRepositoryReadError(RepositoryError):
@@ -74,16 +74,16 @@ class OutputPathError(RenderError):
 
 
 def __getattr__(name: str) -> type[ReveilleError]:
-    """Resolve the deprecated ``RevelleError`` alias (PEP 562), with a warning.
+    """Resolve the deprecated ``RevelleError`` alias (PEP 562) with a warning.
 
     Args:
-        name: The attribute being accessed on this module.
+        name: The attribute requested.
 
     Returns:
         ReveilleError, when the deprecated alias is requested.
 
     Raises:
-        AttributeError: For any other name, as normal attribute access would.
+        AttributeError: For any other name.
     """
     if name == "RevelleError":
         warnings.warn(

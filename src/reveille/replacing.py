@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti
 # SPDX-License-Identifier: Apache-2.0
 
-"""Write a file by replacing its name, never by writing into the existing file.
+"""Write a file by replacing its name, not by writing into the existing file.
 
-Shared by the renderer, which writes reports, and `init`, which writes the
-config and `.mailmap` scaffolds. Standard library only.
+Used by the renderer (reports) and `init` (config and `.mailmap`). Standard
+library only.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from reveille.git_directory import (
     is_a_linked_worktree_open,
 )
 
-#: Whether files can be made and moved relative to an open directory (not on Windows).
+#: Whether files can be created and moved relative to an open directory (not Windows).
 _DIRECTORY_DESCRIPTORS = (
     hasattr(os, "O_DIRECTORY")
     and hasattr(os, "O_NOFOLLOW")
@@ -31,23 +31,22 @@ _DIRECTORY_DESCRIPTORS = (
     and {os.open, os.stat, os.unlink, os.rename} <= os.supports_dir_fd
 )
 
-#: How a directory is opened to work in: `O_PATH` (Linux) needs no permission to list it.
+#: How the working directory is opened: `O_PATH` (Linux) needs no list permission.
 _SEARCH_ONLY = getattr(os, "O_PATH", os.O_RDONLY)
 
 
 def write_replacing(path: Path, text: str, *, encoding: str) -> None:
     """Write `text` to a new file and move it over `path`.
 
-    Replacing the name, not writing in place, leaves other hard links to the
-    old file untouched. A new file is owner-only (0o600), since reports and a
-    filled-in `.mailmap` name people; an existing file keeps its mode, so one
-    its owner widened stays widened, and one its owner made read-only is
-    refused, as the shell's `>` refuses it. The text reaches the disk before the
-    name moves. The temporary file is removed on failure.
+    Replacing the name leaves other hard links to the old file untouched. A new
+    file is owner-only (0o600), since reports and a filled-in `.mailmap` name
+    people; an existing file keeps its mode, and a read-only one is refused, as
+    the shell's `>` refuses it. The text is fsynced before the move; the
+    temporary file is removed on failure.
 
-    The directory is opened once, and every step is taken in it: one swapped
-    for a link, or for a Git directory, after the path was checked is not
-    written into. On Windows the path is checked again, then used.
+    Every step works in the directory opened once, so a directory swapped for a
+    link or a Git directory after the check is not written into. On Windows the
+    path is checked again, then used.
 
     Args:
         path: The resolved output path.
@@ -55,10 +54,10 @@ def write_replacing(path: Path, text: str, *, encoding: str) -> None:
         encoding: The text encoding, `utf-8-sig` for a CSV with a BOM.
 
     Raises:
-        OSError: If the file cannot be created, written or moved, the path
-            names something other than a regular file or a read-only one, its
-            directory is now a link, or it is inside a Git directory. The error
-            names `path`, not the temporary file.
+        OSError: If the file cannot be created, written or moved; the path is
+            not a regular file or is read-only; its directory is now a link; or
+            it is inside a Git directory. The error names `path`, not the
+            temporary file.
     """
     if not _DIRECTORY_DESCRIPTORS:  # Windows
         if _in_a_git_directory_by_path(path.parent):
@@ -106,8 +105,8 @@ def _write_in(directory: int | None, name: Path, temporary: Path, text: str, enc
     try:
         with os.fdopen(descriptor, "w", encoding=encoding, newline="") as handle:
             handle.write(text)
-            # Windows before Python 3.13 cannot set a mode through a descriptor. Its
-            # only mode bit is read-only, which is refused above, so none is lost.
+            # Windows before Python 3.13 cannot chmod a descriptor; its only mode
+            # bit is read-only, refused above, so nothing is lost.
             if kept_mode is not None and os.chmod in os.supports_fd:
                 os.chmod(handle.fileno(), kept_mode)
             handle.flush()
@@ -122,8 +121,8 @@ def _write_in(directory: int | None, name: Path, temporary: Path, text: str, enc
 def _in_a_git_directory_by_path(directory: Path) -> bool:
     """Return whether `directory`, or one above it, is a Git directory, by path.
 
-    Used where directories cannot be held open (Windows). Unlike
-    `_in_a_git_directory`, a directory renamed during the walk is not seen.
+    For Windows, where directories cannot be held open; a directory renamed
+    during the walk is not seen.
 
     Args:
         directory: A resolved directory.
@@ -142,9 +141,9 @@ def _in_a_git_directory_by_path(directory: Path) -> bool:
 def _in_a_git_directory(directory: int) -> bool:
     """Return whether the open `directory`, or one above it, is a Git directory.
 
-    One Git takes for its own (`reveille.git_directory`), below the root of any
-    linked worktree the path is in. Walked through
-    `..` from the directory itself, so a name changed meanwhile cannot hide one.
+    As Git judges one (`reveille.git_directory`), stopping at the root of a
+    linked worktree. Walked through `..` from the open directory, so a rename
+    meanwhile cannot hide one.
 
     Args:
         directory: An open directory.

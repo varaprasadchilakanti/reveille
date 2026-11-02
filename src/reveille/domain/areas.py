@@ -3,9 +3,9 @@
 
 """Who changed each area of a repository, stated by fixed rules (ADR 0013).
 
-Statements describe an area, never a person: no owner, no per-person count or
-date. Names are alphabetical; of more than five, the five most recent, said so.
-It names people, so it appears only with `--area-authors`.
+Statements describe an area, not a person: no owner, no per-person count or
+date. Names are alphabetical; of more than five, the five most recent, stated
+as such. Shown only with `--area-authors`, because it names people.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 from reveille.domain.models import AreaActivity, Commit
 
-#: The area files at the top level of a repository belong to.
+#: The area of files at the repository's top level.
 ROOT_AREA = "(root)"
 
 #: Areas shown, most commits first (lines would favour generated churn).
@@ -24,15 +24,13 @@ _AREAS_SHOWN = 8
 #: Names listed per area before the rest are counted as "and N others".
 _NAMES_SHOWN = 5
 
-#: Quiet days before the window's end worth stating; as the dormancy finding.
+#: Days unchanged before the window's end worth stating; as the dormancy finding.
 _QUIET_DAYS = 30
 
 
 @dataclass(frozen=True)
 class AreaStatement:
-    """What the report says about one area.
-
-    Facts and the sentences made from them, so HTML and JSON cannot disagree.
+    """What the report says about one area: facts and sentences, shared by HTML and JSON.
 
     Attributes:
         area: The directory.
@@ -66,7 +64,7 @@ class AreaStatement:
 
 
 def area_of(path: str, depth: int) -> str:
-    """Return the area a path belongs to: its directory, cut to `depth`.
+    """Return a path's area: its directory, cut to `depth`.
 
     Args:
         path: A repository-relative file path.
@@ -82,13 +80,11 @@ def area_of(path: str, depth: int) -> str:
 
 
 def is_automated(name: str, email: str) -> bool:
-    """Return whether an identity is an automated account.
-
-    Fixed rule: the `[bot]` suffix that GitHub, GitLab and Bitbucket apps use.
+    """Return whether an identity carries the `[bot]` suffix GitHub, GitLab and Bitbucket apps use.
 
     Args:
-        name: The identity's display name.
-        email: The identity's address.
+        name: The display name.
+        email: The address.
 
     Returns:
         True for a `[bot]` identity.
@@ -108,7 +104,7 @@ def describe_areas(
         areas: Activity per area for the analysis window.
         names: Display name for every author address in the window.
         listed: Addresses the report names; others are counted (ADR 0011).
-        window_end: End of the window; quiet spells are measured from it.
+        window_end: End of the window, from which quiet spells are measured.
 
     Returns:
         One statement per area shown.
@@ -198,9 +194,7 @@ def _people_line(
     every: str,
     some: str,
 ) -> str:
-    """List identities: all of them, or the five most recent of many.
-
-    Same rule for authors and automated accounts.
+    """List authors or automated accounts: all, or the five most recent of many.
 
     Args:
         named: `(name, address)` of each identity, alphabetically.
@@ -246,7 +240,7 @@ def _count(n: int, singular: str) -> str:
 class PathAnswer:
     """Who changed one path in the window: `reveille who-changed` (ADR 0015).
 
-    ADR 0013's rules for one path: no count or date for any person.
+    ADR 0013's rules apply: no count or date for any person.
 
     Attributes:
         path: The path asked about, as given.

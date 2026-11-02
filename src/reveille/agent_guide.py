@@ -3,10 +3,9 @@
 
 """What to tell a coding agent about Reveille, printed by `reveille skill`.
 
-An agent uses a tool its instructions name. This is the text to put in them:
-a section for `AGENTS.md`, `CLAUDE.md` or the like, or, with `--format skill`,
-a `SKILL.md` an agent loads by its description. Every command in it is run by
-a test, against a repository, before it ships.
+A section for `AGENTS.md`, `CLAUDE.md` or similar, or, with `--format skill`, a
+`SKILL.md` an agent loads by its description. A test runs every command in it
+against a repository.
 """
 
 from __future__ import annotations

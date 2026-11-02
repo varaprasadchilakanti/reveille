@@ -3,8 +3,8 @@
 
 """Co-authorship stated beside authorship, never added to it (ADR 0014).
 
-Counting a commit per identity would stop the charts adding up. A trailer is
-an unverified claim: "credited", not "wrote".
+Counting a commit per identity would stop the charts adding up. A trailer is an
+unverified claim: "credited", not "wrote".
 """
 
 from __future__ import annotations
@@ -21,8 +21,8 @@ def co_authors_only(commits: list[Commit]) -> list[CoAuthor]:
         commits: The commits in the window, with their co-authors attached.
 
     Returns:
-        One entry per identity that only co-authored, ordered by name, never
-        by count (which would make it a ranking).
+        One entry per co-author-only identity, by name, not by count (which
+        would make it a ranking).
     """
     authors = {c.author_email.lower() for c in commits}
     counts: dict[str, int] = defaultdict(int)

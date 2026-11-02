@@ -1,10 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti
 # SPDX-License-Identifier: Apache-2.0
 
-"""Core domain models: plain dataclasses passed between every layer.
-
-No I/O and no knowledge of Git, HTML or the CLI.
-"""
+"""Core domain models: plain dataclasses passed between layers; no I/O, Git, HTML or CLI."""
 
 from __future__ import annotations
 
@@ -18,9 +15,9 @@ SCHEMA_VERSION = "1.3"
 
 @dataclass(frozen=True, slots=True)
 class Commit:
-    """A single Git commit reduced to the fields relevant for analysis.
+    """A Git commit reduced to the fields analysis uses.
 
-    Slotted: a read holds one per commit, and without a `__dict__` each is about
+    Slotted: a read holds one per commit, and without `__dict__` each is about
     half the size.
     """
 
@@ -35,21 +32,19 @@ class Commit:
 
     @property
     def lines_changed(self) -> int:
-        """Total lines touched by this commit (additions + deletions)."""
+        """Lines added plus lines deleted."""
         return self.lines_added + self.lines_deleted
 
 
 @dataclass(frozen=True)
 class FileStats:
-    """Activity recorded against one path, pooled across contributors.
-
-    Identifies no person, which is why it is in the default report.
+    """Activity on one path, pooled across contributors; names no one, so in the default report.
 
     Attributes:
         path: Repository-relative path, renames resolved to the destination.
-        commits: Number of commits that touched this path.
-        lines_added: Lines added to this path across those commits.
-        lines_deleted: Lines deleted from this path across those commits.
+        commits: Commits that touched the path.
+        lines_added: Lines added across those commits.
+        lines_deleted: Lines deleted across those commits.
     """
 
     path: str
@@ -65,7 +60,7 @@ class FileStats:
 
 @dataclass(frozen=True)
 class ContributorStats:
-    """Aggregated activity metrics for one contributor within the window."""
+    """One contributor's activity in the window."""
 
     name: str
     email: str
@@ -80,12 +75,12 @@ class ContributorStats:
 
     @property
     def net_lines(self) -> int:
-        """Net lines contributed (additions minus deletions)."""
+        """Lines added minus lines deleted."""
         return self.lines_added - self.lines_deleted
 
     @property
     def lines_changed(self) -> int:
-        """Total lines touched (additions plus deletions)."""
+        """Lines added plus lines deleted."""
         return self.lines_added + self.lines_deleted
 
 
@@ -102,10 +97,9 @@ class RankedContributor:
 
 @dataclass(frozen=True)
 class RepositoryMetadata:
-    """Metadata describing the target repository and the analysis window.
+    """The repository and the analysis window.
 
-    `analysed_branch` is the ref the analysis actually walked, not the default
-    branch.
+    `analysed_branch` is the ref walked, not the default branch.
     """
 
     name: str
@@ -122,9 +116,9 @@ class RepositoryMetadata:
 class AnalysisProvenance:
     """How a report was produced: the tool, the exact input, and the filters.
 
-    Lets two disagreeing reports be reconciled. `requested_*` records what was
-    asked for; `RepositoryMetadata` holds the resolved window, so "history
-    starts in March" differs from "filtered to start in March".
+    Lets two disagreeing reports be reconciled. `requested_*` is what was asked
+    for; `RepositoryMetadata` holds the resolved window, so "history starts in
+    March" differs from "filtered to start in March".
     """
 
     reveille_version: str
@@ -140,14 +134,14 @@ class AnalysisProvenance:
     ranking_weights: dict[str, float] | None
     mailmap_applied: bool
     deterministic: bool
-    # Commits dated after a default window's end (wrong clock, rebase); counted
-    # in no figure, recorded so the omission is never silent.
+    # Commits dated after a default window's end (wrong clock, rebase); in no
+    # figure, recorded so the omission is visible.
     commits_dated_after_window: int = 0
     # Unreadable commit records (ADR 0019); counted in no figure.
     commits_unreadable: int = 0
     # Merge commits in the selection (ADR 0001); counted in no figure.
     merge_commits_excluded: int = 0
-    # Figures then describe the clone, not the project.
+    # If set, figures describe the clone, not the project.
     shallow_clone: bool = False
     # Replace refs and grafts not followed (ADR 0018); `git log` would follow them.
     replace_refs_not_followed: int = 0
@@ -159,7 +153,7 @@ class AnalysisProvenance:
     limit: int | None = None
     # Paths left out of every figure, as given; paths name no one.
     exclude_paths: tuple[str, ...] = ()
-    # Every address replaced by a per-report token (`--hide-emails`).
+    # Addresses replaced by per-report tokens (`--hide-emails`).
     emails_hidden: bool = False
 
 
@@ -202,7 +196,7 @@ class AreaActivity:
 
 @dataclass(frozen=True)
 class ProgressEvent:
-    """A progress notification at each pipeline stage boundary.
+    """A progress notification at a pipeline stage boundary.
 
     Attributes:
         stage: The stage starting.
@@ -219,8 +213,7 @@ class ProgressEvent:
 class ReportData:
     """The complete structured dataset for a single report.
 
-    The service's output and the renderer's sole input; needs no further
-    computation.
+    The service's output and the renderer's only input, fully computed.
     """
 
     metadata: RepositoryMetadata

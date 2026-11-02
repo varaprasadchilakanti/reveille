@@ -4,9 +4,9 @@
 """How evenly commits are distributed across contributors.
 
 Describes the repository, not its people: neither measure names anybody, so it
-stays on when the ranking is off. Lorenz curve (Lorenz, 1905); Gini coefficient
-(Gini, 1912). Concentration is not a bus factor. A high Gini is not a problem
-and a low one not a goal; compare only against the same or a similar repository.
+stays on with the ranking off. Lorenz curve (Lorenz, 1905); Gini coefficient
+(Gini, 1912). Concentration is not a bus factor. A high Gini is not a problem nor
+a low one a goal; compare only with the same or a similar repository.
 """
 
 from __future__ import annotations
@@ -15,8 +15,8 @@ from __future__ import annotations
 def lorenz_curve(values: list[int]) -> list[tuple[float, float]]:
     """Return the Lorenz curve for a set of non-negative quantities.
 
-    Cumulative population share against cumulative total share, sorted
-    ascending; the diagonal is perfect equality.
+    Cumulative population share against cumulative total share, ascending; the
+    diagonal is perfect equality.
 
     Args:
         values: Per-contributor quantities, any order, none negative.
@@ -82,8 +82,8 @@ def gini_coefficient(values: list[int]) -> float:
 def commit_concentration(counts: list[int]) -> int:
     """Count the fewest contributors who between them authored half the commits.
 
-    Not a bus factor: that measures knowledge concentration, a property of line
-    ownership, not of commit counts. Counts include unlisted contributors.
+    Not a bus factor, which concerns knowledge held in line ownership, not
+    commit counts. Includes unlisted contributors.
 
     Args:
         counts: Commit count per contributor, in any order.

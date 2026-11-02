@@ -3,10 +3,10 @@
 
 """A written summary of a repository's history, generated from its numbers.
 
-Data-to-text generation (Reiter and Dale, 2000): rules over computed statistics,
-fixed templates, no model or network. Same history and window, same sentences; every claim
-is a threshold over a number in the report. Findings never name or evaluate a
-person (ADR 0010), never call a number good or bad, and never predict.
+Data-to-text generation (Reiter and Dale, 2000): fixed rules and templates over
+computed statistics, no model or network. Same history and window, same
+sentences; each claim is a threshold over a number in the report. Findings do
+not name or evaluate a person (ADR 0010), call a number good or bad, or predict.
 """
 
 from __future__ import annotations
@@ -20,22 +20,21 @@ from reveille.domain.concentration import gini_coefficient
 from reveille.domain.models import Commit, ContributorStats
 
 #: Gini at or above this reads as concentrated: where the Lorenz curve visibly
-#: bows, not an external benchmark.
+#: bows; not an external benchmark.
 _CONCENTRATION_THRESHOLD = 0.40
 
-#: Below this many commits, distribution and cadence findings are
-#: withheld. A Gini over five commits is arithmetic, not evidence.
+#: Below this many commits, distribution and cadence findings are withheld: a
+#: Gini over five commits is arithmetic, not evidence.
 _MINIMUM_COMMITS_FOR_SHAPE = 20
 
-#: A gap in calendar days that is worth naming rather than a normal pause.
+#: A gap in calendar days worth naming, not a normal pause.
 _QUIET_PERIOD_DAYS = 30
 
-#: Weekend share of commits at or above which the pattern is stated, as an
-#: observation, never a concern.
+#: Weekend share of commits at or above which it is stated, as an observation.
 _WEEKEND_SHARE_THRESHOLD = 0.15
 
-#: Below this many contributors, behaviour findings are withheld: a working
-#: pattern in a tiny repository singles a person out (GDPR Recital 26).
+#: Below this many contributors, behaviour findings are withheld: in a tiny
+#: repository a working pattern singles a person out (GDPR Recital 26).
 _MINIMUM_CONTRIBUTORS_FOR_BEHAVIOUR = 3
 
 
@@ -57,11 +56,11 @@ class Finding:
 def longest_quiet_run(commits: list[Commit]) -> int:
     """Return the most consecutive days without a commit between two that had one.
 
-    The single definition the card, the cadence finding and the JSON share.
-    Silence after the last commit belongs to the dormancy finding.
+    Shared by the card, the cadence finding and JSON. Silence after the last
+    commit belongs to the dormancy finding.
 
     Args:
-        commits: The commits in the analysis window.
+        commits: The commits in the window.
 
     Returns:
         Commit-free calendar days, or 0 when fewer than two days have commits.
@@ -81,7 +80,7 @@ def _plural(count: int, singular: str, plural: str | None = None) -> str:
 
 
 def whole_percent(share: float) -> str:
-    """Return a share as a whole percentage that never rounds to none or to all.
+    """Return a share as a whole percentage that does not round to none or all.
 
     Args:
         share: A fraction from 0 to 1.
@@ -98,7 +97,7 @@ def whole_percent(share: float) -> str:
 
 
 def _span_finding(commits: list[Commit]) -> Finding:
-    """State the size and span of the history that was read."""
+    """State the size and span of the history read."""
     first = min(c.timestamp for c in commits).date()
     last = max(c.timestamp for c in commits).date()
     days = (last - first).days + 1
@@ -123,12 +122,12 @@ def _distribution_finding(contributors: list[ContributorStats]) -> Finding | Non
     total = sum(counts)
     leading_share = counts[0] / total
 
-    # Gini is capped at (n-1)/n, so the leading share decides the wording and
-    # the coefficient is the evidence.
+    # Gini is capped at (n-1)/n, so the leading share picks the wording and the
+    # coefficient is the evidence.
     if len(counts) < _MINIMUM_CONTRIBUTORS_FOR_BEHAVIOUR:
         # A share would single out an identifiable person, and with two people
-        # the Gini fixes each share, so neither is this sentence's evidence.
-        # `reveille summary` prints no table, so the sentence names it.
+        # the Gini fixes each share, so neither is evidence. `reveille summary`
+        # prints no table, so the sentence points to it.
         return Finding(
             headline=(f"Commits are distributed across {_plural(len(counts), 'contributor')}."),
             detail=(
@@ -171,7 +170,7 @@ def _distribution_finding(contributors: list[ContributorStats]) -> Finding | Non
 
 
 def _cadence_finding(commits: list[Commit]) -> Finding | None:
-    """State the rhythm of committing, and the longest quiet run."""
+    """State the commit rhythm and the longest quiet run."""
     if len(commits) < _MINIMUM_COMMITS_FOR_SHAPE:
         return None
     days = sorted({c.timestamp.date() for c in commits})
@@ -199,10 +198,10 @@ def _weekend_finding(
     commits: list[Commit],
     contributors: list[ContributorStats],
 ) -> Finding | None:
-    """State weekend activity as an observation, never as a judgement.
+    """State weekend activity as an observation, not a judgement.
 
-    Withheld below `_MINIMUM_CONTRIBUTORS_FOR_BEHAVIOUR`: in a small
-    repository it describes one identifiable person.
+    Withheld below `_MINIMUM_CONTRIBUTORS_FOR_BEHAVIOUR`, where it describes an
+    identifiable person.
     """
     if len(commits) < _MINIMUM_COMMITS_FOR_SHAPE:
         return None
@@ -239,7 +238,7 @@ def _co_author_finding(commits: list[Commit]) -> Finding | None:
 
 
 def _recency_finding(commits: list[Commit], today: datetime.date) -> Finding | None:
-    """State how current the history is, relative to when it was read."""
+    """State how current the history is, relative to the reference date."""
     last = max(c.timestamp for c in commits).date()
     idle = (today - last).days
     if idle < _QUIET_PERIOD_DAYS:
@@ -262,8 +261,8 @@ def summarise(
     """Generate the findings for a repository, most structural first.
 
     Args:
-        commits: Every commit in the analysis window.
-        contributors: Aggregated per-contributor statistics.
+        commits: Every commit in the window.
+        contributors: Per-contributor statistics.
         today: Recency reference; defaults to the latest commit date
             (reproducible); pass a real date to measure dormancy.
 

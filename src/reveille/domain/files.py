@@ -3,9 +3,9 @@
 
 """Where change concentrates by path, and what kinds of file it goes into.
 
-Churn half of hotspot analysis (Tornhill, 2013; Nagappan and Ball, ICSE 2005),
-without the complexity axis: file content is never read. Frequent change marks
-a file to look at, not a file that is wrong.
+The churn half of hotspot analysis (Tornhill, 2013; Nagappan and Ball, ICSE
+2005); file content is not read, so there is no complexity axis. Frequent change
+marks a file to look at, not a file that is wrong.
 """
 
 from __future__ import annotations
@@ -35,13 +35,13 @@ GENERATED_LABEL = "lock files"
 
 
 def is_generated(path: str) -> bool:
-    """Return whether a path is a machine-generated file.
+    """Return whether a path is a machine-generated lock file.
 
     Args:
         path: A repository-relative path.
 
     Returns:
-        True if the file is one a tool writes rather than a person.
+        True for a known lock-file name.
     """
     return path.rsplit("/", 1)[-1].lower() in _GENERATED_NAMES
 
@@ -54,8 +54,8 @@ def hotspots(
 ) -> list[FileStats]:
     """Return the paths absorbing the most change, most first.
 
-    Ordered by churn (added plus deleted, not net), then commit count, then
-    path, so the order is total and reproducible.
+    Ordered by churn (added plus deleted, not net), then commits, then path, so
+    the order is reproducible.
 
     Args:
         files: Per-path activity for the analysis window.
@@ -84,8 +84,7 @@ def extension_breakdown(
         limit: Maximum named extensions before pooling.
 
     Returns:
-        A list of `(label, lines_changed)` pairs, largest first, with any
-        pooled remainder last.
+        `(label, lines_changed)` pairs, largest first, any pooled remainder last.
     """
     totals: dict[str, int] = defaultdict(int)
     for stats in files:
@@ -115,9 +114,7 @@ def file_type(path: str) -> str:
 
 
 def generated_churn(files: list[FileStats]) -> tuple[int, int]:
-    """Return how many generated files changed, and their lines changed.
-
-    What the hotspot ranking leaves out, so the report can say so.
+    """Return how many generated files changed and their lines changed, which hotspots omit.
 
     Args:
         files: Per-path activity for the analysis window.
@@ -139,7 +136,7 @@ def _extension_of(path: str) -> str:
         The extension including its dot, or "(none)".
     """
     name = path.rsplit("/", 1)[-1]
-    # A leading dot makes a dotfile, not an extension.
+    # A dotfile, not an extension.
     if name.startswith("."):
         return "(none)"
     _, dot, extension = name.rpartition(".")

@@ -3,14 +3,13 @@
 
 """Replace people's email addresses in a report with tokens that mean nothing outside it.
 
-For a report that is shared: names alone still let a reader tell people
-apart; an address also lets them be contacted. A token is
-numbered in the order people are listed, not derived from the address, so it
-cannot be reversed by hashing a guessed address. The `.invalid` top-level
-domain (RFC 2606) can never receive mail.
+For a shared report: names let a reader tell people apart; an address also lets
+them be contacted. Tokens are numbered in listing order, not derived from the
+address, so hashing a guessed address does not reverse them. The `.invalid`
+top-level domain (RFC 2606) receives no mail.
 
-Every figure is unchanged: each address maps to exactly one token, and an
-automated account keeps the `[bot]` marker it is recognised by.
+Figures are unchanged: each address maps to one token, and an automated account
+keeps its `[bot]` marker.
 """
 
 from __future__ import annotations
@@ -31,14 +30,13 @@ from reveille.domain.models import (
 #: The domain of every token; the renderer recognises a token by it.
 HIDDEN_DOMAIN = "hidden.invalid"
 
-# The at sign as people and tools write it: plain, fullwidth (U+FF20), small
-# (U+FE6B), or `%40` from a URL. A pattern cannot know every spelling; these err
-# towards hiding more.
+# The at sign: plain, fullwidth (U+FF20), small (U+FE6B), or `%40` from a URL.
+# Not every spelling; these err towards hiding more.
 _AT = "@\uff20\ufe6b"
 
-# An address written into a display name, as some Git configurations produce, with
-# spaces around the sign too. Square brackets end it, so a `[bot]` suffix after an
-# address survives, unless they hold the domain itself (`bob@[10.1.2.3]`).
+# An address in a display name, as some Git configurations produce, spaces around
+# the sign allowed. Square brackets end it, so a following `[bot]` survives,
+# unless they hold the domain (`bob@[10.1.2.3]`).
 _ADDRESS_IN_TEXT = re.compile(
     rf"[^\s<>{_AT}\[\]]+(?:\s*[{_AT}]\s*|%40)(?:\[[^\]\s]+\]|[^\s<>{_AT}\[\]]+)"
 )
@@ -46,9 +44,8 @@ _ADDRESS_IN_TEXT = re.compile(
 # An address in a branch, a directory or a URL path: it ends at a separator too.
 _ADDRESS_IN_PATH = re.compile(rf"[^\s<>{_AT}\[\]/:]+(?:[{_AT}]|%40)[^\s<>{_AT}\[\]/:]+")
 
-# A remote that is a path on this machine or a share: it names the owner's
-# directories (`/home/jane/clients/...`, `\\server\home\jane`), so only its last
-# part is kept.
+# A local or share remote names the owner's directories (`/home/jane/clients/...`,
+# `\\server\home\jane`), so only its last part is kept.
 _LOCAL_REMOTE = re.compile(r"^(?:file:|/|~|\.{1,2}[\\/]|[A-Za-z]:[\\/]|\\\\)")
 
 # The user part of a remote, scp-like (`user@host:path`) or a URL (`ssh://user@host/path`).
@@ -62,7 +59,7 @@ def hide_emails(data: ReportData) -> ReportData:
         data: The report as computed.
 
     Returns:
-        The same report, with tokens for addresses and for addresses inside names.
+        The report with addresses, including those inside names, replaced.
     """
     tokens = _Tokens()
     # Numbered in table order, so the numbering says nothing the table does not.
@@ -81,9 +78,9 @@ def hide_emails(data: ReportData) -> ReportData:
     requested = data.provenance.requested_branch
     return replace(
         data,
-        # A branch, a directory or a remote's path can be named after a person's
-        # address (`user/jane@example.com`). File paths are left as they are: the
-        # extension and generated-file figures are read from them.
+        # A branch, directory or remote path can hold an address
+        # (`user/jane@example.com`). File paths are kept: the extension and
+        # generated-file figures are read from them.
         metadata=replace(
             data.metadata,
             name=_hidden_in_path(data.metadata.name),
@@ -104,7 +101,7 @@ def hide_emails(data: ReportData) -> ReportData:
 
 
 def _hidden_remote(remote: str) -> str:
-    """Return a remote with the logins, addresses and local directories in it removed.
+    """Return a remote without its logins, addresses and local directories.
 
     Args:
         remote: The remote's URL, its credentials already removed.
@@ -139,7 +136,7 @@ class _Tokens:
         self._by_address: dict[str, str] = {}
 
     def of(self, email: str, name: str) -> str:
-        """Return the token for `email`, assigning the next one if it is new.
+        """Return the token for `email`, assigning the next if new.
 
         Args:
             email: The address; compared lower-cased, as identities are.
@@ -158,7 +155,7 @@ class _Tokens:
         return token
 
     def name(self, name: str) -> str:
-        """Return a display name with any address written into it removed.
+        """Return a display name with addresses in it replaced.
 
         Args:
             name: The display name.

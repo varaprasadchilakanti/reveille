@@ -3,11 +3,10 @@
 
 """A six-axis profile of a repository's working pattern (ADR 0012, 0016).
 
-Every axis is a naturally bounded ratio, so nothing is rescaled by a chosen
-constant. Axes read authors and trailers only to count commits; none names,
-ranks or counts one person's work. Where an expected value follows from the
-measure's own arithmetic it is shown; otherwise none is invented. A
-description, not a scorecard: no axis is a target.
+Each axis is a naturally bounded ratio, so no chosen constant rescales it. Axes
+read authors and trailers only to count commits; none names, ranks or counts
+one person's work. An expected value is shown only where the measure's own
+arithmetic gives one. A description, not a scorecard: no axis is a target.
 """
 
 from __future__ import annotations
@@ -19,7 +18,7 @@ from reveille.domain.areas import is_automated
 from reveille.domain.files import is_generated
 from reveille.domain.models import Commit, FileStats
 
-#: Fixed axis order, part of the contract so reports compare like for like.
+#: Fixed axis order, part of the contract, so reports compare like for like.
 AXIS_ORDER = (
     "Continuity",
     "Recent work",
@@ -38,8 +37,8 @@ class ProfileAxis:
         name: The axis label, one of `AXIS_ORDER`.
         value: A share between 0.0 and 1.0.
         description: What the share is of, in one clause.
-        expected: The value under evenly spread activity, where the arithmetic
-            gives one, else None. Never a target.
+        expected: The value under evenly spread activity where the arithmetic
+            gives one, else None. Not a target.
     """
 
     name: str
@@ -53,10 +52,10 @@ def _continuity(
     since: datetime.date,
     until: datetime.date,
 ) -> ProfileAxis:
-    """Share of the window's weeks containing at least one commit.
+    """Share of the window's weeks with at least one commit.
 
-    Expected under uniformly random placement: 1 - (1 - 1/W)**C for C commits
-    over W weeks.
+    Expected under uniform random placement: 1 - (1 - 1/W)**C for C commits over
+    W weeks.
     """
     total_weeks = max(((until - since).days // 7) + 1, 1)
     in_window = [c for c in commits if since <= c.timestamp.date() <= until]
@@ -75,10 +74,10 @@ def _recent_share(
     since: datetime.date,
     until: datetime.date,
 ) -> ProfileAxis:
-    """Share of commits falling in the most recent quarter of the window.
+    """Share of commits in the final quarter of the window.
 
-    Expected: the share of days the final quarter occupies, computed rather
-    than assumed 0.25 because the cut-off is inclusive.
+    Expected: the final quarter's share of days, computed, not 0.25, because the
+    cut-off is inclusive.
     """
     span = max((until - since).days, 1)
     cutoff = until - datetime.timedelta(days=span // 4)
@@ -96,7 +95,7 @@ def _revisiting(files: list[FileStats]) -> ProfileAxis:
     """Share of hand-written files touched by more than one commit.
 
     Generated files are excluded: their revisions reflect tooling. No
-    expectation: it would depend on age and file count, which are unknown here.
+    expectation: it would depend on age and file count, unknown here.
     """
     written = [f for f in files if not is_generated(f.path)]
     if not written:
@@ -116,9 +115,8 @@ def _revisiting(files: list[FileStats]) -> ProfileAxis:
 def _shared(commits: list[Commit]) -> ProfileAxis:
     """Share of people's commits not made by the busiest person (ADR 0016).
 
-    Automated accounts are excluded from both sides; their share is
-    `Automation`'s. Expected under an even split across n people: 1 - 1/n.
-    None without human commits.
+    Automated accounts are excluded (see `Automation`). Expected under an even
+    split across n people: 1 - 1/n; None without human commits.
     """
     counts: dict[str, int] = {}
     for commit in commits:
@@ -140,7 +138,7 @@ def _shared(commits: list[Commit]) -> ProfileAxis:
 def _collaboration(commits: list[Commit]) -> ProfileAxis:
     """Share of commits that credit a co-author (ADR 0014, 0016).
 
-    No expectation: there is no arithmetic baseline.
+    No expectation: no arithmetic baseline.
     """
     return ProfileAxis(
         name="Collaboration",
@@ -167,15 +165,13 @@ def repository_profile(
     since: datetime.date,
     until: datetime.date,
 ) -> list[ProfileAxis]:
-    """Return the six profile axes, always in `AXIS_ORDER`.
-
-    Shares of the repository's work, never any one person's.
+    """Return the six profile axes: shares of the repository's work, not of one person's.
 
     Args:
-        commits: Every commit in the analysis window.
+        commits: Every commit in the window.
         files: Per-path activity for the window.
-        since: First day of the analysis window.
-        until: Last day of the analysis window.
+        since: First day of the window.
+        until: Last day of the window.
 
     Returns:
         Six axes in `AXIS_ORDER`, or empty when there are no commits.
