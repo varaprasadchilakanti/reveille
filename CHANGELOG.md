@@ -48,6 +48,7 @@ before 0.8.0 predate the convention and are left as they were released.
   contribution and must not be used to judge people, and points to `schema_version` and
   `--deterministic`. Its SKILL.md form carries a `compatibility` field.
 - README badges for coverage, Ruff and mypy.
+- CI runs the test suite on Windows and macOS, with CPython 3.11 and 3.14.
 
 ---
 
