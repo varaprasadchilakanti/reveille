@@ -776,6 +776,7 @@ class TestSecondPassFindings:
         assert result.returncode == 2
         assert head.read_bytes() == head_before
 
+    @pytest.mark.skipif(os.name == "nt", reason="POSIX file modes")
     def test_a_new_report_is_readable_by_its_owner_only(self, tmp_path: Path) -> None:
         """A report names people, so it is created with owner-only permissions.
 
@@ -790,6 +791,7 @@ class TestSecondPassFindings:
         assert output.stat().st_mode & 0o777 == 0o600
         assert not [p for p in tmp_path.iterdir() if p.name.endswith(".tmp")], "no temporary left"
 
+    @pytest.mark.skipif(os.name == "nt", reason="POSIX file modes")
     @pytest.mark.parametrize("mode", [0o644, 0o640, 0o600])
     def test_a_rewritten_report_keeps_the_mode_its_owner_gave_it(
         self, tmp_path: Path, mode: int

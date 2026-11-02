@@ -29,6 +29,8 @@ before 0.8.0 predate the convention and are left as they were released.
 - On Windows, `repos` hid a `core.worktree` inside the searched directory as a path outside it.
 - On Windows, `who-changed /etc/hosts` reached Git instead of being refused as outside the
   repository: the path has a root but no drive.
+- On Windows, a current branch whose name is not UTF-8 stopped every command that read it:
+  Windows cannot pass the byte to Git. Git is given `HEAD`, the same commit.
 
 ### Changed
 

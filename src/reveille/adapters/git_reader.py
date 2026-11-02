@@ -1336,7 +1336,7 @@ class GitReader:
             `refs/heads/<name>` when that branch exists, else the name as given.
         """
         if branch is None:
-            return self._active_revision()
+            return self._active_argument()
         if branch.startswith(("-", "refs/")) or branch == "HEAD":
             return branch  # refused later, already in full, or the checked-out commit
         if branch not in self._branch_refs:
@@ -1377,6 +1377,14 @@ class GitReader:
                 ref = "HEAD"
             self._active_branch = ref
         return self._active_branch
+
+    def _active_argument(self) -> str:
+        """Return the active branch's ref to give Git, or 'HEAD' for the same commit.
+
+        A ref holding a byte that is not UTF-8 cannot cross a Windows command line.
+        """
+        ref = self._active_revision()
+        return "HEAD" if any("\udc80" <= c <= "\udcff" for c in ref) else ref
 
     def _read_alongside(
         self,
@@ -2168,7 +2176,7 @@ class GitReader:
         Returns:
             The date, or None when the branch has no such commit.
         """
-        log_args, _ = _build_log_args(self._active_revision(), None, until, line_counts=False)
+        log_args, _ = _build_log_args(self._active_argument(), None, until, line_counts=False)
         log_args[log_args.index(_LOG_FORMAT)] = "--format=%ct"
         try:
             output = str(self._git().log(*log_args))

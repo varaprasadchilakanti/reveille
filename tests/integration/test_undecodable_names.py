@@ -92,3 +92,24 @@ def test_a_branch_whose_name_is_not_utf8_is_read(on_branch: Path, fmt: str, tmp_
         metadata = json.loads(out.read_text(encoding="utf-8"))["metadata"]
         assert metadata["analysed_branch"] == "b\ufffdr"
         assert metadata["total_commits"] == 1
+
+
+def test_no_git_argument_holds_a_byte_windows_cannot_pass(
+    on_branch: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A ref read back from Git holds U+DCFF for the byte; Windows argv cannot carry it."""
+    real = subprocess.Popen.__init__
+
+    def refuse(self: subprocess.Popen[bytes], args: object, *rest: object, **kw: object) -> None:
+        words = [args] if isinstance(args, str | bytes) else list(args)  # type: ignore[call-overload]
+        assert not any(
+            isinstance(w, str) and any("\udc80" <= c <= "\udcff" for c in w) for w in words
+        ), words
+        real(self, args, *rest, **kw)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(subprocess.Popen, "__init__", refuse)
+    out = tmp_path / "r.json"
+
+    result = CliRunner().invoke(app, ["generate", "--repo", str(on_branch), "-o", str(out)])
+
+    assert result.exit_code == ExitCode.SUCCESS, result.stderr
