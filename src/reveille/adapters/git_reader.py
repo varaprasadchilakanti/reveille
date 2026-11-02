@@ -3179,7 +3179,7 @@ def repository_root(path: Path) -> Path:
     try:
         _refuse_git_files_that_block(path, search_up=True)
     except RepositoryError:
-        return path.resolve()  # the reader refuses it, with the reason
+        return path.resolve()  # the reader opens it, and says why it refuses
     try:
         # `-C`: GitPython falls back to the process's directory when the one it is
         # given cannot be entered.
@@ -3330,7 +3330,7 @@ def _refuse_special_files(root: Path) -> None:
             try:
                 is_directory = entry.is_dir()  # through a link, as Git reads it
             except OSError:
-                continue  # unresolvable for Git too, such as a link to itself
+                continue  # a link Git cannot resolve either, such as one to itself
             if is_directory:
                 pending.append(Path(entry.path))
                 continue
