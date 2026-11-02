@@ -803,12 +803,7 @@ def main(
 
 
 def _write_utf8_where_not_a_terminal() -> None:
-    """Write UTF-8 to a pipe or a file, whatever the locale's encoding.
-
-    Windows encodes a redirected stream in the locale's code page: a name outside
-    it stopped the output, and one inside it came out in that code page, under an
-    HTML page that declares UTF-8. A terminal keeps its own encoding.
-    """
+    """Make a command write UTF-8 to a pipe or a file; a terminal keeps its encoding."""
     for stream in (sys.stdout, sys.stderr):
         try:
             if (
@@ -816,7 +811,7 @@ def _write_utf8_where_not_a_terminal() -> None:
                 and stream.encoding.replace("-", "").lower() != "utf8"
                 and not stream.isatty()
             ):
-                stream.reconfigure(encoding="utf-8")
+                stream.reconfigure(encoding="utf-8", errors=stream.errors)
         except (OSError, ValueError):
             continue  # a closed stream is reported where it is written to
 

@@ -252,7 +252,10 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-interaction
       - name: Run pytest
-        run: poetry run pytest -n auto --timeout=120
+        run: poetry run pytest -n auto --timeout=120 --junitxml=pytest.xml
+      - name: Group the failures by cause
+        if: failure()
+        run: python .github/scripts/test_failures.py pytest.xml --annotate
 
   # ----------------------------------------------------------------
   # Known vulnerabilities in the resolved dependency set

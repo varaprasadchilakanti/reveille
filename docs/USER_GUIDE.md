@@ -124,7 +124,8 @@ path set in `reveille.toml` is refused, because a configuration file is found au
 come from a repository you do not control. A bare repository needs an explicit path.
 
 `--output -` writes the report to stdout, in any format, and nothing else goes there: progress,
-notes and errors are on stderr. CSV on stdout carries no byte-order mark. An output path ending in
+notes and errors are on stderr. A command writes UTF-8 to a pipe or a file; a terminal keeps its own
+encoding. CSV on stdout carries no byte-order mark. An output path ending in
 `/` names a directory and is refused (exit 2), from a flag or from `reveille.toml`.
 
 ```bash

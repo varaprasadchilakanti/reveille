@@ -69,11 +69,11 @@ def test_a_closed_stream_is_left_to_the_write_that_reports_it(
 
     closed = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
     closed.close()
-    redirected = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
+    redirected = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors="backslashreplace")
     monkeypatch.setattr(sys, "stdout", closed)
     monkeypatch.setattr(sys, "stderr", redirected)
 
     _write_utf8_where_not_a_terminal()
 
     assert closed.encoding == "cp1252"
-    assert redirected.encoding == "utf-8"
+    assert (redirected.encoding, redirected.errors) == ("utf-8", "backslashreplace")

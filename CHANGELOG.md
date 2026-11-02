@@ -15,24 +15,16 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Fixed
 
-- On Windows with Python 3.11 or 3.12, writing a report over an existing file, or `init --force`
-  over an existing `reveille.toml` or `.mailmap`, failed with a `TypeError`.
-- On Windows, a `.mailmap` that is a symbolic link was applied. Windows has no `O_NOFOLLOW`, so
-  the path is now checked before it is opened; a link put in its place between the check and the
-  open is still followed.
-- On Windows, the output path is checked again for a Git directory as the file is written, as on
-  other platforms. Before, only the check made before the run applied.
-- Output sent to a pipe or a file is UTF-8 whatever the locale's encoding. On Windows it was
-  encoded in the locale's code page: a name outside it, such as 李, stopped `who-changed` and
-  `generate -o -` (CSV or HTML) with "This is a defect in Reveille", and a name inside it, such
-  as é, came out in that code page under an HTML page that declares UTF-8. A terminal keeps its
-  own encoding.
-- On Windows, `state` run in a linked worktree marked no worktree as the one read: JSON gave
-  `current: false` for each, and the text and Markdown listed every worktree, that one
-  included. Git for Windows lists `C:/a/b`; the path it was compared with is `C:\a\b`.
+- On Windows with Python 3.11 or 3.12, writing over an existing report, or `init --force`, failed
+  with a `TypeError`.
+- On Windows, `generate -o -` as HTML stopped on every repository, and CSV and `who-changed` on a
+  name outside the locale's code page, with "This is a defect in Reveille".
+- On Windows, `state` in a linked worktree marked no worktree as current: Git lists `C:/a/b`.
 
 ### Changed
 
+- A command writes UTF-8 to a pipe or a file whatever the locale's encoding; a terminal keeps
+  its own.
 - The README opening and the PyPI description are reworded.
 - The agent guide printed by `reveille skill` states what Reveille does instead of recommending
   it over plain Git.
@@ -42,6 +34,10 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Security
 
+- On Windows, a `.mailmap` that is a symbolic link was applied (0.10.x is affected). It is now
+  refused, by a check before the open: a link put in its place in between is still followed.
+- On Windows, the output path is checked again for a Git directory, by path, just before writing
+  (0.10.x checked only before the run). Elsewhere the check holds the directory open.
 - The release workflow pins `pypa/gh-action-pypi-publish` v1.14.3, which fixes
   GHSA-5xjx-3w67-w9x9; v1.14.2 was pinned before.
 - CI installs pre-commit from `.github/requirements/pre-commit.txt`, by version and hash for it

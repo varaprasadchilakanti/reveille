@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti
 # SPDX-License-Identifier: Apache-2.0
 
-"""Open a file for reading, refusing a symbolic link at the end of its path. Standard library only.
+"""Open a file for reading, refusing a symbolic link at the end of its path.
 
 Where the platform has `O_NOFOLLOW`, the open itself refuses the link. Windows
 has no such flag, so there the path is checked first: a link put in its place

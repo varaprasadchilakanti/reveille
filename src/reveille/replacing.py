@@ -122,8 +122,8 @@ def _write_in(directory: int | None, name: Path, temporary: Path, text: str, enc
 def _in_a_git_directory_by_path(directory: Path) -> bool:
     """Return whether `directory`, or one above it, is a Git directory, by path.
 
-    Used where directories cannot be held open (Windows): the same walk as
-    `_in_a_git_directory`, so a directory renamed during it is not seen.
+    Used where directories cannot be held open (Windows). Unlike
+    `_in_a_git_directory`, a directory renamed during the walk is not seen.
 
     Args:
         directory: A resolved directory.
