@@ -13,7 +13,7 @@ of a commercial activity.
 
 ## What the software does
 
-Every conclusion depends on these facts:
+Every conclusion rests on these facts:
 
 - It runs entirely on the user's own machine: no telemetry, no server, no account. It makes no
   outbound call of its own, and the maintainer never receives anything. It runs Git, with signature checking,
@@ -27,9 +27,9 @@ Every conclusion depends on these facts:
   paths, counts and status letters; Git reads the files to compute them. It reads no source code,
   no other part of any commit message, and no diff content.
 - It also reads the repository's remote URL, its branch and tag names, its `.mailmap` and its Git
-  configuration files. `state` reports worktree paths and branch names, the upstream and the
-  latest tag; `brief` reports directory paths and tag names; `repos` lists the directories under
-  the one given (up to three levels) and reports each repository's relative path, branch name and
+  configuration files. `state` reports worktree paths, branch names, the upstream and the latest
+  tag; `brief` reports directory paths and tag names; `repos` lists the directories under the one
+  given (up to three levels) and reports each repository's relative path, branch name and
   last-commit date. Any of these can hold a name or an address. Only `generate` has an option
   (`--hide-emails`) that replaces addresses in them.
 - It contains no machine learning and no model. Every number is arithmetic over commit counts,
@@ -49,8 +49,8 @@ the report. A processor "processes personal data on behalf of the controller" (A
 maintainer processes nothing, because no data reaches them.
 
 The maintainer is therefore neither controller nor processor for the tool's operation. The user
-is the controller. Which lawful basis applies, and whether any employment or works-council rule
-applies, is for that controller to determine; this document does not answer it. Recital 78 only
+is the controller, who determines which lawful basis applies and whether any employment or
+works-council rule does; this document does not answer either. Recital 78 only
 says software producers "should be encouraged" to consider data protection in design, while
 Art. 25's binding obligations fall on the controller.
 
@@ -127,8 +127,8 @@ free and open-source software; this document does not yet reflect it.
 ## Product Liability Directive — Directive (EU) 2024/2853
 
 Out of scope, through the same test. Art. 2(2) excludes free and open-source software developed
-or supplied outside the course of a commercial activity, and Recital 14 confirms that providing
-such software on open repositories is not making it available on the market unless that occurs
+or supplied outside the course of a commercial activity; Recital 14 confirms that providing such
+software on open repositories is not making it available on the market unless that occurs
 commercially, and says the Directive applies "where software is supplied in exchange for a price,
 or for personal data used other than exclusively for improving the security, compatibility or
 interoperability of the software". It applies to products placed on the market or put into
@@ -240,5 +240,3 @@ responsibility".
 Regulation texts were read from the EU Publications Office; US CFR text from the eCFR; Apache-2.0
 from apache.org; EN 301 549 from ETSI. Where a source could not be reached or a question could not
 be settled, this document says so.
-
-This is research, not legal advice.

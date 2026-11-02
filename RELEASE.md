@@ -16,8 +16,8 @@ git switch -c chore/release-vX.Y.Z
 
 - Bump the version in both places: `pyproject.toml` (`version = "X.Y.Z"`) and
   `src/reveille/__init__.py` (`__version__ = "X.Y.Z"`). `make check-version` fails on a mismatch.
-- Update `SECURITY.md`: only the current stable release is supported, so the table becomes
-  `X.Y.x Yes` / `< X.Y.0 No`.
+- Update the `SECURITY.md` table to `X.Y.x Yes` / `< X.Y.0 No`: only the current stable release is
+  supported.
 - Promote the CHANGELOG. Rename `## [Unreleased]` to `## [X.Y.Z] — YYYY-MM-DD — Theme`, add a
   fresh empty `[Unreleased]`, and add the two link definitions at the foot of the file:
 
@@ -27,8 +27,8 @@ git switch -c chore/release-vX.Y.Z
   ```
 
   Sections follow Keep a Changelog order: Added, Changed, Deprecated, Removed, Fixed, Security.
-  The theme is a short noun phrase naming what the release is about, and step 5 reuses it verbatim
-  in the GitHub Release title (`vX.Y.Z — Theme`), so the two cannot disagree. The date is the day the tag is pushed.
+  The theme is a short noun phrase naming what the release is about; step 5 reuses it verbatim in
+  the GitHub Release title (`vX.Y.Z — Theme`). The date is the day the tag is pushed.
 
 ## 2. Verify locally
 
@@ -64,7 +64,7 @@ git tag -s vX.Y.Z -m "Release X.Y.Z — <the theme from the CHANGELOG heading>"
 git push origin vX.Y.Z
 ```
 
-On signing: `-s` uses whatever `gpg.format` names. SSH needs the least setup:
+`-s` uses whatever `gpg.format` names. SSH needs the least setup:
 
 ```bash
 git config --global gpg.format ssh
@@ -72,8 +72,8 @@ git config --global user.signingkey ~/.ssh/<your-key>.pub
 git config --global tag.gpgsign true
 ```
 
-Then add that same public key a second time on GitHub (Settings, SSH and GPG keys) with Key type:
-Signing Key. GitHub keeps authentication and signing keys in separate registers. Two failures to
+Then add the same public key a second time on GitHub (Settings, SSH and GPG keys) with Key type:
+Signing Key; GitHub keeps authentication and signing keys in separate registers. Two failures to
 know before they cost a version number:
 
 - `gpg: skipped ... No secret key` means `gpg.format` is still `openpgp` and no GPG key exists. Set
@@ -109,9 +109,9 @@ immutability enabled, publishing a Release freezes it and the recovery is X.Y.Z+
 The workflow has already drafted it, with the SBOM attached, the title from the CHANGELOG heading
 and the body from that version's section. Read it and press Publish. It is a draft because a
 published release accepts no assets under immutability. If a Release for the tag already exists,
-the job attaches the SBOM to it; if that is published and immutable, the job says so and does not
-fail, and the SBOM stays downloadable as the run's `sbom` artifact. The notes are also available
-outside the workflow:
+the job attaches the SBOM to it; if that is published and immutable, the job says so without
+failing, and the SBOM stays downloadable as the run's `sbom` artifact. The notes are also
+available outside the workflow:
 
 ```bash
 python3 .github/scripts/release_notes.py vX.Y.Z --title
@@ -149,11 +149,11 @@ Metadata cannot be edited after upload, and a filename can never be reused.
 
 ## Environment notes
 
-Keyring on a fresh Linux machine: Poetry may hang trying to reach a system keyring that is not
-running: `poetry config keyring.enabled false`.
+Keyring on a fresh Linux machine: Poetry may hang reaching a system keyring that is not running:
+`poetry config keyring.enabled false`.
 
-Publishing is done by CI only. There is no publish target: the PyPI Trusted Publisher trusts only
-the tagged workflow, and publishing by hand would need credentials that deliberately do not exist.
+Publishing is by CI only. There is no publish target: the PyPI Trusted Publisher trusts only the
+tagged workflow, and publishing by hand would need credentials that deliberately do not exist.
 
 ## Repository settings this depends on
 
