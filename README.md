@@ -1,18 +1,26 @@
 # Reveille
 
-**Offline Git history reports, and repository state and change summaries as JSON for scripts, CI and coding agents.**
-Reveille reads a local clone (GitHub, GitLab, Bitbucket or self-hosted) and writes one HTML report: a commit calendar
-heatmap, weekly activity and how commits are spread across contributors. It never changes Git data and makes no network call.
-SHA-256 repositories and partial clones are refused.
-The name is the call that starts a soldier's day: `reveille state` and `reveille brief` tell a
-person or a coding agent starting work where the repository stands and what changed, from local
-history.
+**Offline reports of a Git repository's commit activity.**
+Reveille reads a local clone and writes a single HTML report, and answers scripts, CI and coding
+agents in JSON: where the repository stands, and what changed since a tag or a date. It never
+changes Git data and makes no network calls.
+
+To tell a coding agent about it, `reveille skill >> AGENTS.md` adds a short section to its
+instructions file ([`reveille skill`](#reveille-skill)).
+
+It reads clones from GitHub, GitLab, Bitbucket or a self-hosted server; SHA-256 repositories and
+partial clones are refused. The report shows a commit calendar heatmap, weekly activity and how
+commits are spread across contributors. `reveille state` and `reveille brief` say where the
+repository stands and what changed, from local history.
 
 [![PyPI](https://img.shields.io/pypi/v/reveille)](https://pypi.org/project/reveille/)
 [![Python](https://img.shields.io/pypi/pyversions/reveille)](https://pypi.org/project/reveille/)
 [![Licence: Apache-2.0](https://img.shields.io/badge/licence-Apache--2.0-blue)](https://github.com/varaprasadchilakanti/reveille/blob/main/LICENSE)
 [![CI](https://github.com/varaprasadchilakanti/reveille/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/varaprasadchilakanti/reveille/actions/workflows/ci.yml)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14502/badge)](https://www.bestpractices.dev/projects/14502)
+[![Coverage](https://codecov.io/gh/varaprasadchilakanti/reveille/graph/badge.svg)](https://codecov.io/gh/varaprasadchilakanti/reveille)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Checked with mypy](https://www.mypy-lang.org/static/mypy_badge.svg)](https://mypy-lang.org/)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/varaprasadchilakanti/reveille/main/docs/images/report-dark.png">
@@ -81,7 +89,7 @@ limit liability as far as applicable law allows.
 
 ## Contents
 
-- [Who It Is For](#who-it-is-for)
+- [What It Answers](#what-it-answers)
 - [Installation](#installation)
 - [Quickstart](#quickstart)
 - [In CI: GitHub Actions](#in-ci-github-actions)
@@ -95,17 +103,17 @@ limit liability as far as applicable law allows.
 
 ---
 
-## Who It Is For
+## What It Answers
 
-- An engineer or lead with a question about a repository's history (when work happened, how
-  concentrated it is, who changed a file) who wants the answer without sending the history to a
-  service.
-- Someone who needs a figure they can recompute. `--deterministic` gives the same bytes for the same
-  repository, and the JSON records the analysed commit and the options used. The
+- Questions about a repository's history (when work happened, how concentrated it is, who changed
+  a file), answered on the machine that holds the clone.
+- Figures that can be recomputed. `--deterministic` gives the same bytes for the same repository,
+  and the JSON records the analysed commit and the options used. The
   [Playbook](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/PLAYBOOK.md#for-an-audit-or-due-diligence)
   says what history is and is not evidence of.
-- An AI assistant or a script, through `state`, `brief`, `summary` and `who-changed`, JSON on stdout,
-  a declared schema version and exit codes that separate "no" from "could not run".
+- Single questions from a script or an AI assistant, through `state`, `brief`, `summary` and
+  `who-changed`: JSON on stdout, a declared schema version and exit codes that separate "no" from
+  "could not run".
   `summary --format json` and `brief` name no contributor, but `summary` carries the repository and
   branch names, and with one or two people the counts can identify someone.
   `generate --format json --output -` prints names and email addresses, which leave your machine if
@@ -259,8 +267,7 @@ reveille validate --repo /path/to/repository
 ### `reveille summary`
 
 The repository in a few lines, naming no contributor (with one or two people, counts can identify
-someone). It reads no line counts, so it is quicker than `generate`: 0.46 s against 8.68 s on
-llama.cpp's 9,015-commit history (medians of five, measured 2026-10-23, Git 2.55, warm cache).
+someone). It reads no line counts, so it is quicker than `generate`.
 
 ```bash
 reveille summary --format json

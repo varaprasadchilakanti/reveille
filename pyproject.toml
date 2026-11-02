@@ -6,7 +6,7 @@
 [tool.poetry]
 name = "reveille"
 version = "0.10.0"
-description = "Offline reports of a Git repository's commit activity, and repository summaries that never change Git data: an HTML report, plus repository state and what changed since a tag as JSON for scripts, CI and coding agents."
+description = "Offline reports of a Git repository's commit activity: a single HTML report, and JSON for scripts, CI and coding agents on where the repository stands and what changed since a tag or a date. It never changes Git data and makes no network calls."
 authors = ["Vara Prasad Chilakanti <varaprasadchilakanti@gmail.com>"]
 license = "Apache-2.0"
 readme = "README.md"

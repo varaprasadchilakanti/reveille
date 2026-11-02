@@ -13,7 +13,31 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- The README opening and the PyPI description are reworded.
+- The agent guide printed by `reveille skill` states what Reveille does instead of recommending
+  it over plain Git.
+- The count of contributors holding half the commits is computed in the domain
+  (`domain/concentration.py`) instead of the renderer. The figure is unchanged.
+- `docs/ARCHITECTURE.md` says the ports are implicit: the service imports its adapters directly.
+
+### Security
+
+- The release workflow pins `pypa/gh-action-pypi-publish` v1.14.3, which fixes
+  GHSA-5xjx-3w67-w9x9; v1.14.2 was pinned before.
+- CI installs pre-commit from `.github/requirements/pre-commit.txt`, by version and hash for it
+  and every package it pulls in, as the SBOM generator already was.
+- SECURITY.md states how a vulnerability in a dependency, or in the embedded plotly.js bundle,
+  is fixed.
+- Source archives of the repository include `.github/`; `.gitattributes` excluded it.
+
+### Added
+
+- The guide printed by `reveille skill` says the counts are not a measure of anyone's
+  contribution and must not be used to judge people, and points to `schema_version` and
+  `--deterministic`. Its SKILL.md form carries a `compatibility` field.
+- README badges for coverage, Ruff and mypy.
 
 ---
 

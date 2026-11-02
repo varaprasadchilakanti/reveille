@@ -69,7 +69,9 @@ supersedes it, and the table says so.
   committed at `HEAD`, as Git does.
 - **0003.** The decision holds. The defect its context describes did not occur: `.index` on a
   sorted list already returned the first equal element.
-- **0005.** The report labels the figure "Hold Half the Commits".
+- **0005.** The report labels the figure "Hold Half the Commits". The helper it names,
+  `_compute_commit_concentration` in the renderer, is now `commit_concentration` in
+  `domain/concentration.py`.
 - **0006.** The bundled Plotly (7.1.0) is about 4.8 MB, not 3.5, and holds 55 `https://` strings,
   not 16, some of them map-tile endpoints. What keeps them unused is the trace-type allowlist
   for the figures built in Python (bar, pie, scatter), which the tests enforce; the page script
