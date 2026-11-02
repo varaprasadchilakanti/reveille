@@ -16,7 +16,12 @@ import secrets
 import stat
 from pathlib import Path
 
-from reveille.git_directory import holds_a_git_directory_open, is_a_linked_worktree_open
+from reveille.git_directory import (
+    holds_a_git_directory,
+    holds_a_git_directory_open,
+    is_a_linked_worktree,
+    is_a_linked_worktree_open,
+)
 
 #: Whether files can be made and moved relative to an open directory (not on Windows).
 _DIRECTORY_DESCRIPTORS = (
@@ -42,7 +47,7 @@ def write_replacing(path: Path, text: str, *, encoding: str) -> None:
 
     The directory is opened once, and every step is taken in it: one swapped
     for a link, or for a Git directory, after the path was checked is not
-    written into (on Windows the path is used, as it was checked).
+    written into. On Windows the path is checked again, then used.
 
     Args:
         path: The resolved output path.
@@ -55,7 +60,9 @@ def write_replacing(path: Path, text: str, *, encoding: str) -> None:
             directory is now a link, or it is inside a Git directory. The error
             names `path`, not the temporary file.
     """
-    if not _DIRECTORY_DESCRIPTORS:  # pragma: no cover - Windows
+    if not _DIRECTORY_DESCRIPTORS:  # Windows
+        if _in_a_git_directory_by_path(path.parent):
+            raise OSError(errno.EPERM, "inside a Git directory", str(path))
         _write_in(None, path, path.with_name(_temporary_name(path)), text, encoding)
         return
     directory = os.open(path.parent, _SEARCH_ONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
@@ -99,7 +106,9 @@ def _write_in(directory: int | None, name: Path, temporary: Path, text: str, enc
     try:
         with os.fdopen(descriptor, "w", encoding=encoding, newline="") as handle:
             handle.write(text)
-            if kept_mode is not None:
+            # Windows before Python 3.13 cannot set a mode through a descriptor. Its
+            # only mode bit is read-only, which is refused above, so none is lost.
+            if kept_mode is not None and os.chmod in os.supports_fd:
                 os.chmod(handle.fileno(), kept_mode)
             handle.flush()
             os.fsync(handle.fileno())
@@ -108,6 +117,26 @@ def _write_in(directory: int | None, name: Path, temporary: Path, text: str, enc
         with contextlib.suppress(FileNotFoundError):
             os.unlink(temporary, dir_fd=directory)
         raise
+
+
+def _in_a_git_directory_by_path(directory: Path) -> bool:
+    """Return whether `directory`, or one above it, is a Git directory, by path.
+
+    Used where directories cannot be held open (Windows): the same walk as
+    `_in_a_git_directory`, so a directory renamed during it is not seen.
+
+    Args:
+        directory: A resolved directory.
+
+    Returns:
+        True when it, or a directory above it, is one.
+    """
+    for current in (directory, *directory.parents):
+        if holds_a_git_directory(current):
+            return True
+        if is_a_linked_worktree(current):
+            return False  # a checkout, though Git may keep it inside its directory
+    return False
 
 
 def _in_a_git_directory(directory: int) -> bool:

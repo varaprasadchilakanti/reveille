@@ -53,6 +53,7 @@ from reveille.domain.repositories import MAX_SEARCH_DEPTH
 from reveille.domain.state import RepositoryState, Worktree, quiet_branches
 from reveille.exceptions import EmptyRepositoryError, RepositoryError
 from reveille.git_directory import holds_a_git_directory
+from reveille.nofollow import open_not_following
 from reveille.undecoded import shell_word
 
 # Separators for the `git log` read: 0x1E and 0x1F are rare, not impossible.
@@ -2351,10 +2352,7 @@ class GitReader:
         # Git refuses a symlinked .mailmap; one could point at /dev/zero. Checked on the
         # open file, so a link or a pipe put there after a look is not read either.
         try:
-            descriptor = os.open(
-                mailmap_path,
-                os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0),
-            )
+            descriptor = open_not_following(mailmap_path)
         except OSError as exc:
             if exc.errno in {errno.ENOENT, errno.ELOOP, errno.ENOTDIR}:
                 return None  # absent or a link: not applied, as Git applies neither

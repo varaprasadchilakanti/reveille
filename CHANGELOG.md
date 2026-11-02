@@ -13,6 +13,16 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ## [Unreleased]
 
+### Fixed
+
+- On Windows with Python 3.11 or 3.12, writing a report over an existing file, or `init --force`
+  over an existing `reveille.toml` or `.mailmap`, failed with a `TypeError`.
+- On Windows, a `.mailmap` that is a symbolic link was applied. Windows has no `O_NOFOLLOW`, so
+  the path is now checked before it is opened; a link put in its place between the check and the
+  open is still followed.
+- On Windows, the output path is checked again for a Git directory as the file is written, as on
+  other platforms. Before, only the check made before the run applied.
+
 ### Changed
 
 - The README opening and the PyPI description are reworded.

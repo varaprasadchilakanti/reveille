@@ -21,6 +21,7 @@ from typing import Any, Literal, TypedDict, cast
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 from reveille.exceptions import ConfigurationError
+from reveille.nofollow import open_not_following
 
 OutputFormat = Literal["html", "json", "csv"]
 
@@ -195,9 +196,7 @@ def _read_config_bytes(path: Path, *, follow_links: bool) -> bytes:
     if follow_links:
         descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
     else:
-        descriptor = os.open(
-            path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
-        )
+        descriptor = open_not_following(path)
     with os.fdopen(descriptor, "rb") as handle:
         if not stat.S_ISREG(os.fstat(descriptor).st_mode):
             raise ConfigurationError(

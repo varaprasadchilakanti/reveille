@@ -19,6 +19,8 @@ import os
 import stat
 from pathlib import Path
 
+from reveille.nofollow import open_not_following
+
 #: Enough of `HEAD` for `ref: refs/` and a SHA-256 object name.
 _HEAD_BYTES = 256
 _HEX = frozenset(b"0123456789abcdefABCDEF")
@@ -101,11 +103,7 @@ def _read(name: Path, directory: int | None) -> bytes:
     Raises:
         ValueError: If it is not a regular file.
     """
-    descriptor = os.open(
-        name,
-        os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0),
-        dir_fd=directory,
-    )
+    descriptor = open_not_following(name, dir_fd=directory)
     try:
         if not stat.S_ISREG(os.fstat(descriptor).st_mode):
             raise ValueError(name)
@@ -144,11 +142,7 @@ def _holds(directory: int | None, base: Path) -> bool:
     except OSError:
         return False
     try:
-        descriptor = os.open(
-            head,
-            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0),
-            dir_fd=directory,
-        )
+        descriptor = open_not_following(head, dir_fd=directory)
         try:
             text = os.read(descriptor, _HEAD_BYTES)
         finally:
