@@ -107,6 +107,7 @@ def test_a_directory_with_only_some_of_the_names_is_written(tmp_path: Path) -> N
     assert sorted(p.name for p in (tmp_path / "refs").iterdir()) == ["r.html"]
 
 
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file modes")
 def test_a_kept_mode_is_set_and_no_temporary_is_left(tmp_path: Path) -> None:
     target = tmp_path / "out.html"
     target.write_text("old", encoding="utf-8")

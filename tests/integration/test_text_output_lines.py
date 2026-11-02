@@ -19,7 +19,10 @@ from typer.testing import CliRunner
 
 from reveille.cli import ExitCode, app
 
-pytestmark = pytest.mark.integration
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(os.name == "nt", reason="a newline in a directory name"),
+]
 
 _FORGED = "Working tree: clean."
 

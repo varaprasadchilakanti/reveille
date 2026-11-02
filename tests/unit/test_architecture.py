@@ -90,7 +90,7 @@ def _imported_names(path: Path) -> set[str]:
 
 
 def _rel(path: Path) -> str:
-    return str(path.relative_to(_SRC))
+    return path.relative_to(_SRC).as_posix()
 
 
 def _loop_values(loop: ast.For, name: str) -> set[str]:

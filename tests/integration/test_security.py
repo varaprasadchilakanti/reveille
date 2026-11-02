@@ -34,7 +34,6 @@ import hashlib
 import os
 import re
 import subprocess
-import sys
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -58,6 +57,7 @@ from reveille.exceptions import (
 )
 from reveille.init import write_init_config, write_mailmap_template
 from reveille.services.report import generate_report
+from tests.installed import installed_command
 
 
 def _write_toml(tmp_path: Path, body: str) -> Path:
@@ -166,6 +166,7 @@ class TestRecordForgery:
             f"author {forged_name} <x@example.com> 1700000000 +0000\n"
             f"committer Real <real@example.com> 1700000000 +0000\n\nforged\n",
             encoding="utf-8",
+            newline="\n",  # Windows writes CRLF by default; Git refuses the object
         )
         sha = _run(
             ["git", "hash-object", "-t", "commit", "-w", "--literally", str(obj)], repo
@@ -191,6 +192,7 @@ class TestRecordForgery:
             "author Real <real@example.com> 99999999999999999999 +0000\n"
             "committer Real <real@example.com> 1700000000 +0000\n\nforged\n",
             encoding="utf-8",
+            newline="\n",  # Windows writes CRLF by default; Git refuses the object
         )
         sha = _run(
             ["git", "hash-object", "-t", "commit", "-w", "--literally", str(obj)], repo
@@ -297,7 +299,7 @@ def _run_console_script(args: list[str], *, cwd: Path) -> subprocess.CompletedPr
     The console script, not `python -m reveille.cli`: the module has no
     __main__ guard, so `-m` imports it, runs nothing and exits 0.
     """
-    console_script = Path(sys.executable).parent / "reveille"
+    console_script = installed_command()
     return subprocess.run([str(console_script), *args], cwd=cwd, capture_output=True, text=True)
 
 
@@ -610,7 +612,7 @@ class TestSecondPassFindings:
         # The installed console script, not `python -m reveille.cli`: the
         # module has no __main__ guard, so `-m` imports it, runs nothing and
         # exits 0 -- which would make this test pass against the vulnerability.
-        console_script = Path(sys.executable).parent / "reveille"
+        console_script = installed_command()
         result = subprocess.run(
             [str(console_script), "generate"],
             cwd=repo,
@@ -774,6 +776,7 @@ class TestSecondPassFindings:
         assert result.returncode == 2
         assert head.read_bytes() == head_before
 
+    @pytest.mark.skipif(os.name == "nt", reason="POSIX file modes")
     def test_a_new_report_is_readable_by_its_owner_only(self, tmp_path: Path) -> None:
         """A report names people, so it is created with owner-only permissions.
 
@@ -788,6 +791,7 @@ class TestSecondPassFindings:
         assert output.stat().st_mode & 0o777 == 0o600
         assert not [p for p in tmp_path.iterdir() if p.name.endswith(".tmp")], "no temporary left"
 
+    @pytest.mark.skipif(os.name == "nt", reason="POSIX file modes")
     @pytest.mark.parametrize("mode", [0o644, 0o640, 0o600])
     def test_a_rewritten_report_keeps_the_mode_its_owner_gave_it(
         self, tmp_path: Path, mode: int
@@ -1058,16 +1062,19 @@ class TestIdentityFieldsAreBounded:
         reached 1.5 GB of resident memory before this cap.
         """
         repo = _init_repo(tmp_path / "repo")
-        _run(
-            ["git", "commit", "-qm", "long", "--allow-empty"],
-            repo,
-            {
-                "GIT_AUTHOR_NAME": "A" * 100_000,
-                "GIT_AUTHOR_EMAIL": "long@example.com",
-                "GIT_COMMITTER_NAME": "A" * 100_000,
-                "GIT_COMMITTER_EMAIL": "long@example.com",
-            },
-        )
+        # Written as an object: Windows caps the environment at 32,767 characters.
+        tree = _run(["git", "rev-parse", "HEAD^{tree}"], repo).strip()
+        parent = _run(["git", "rev-parse", "HEAD"], repo).strip()
+        who = f"{'A' * 100_000} <long@example.com> 1700000000 +0000"
+        body = f"tree {tree}\nparent {parent}\nauthor {who}\ncommitter {who}\n\nlong\n"
+        sha = subprocess.run(
+            ["git", "hash-object", "-t", "commit", "-w", "--stdin"],
+            cwd=repo,
+            input=body.encode(),
+            capture_output=True,
+            check=True,
+        ).stdout.decode()
+        _run(["git", "update-ref", "refs/heads/main", sha.strip()], repo)
 
         commits = GitReader(repo).read_commits(
             branch="main", since=None, until=None, exclude_authors=[]

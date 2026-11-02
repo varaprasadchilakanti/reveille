@@ -12,6 +12,7 @@ from __future__ import annotations
 import contextlib
 import datetime
 import enum
+import io
 import itertools
 import json
 import logging
@@ -797,7 +798,22 @@ def main(
 ) -> None:
     """Offline reports of a Git repository's history."""
     _stderr_json["on"] = False
+    _write_utf8_where_not_a_terminal()
     _exit_cleanly_when_stopped()
+
+
+def _write_utf8_where_not_a_terminal() -> None:
+    """Make a command write UTF-8 to a pipe or a file; a terminal keeps its encoding."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            if (
+                isinstance(stream, io.TextIOWrapper)
+                and stream.encoding.replace("-", "").lower() != "utf8"
+                and not stream.isatty()
+            ):
+                stream.reconfigure(encoding="utf-8", errors=stream.errors)
+        except (OSError, ValueError):
+            continue  # a closed stream is reported where it is written to
 
 
 def _stop(signum: int, frame: object) -> None:
@@ -1805,10 +1821,11 @@ def _repository_path(path: str, repo: Path) -> str:
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
     candidate = Path(path)
     here = Path.cwd().resolve()
-    if not candidate.is_absolute() and here.is_relative_to(repo) and here != repo:
+    # `anchor`, not `is_absolute()`: on Windows `/etc` has a root and no drive.
+    if not candidate.anchor and here.is_relative_to(repo) and here != repo:
         # Inside the repository, a relative path is relative to where it runs, as in Git.
         candidate = Path(os.path.normpath(here / candidate))
-    if candidate.is_absolute():
+    if candidate.anchor:
         try:
             # Resolve the directory, not the final name: a symlink has its own history.
             candidate = (candidate.parent.resolve() / candidate.name).relative_to(repo)

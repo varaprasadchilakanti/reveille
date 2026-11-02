@@ -13,8 +13,29 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ## [Unreleased]
 
+### Fixed
+
+- On Windows with Python 3.11 or 3.12, writing over an existing report, or `init --force`, failed
+  with a `TypeError`.
+- On Windows, `generate -o -` as HTML stopped on every repository, and CSV and `who-changed` on a
+  name outside the locale's code page, with "This is a defect in Reveille".
+- On Windows, `state` in a linked worktree marked no worktree as current: Git lists `C:/a/b`.
+- On Windows, a commit dated after the year 3000 was skipped as undatable; Python's
+  `fromtimestamp` stops there. Git takes dates to 9999.
+- On Windows, `repos` stopped on a `.git` or `commondir` file naming a path that is not UTF-8;
+  such a path names nothing there.
+- On Windows, a `.mailmap` that is a directory was reported as unreadable; it is passed over,
+  as elsewhere.
+- On Windows, `repos` hid a `core.worktree` inside the searched directory as a path outside it.
+- On Windows, `who-changed /etc/hosts` reached Git instead of being refused as outside the
+  repository: the path has a root but no drive.
+- On Windows, a current branch whose name is not UTF-8 stopped every command that read it:
+  Windows cannot pass the byte to Git. Git is given `HEAD`, the same commit.
+
 ### Changed
 
+- A command writes UTF-8 to a pipe or a file whatever the locale's encoding; a terminal keeps
+  its own.
 - The README opening and the PyPI description are reworded.
 - The agent guide printed by `reveille skill` states what Reveille does instead of recommending
   it over plain Git.
@@ -24,6 +45,10 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Security
 
+- On Windows, a `.mailmap` that is a symbolic link was applied (0.10.x is affected). It is now
+  refused, by a check before the open: a link put in its place in between is still followed.
+- On Windows, the output path is checked again for a Git directory, by path, just before writing
+  (0.10.x checked only before the run). Elsewhere the check holds the directory open.
 - The release workflow pins `pypa/gh-action-pypi-publish` v1.14.3, which fixes
   GHSA-5xjx-3w67-w9x9; v1.14.2 was pinned before.
 - CI installs pre-commit from `.github/requirements/pre-commit.txt`, by version and hash for it
@@ -38,6 +63,7 @@ before 0.8.0 predate the convention and are left as they were released.
   contribution and must not be used to judge people, and points to `schema_version` and
   `--deterministic`. Its SKILL.md form carries a `compatibility` field.
 - README badges for coverage, Ruff and mypy.
+- CI runs the test suite on Windows and macOS, with CPython 3.11 and 3.14.
 
 ---
 

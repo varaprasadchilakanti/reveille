@@ -204,6 +204,7 @@ class TestTags:
         assert brief["tags"]["list"] == ["v2"]
         assert brief["totals"]["commits"] == 2, "the merge itself is not counted (ADR 0001)"
 
+    @pytest.mark.skipif(os.name == "nt", reason="a directory name holding control characters")
     def test_an_area_name_cannot_drive_the_terminal(self, released: _Repo) -> None:
         """Git refuses control characters in a tag name, but not in a directory name."""
         released.commit("rel\x1b]8;;x\x07/f.txt", "2026-04-01T10:00:00+00:00")

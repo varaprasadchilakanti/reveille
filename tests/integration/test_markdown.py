@@ -74,6 +74,7 @@ def test_each_command_renders(repo: Path, args: list[str], heading: str, notice:
     assert "Ana" not in out and "ana@" not in out
 
 
+@pytest.mark.skipif(os.name == "nt", reason="a file name holding a newline and <>|")
 def test_a_hostile_file_name_stays_inside_its_code_span(repo: Path) -> None:
     (repo / "x`y\n# Pwned <b>[l](http:x)|.txt").write_text("x", encoding="utf-8")
 
@@ -83,6 +84,9 @@ def test_a_hostile_file_name_stays_inside_its_code_span(repo: Path) -> None:
     assert "``x`y\\n# Pwned <b>[l](http:x)|.txt``" in out
 
 
+@pytest.mark.skipif(
+    os.name == "nt", reason="a tag holding < and >, which a ref file cannot be named"
+)
 def test_a_tag_with_a_backtick_stays_inside_its_code_span(repo: Path) -> None:
     _git(repo, "tag", "v2`<b>x</b>")
 

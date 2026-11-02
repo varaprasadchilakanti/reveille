@@ -19,14 +19,19 @@ from reveille.cli import ExitCode, app
 
 
 def _git(repo: Path, *args: str, stdin: str | None = None) -> str:
-    return subprocess.run(
-        ["git", "-c", "user.name=Ana", "-c", "user.email=ana@e.test", *args],
-        cwd=repo,
-        check=True,
-        input=stdin,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
+    return (
+        subprocess.run(
+            ["git", "-c", "user.name=Ana", "-c", "user.email=ana@e.test", *args],
+            cwd=repo,
+            check=True,
+            input=None
+            if stdin is None
+            else stdin.encode(),  # bytes: text mode writes CRLF on Windows
+            capture_output=True,
+        )
+        .stdout.decode()
+        .strip()
+    )
 
 
 @pytest.fixture()
@@ -37,7 +42,7 @@ def hostile(tmp_path: Path) -> tuple[Path, Path]:
     repo.mkdir()
     marker = tmp_path / "ran"
     program = tmp_path / "fake-gpg"
-    program.write_text(f"#!/bin/sh\ntouch '{marker}'\nexit 1\n", encoding="utf-8")
+    program.write_text(f"#!/bin/sh\ntouch '{marker.as_posix()}'\nexit 1\n", encoding="utf-8")
     program.chmod(program.stat().st_mode | stat.S_IEXEC)
 
     _git(repo, "init", "-q", "-b", "main")
@@ -54,7 +59,7 @@ def hostile(tmp_path: Path) -> tuple[Path, Path]:
     sha = _git(repo, "hash-object", "-t", "commit", "-w", "--stdin", stdin=signed)
     _git(repo, "update-ref", "refs/heads/main", sha)
     _git(repo, "config", "log.showSignature", "true")
-    _git(repo, "config", "gpg.program", str(program))
+    _git(repo, "config", "gpg.program", program.as_posix())
 
     # Guard the guard: plain Git does run it.
     subprocess.run(["git", "log", "-1"], cwd=repo, capture_output=True, check=False)

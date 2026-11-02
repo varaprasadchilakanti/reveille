@@ -212,6 +212,52 @@ jobs:
           fail_ci_if_error: false
 
   # ----------------------------------------------------------------
+  # Windows and macOS
+  #
+  # pyproject.toml classifies the package "OS Independent". Windows has no
+  # O_NOFOLLOW, no dir_fd and no SIGHUP, and macOS's default file system
+  # ignores case, so each is tested, not assumed. The lowest and highest
+  # supported CPython on each keep the leg count at four. A separate job,
+  # so the Linux legs keep their check names.
+  # ----------------------------------------------------------------
+  test-other-os:
+    name: Test on ${{ matrix.os }} (pytest) (${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    needs: lockfile
+    permissions:
+      contents: read
+    defaults:
+      run:
+        # snok/install-poetry needs bash on Windows; the runner has Git Bash.
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+        python-version: ["3.11", "3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install Poetry
+        uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
+        with:
+          version: "2.4.2"
+          virtualenvs-in-project: true
+      - name: Install dependencies
+        run: poetry install --no-interaction
+      - name: Run pytest
+        run: poetry run pytest -n auto --timeout=120 --junitxml=pytest.xml
+      - name: Group the failures by cause
+        if: failure()
+        run: python .github/scripts/test_failures.py pytest.xml --annotate
+
+  # ----------------------------------------------------------------
   # Known vulnerabilities in the resolved dependency set
   #
   # Not redundant with Dependabot, for a structural reason rather than a

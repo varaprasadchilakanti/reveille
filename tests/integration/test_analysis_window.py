@@ -23,6 +23,7 @@ import json
 import os
 import re
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -201,6 +202,7 @@ class TestDormancy:
         assert "No commits in the last" not in html
 
 
+@pytest.mark.skipif(not hasattr(time, "tzset"), reason="time.tzset")
 @pytest.mark.integration
 def test_a_commit_made_today_is_counted_west_of_utc(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

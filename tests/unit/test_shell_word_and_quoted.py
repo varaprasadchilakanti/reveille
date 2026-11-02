@@ -43,11 +43,13 @@ def test_bash_reads_the_word_back_as_the_same_bytes(tmp_path: Path, name: bytes)
     try:
         target = Path(os.fsdecode(bytes(tmp_path) + b"/" + name))
         target.mkdir()
-    except (OSError, UnicodeEncodeError):
+    except (OSError, UnicodeError):  # Windows decodes file names strictly
         pytest.skip("this file system refuses the name")
 
     script = f"printf %s {shell_word(str(target))}"
-    out = subprocess.run(["bash", "-c", script], check=True, capture_output=True).stdout
+    out = subprocess.run(
+        [shutil.which("bash") or "bash", "-c", script], check=True, capture_output=True
+    ).stdout
 
     assert out == bytes(target)
 

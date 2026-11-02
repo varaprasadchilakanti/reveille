@@ -11,6 +11,7 @@ introducers, bidirectional marks) must be escaped on stdout as on stderr.
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -37,6 +38,7 @@ def _repo(path: Path, mailmap: str = "") -> Path:
     return path
 
 
+@pytest.mark.skipif(os.name == "nt", reason="a directory name holding control characters")
 @pytest.mark.e2e
 def test_a_directory_name_cannot_drive_the_terminal(tmp_path: Path) -> None:
     repo = _repo(tmp_path / "term\x1b]8;;file:x\x07LINK\x1b]8;;\x07\rOVER")
@@ -74,6 +76,7 @@ def test_json_output_still_parses(tmp_path: Path) -> None:
     assert names and names[0].startswith("Mal")
 
 
+@pytest.mark.skipif(os.name == "nt", reason="a directory name holding control characters")
 @pytest.mark.e2e
 @pytest.mark.parametrize("command", [["validate"], ["generate", "-q"]])
 def test_the_confirmation_line_escapes_the_directory_name(

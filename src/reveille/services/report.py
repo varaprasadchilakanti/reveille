@@ -573,8 +573,9 @@ def _without_local_paths(reason: str, directory: Path) -> str:
 
     A path on this machine can hold a login name, and the row is meant to be shared.
     """
+    # Git for Windows writes `C:/a/b`, Python `C:\a\b`: both forms are taken.
     for root in {str(directory.resolve()), str(directory)}:
-        reason = reason.replace(root + os.sep, "")
+        reason = reason.replace(root + os.sep, "").replace(Path(root).as_posix() + "/", "")
     reason = _QUOTED_ABSOLUTE_PATH.sub("'(a path outside the directory)'", reason)
     return _ABSOLUTE_PATH.sub("(a path outside the directory)", reason)
 

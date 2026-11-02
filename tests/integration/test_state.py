@@ -89,9 +89,9 @@ class TestItChangesNothingAndRunsNothing:
     def test_a_repositorys_fsmonitor_program_does_not_run(self, repo: Path, tmp_path: Path) -> None:
         marker = tmp_path / "ran"
         hook = tmp_path / "hook.sh"
-        hook.write_text(f"#!/bin/sh\necho ran > '{marker}'\nexit 1\n", encoding="utf-8")
+        hook.write_text(f"#!/bin/sh\necho ran > '{marker.as_posix()}'\nexit 1\n", encoding="utf-8")
         hook.chmod(0o755)
-        _git(repo, "config", "core.fsmonitor", str(hook))
+        _git(repo, "config", "core.fsmonitor", hook.as_posix())
 
         _state(repo)
 
@@ -107,10 +107,10 @@ class TestContentFilters:
     def _filtered(self, repo: Path, tmp_path: Path, key: str) -> Path:
         marker = tmp_path / "ran"
         program = tmp_path / "filter.sh"
-        program.write_text(f"#!/bin/sh\necho ran >> '{marker}'\ncat\n", encoding="utf-8")
+        program.write_text(f"#!/bin/sh\necho ran >> '{marker.as_posix()}'\ncat\n", encoding="utf-8")
         program.chmod(0o755)
         (repo / ".gitattributes").write_text("*.txt filter=evil\n", encoding="utf-8")
-        _git(repo, "config", f"filter.evil.{key}", str(program))
+        _git(repo, "config", f"filter.evil.{key}", program.as_posix())
         time.sleep(1.1)
         os.utime(repo / "a.txt")
         return marker
@@ -135,10 +135,10 @@ class TestContentFilters:
         """`git -c` splits at the first `=`, so no override can name `a=b`: compare nothing."""
         marker = tmp_path / "ran"
         program = tmp_path / "filter.sh"
-        program.write_text(f"#!/bin/sh\necho ran >> '{marker}'\ncat\n", encoding="utf-8")
+        program.write_text(f"#!/bin/sh\necho ran >> '{marker.as_posix()}'\ncat\n", encoding="utf-8")
         program.chmod(0o755)
         (repo / ".gitattributes").write_text("*.txt filter=a=b\n", encoding="utf-8")
-        _git(repo, "config", "filter.a=b.clean", str(program))
+        _git(repo, "config", "filter.a=b.clean", program.as_posix())
         time.sleep(1.1)
         os.utime(repo / "a.txt")
 
@@ -154,11 +154,11 @@ class TestContentFilters:
         """`filter=` in an attributes file selects the driver named "", `[filter ""]`."""
         marker = tmp_path / "ran"
         program = tmp_path / "filter.sh"
-        program.write_text(f"#!/bin/sh\necho ran >> '{marker}'\ncat\n", encoding="utf-8")
+        program.write_text(f"#!/bin/sh\necho ran >> '{marker.as_posix()}'\ncat\n", encoding="utf-8")
         program.chmod(0o755)
         (repo / ".gitattributes").write_text("*.txt filter=\n", encoding="utf-8")
         with (repo / ".git" / "config").open("a", encoding="utf-8") as config:
-            config.write(f'[filter ""]\n\tclean = {program}\n')
+            config.write(f'[filter ""]\n\tclean = {program.as_posix()}\n')
         time.sleep(1.1)
         os.utime(repo / "a.txt")
 
@@ -182,10 +182,10 @@ class TestContentFilters:
     ) -> None:
         marker = tmp_path / "ran"
         program = tmp_path / "filter.sh"
-        program.write_text(f"#!/bin/sh\necho ran >> '{marker}'\ncat\n", encoding="utf-8")
+        program.write_text(f"#!/bin/sh\necho ran >> '{marker.as_posix()}'\ncat\n", encoding="utf-8")
         program.chmod(0o755)
         own = tmp_path / "own.gitconfig"
-        own.write_text(f'[filter "mine"]\n\tclean = {program}\n', encoding="utf-8")
+        own.write_text(f'[filter "mine"]\n\tclean = {program.as_posix()}\n', encoding="utf-8")
         monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(own))
         (repo / ".gitattributes").write_text("*.txt filter=mine\n", encoding="utf-8")
         time.sleep(1.1)
@@ -260,6 +260,7 @@ class TestTheWorkingTree:
 
         assert _state(repo)["renamed"]["list"] == ["renamed.txt"]
 
+    @pytest.mark.skipif(os.name == "nt", reason="a file name holding ?")
     def test_a_renamed_files_old_name_is_not_read_as_an_entry(self, repo: Path) -> None:
         """Git follows a rename entry with the old path; one shaped like an entry
         ("? ghost.txt") would otherwise appear as an untracked file."""
@@ -282,6 +283,7 @@ class TestTheWorkingTree:
         assert len(state["untracked"]["list"]) == 3
         assert "and 5 more" in _text(repo), "the text form bounds at its default of 10"
 
+    @pytest.mark.skipif(os.name == "nt", reason="a file name holding control characters")
     def test_a_file_name_cannot_drive_the_terminal(self, repo: Path) -> None:
         (repo / "x\x1b]8;;y\x07z.txt").write_text("x\n", encoding="utf-8")
         out = _text(repo)
@@ -346,6 +348,7 @@ class TestWorkInProgress:
 
 
 class TestBranchesAndWorktrees:
+    @pytest.mark.skipif(os.name == "nt", reason="a newline in a directory name")
     def test_a_worktree_path_with_a_newline_is_read_whole(self, repo: Path, tmp_path: Path) -> None:
         odd = tmp_path / "wt\nlocked x"
         _git(repo, "worktree", "add", "-q", "-b", "side", str(odd))

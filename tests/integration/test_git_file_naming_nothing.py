@@ -9,7 +9,6 @@ message once blamed the permissions on it.
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -35,7 +34,8 @@ def test_a_git_file_naming_a_missing_directory_says_so(tmp_path: Path) -> None:
     subprocess.run(
         ["git", "worktree", "add", "-q", "-b", "side", str(tmp_path / "a wt")], cwd=main, check=True
     )
-    shutil.rmtree(main)
+    # Git's objects are read-only, which stops a removal on Windows: move the directory.
+    main.rename(tmp_path / "gone")
 
     result = CliRunner().invoke(app, ["summary", "--repo", str(tmp_path / "a wt")])
 

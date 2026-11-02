@@ -95,13 +95,13 @@ def test_the_lookup_writes_nothing_and_starts_no_program(repo: Path, tmp_path: P
     """Measured as every Git call is: the repository's own config names a program."""
     marker = tmp_path / "ran"
     program = tmp_path / "prog"
-    program.write_text(f"#!/bin/sh\ntouch {marker}\n", encoding="utf-8")
+    program.write_text(f"#!/bin/sh\ntouch '{marker.as_posix()}'\n", encoding="utf-8")
     program.chmod(0o755)
     for key, value in [
-        ("core.fsmonitor", str(program)),
-        ("gpg.program", str(program)),
+        ("core.fsmonitor", program.as_posix()),
+        ("gpg.program", program.as_posix()),
         ("log.showSignature", "true"),
-        ("core.hooksPath", str(tmp_path)),
+        ("core.hooksPath", tmp_path.as_posix()),
     ]:
         subprocess.run(["git", "config", key, value], cwd=repo, check=True)
     git_dir = repo / ".git"

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -85,7 +86,7 @@ def test_a_linked_worktree_of_this_repository_is_named_as_that(repo: Path) -> No
 
     assert code == ExitCode.CANNOT_RUN, stderr
     assert "'wt/a.txt' is inside 'wt', another working tree of this repository" in stderr
-    assert f"--repo {repo / 'wt'}" in stderr
+    assert f"--repo {shlex.quote(str(repo / 'wt'))}" in stderr
     assert "another repository" not in stderr
 
 
@@ -115,7 +116,7 @@ def test_the_command_it_suggests_runs_for_a_name_that_is_not_utf8(tmp_path: Path
     try:
         nested = Path(os.fsdecode(bytes(repo) + b"/in\xff"))
         nested.mkdir()
-    except (OSError, UnicodeEncodeError):
+    except (OSError, UnicodeError):  # Windows decodes file names strictly
         pytest.skip("this file system refuses the name")
     _git("init", "-q", "-b", "main", cwd=nested)
     (nested / "f").write_text("f", encoding="utf-8")
@@ -125,7 +126,9 @@ def test_the_command_it_suggests_runs_for_a_name_that_is_not_utf8(tmp_path: Path
     code, stderr = _who(repo, os.fsdecode(b"in\xff/f"))
     [command] = re.findall(r"Ask it: `reveille (.*)`\.", stderr)
     words = subprocess.run(
-        ["bash", "-c", f"printf '%s\\0' {command}"], check=True, capture_output=True
+        [shutil.which("bash") or "bash", "-c", f"printf '%s\\0' {command}"],
+        check=True,
+        capture_output=True,
     ).stdout.split(b"\0")[:-1]
     asked = CliRunner().invoke(app, [os.fsdecode(word) for word in words])
 

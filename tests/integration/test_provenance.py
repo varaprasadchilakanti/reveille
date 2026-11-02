@@ -17,7 +17,6 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -25,6 +24,7 @@ import pytest
 from reveille.config import ReportConfig
 from reveille.domain.models import SCHEMA_VERSION
 from reveille.services.report import generate_report
+from tests.installed import installed_command
 
 
 @pytest.fixture(scope="module")
@@ -349,7 +349,7 @@ class TestAnalysisWindowIsTimezoneIndependent:
         """
         result = subprocess.run(
             [
-                str(Path(sys.executable).parent / "reveille"),
+                str(installed_command()),
                 "generate",
                 "--repo",
                 str(boundary_repo),
@@ -375,7 +375,7 @@ class TestAnalysisWindowIsTimezoneIndependent:
         out = tmp_path / f"{timezone.replace('/', '_')}-in.html"
         result = subprocess.run(
             [
-                str(Path(sys.executable).parent / "reveille"),
+                str(installed_command()),
                 "generate",
                 "--repo",
                 str(boundary_repo),

@@ -203,6 +203,7 @@ class TestConfiguration:
         assert "pydantic" not in result.stderr
 
 
+@pytest.mark.skipif(os.name == "nt", reason='a file name holding "')
 @pytest.mark.integration
 def test_non_ascii_and_quoted_paths_are_read_as_written(tmp_path: Path) -> None:
     """Git quotes such paths in numstat ("src/na\\303\\257ve/\\303\\274.py"),

@@ -71,10 +71,12 @@ def on_branch(repo: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
     head = subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=path, check=True, capture_output=True, text=True
     ).stdout.strip()
-    subprocess.run(
-        [b"git", b"update-ref", b"refs/heads/b\xffr", head.encode()], cwd=path, check=True
-    )
-    subprocess.run([b"git", b"symbolic-ref", b"HEAD", b"refs/heads/b\xffr"], cwd=path, check=True)
+    # Written into Git's files, not through `git update-ref`: a loose ref is a file
+    # named by the ref, and macOS and Windows refuse a file name that is not UTF-8.
+    packed = path / ".git" / "packed-refs"
+    kept = [x for x in packed.read_bytes().splitlines(keepends=True) if not x.startswith(b"#")]
+    packed.write_bytes(b"".join([*kept, head.encode() + b" refs/heads/b\xffr\n"]))
+    (path / ".git" / "HEAD").write_bytes(b"ref: refs/heads/b\xffr\n")
     return path
 
 
@@ -90,3 +92,24 @@ def test_a_branch_whose_name_is_not_utf8_is_read(on_branch: Path, fmt: str, tmp_
         metadata = json.loads(out.read_text(encoding="utf-8"))["metadata"]
         assert metadata["analysed_branch"] == "b\ufffdr"
         assert metadata["total_commits"] == 1
+
+
+def test_no_git_argument_holds_a_byte_windows_cannot_pass(
+    on_branch: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A ref read back from Git holds U+DCFF for the byte; Windows argv cannot carry it."""
+    real = subprocess.Popen.__init__
+
+    def refuse(self: subprocess.Popen[bytes], args: object, *rest: object, **kw: object) -> None:
+        words = [args] if isinstance(args, str | bytes) else list(args)  # type: ignore[call-overload]
+        assert not any(
+            isinstance(w, str) and any("\udc80" <= c <= "\udcff" for c in w) for w in words
+        ), words
+        real(self, args, *rest, **kw)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(subprocess.Popen, "__init__", refuse)
+    out = tmp_path / "r.json"
+
+    result = CliRunner().invoke(app, ["generate", "--repo", str(on_branch), "-o", str(out)])
+
+    assert result.exit_code == ExitCode.SUCCESS, result.stderr

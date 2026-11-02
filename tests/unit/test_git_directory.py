@@ -32,6 +32,8 @@ def _layout(path: Path) -> Path:
 
 
 def _both(path: Path) -> bool:
+    if not hasattr(os, "O_DIRECTORY") or os.stat not in os.supports_dir_fd:
+        return holds_a_git_directory(path)  # Windows holds no directory open
     descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
     try:
         opened = holds_a_git_directory_open(descriptor)
@@ -145,6 +147,8 @@ def _worktree(tmp_path: Path, dot_git: str, back: str | None) -> Path:
 
 
 def _linked(path: Path) -> bool:
+    if not hasattr(os, "O_DIRECTORY") or os.stat not in os.supports_dir_fd:
+        return is_a_linked_worktree(path)  # Windows holds no directory open
     descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
     try:
         opened = is_a_linked_worktree_open(descriptor)

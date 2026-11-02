@@ -27,9 +27,20 @@ def _git(repo: Path, *args: str, stdin: str | None = None) -> str:
         "GIT_COMMITTER_NAME": "Ana",
         "GIT_COMMITTER_EMAIL": "ana@e.test",
     }
-    return subprocess.run(
-        ["git", *args], cwd=repo, check=True, env=env, input=stdin, capture_output=True, text=True
-    ).stdout.strip()
+    return (
+        subprocess.run(
+            ["git", *args],
+            cwd=repo,
+            check=True,
+            env=env,
+            input=None
+            if stdin is None
+            else stdin.encode(),  # bytes: text mode writes CRLF on Windows
+            capture_output=True,
+        )
+        .stdout.decode()
+        .strip()
+    )
 
 
 @pytest.fixture(scope="module")

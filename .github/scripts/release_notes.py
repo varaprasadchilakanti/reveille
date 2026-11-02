@@ -62,6 +62,7 @@ def _section(changelog: str, version: str) -> tuple[str, str]:
 
 def main() -> None:
     """Print either the release title or its body."""
+    sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("tag", help="the release tag, e.g. v0.8.0")
     output = parser.add_mutually_exclusive_group(required=True)

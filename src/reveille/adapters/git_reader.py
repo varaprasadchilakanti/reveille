@@ -53,6 +53,7 @@ from reveille.domain.repositories import MAX_SEARCH_DEPTH
 from reveille.domain.state import RepositoryState, Worktree, quiet_branches
 from reveille.exceptions import EmptyRepositoryError, RepositoryError
 from reveille.git_directory import holds_a_git_directory
+from reveille.nofollow import open_not_following
 from reveille.undecoded import shell_word
 
 # Separators for the `git log` read: 0x1E and 0x1F are rare, not impossible.
@@ -450,6 +451,26 @@ def _parse_worktrees(output: str, *, nul: bool = True) -> list[Worktree]:
             )
         )
     return found
+
+
+_EPOCH = datetime.datetime(1970, 1, 1, tzinfo=datetime.UTC)
+
+
+def _utc(seconds: int) -> datetime.datetime:
+    """Return a Unix time in UTC. Unlike `fromtimestamp`, Windows reads past the year 3000.
+
+    Raises:
+        OverflowError: Outside the years 1 to 9999.
+    """
+    return _EPOCH + datetime.timedelta(seconds=seconds)
+
+
+def _is_directory(path: Path) -> bool:
+    """Return whether `path` is a directory, not following a link at its end."""
+    try:
+        return stat.S_ISDIR(os.stat(path, follow_symlinks=False).st_mode)
+    except OSError:
+        return False
 
 
 def _same_directory(recorded: str, directory: Path) -> bool:
@@ -1315,7 +1336,7 @@ class GitReader:
             `refs/heads/<name>` when that branch exists, else the name as given.
         """
         if branch is None:
-            return self._active_revision()
+            return self._active_argument()
         if branch.startswith(("-", "refs/")) or branch == "HEAD":
             return branch  # refused later, already in full, or the checked-out commit
         if branch not in self._branch_refs:
@@ -1356,6 +1377,14 @@ class GitReader:
                 ref = "HEAD"
             self._active_branch = ref
         return self._active_branch
+
+    def _active_argument(self) -> str:
+        """Return the active branch's ref to give Git, or 'HEAD' for the same commit.
+
+        A ref holding a byte that is not UTF-8 cannot cross a Windows command line.
+        """
+        ref = self._active_revision()
+        return "HEAD" if any("\udc80" <= c <= "\udcff" for c in ref) else ref
 
     def _read_alongside(
         self,
@@ -1808,7 +1837,7 @@ class GitReader:
             out = str(self._git().log("-1", "--format=%ct", "--end-of-options", sha, "--")).strip()
         except GitCommandError:
             return None
-        return datetime.datetime.fromtimestamp(int(out), tz=datetime.UTC) if out.isdigit() else None
+        return _utc(int(out)) if out.isdigit() else None
 
     def _operation_in_progress(self) -> str | None:
         """Name the operation Git has stopped in, from its own files, or None."""
@@ -1851,7 +1880,8 @@ class GitReader:
             found = _parse_worktrees(output, nul=False)
         recorded = self._recorded_worktree_path()
         if recorded is not None:
-            return [replace(w, current=w.path == recorded) for w in found]
+            # Git for Windows lists `C:/a/b` where Python writes `C:\a\b`.
+            return [replace(w, current=Path(w.path) == Path(recorded)) for w in found]
         return [replace(w, current=_same_directory(w.path, self._repo_path)) for w in found]
 
     def _recorded_worktree_path(self) -> str | None:
@@ -1872,7 +1902,10 @@ class GitReader:
             return None
         if not text.endswith(b"\n") or not text.strip():
             return None
-        dot_git = git_dir / os.fsdecode(text[:-1])  # relative to it, from --relative-paths
+        recorded = _gitfile_value(text)
+        if not recorded:
+            return None
+        dot_git = git_dir / recorded  # relative to it, from --relative-paths
         return os.path.normpath(dot_git.parent)
 
     def _branch_tips(self) -> dict[str, datetime.datetime]:
@@ -1884,7 +1917,7 @@ class GitReader:
         for line in out.splitlines():
             stamp, _, ref = line.partition("\0")
             if stamp.isdigit():
-                tips[ref] = datetime.datetime.fromtimestamp(int(stamp), tz=datetime.UTC)
+                tips[ref] = _utc(int(stamp))
         return tips
 
     def _merged_branch_count(self, head: str | None) -> int:
@@ -2115,7 +2148,7 @@ class GitReader:
                     header = header_re.fullmatch(token)
                     if header is not None:
                         stamp = int(header.group(1))
-                        when = datetime.datetime.fromtimestamp(stamp, tz=datetime.UTC).date()
+                        when = _utc(stamp).date()
                         continue
                     path = token.lstrip(b"\n").decode("utf-8", "replace")
                     # An area a path is in is one of its prefixes ending at a `/`, or
@@ -2143,7 +2176,7 @@ class GitReader:
         Returns:
             The date, or None when the branch has no such commit.
         """
-        log_args, _ = _build_log_args(self._active_revision(), None, until, line_counts=False)
+        log_args, _ = _build_log_args(self._active_argument(), None, until, line_counts=False)
         log_args[log_args.index(_LOG_FORMAT)] = "--format=%ct"
         try:
             output = str(self._git().log(*log_args))
@@ -2152,7 +2185,7 @@ class GitReader:
         latest: datetime.date | None = None
         for value in set(output.split()):
             try:
-                day = datetime.datetime.fromtimestamp(int(value), tz=datetime.UTC).date()
+                day = _utc(int(value)).date()
             except (ValueError, OverflowError, OSError):
                 continue  # skipped as read_commits skips it
             latest = day if latest is None else max(latest, day)
@@ -2351,13 +2384,12 @@ class GitReader:
         # Git refuses a symlinked .mailmap; one could point at /dev/zero. Checked on the
         # open file, so a link or a pipe put there after a look is not read either.
         try:
-            descriptor = os.open(
-                mailmap_path,
-                os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0),
-            )
+            descriptor = open_not_following(mailmap_path)
         except OSError as exc:
             if exc.errno in {errno.ENOENT, errno.ELOOP, errno.ENOTDIR}:
                 return None  # absent or a link: not applied, as Git applies neither
+            if _is_directory(mailmap_path):
+                return None  # Windows refuses to open a directory, where POSIX opens it
             _mailmap_unreadable(exc)
             return None
         # Checked before `fdopen`, which refuses a directory with an error of its own.
@@ -3092,8 +3124,12 @@ def _gitfile_value(raw: bytes) -> str:
 
     Git strips only the line ends after it, so a path holding a newline or a
     byte that is not UTF-8 is kept whole; the byte decodes as the path it is.
+    Empty where no path can hold it (Windows file names are UTF-16).
     """
-    return os.fsdecode(raw.rstrip(b"\r\n"))
+    try:
+        return os.fsdecode(raw.rstrip(b"\r\n"))
+    except UnicodeDecodeError:
+        return ""
 
 
 def main_worktree_of(tree: Path) -> Path | None:
@@ -3698,7 +3734,7 @@ def _parse_log_record(
         return None
 
     try:
-        timestamp = datetime.datetime.fromtimestamp(int(committed_at), tz=datetime.UTC)
+        timestamp = _utc(int(committed_at))
     except (ValueError, OverflowError, OSError):
         # One unusable timestamp skips one record, not the report, and is counted.
         _logger.debug("skipping commit %s: unparseable timestamp", sha[:12])
