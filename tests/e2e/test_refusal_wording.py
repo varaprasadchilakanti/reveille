@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -185,7 +186,7 @@ def test_a_path_inside_a_submodule_cannot_run_and_names_where_to_ask(superprojec
 
     assert result.exit_code == ExitCode.CANNOT_RUN
     assert "is inside 'sub', another repository" in result.stderr
-    assert f"--repo {superproject / 'sub'}" in result.stderr
+    assert f"--repo {shlex.quote(str(superproject / 'sub'))}" in result.stderr
     asked = CliRunner().invoke(app, ["who-changed", "a.txt", "--repo", str(superproject / "sub")])
     assert asked.exit_code == ExitCode.SUCCESS, "the command it names answers"
 

@@ -24,6 +24,11 @@ before 0.8.0 predate the convention and are left as they were released.
   `fromtimestamp` stops there. Git takes dates to 9999.
 - On Windows, `repos` stopped on a `.git` or `commondir` file naming a path that is not UTF-8;
   such a path names nothing there.
+- On Windows, a `.mailmap` that is a directory was reported as unreadable; it is passed over,
+  as elsewhere.
+- On Windows, `repos` hid a `core.worktree` inside the searched directory as a path outside it.
+- On Windows, `who-changed /etc/hosts` reached Git instead of being refused as outside the
+  repository: the path has a root but no drive.
 
 ### Changed
 

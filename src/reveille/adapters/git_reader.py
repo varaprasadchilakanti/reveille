@@ -465,6 +465,14 @@ def _utc(seconds: int) -> datetime.datetime:
     return _EPOCH + datetime.timedelta(seconds=seconds)
 
 
+def _is_directory(path: Path) -> bool:
+    """Return whether `path` is a directory, not following a link at its end."""
+    try:
+        return stat.S_ISDIR(os.stat(path, follow_symlinks=False).st_mode)
+    except OSError:
+        return False
+
+
 def _same_directory(recorded: str, directory: Path) -> bool:
     """Return whether the path Git recorded is `directory`; False if it is gone."""
     try:
@@ -2372,6 +2380,8 @@ class GitReader:
         except OSError as exc:
             if exc.errno in {errno.ENOENT, errno.ELOOP, errno.ENOTDIR}:
                 return None  # absent or a link: not applied, as Git applies neither
+            if _is_directory(mailmap_path):
+                return None  # Windows refuses to open a directory, where POSIX opens it
             _mailmap_unreadable(exc)
             return None
         # Checked before `fdopen`, which refuses a directory with an error of its own.

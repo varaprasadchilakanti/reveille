@@ -130,3 +130,32 @@ def test_a_git_file_naming_a_path_that_is_not_utf8_names_nothing(
     (tree / ".git").write_bytes(b"gitdir: /x\xff\n")
 
     assert git_reader.main_worktree_of(tree) is None
+
+
+@pytest.mark.parametrize("directory", [True, False])
+def test_a_mailmap_directory_windows_will_not_open_is_passed_over(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    directory: bool,
+) -> None:
+    """POSIX opens a directory and the type check passes over it; Windows refuses the open.
+
+    Any other refusal is still reported.
+    """
+    import subprocess
+
+    from reveille.adapters import git_reader
+
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=tmp_path, check=True)
+    if directory:
+        (tmp_path / ".mailmap").mkdir()
+
+    def refused(path: Path, *, dir_fd: int | None = None) -> int:
+        raise PermissionError(errno.EACCES, "Permission denied", str(path))
+
+    monkeypatch.setattr(git_reader, "open_not_following", refused)
+
+    with caplog.at_level("WARNING"):
+        assert git_reader.GitReader(tmp_path)._working_mailmap() is None
+    assert ("mailmap" in caplog.text) is not directory

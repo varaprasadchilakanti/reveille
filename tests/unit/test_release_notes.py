@@ -39,7 +39,7 @@ def _run(tag: str, flag: str, changelog: Path | None = None) -> tuple[int, str]:
             str(changelog or _CHANGELOG),
         ],
         capture_output=True,
-        text=True,
+        encoding="utf-8",
         timeout=30,
     )
     return completed.returncode, (completed.stdout + completed.stderr).strip()

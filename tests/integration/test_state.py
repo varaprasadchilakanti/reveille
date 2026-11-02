@@ -260,6 +260,7 @@ class TestTheWorkingTree:
 
         assert _state(repo)["renamed"]["list"] == ["renamed.txt"]
 
+    @pytest.mark.skipif(os.name == "nt", reason="a file name holding ?")
     def test_a_renamed_files_old_name_is_not_read_as_an_entry(self, repo: Path) -> None:
         """Git follows a rename entry with the old path; one shaped like an entry
         ("? ghost.txt") would otherwise appear as an untracked file."""

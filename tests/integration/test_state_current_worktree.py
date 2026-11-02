@@ -154,3 +154,17 @@ def test_a_gitdir_file_missing_or_cut_short_records_no_path(
         recorded.write_bytes(gitdir)
 
     assert reader._recorded_worktree_path() is None
+
+
+def test_a_gitdir_file_naming_a_path_that_is_not_utf8_records_none_on_windows(
+    trees: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Windows decodes file names strictly: no worktree there can have that path."""
+    from reveille.adapters.git_reader import GitReader
+
+    reader = GitReader(trees / "side")
+    recorded = trees / "main" / ".git" / "worktrees" / "side" / "gitdir"
+    recorded.write_bytes(b"/x\xff/.git\n")
+    monkeypatch.setattr(os, "fsdecode", lambda raw: raw.decode("utf-8"))
+
+    assert reader._recorded_worktree_path() is None

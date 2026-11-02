@@ -39,7 +39,8 @@ def summarise(report: str) -> str:
                 continue
             text = (found.get("message") or found.text or "").strip()
             lines = [x.strip() for x in text.splitlines() if x.strip()]
-            cause = " | ".join(lines[:2]) if lines else "(no message)"
+            # The first line names the failure; the last often holds the error itself.
+            cause = " | ".join(dict.fromkeys(lines[:1] + lines[-1:])) or "(no message)"
             for pattern, mask in _MASKS:
                 cause = pattern.sub(mask, cause)
             test = f"{case.get('classname', '').rsplit('.', 1)[-1]}::{case.get('name', '')}"

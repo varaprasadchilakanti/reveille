@@ -1821,10 +1821,11 @@ def _repository_path(path: str, repo: Path) -> str:
         raise typer.Exit(code=ExitCode.CANNOT_RUN)
     candidate = Path(path)
     here = Path.cwd().resolve()
-    if not candidate.is_absolute() and here.is_relative_to(repo) and here != repo:
+    # `anchor`, not `is_absolute()`: on Windows `/etc` has a root and no drive.
+    if not candidate.anchor and here.is_relative_to(repo) and here != repo:
         # Inside the repository, a relative path is relative to where it runs, as in Git.
         candidate = Path(os.path.normpath(here / candidate))
-    if candidate.is_absolute():
+    if candidate.anchor:
         try:
             # Resolve the directory, not the final name: a symlink has its own history.
             candidate = (candidate.parent.resolve() / candidate.name).relative_to(repo)

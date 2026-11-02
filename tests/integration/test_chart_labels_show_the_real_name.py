@@ -11,6 +11,7 @@ such as `&#8238;` was decoded into the direction control the label had escaped.
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -85,6 +86,7 @@ def test_an_entity_in_an_author_name_is_not_decoded(tmp_path: Path) -> None:
     assert names == ["Mal&#x202E;yrolam"], names
 
 
+@pytest.mark.skipif(os.name == "nt", reason="a file name holding < and >")
 def test_two_paths_that_differ_by_markup_stay_two(tmp_path: Path) -> None:
     page = _report(tmp_path, {"app.py": 5, "app<x>.py": 400, "<z>": 9})
 

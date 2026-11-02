@@ -111,3 +111,21 @@ def test_a_long_summary_is_split_across_annotations(tmp_path: Path) -> None:
     assert len(annotations) > 1
     assert all(len(x.encode()) < 4200 for x in annotations)
     assert "t59" in "".join(annotations)
+
+
+def test_a_cause_shows_the_first_and_the_last_line(tmp_path: Path) -> None:
+    report = tmp_path / "pytest.xml"
+    report.write_text(
+        '<testsuite><testcase classname="m" name="t">'
+        '<failure message="AssertionError: Warning: x&#10;progress&#10;Error: the cause"/>'
+        "</testcase></testsuite>",
+        encoding="utf-8",
+    )
+    out = subprocess.run(
+        [sys.executable, str(_SCRIPT), str(report)],
+        capture_output=True,
+        check=True,
+        encoding="utf-8",
+    ).stdout
+
+    assert "1x failure: AssertionError: Warning: x | Error: the cause" in out
