@@ -20,14 +20,19 @@ from reveille.cli import ExitCode, app
 
 
 def _git(repo: Path, *args: str, stdin: str | None = None) -> str:
-    return subprocess.run(
-        ["git", "-c", "user.name=Ana", "-c", "user.email=ana@e.test", *args],
-        cwd=repo,
-        check=True,
-        input=stdin,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
+    return (
+        subprocess.run(
+            ["git", "-c", "user.name=Ana", "-c", "user.email=ana@e.test", *args],
+            cwd=repo,
+            check=True,
+            input=None
+            if stdin is None
+            else stdin.encode(),  # bytes: text mode writes CRLF on Windows
+            capture_output=True,
+        )
+        .stdout.decode()
+        .strip()
+    )
 
 
 @pytest.fixture(scope="module")

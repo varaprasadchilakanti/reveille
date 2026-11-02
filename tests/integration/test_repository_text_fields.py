@@ -52,9 +52,14 @@ def _git(
         **({"GIT_AUTHOR_DATE": date, "GIT_COMMITTER_DATE": date} if date else {}),
     }
     done = subprocess.run(
-        ["git", *args], cwd=repo, check=True, env=env, capture_output=True, text=True, input=stdin
+        ["git", *args],
+        cwd=repo,
+        check=True,
+        env=env,
+        capture_output=True,
+        input=None if stdin is None else stdin.encode(),  # bytes: text mode writes CRLF on Windows
     )
-    return done.stdout.strip()
+    return done.stdout.decode().strip()
 
 
 @pytest.fixture(scope="module")

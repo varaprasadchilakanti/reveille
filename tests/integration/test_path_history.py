@@ -93,7 +93,21 @@ def vendored(tmp_path: Path) -> Path:
     (path / "src" / "a.py").write_text("2\n", encoding="utf-8")
     (path / "vendor" / "lib" / "v.js").write_text("w\n" * 50, encoding="utf-8")
     _commit(path, "Ana", "ana@e.test", "both")
-    (path / "*.md").write_text("literal\n", encoding="utf-8")
+    # `*.md` goes into the index with no file behind it, as Windows refuses the name.
+    blob = (
+        subprocess.run(
+            ["git", "hash-object", "-w", "--stdin"],
+            cwd=path,
+            input=b"literal\n",
+            capture_output=True,
+            check=True,
+        )
+        .stdout.decode()
+        .strip()
+    )
+    index = ["git", "update-index"]
+    subprocess.run([*index, "--add", "--cacheinfo", f"100644,{blob},*.md"], cwd=path, check=True)
+    subprocess.run([*index, "--skip-worktree", "--", "*.md"], cwd=path, check=True)
     (path / "README.md").write_text("readme\n", encoding="utf-8")
     _commit(path, "Ana", "ana@e.test", "notes")
     return path
@@ -239,6 +253,7 @@ class TestExcludePath:
 _CONTROL = "d\tt\nn\x1b[31mx"
 
 
+@pytest.mark.skipif(os.name == "nt", reason="a directory name holding a tab and a newline")
 def test_a_path_holding_a_tab_or_a_newline_can_be_excluded(tmp_path: Path) -> None:
     """Git and `who-changed` read such a path; the exclusion matched it only by refusing."""
     path = tmp_path / "c"

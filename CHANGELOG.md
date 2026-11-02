@@ -22,6 +22,14 @@ before 0.8.0 predate the convention and are left as they were released.
   open is still followed.
 - On Windows, the output path is checked again for a Git directory as the file is written, as on
   other platforms. Before, only the check made before the run applied.
+- Output sent to a pipe or a file is UTF-8 whatever the locale's encoding. On Windows it was
+  encoded in the locale's code page: a name outside it, such as 李, stopped `who-changed` and
+  `generate -o -` (CSV or HTML) with "This is a defect in Reveille", and a name inside it, such
+  as é, came out in that code page under an HTML page that declares UTF-8. A terminal keeps its
+  own encoding.
+- On Windows, `state` run in a linked worktree marked no worktree as the one read: JSON gave
+  `current: false` for each, and the text and Markdown listed every worktree, that one
+  included. Git for Windows lists `C:/a/b`; the path it was compared with is `C:\a\b`.
 
 ### Changed
 

@@ -121,6 +121,7 @@ def test_brief_in_counts(repo: Path) -> None:
     assert "Ana" not in out and "ana@" not in out
 
 
+@pytest.mark.skipif(os.name == "nt", reason="a newline in a directory name")
 def test_a_name_with_a_newline_stays_on_one_line(tmp_path: Path) -> None:
     repo = _make(tmp_path / "x\ny")
 

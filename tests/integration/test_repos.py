@@ -255,6 +255,7 @@ def test_a_repository_name_cannot_add_a_line(tmp_path: Path) -> None:
     assert "\n- fake: active" not in out
 
 
+@pytest.mark.skipif(os.name == "nt", reason="a directory name holding |")
 def test_a_repository_name_cannot_break_the_markdown_table(tmp_path: Path) -> None:
     _repo(tmp_path / "a|b", ("2026-10-01", "Ana", "ana@corp.test"))
 

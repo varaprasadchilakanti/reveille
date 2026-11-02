@@ -1852,7 +1852,8 @@ class GitReader:
             found = _parse_worktrees(output, nul=False)
         recorded = self._recorded_worktree_path()
         if recorded is not None:
-            return [replace(w, current=w.path == recorded) for w in found]
+            # Git for Windows lists `C:/a/b` where Python writes `C:\a\b`.
+            return [replace(w, current=Path(w.path) == Path(recorded)) for w in found]
         return [replace(w, current=_same_directory(w.path, self._repo_path)) for w in found]
 
     def _recorded_worktree_path(self) -> str | None:

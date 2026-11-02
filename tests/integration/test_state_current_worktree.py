@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -41,6 +42,11 @@ def trees(tmp_path: Path) -> Path:
     return tmp_path
 
 
+def _listed(path: Path) -> str:
+    """The path as Git lists it: Git for Windows writes `/` between the parts."""
+    return path.as_posix() if sys.platform == "win32" else str(path)
+
+
 def _state(repo: Path, output_format: str) -> str:
     result = CliRunner().invoke(app, ["state", "--repo", str(repo), "--format", output_format])
     assert result.exit_code == ExitCode.SUCCESS, result.stderr
@@ -58,15 +64,21 @@ def test_json_marks_the_worktree_read(trees: Path, read: str) -> None:
 def test_text_from_a_linked_worktree_lists_the_main_tree_not_itself(trees: Path) -> None:
     text = _state(trees / "side", "text")
 
-    assert f"2 other worktrees: {trees / 'main'} (main), {trees / 'third'} (third)." in text
-    assert f"{trees / 'side'} (side)" not in text
+    assert (
+        f"2 other worktrees: {_listed(trees / 'main')} (main), {_listed(trees / 'third')} (third)."
+        in text
+    )
+    assert f"{_listed(trees / 'side')} (side)" not in text
 
 
 def test_markdown_from_a_linked_worktree_lists_the_main_tree_not_itself(trees: Path) -> None:
     markdown = _state(trees / "side", "markdown")
 
     [line] = [x for x in markdown.splitlines() if "Other worktrees" in x]
-    assert line == f"- **Other worktrees:** `{trees / 'main'} (main)`, `{trees / 'third'} (third)`"
+    assert (
+        line
+        == f"- **Other worktrees:** `{_listed(trees / 'main')} (main)`, `{_listed(trees / 'third')} (third)`"
+    )
 
 
 def test_a_bare_repository_is_its_own_current_entry(trees: Path) -> None:
@@ -92,7 +104,10 @@ def test_a_worktree_moved_without_git_is_still_the_one_read(trees: Path) -> None
 
     current = {Path(w["path"]).name: w["current"] for w in worktrees}
     assert current == {"main": False, "side": True, "third": False}
-    assert f"2 other worktrees: {trees / 'main'} (main), {trees / 'third'} (third)." in text
+    assert (
+        f"2 other worktrees: {_listed(trees / 'main')} (main), {_listed(trees / 'third')} (third)."
+        in text
+    )
 
 
 def test_the_main_worktree_is_the_one_read_when_another_was_moved(trees: Path) -> None:
@@ -118,8 +133,8 @@ def test_a_bare_repository_s_entry_is_bare_not_detached(trees: Path) -> None:
         ("store.git", True),
         ("checkout", False),
     ]
-    assert f"1 other worktree: {store} (bare)." in text
-    assert f"`{store} (bare)`" in markdown
+    assert f"1 other worktree: {_listed(store)} (bare)." in text
+    assert f"`{_listed(store)} (bare)`" in markdown
     assert "detached" not in text + markdown
 
 

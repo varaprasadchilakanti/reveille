@@ -12,6 +12,7 @@ from __future__ import annotations
 import contextlib
 import datetime
 import enum
+import io
 import itertools
 import json
 import logging
@@ -797,7 +798,27 @@ def main(
 ) -> None:
     """Offline reports of a Git repository's history."""
     _stderr_json["on"] = False
+    _write_utf8_where_not_a_terminal()
     _exit_cleanly_when_stopped()
+
+
+def _write_utf8_where_not_a_terminal() -> None:
+    """Write UTF-8 to a pipe or a file, whatever the locale's encoding.
+
+    Windows encodes a redirected stream in the locale's code page: a name outside
+    it stopped the output, and one inside it came out in that code page, under an
+    HTML page that declares UTF-8. A terminal keeps its own encoding.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            if (
+                isinstance(stream, io.TextIOWrapper)
+                and stream.encoding.replace("-", "").lower() != "utf8"
+                and not stream.isatty()
+            ):
+                stream.reconfigure(encoding="utf-8")
+        except (OSError, ValueError):
+            continue  # a closed stream is reported where it is written to
 
 
 def _stop(signum: int, frame: object) -> None:

@@ -282,6 +282,7 @@ class TestTheWorkingTree:
         assert len(state["untracked"]["list"]) == 3
         assert "and 5 more" in _text(repo), "the text form bounds at its default of 10"
 
+    @pytest.mark.skipif(os.name == "nt", reason="a file name holding control characters")
     def test_a_file_name_cannot_drive_the_terminal(self, repo: Path) -> None:
         (repo / "x\x1b]8;;y\x07z.txt").write_text("x\n", encoding="utf-8")
         out = _text(repo)
@@ -346,6 +347,7 @@ class TestWorkInProgress:
 
 
 class TestBranchesAndWorktrees:
+    @pytest.mark.skipif(os.name == "nt", reason="a newline in a directory name")
     def test_a_worktree_path_with_a_newline_is_read_whole(self, repo: Path, tmp_path: Path) -> None:
         odd = tmp_path / "wt\nlocked x"
         _git(repo, "worktree", "add", "-q", "-b", "side", str(odd))

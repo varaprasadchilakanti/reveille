@@ -123,14 +123,17 @@ def _commit_dated(repo: Path, when: str, message: str) -> None:
         f"tree {tree}\nparent {parent}\nauthor A <a@e.test> {stamp} +0000\n"
         f"committer A <a@e.test> {stamp} +0000\n\n{message}\n\nCo-authored-by: Bea <b@e.test>\n"
     )
-    sha = subprocess.run(
-        ["git", "hash-object", "-t", "commit", "-w", "--stdin"],
-        cwd=repo,
-        input=body,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
+    sha = (
+        subprocess.run(
+            ["git", "hash-object", "-t", "commit", "-w", "--stdin"],
+            cwd=repo,
+            input=body.encode(),  # bytes: text mode writes CRLF on Windows
+            check=True,
+            capture_output=True,
+        )
+        .stdout.decode()
+        .strip()
+    )
     subprocess.run(["git", "update-ref", "refs/heads/main", sha], cwd=repo, check=True)
 
 

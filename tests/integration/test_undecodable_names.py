@@ -71,10 +71,12 @@ def on_branch(repo: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
     head = subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=path, check=True, capture_output=True, text=True
     ).stdout.strip()
-    subprocess.run(
-        [b"git", b"update-ref", b"refs/heads/b\xffr", head.encode()], cwd=path, check=True
-    )
-    subprocess.run([b"git", b"symbolic-ref", b"HEAD", b"refs/heads/b\xffr"], cwd=path, check=True)
+    # Written into Git's files, not through `git update-ref`: a loose ref is a file
+    # named by the ref, and macOS and Windows refuse a file name that is not UTF-8.
+    packed = path / ".git" / "packed-refs"
+    kept = [x for x in packed.read_bytes().splitlines(keepends=True) if not x.startswith(b"#")]
+    packed.write_bytes(b"".join([*kept, head.encode() + b" refs/heads/b\xffr\n"]))
+    (path / ".git" / "HEAD").write_bytes(b"ref: refs/heads/b\xffr\n")
     return path
 
 
