@@ -3129,7 +3129,7 @@ def main_worktree_of(tree: Path) -> Path | None:
     if git_directory is None:
         return None
     try:
-        # TODO: open without blocking (O_NONBLOCK, as `_git_directory_of` does): a FIFO here blocks.
+        # TODO(git_reader): open with O_NONBLOCK, as `_git_directory_of` does (a FIFO here blocks).
         with (git_directory / "commondir").open("rb") as handle:
             line = _gitfile_value(handle.read(_MAX_GITFILE_BYTES))
     except OSError:

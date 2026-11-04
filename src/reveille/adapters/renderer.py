@@ -990,7 +990,7 @@ class Renderer:
             # The table's rows, and how many listed contributors it leaves to JSON and CSV.
             "html_listed": _html_listed(data),
             "html_unlisted": len(data.ranked_contributors) - len(_html_listed(data)),
-            # TODO: call generated_churn and _html_listed once each, not twice.
+            # TODO(renderer): call generated_churn and _html_listed once each (each runs twice).
             # What the hotspot ranking leaves out, stated beside it.
             "generated_files": generated_churn(data.file_stats)[0],
             "generated_lines": generated_churn(data.file_stats)[1],
@@ -1798,7 +1798,7 @@ def _build_commit_size_chart(commits: list[Commit]) -> str:
     dash = "\u2013"  # en dash, written as an escape so it cannot be mistaken
     labels = [*(f"{low:,}{dash}{high - 1:,}" for low, high in itertools.pairwise(edges)), "5,000+"]
     buckets = [0] * len(labels)
-    # TODO: bisect.bisect_right(edges, size) - 1 would replace this loop and the median's.
+    # TODO(renderer): bisect.bisect_right(edges, size) - 1 here and in the median (replaces two loops).
     for commit in commits:
         size = commit.lines_added + commit.lines_deleted
         index = len(edges) - 1
