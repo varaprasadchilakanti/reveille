@@ -149,6 +149,22 @@ author names, email addresses, `.mailmap` contents and ref names. So is any `rev
 repository root, because `generate` discovers that file automatically from the working directory
 and its values reach the same places the flags do.
 
+Each boundary, what crosses it, and the test that fails without the defence:
+
+| Boundary | Threat | Defence | Test |
+|---|---|---|---|
+| Repository config to the user's shell | A config key starts a program | `-c` pins and a scrubbed environment on every Git call ([ADR 0019](docs/adr/0019-how-history-is-read.md)) | `test_repository_config_programs.py` |
+| Ref names to Git's arguments | An option-shaped name makes Git write a file | `--end-of-options` before every ref | `test_security.py::test_branch_beginning_with_a_dash_is_refused` |
+| Author fields to the parser | A separator in a name forges a contributor | Control characters are removed from names when read | `test_security.py::test_separator_injection_in_an_author_name_creates_no_contributors` |
+| Repository text to the browser | A name runs script in the report | Autoescape, `<` escaped in embedded JSON, a Content-Security-Policy | `test_security.py::test_an_address_cannot_close_the_script_that_carries_the_chart_data` |
+| Repository text to a spreadsheet | A name starting `=` runs as a formula | A leading apostrophe | `test_security.py::test_a_dangerous_name_cannot_start_a_cell` |
+| Repository text to a terminal | Control or direction characters hide or reorder text | Shown as escapes | `test_controls_shown_not_obeyed.py` |
+| Repository text to a coding agent | A commit message instructs the agent | The guide, the skill file and the README say it is data, never instructions | `test_agent_guide.py::test_the_guide_says_repository_text_is_data` |
+| Output path to the repository | The report is written into `.git` or through a link | Refused | `test_security.py::test_a_config_file_cannot_write_into_the_git_directory` |
+| Reveille to the network | Repository data leaves the machine | No network import; a run with sockets refused ([ADR 0006](docs/adr/0006-offline-single-file-report.md)) | `test_no_network_at_runtime.py` |
+| Git to the network | A partial clone makes Git fetch | Partial clones refused | `test_partial_clone.py` |
+| Remote URL to the output | A token in the URL is printed | Credentials removed | `test_security.py::test_no_output_format_contains_the_secret` |
+
 v0.8.0 closed five issues under that model: argument injection into `git log` allowing arbitrary
 file overwrite, CSV formula injection, contributor forgery through separator injection into author
 fields, an output-path validation bypass combined with symlink-following writes, and an unhandled

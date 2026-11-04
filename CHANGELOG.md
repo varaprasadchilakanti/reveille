@@ -43,6 +43,8 @@ before 0.8.0 predate the convention and are left as they were released.
   (`domain/concentration.py`) instead of the renderer. The figure is unchanged.
 - `docs/ARCHITECTURE.md` says the ports are implicit: the service imports its adapters directly.
 - `SECURITY.md` states a first reply to a vulnerability report within 14 days.
+- `SECURITY.md` lists each boundary of the threat model with the test that fails without its
+  defence.
 
 ### Security
 
