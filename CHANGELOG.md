@@ -42,6 +42,7 @@ before 0.8.0 predate the convention and are left as they were released.
 - The count of contributors holding half the commits is computed in the domain
   (`domain/concentration.py`) instead of the renderer. The figure is unchanged.
 - `docs/ARCHITECTURE.md` says the ports are implicit: the service imports its adapters directly.
+- `SECURITY.md` states a first reply to a vulnerability report within 14 days.
 
 ### Security
 

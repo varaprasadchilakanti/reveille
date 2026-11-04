@@ -18,8 +18,8 @@ Use GitHub's private vulnerability reporting:
 
 Include a description and its impact, steps to reproduce, and the Reveille and Python versions.
 
-Reveille has one maintainer and no on-call rota. Reports are normally
-acknowledged within a few days; no response time is promised.
+Reveille has one maintainer and no on-call rota. A report gets a first
+reply within 14 days.
 
 ## Vulnerabilities in Dependencies
 
