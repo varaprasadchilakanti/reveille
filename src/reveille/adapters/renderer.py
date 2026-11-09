@@ -154,7 +154,7 @@ def _script_sources(*scripts: str) -> Markup:
     Returns:
         One `'sha256-...'` source per script, space-separated.
     """
-    return Markup(
+    return Markup(  # noqa: S704  base64 hashes hold no markup
         " ".join(
             f"'sha256-{base64.b64encode(hashlib.sha256(str(script).encode()).digest()).decode()}'"
             for script in scripts

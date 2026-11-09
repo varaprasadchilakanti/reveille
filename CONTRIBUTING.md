@@ -110,7 +110,8 @@ New public functions need Google-style docstrings. New behaviour needs tests in 
 
 ## Code Style
 
-Ruff handles linting and import ordering. Mypy runs in strict mode. Type annotations are required
+Ruff handles linting and import ordering, including its security rules (`S`): where one must be
+broken, write `# noqa: S<code>  <reason>` on that line. Mypy runs in strict mode. Type annotations are required
 on every function signature. Prefer early returns to nested conditionals.
 
 Run the full quality suite before pushing:
