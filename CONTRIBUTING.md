@@ -30,14 +30,8 @@ poetry install
 poetry run pre-commit install
 ```
 
-Verify the environment:
-
-```bash
-poetry run reveille --version
-poetry run mypy src/
-poetry run ruff check src/
-poetry run pytest -n auto
-```
+Verify the environment with `poetry run reveille --version` and `make ci`. The commands are in
+[AGENTS.md](AGENTS.md).
 
 ## Supported operating systems
 
@@ -114,14 +108,7 @@ Ruff handles linting and import ordering, including its security rules (`S`): wh
 broken, write `# noqa: S<code>  <reason>` on that line. Mypy runs in strict mode. Type annotations are required
 on every function signature. Prefer early returns to nested conditionals.
 
-Run the full quality suite before pushing:
-
-```bash
-poetry run ruff check src tests
-poetry run ruff format src tests
-poetry run mypy src
-poetry run pytest -n auto
-```
+Run `make ci` before pushing; [AGENTS.md](AGENTS.md) lists the checks it runs.
 
 ## Commit Messages
 
