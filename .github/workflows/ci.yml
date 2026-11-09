@@ -252,7 +252,8 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-interaction
       - name: Run pytest
-        run: poetry run pytest -n auto --timeout=120 --junitxml=pytest.xml
+        # The slowest tests are listed, to show where these legs' minutes go.
+        run: poetry run pytest -n auto --timeout=120 --durations=25 --junitxml=pytest.xml
       - name: Group the failures by cause
         if: failure()
         run: python .github/scripts/test_failures.py pytest.xml --annotate
