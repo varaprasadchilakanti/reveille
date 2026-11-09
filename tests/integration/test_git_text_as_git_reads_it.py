@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -60,6 +61,7 @@ def _json(repo: Path, *args: str) -> tuple[int, dict[str, Any]]:
     return result.exit_code, json.loads(result.stdout) if result.exit_code == 0 else {}
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="needs a file system that keeps any byte")
 def test_a_path_that_is_not_utf8_reads_with_quote_path_off(
     repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -202,6 +204,7 @@ def test_a_tag_name_with_a_line_separator_is_listed_whole(repo: Path) -> None:
     assert tags == ["v1\u2028rc"]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="a Windows file name cannot hold '>'")
 @pytest.mark.xfail(strict=True, reason="TODO(git-read): numstat without -z prints both alike")
 def test_a_directory_named_like_a_rename_is_its_own_path(repo: Path) -> None:
     (repo / "x => src").mkdir()
