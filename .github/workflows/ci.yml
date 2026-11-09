@@ -158,11 +158,45 @@ jobs:
       - name: Run mypy
         run: make typecheck
 
+  # ----------------------------------------------------------------
+  # What a pull request changes
+  #
+  # A change to documentation alone (Markdown, llms.txt, PNG and SVG
+  # images outside src/ and tests/) needs one run of the suite, not every
+  # interpreter on every system. It runs on Linux 3.11, the leg that
+  # uploads coverage; the others report success with every step skipped.
+  # The guards are per step, not a job-level `if`: that cannot read
+  # `matrix`, and a skipped matrix job leaves its required check pending. A push to main, a list Git cannot
+  # give, or this job failing runs everything.
+  # ----------------------------------------------------------------
+  changes:
+    name: What changed
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: diff
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -z "$BASE" ]; then echo "code=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          python3 .github/scripts/changed_code.py "$BASE"
+
   test:
     name: Test (pytest)
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: lockfile
+    needs: [lockfile, changes]
+    # Runs if `changes` failed, and then tests everything: a skipped job would count as passed.
+    if: ${{ !cancelled() && needs.lockfile.result == 'success' }}
+    env:
+      RUN_TESTS: ${{ needs.changes.outputs.code != 'false' || matrix.python-version == '3.11' }}
     permissions:
       contents: read
     strategy:
@@ -176,6 +210,7 @@ jobs:
         python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.RUN_TESTS == 'true'
         with:
           # tests/integration/test_mailmap_file.py runs `git shortlog` over this
           # repository's real history, to assert that Git itself -- not just
@@ -193,20 +228,24 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        if: env.RUN_TESTS == 'true'
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install Poetry
+        if: env.RUN_TESTS == 'true'
         uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
         with:
           version: "2.4.2"
           virtualenvs-in-project: true
       - name: Install dependencies
+        if: env.RUN_TESTS == 'true'
         run: poetry install --no-interaction
       - name: Run pytest
+        if: env.RUN_TESTS == 'true'
         run: poetry run pytest -n auto --timeout=120 --cov=reveille --cov-report=xml
       - name: Upload coverage
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
-        if: matrix.python-version == '3.11'
+        if: env.RUN_TESTS == 'true' && matrix.python-version == '3.11'
         with:
           files: coverage.xml
           fail_ci_if_error: false
@@ -224,7 +263,10 @@ jobs:
     name: Test on ${{ matrix.os }} (pytest) (${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
-    needs: lockfile
+    needs: [lockfile, changes]
+    if: ${{ !cancelled() && needs.lockfile.result == 'success' }}
+    env:
+      RUN_TESTS: ${{ needs.changes.outputs.code != 'false' }}
     permissions:
       contents: read
     defaults:
@@ -238,24 +280,29 @@ jobs:
         python-version: ["3.11", "3.14"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.RUN_TESTS == 'true'
         with:
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        if: env.RUN_TESTS == 'true'
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install Poetry
+        if: env.RUN_TESTS == 'true'
         uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
         with:
           version: "2.4.2"
           virtualenvs-in-project: true
       - name: Install dependencies
+        if: env.RUN_TESTS == 'true'
         run: poetry install --no-interaction
       - name: Run pytest
+        if: env.RUN_TESTS == 'true'
         # The slowest tests are listed, to show where these legs' minutes go.
         run: poetry run pytest -n auto --timeout=120 --durations=25 --junitxml=pytest.xml
       - name: Group the failures by cause
-        if: failure()
+        if: failure() && env.RUN_TESTS == 'true'
         run: python .github/scripts/test_failures.py pytest.xml --annotate
 
   # ----------------------------------------------------------------
