@@ -2038,8 +2038,21 @@ def _build_lorenz_chart(counts: list[int]) -> str:
 
 
 # Leading characters that make a spreadsheet read a cell as a formula; a
-# leading tab or carriage return is skipped, exposing what follows.
-_CSV_FORMULA_PREFIXES: tuple[str, ...] = ("=", "+", "-", "@", "\t", "\r")
+# leading tab, carriage return or line feed is skipped, exposing what follows.
+# The full-width forms of = + - @ are treated the same.
+_CSV_FORMULA_PREFIXES: tuple[str, ...] = (
+    "=",
+    "+",
+    "-",
+    "@",
+    "\t",
+    "\r",
+    "\n",
+    "\uff1d",
+    "\uff0b",
+    "\uff0d",
+    "\uff20",
+)
 
 
 def _assert_not_symlink(output_path: Path) -> None:

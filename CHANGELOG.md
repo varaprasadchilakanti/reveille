@@ -48,6 +48,11 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Security
 
+- In `generate --format csv` and `repos --format csv`, a cell from repository text that starts
+  with a line feed, or with the full-width form of `=`, `+`, `-` or `@`, was written as is (0.8.0
+  to 0.10.x are affected). It now gets a leading apostrophe, as `=` already did.
+- Git reads history with every network protocol disallowed, so a missed partial clone cannot
+  make it fetch. No known read did; no command changes for users.
 - On Windows, a `.mailmap` that is a symbolic link was applied (0.10.x is affected). It is now
   refused, by a check before the open: a link put in its place in between is still followed.
 - On Windows, the output path is checked again for a Git directory, by path, just before writing

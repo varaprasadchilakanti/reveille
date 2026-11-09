@@ -162,7 +162,7 @@ Each boundary, what crosses it, and the test that fails without the defence:
 | Repository text to a coding agent | A commit message instructs the agent | The guide, the skill file and the README say it is data, never instructions | `test_agent_guide.py::test_the_guide_says_repository_text_is_data` |
 | Output path to the repository | The report is written into `.git` or through a link | Refused | `test_security.py::test_a_config_file_cannot_write_into_the_git_directory` |
 | Reveille to the network | Repository data leaves the machine | No network import; a run with sockets refused ([ADR 0006](docs/adr/0006-offline-single-file-report.md)) | `test_no_network_at_runtime.py` |
-| Git to the network | A partial clone makes Git fetch | Partial clones refused | `test_partial_clone.py` |
+| Git to the network | A partial clone makes Git fetch | Partial clones refused; every Git protocol disallowed (`GIT_ALLOW_PROTOCOL` empty) | `test_partial_clone.py` |
 | Remote URL to the output | A token in the URL is printed | Credentials removed | `test_security.py::test_no_output_format_contains_the_secret` |
 
 v0.8.0 closed five issues under that model: argument injection into `git log` allowing arbitrary

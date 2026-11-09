@@ -748,7 +748,9 @@ class GitReader:
         # Git data change. GIT_NO_LAZY_FETCH needs Git 2.44, so partial clones are
         # also refused below. Replace refs and grafts are ignored (ADR 0018). No
         # optional locks: a plain `git status` rewrites the index (ADR 0024).
+        # GIT_ALLOW_PROTOCOL set empty allows no transport, and config cannot widen it.
         self._repo.git.update_environment(
+            GIT_ALLOW_PROTOCOL="",
             GIT_NO_LAZY_FETCH="1",
             GIT_NO_REPLACE_OBJECTS="1",
             GIT_GRAFT_FILE=os.devnull,

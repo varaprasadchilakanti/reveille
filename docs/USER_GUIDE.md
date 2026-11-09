@@ -609,7 +609,8 @@ Columns: `rank`, `name`, `email`, `commits`, `lines_added`, `lines_deleted`, `ne
 `active_days`, `last_commit_date`, `co_authored_commits`, then `automated` (`true` for a `[bot]`
 identity, the rule `derived.automated_accounts` counts by), always last. With `--ranking`,
 `designation`, `tier`, `composite_score` and `percentile` are added and `rank` is a ranking;
-without it `rank` is table order only. Each JSON contributor carries `automated` too.
+without it `rank` is table order only. Each JSON contributor carries `automated` too. Cells that a
+spreadsheet would read as a formula are prefixed with `'`.
 
 **HTML** is one self-contained file of about 1.7 MB, most of it the embedded chart library (the
 plotly.js cartesian bundle, pinned) and its third-party licences, in a collapsed section after the

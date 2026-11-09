@@ -17,8 +17,10 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from git.exc import GitCommandError
 from typer.testing import CliRunner
 
+from reveille.adapters.git_reader import GitReader
 from reveille.cli import ExitCode, app
 
 
@@ -165,3 +167,16 @@ def test_worktree_config_is_read_for_what_it_says(
         assert "partial clone" in result.stderr
     else:
         assert result.exit_code == ExitCode.SUCCESS, result.stderr
+
+
+def test_no_git_transport_can_run(origin: Path, tmp_path: Path) -> None:
+    """Every transport is off for Reveille's Git, so a read the refusal missed cannot fetch."""
+    clone = tmp_path / "clone"
+    subprocess.run(["git", "clone", "-q", f"file://{origin}", str(clone)], check=True)
+    ls_remote = ["git", "-c", "protocol.allow=always", "ls-remote", "origin"]
+
+    plain = subprocess.run(ls_remote, cwd=clone, capture_output=True, text=True, check=False)
+    assert plain.returncode == 0, "positive control: plain Git reaches the remote"
+
+    with pytest.raises(GitCommandError, match="not allowed"):
+        GitReader(clone)._repo.git.execute(ls_remote)
