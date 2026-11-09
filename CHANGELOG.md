@@ -31,6 +31,16 @@ before 0.8.0 predate the convention and are left as they were released.
   repository: the path has a root but no drive.
 - On Windows, a current branch whose name is not UTF-8 stopped every command that read it:
   Windows cannot pass the byte to Git. Git is given `HEAD`, the same commit.
+- With `core.quotePath` set false, in the user's or the repository's Git config, `generate` as
+  HTML stopped with "This is a defect in Reveille" on a repository holding a file name that is
+  not UTF-8. Reveille now has Git quote such names, as Git does by default.
+- When no commit at all could be read, `generate`, `summary`, `brief` and `validate` exited 1, as
+  if the window were empty. They now exit 2, "No commit was counted, and N commits in the window
+  could not be read", as the window may not be empty.
+- A `--branch` value, or `branch =` in `reveille.toml`, that is not one commit, such as `^main`, was
+  accepted and gave an empty result (exit 1). It is now refused with exit 2.
+- `state` gave too high a merged-branch count when a branch name held a no-break space (U+00A0).
+- `brief` cut a tag name at a line separator (U+2028) or U+0085.
 
 ### Changed
 
@@ -48,6 +58,9 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Security
 
+- A `.mailmap` line that Git reads as a comment could map one person's commits to another: Reveille
+  also ended a line at U+2028, a form feed and other separators, so the text after one became a
+  mapping. It now ends a line at a line feed only, as Git does (0.5.0 to 0.10.x are affected).
 - In `generate --format csv` and `repos --format csv`, a cell from repository text that starts
   with a line feed, or with the full-width form of `=`, `+`, `-` or `@`, was written as is (0.8.0
   to 0.10.x are affected). It now gets a leading apostrophe, as `=` already did.

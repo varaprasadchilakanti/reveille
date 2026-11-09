@@ -84,7 +84,7 @@ their own options. `reveille help [<command>]` prints the same text as `--help`.
 | `--repo`, `-r` | `.` | A working tree or any directory inside it (the search stops at `GIT_CEILING_DIRECTORIES`, as Git's does; with `GIT_DIR` or `GIT_WORK_TREE` set, as in a Git hook, give the root; those variables, `GIT_INDEX_FILE` and `GIT_OBJECT_DIRECTORY` do not change what is read), or a bare repository (which needs `--output`: its root is Git's own directory, where Reveille does not write). |
 | `--output`, `-o` | `reveille-report.html` in the repository root | See [Output path](#output-path). |
 | `--since`, `--until` | first commit; today (UTC) | Inclusive dates, `YYYY-MM-DD`. See [The window](#the-window). |
-| `--branch`, `-b` | the checked-out branch | Commits reachable from this branch, which is not necessarily the default branch. A name that is a branch is read as that branch (`refs/heads/<name>`), even when a tag has the same name, and stderr says so; give `refs/tags/<name>` for the tag. Any other name, such as a tag or a commit, is read as Git reads it. |
+| `--branch`, `-b` | the checked-out branch | Commits reachable from this branch, which is not necessarily the default branch. A name that is a branch is read as that branch (`refs/heads/<name>`), even when a tag has the same name, and stderr says so; give `refs/tags/<name>` for the tag. Any other name, such as a tag or a commit, is read as Git reads it; it must name one commit, so a range or an exclusion such as `^main` is refused (exit 2). |
 | `--exclude-author` | none | Removes a person. Repeatable. See [below](#--exclude-author). |
 | `--exclude-path` | none | Leaves a path out of every figure. Repeatable. See [below](#--exclude-path). |
 | `--hide-emails` | off | Replaces email addresses with per-report tokens. See [below](#--hide-emails). |
@@ -1019,6 +1019,10 @@ many); `--exclude-author` removes an author's commits from every figure.
 
 **"No commits found", exit 1.** No non-merge commit falls in the window on the analysed branch.
 Check `--since`, `--until` and `--branch`; the branch defaults to the one checked out.
+
+**"No commit was counted, and N commits in the window could not be read", exit 2.** None that
+was read is in the window, and some in it could not be parsed (stderr says why), so the window may
+not be empty. `git log --format='%an <%ae> %ct'` shows the author fields Git holds.
 
 **"Git could not be started", exit 2.** No `git` is on `PATH`, it cannot run, or Git's own
 configuration is broken; the message says which. Reveille runs the first `git` on `PATH` and asks

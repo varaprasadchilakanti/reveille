@@ -491,6 +491,8 @@ def _numstat_path(field: str) -> str:
     Returns:
         The file's path as it is now.
     """
+    # TODO(git-read): a path that holds " => " is read as a rename; Git prints both
+    # alike without -z, and -z prints path bytes the record separator may be among.
     if " => " in field and "{" not in field:
         return _unquote_path(field.rsplit(" => ", 1)[1].strip())
     return _rename_destination(_unquote_path(field))
@@ -1092,7 +1094,12 @@ class GitReader:
                 "removing an --exclude-author value": bool(exclude_authors),
                 "removing an --exclude-path value": bool(exclude_paths),
             }
-            raise _empty_window(dated_after, dated_until, [k for k, v in narrowed.items() if v])
+            raise _nothing_counted(
+                self.commits_unreadable,
+                dated_after,
+                dated_until,
+                [k for k, v in narrowed.items() if v],
+            )
 
         _logger.debug(
             "read %d commits from %s (%d git log records)", len(commits), rev, record_count
@@ -1561,6 +1568,10 @@ class GitReader:
                 "trailer.separators=:",
                 # Reveille decodes Git's output as UTF-8; a repository must not re-encode it.
                 "i18n.logOutputEncoding=UTF-8",
+                # Git's default. Set false, a path is printed raw: bytes that may not be
+                # UTF-8, and U+2028, U+0085 or a form feed, which `splitlines` would break
+                # the numstat and name-status blocks at. Quoted, neither reaches the parser.
+                "core.quotePath=true",
                 # Reveille reads `.mailmap` itself; Git would open whatever file the
                 # repository names, and block on a FIFO.
                 "log.mailmap=false",
@@ -1907,7 +1918,8 @@ class GitReader:
             self._git().for_each_ref("--format=%(committerdate:unix)%00%(refname)", "refs/heads")
         )
         tips: dict[str, datetime.datetime] = {}
-        for line in out.splitlines():
+        # A ref name holds no line feed but may hold U+2028 or U+0085.
+        for line in out.split("\n"):
             stamp, _, ref = line.partition("\0")
             if stamp.isdigit():
                 tips[ref] = _utc(int(stamp))
@@ -1918,7 +1930,8 @@ class GitReader:
         if head is None:
             return 0
         out = str(self._git().for_each_ref(f"--merged={head}", "--format=%(refname)", "refs/heads"))
-        return len(out.split())
+        # One ref per line; a ref name may hold a no-break space.
+        return len([line for line in out.split("\n") if line])
 
     def latest_tag(self, rev: str, until: datetime.date | None = None) -> str | None:
         """Return the nearest tag reachable from a revision, or None if there is none.
@@ -1988,8 +2001,8 @@ class GitReader:
             The 40-character SHA of the commit it names.
 
         Raises:
-            RepositoryError: If it is empty, begins with `-` (git would read an option), or
-                names no commit here.
+            RepositoryError: If it is empty, begins with `-` (git would read an option),
+                names no commit here, or is not one commit (`^main` is an exclusion).
         """
         if not revision:
             raise RepositoryError(
@@ -2008,7 +2021,9 @@ class GitReader:
             raise RepositoryError(
                 f"'{revision}' does not name a commit in this repository."
             ) from exc
-        return sha.strip()
+        if not _SHA_RE.fullmatch(sha := sha.strip()):
+            raise RepositoryError(f"'{revision}' does not name one commit in this repository.")
+        return sha
 
     def is_ancestor(self, ancestor: str, descendant: str) -> bool:
         """Return whether one commit is reachable from another.
@@ -2079,7 +2094,8 @@ class GitReader:
             )
         )
         found: list[tuple[int, str]] = []
-        for line in refs.splitlines():
+        # A ref name holds no line feed but may hold U+2028 or U+0085.
+        for line in refs.split("\n"):
             target, peeled, name = [*line.split("\0"), "", "", ""][:3]
             commit = peeled or target
             if commit in order and name:
@@ -2434,7 +2450,8 @@ class GitReader:
         text = self._committed_mailmap() if self._repo.bare else self._working_mailmap()
         if text is None:
             return _Mailmap()
-        lines = text.splitlines()
+        # As Git: a line ends at a line feed only, so U+2028 or a form feed is not a break.
+        lines = text.split("\n")
 
         mailmap = _Mailmap()
         for line in lines:
@@ -3543,6 +3560,39 @@ def _truncate(value: str, limit: int) -> str:
     return value[:limit] + _TRUNCATION_MARKER
 
 
+def _nothing_counted(
+    unreadable: int, dated_after: int, dated_until: datetime.date | None, remedies: Sequence[str]
+) -> RepositoryError:
+    """Explain why no commit was counted: none could be read, or none was in the window.
+
+    Args:
+        unreadable: Commits in the window that could not be parsed; with any, it may not
+            be empty.
+        dated_after: As `_empty_window`.
+        dated_until: As `_empty_window`.
+        remedies: As `_empty_window`.
+
+    Returns:
+        The error to raise: a `RepositoryError` (exit 2) when commits could not be read,
+        else the empty-window error (exit 1).
+    """
+    if unreadable:
+        some = "1 commit" if unreadable == 1 else f"{unreadable:,} commits"
+        return RepositoryError(
+            f"No commit was counted, and {some} in the window could not be read, so the "
+            f"window may not be empty.{_try(remedies)}"
+        )
+    return _empty_window(dated_after, dated_until, remedies)
+
+
+def _try(remedies: Sequence[str]) -> str:
+    """Return " Try a, b or c." for the remedies given, or nothing for none."""
+    if not remedies:
+        return ""
+    tries = remedies[0] if len(remedies) == 1 else f"{', '.join(remedies[:-1])} or {remedies[-1]}"
+    return f" Try {tries}."
+
+
 def _empty_window(
     dated_after: int, dated_until: datetime.date | None, remedies: Sequence[str] = ()
 ) -> EmptyRepositoryError:
@@ -3562,11 +3612,8 @@ def _empty_window(
             f"No commits found within the analysis window: {dated} dated after "
             f"{dated_until.isoformat()}. Pass --until with a later date to include them."
         )
-    if not remedies:
-        return EmptyRepositoryError("No commits found within the specified analysis window.")
-    tries = remedies[0] if len(remedies) == 1 else f"{', '.join(remedies[:-1])} or {remedies[-1]}"
     return EmptyRepositoryError(
-        f"No commits found within the specified analysis window. Try {tries}."
+        f"No commits found within the specified analysis window.{_try(remedies)}"
     )
 
 
