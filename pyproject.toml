@@ -259,10 +259,9 @@ addopts = [
 ]
 timeout = 120
 markers = [
-    "unit: Unit tests -- no I/O, no filesystem, no subprocess",
+    "unit: Unit tests -- one module or file, and no Git repository built",
     "integration: Integration tests -- real Git repositories via fixtures",
     "e2e: End-to-end tests -- full CLI invocation against a fixture repository",
-    "slow: Tests with non-trivial runtime",
 ]
 filterwarnings = [
     "error",
