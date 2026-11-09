@@ -122,9 +122,9 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-interaction
       - name: Run ruff
-        run: poetry run ruff check src tests
+        run: make lint
       - name: Check formatting
-        run: poetry run ruff format --check src tests
+        run: make format-check
       - name: Check version sync
         run: make check-version
       - name: Check licence declarations agree
@@ -156,7 +156,7 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-interaction
       - name: Run mypy
-        run: poetry run mypy src
+        run: make typecheck
 
   test:
     name: Test (pytest)

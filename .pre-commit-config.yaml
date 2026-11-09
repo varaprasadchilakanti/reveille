@@ -51,28 +51,28 @@ repos:
       - id: actionlint
 
 # ------------------------------------------------------------------
-# Local hooks -- delegate to Poetry virtualenv for version parity
-# with the CI pipeline.
+# Local hooks -- run the Makefile targets CI runs, so both check the
+# same paths with the Poetry virtualenv's tools.
 # ------------------------------------------------------------------
   - repo: local
     hooks:
       - id: ruff-check
         name: ruff (lint)
-        entry: poetry run ruff check src tests --fix
+        entry: make fix
         language: system
         types: [python]
         pass_filenames: false
 
       - id: ruff-format
         name: ruff (format)
-        entry: poetry run ruff format src tests
+        entry: make format
         language: system
         types: [python]
         pass_filenames: false
 
       - id: mypy
         name: mypy
-        entry: poetry run mypy src
+        entry: make typecheck
         language: system
         types: [python]
         pass_filenames: false

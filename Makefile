@@ -109,20 +109,25 @@ check-version:  ## Assert pyproject.toml version matches reveille.__version__
 # Code Quality
 # ------------------------------------------------------------------
 
+# The one list of checked Python paths: CI and the pre-commit hooks run these targets.
+# Tests are linted but not type-checked: mypy --strict is held for the code that ships.
+LINT_PATHS := src tests scripts .github/scripts docs/images
+TYPED_PATHS := $(filter-out tests,$(LINT_PATHS))
+
 lint:  ## Run ruff lint checks
-	poetry run ruff check src tests scripts
+	poetry run ruff check $(LINT_PATHS)
 
 format:  ## Format code with ruff formatter
-	poetry run ruff format src tests scripts
+	poetry run ruff format $(LINT_PATHS)
 
 format-check:  ## Check formatting without changing files, as CI does
-	poetry run ruff format --check src tests scripts
+	poetry run ruff format --check $(LINT_PATHS)
 
 fix:  ## Auto-fix lint issues with ruff
-	poetry run ruff check src tests scripts --fix
+	poetry run ruff check $(LINT_PATHS) --fix
 
 typecheck:  ## Run mypy in strict mode
-	poetry run mypy src scripts
+	poetry run mypy $(TYPED_PATHS)
 
 precommit:  ## Run all pre-commit hooks against every tracked file
 	SKIP=no-commit-to-branch poetry run pre-commit run --all-files
