@@ -331,10 +331,10 @@ class TestDocumentedCommandsExist:
 
     def _documented_commands(self) -> set[str]:
         readme = (Path(__file__).resolve().parents[2] / "README.md").read_text(encoding="utf-8")
-        # CLI Reference subsections read `### \`reveille <name>\``.
-        # Flags are documented as `--flag`, so requiring a leading
-        # lowercase letter excludes them from the command set.
-        return set(re.findall(r"^### `reveille ([a-z][a-z-]*)`", readme, re.MULTILINE))
+        # The Commands table's rows open with `| \`<name>\` |`. Flags are
+        # documented as `--flag`, so requiring a leading lowercase letter
+        # excludes them from the command set.
+        return set(re.findall(r"^\| `([a-z][a-z-]*)` \|", readme, re.MULTILINE))
 
     def _registered_commands(self) -> set[str]:
         """Read the commands Typer actually registered.
