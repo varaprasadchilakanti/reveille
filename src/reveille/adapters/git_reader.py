@@ -1085,7 +1085,8 @@ class GitReader:
             _logger.warning(
                 "--exclude-path matched no file in the history of %s: %s",
                 rev,
-                ", ".join(self.unmatched_path_exclusions),
+                # Quoted, so a space at either end shows.
+                ", ".join(repr(path) for path in self.unmatched_path_exclusions),
             )
 
         if not commits:

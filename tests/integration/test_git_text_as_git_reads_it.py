@@ -160,6 +160,27 @@ def test_an_exclusion_is_not_a_branch(repo: Path) -> None:
     assert code == ExitCode.CANNOT_RUN
 
 
+def test_an_excluded_path_keeps_its_leading_space(repo: Path) -> None:
+    for directory, name, email in ((" sp", "Spa", "spa@e.test"), ("sp", "Bob", "bob@e.test")):
+        (repo / directory).mkdir()
+        (repo / directory / "f").write_text("1\n", encoding="utf-8")
+        _commit(repo, directory, name=name, email=email)
+
+    code, document = _json(repo, "--exclude-path", " sp")
+
+    assert code == ExitCode.SUCCESS
+    emails = {person["email"] for person in document["contributors"]}
+    assert "spa@e.test" not in emails
+    assert "bob@e.test" in emails
+
+
+def test_an_unmatched_path_is_quoted_so_its_spaces_show(repo: Path) -> None:
+    result = CliRunner().invoke(app, ["summary", "--repo", str(repo), "--exclude-path", "a "])
+
+    assert result.exit_code == ExitCode.SUCCESS
+    assert "'a '" in result.stderr
+
+
 def test_a_branch_name_with_an_odd_space_is_one_branch(repo: Path) -> None:
     _git(repo, "branch", "feature\u00a0one")
     _git(repo, "branch", "a\u2028b")

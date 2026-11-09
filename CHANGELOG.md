@@ -39,6 +39,10 @@ before 0.8.0 predate the convention and are left as they were released.
   could not be read", as the window may not be empty.
 - A `--branch` value, or `branch =` in `reveille.toml`, that is not one commit, such as `^main`, was
   accepted and gave an empty result (exit 1). It is now refused with exit 2.
+- `--exclude-path " sp"` excluded `sp`: spaces around a path were removed. They are now kept, so
+  a path with a stray space, on the command line or in `reveille.toml`, no longer matches the path
+  without it, and the warning that it matched nothing quotes it. A path of spaces alone is still
+  refused.
 - `state` gave too high a merged-branch count when a branch name held a no-break space (U+00A0).
 - `brief` cut a tag name at a line separator (U+2028) or U+0085.
 

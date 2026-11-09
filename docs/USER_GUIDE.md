@@ -168,7 +168,8 @@ Accounts with `[bot]` in the name or address are already kept out of the people 
 
 Leaves a file or directory out of every figure: commits, lines, hotspots, file types and areas.
 The path is relative to the repository root, whichever directory you run from, and matched
-literally: `*.md` is a file of that name, not a pattern. A directory takes everything under it. A
+literally: `*.md` is a file of that name, not a pattern, and a space at either end is part of the
+path. A directory takes everything under it. A
 commit that changed only excluded paths is not counted; one that also changed something else is
 counted, without the excluded lines. A path no commit on the branch ever changed is reported on
 stderr (usually a typo). The paths are stated in the report header, the summary and the JSON
