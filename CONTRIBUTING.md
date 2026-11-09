@@ -108,7 +108,7 @@ Ruff handles linting and import ordering, including its security rules (`S`): wh
 broken, write `# noqa: S<code>  <reason>` on that line. Mypy runs in strict mode. Type annotations are required
 on every function signature. Prefer early returns to nested conditionals.
 
-Run `make ci` before pushing; [AGENTS.md](AGENTS.md) lists the checks it runs.
+Run `make ci` before pushing; [AGENTS.md](AGENTS.md) lists the checks it runs. The pre-commit hooks run `make` targets, so `make` must be on `PATH`.
 
 ## Commit Messages
 
