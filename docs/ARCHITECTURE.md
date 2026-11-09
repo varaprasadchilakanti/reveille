@@ -202,8 +202,7 @@ default report.
 because `Commit.stats` shells out to `git diff` once per commit. Beside it run a
 `git rev-list --no-merges` that authenticates each record and a second `git log` that reads only
 `Co-authored-by` trailers ([ADR-0019](adr/0019-how-history-is-read.md), which supersedes
-[ADR-0004](adr/0004-single-pass-numstat-read.md)). Timings are in the
-[User Guide](USER_GUIDE.md#how-reveille-works). Merge commits are always excluded
+[ADR-0004](adr/0004-single-pass-numstat-read.md)). Merge commits are always excluded
 ([ADR-0001](adr/0001-exclude-merge-commits.md)). An unborn `HEAD` raises `EmptyRepositoryError`,
 which the CLI maps to `NEGATIVE`.
 
@@ -313,7 +312,7 @@ Tests that protect properties which could erode unnoticed:
 | Tool | Role |
 |---|---|
 | Poetry | Dependencies, virtualenv, build, publish |
-| ruff | Lint (E,W,F,I,C,B,UP,N,SIM,D,RUF) and format; the sole formatter |
+| ruff | Lint (the rules `select`ed in `pyproject.toml`) and format; the sole formatter |
 | mypy `strict` | Type checking |
 | pytest + xdist + cov | Testing, parallelism, coverage |
 | pre-commit (`repo: local`) | ruff and mypy inside the Poetry venv, so versions cannot diverge from CI |

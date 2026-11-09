@@ -48,6 +48,9 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Changed
 
+- The User Guide no longer says the exit codes change only with a major version: before 1.0 a
+  minor release may change when one is returned, and the CHANGELOG says so. It now also states
+  that a pipe closed early, as by `| head`, exits 0.
 - A command writes UTF-8 to a pipe or a file whatever the locale's encoding; a terminal keeps
   its own.
 - The README opening and the PyPI description are reworded.

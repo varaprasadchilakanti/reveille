@@ -432,14 +432,19 @@ only. Whoever wrote the commit wrote the trailer; it is not verified
 
 ## Exit Codes
 
-Every command returns one of three codes; they will not change without a major version bump. More
-detail goes to stderr, not into new codes, which would break scripts that branch on these.
+Every command returns one of three codes. A change to when a code is returned is stated in the
+CHANGELOG; before 1.0 a minor release may make one, as [Semantic Versioning](https://semver.org/)
+allows for `0.y.z`. More detail goes to stderr, not into new codes, which would break scripts that
+branch on these.
 
 | Code | Meaning | When |
 |---|---|---|
 | `0` | Success | The command ran and its answer is affirmative. |
 | `1` | Negative answer | Reveille ran correctly and the state does not satisfy the request: the analysis window has no commits, the repository has none, `brief` finds none since its starting point, no commit changed the path given to `who-changed`, or `repos` finds no repository. |
-| `2` | Could not run | An invalid flag value, malformed configuration, a path that is not a readable Git repository (including one Git refuses because another user owns it, and a SHA-256 repository), an output location that cannot be written, or an error Reveille did not anticipate. |
+| `2` | Could not run | An invalid flag value, malformed configuration, a path that is not a readable Git repository (including one Git refuses because another user owns it, and a SHA-256 repository), an output location that cannot be written, `brief` with no starting point in a repository without a tag, commits in the window that could not be read, or an error Reveille did not anticipate. |
+
+When the program reading standard output closes it early, as `| head` does, the command stops and
+exits `0`: the output is cut short, not wrong.
 
 Script against the difference between `1` and `2`: a negative answer may be an acceptable state (a
 new repository has nothing to report); an inability to run is a broken pipeline step.
@@ -534,7 +539,7 @@ For an agent, or a person, starting work, the commands go in this order:
 
 `reveille skill` prints this as a section to paste into `AGENTS.md`, `CLAUDE.md` or another
 instructions file. `--format skill` prints it as a `SKILL.md`, with the `name` and `description`
-frontmatter an agent loads it by. It reads no repository, is about 1.9 KB, and a test runs every
+frontmatter an agent loads it by. It reads no repository, is about 2 KB (2.5 KB as a `SKILL.md`), and a test runs every
 command it names against a repository.
 
 ```bash
@@ -923,7 +928,9 @@ To share a report from a shared machine or a web directory, change its permissio
 
 ## The Ranking Algorithm
 
-Each listed contributor gets a composite score from four metrics, each in [0, 1]:
+Each listed contributor gets a composite score from four metrics, each in [0, 1]. An automated
+account listed in the table is scored, tiered and counted in the percentiles like a person; leave
+it out with `--exclude-author`.
 
 - **Commit volume**: commits in the window, min-max normalised across contributors.
 - **Lines contributed**: lines added plus deleted, normalised the same way. It counts lines of any

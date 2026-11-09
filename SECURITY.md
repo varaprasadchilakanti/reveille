@@ -154,7 +154,7 @@ Each boundary, what crosses it, and the test that fails without the defence:
 | Boundary | Threat | Defence | Test |
 |---|---|---|---|
 | Repository config to the user's shell | A config key starts a program | `-c` pins and a scrubbed environment on every Git call ([ADR 0019](docs/adr/0019-how-history-is-read.md)) | `test_repository_config_programs.py` |
-| Ref names to Git's arguments | An option-shaped name makes Git write a file | `--end-of-options` before every ref | `test_security.py::test_branch_beginning_with_a_dash_is_refused` |
+| Ref names to Git's arguments | An option-shaped name makes Git write a file | A revision beginning with `-` refused; `--end-of-options` before each ref, except in the `rev-parse --verify` of a given revision and in `merge-base`, which get only names so checked or SHAs | `test_security.py::test_branch_beginning_with_a_dash_is_refused` |
 | Author fields to the parser | A separator in a name forges a contributor | Control characters are removed from names when read | `test_security.py::test_separator_injection_in_an_author_name_creates_no_contributors` |
 | Repository text to the browser | A name runs script in the report | Autoescape, `<` escaped in embedded JSON, a Content-Security-Policy | `test_security.py::test_an_address_cannot_close_the_script_that_carries_the_chart_data` |
 | Repository text to a spreadsheet | A name starting `=` runs as a formula | A leading apostrophe | `test_security.py::test_a_dangerous_name_cannot_start_a_cell` |
@@ -203,9 +203,10 @@ v0.10.0 closed these, each with a test that fails without the fix. The entries a
 
 - **Programs and hangs a repository could cause:** named pipes or devices at files Git
   reads (config, includes, attributes, ignore files, `.mailmap`, `diff.orderFile`), an
-  empty filter name in `state`, and `i18n.logOutputEncoding`. Every other Git command is
-  stopped after 300 seconds (on a timeout GitPython runs `pgrep` or `ps` to find Git's
-  children); `git status` in `state` after 120 seconds. On Windows, where GitPython cannot
+  empty filter name in `state`, and `i18n.logOutputEncoding`. A history read is stopped when it
+  writes nothing for 300 seconds, and every other Git command after 300 seconds (on a timeout
+  GitPython runs `pgrep` or `ps` to find Git's children); `git status` in `state` after 120
+  seconds. On Windows, where GitPython cannot
   stop a command, only a history read that writes nothing for 300 seconds is. Refs and
   objects, alternates followed, are checked before Git runs, because GitPython reads them
   itself.
