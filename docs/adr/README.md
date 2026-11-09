@@ -61,6 +61,7 @@ it exists.
 | [0029](0029-the-html-names-a-bounded-list.md) | The HTML report names at most 1,000 people, or `--limit` | Accepted | `test_html_names_a_bounded_list.py` |
 | [0030](0030-repos-reads-a-git-link-and-no-store-twice.md) | `repos` reads a `.git` link, and gives a used Git directory no row of its own | Accepted | `test_repos.py::test_a_git_directory_a_working_tree_here_uses_is_not_a_row_of_its_own` |
 | [0031](0031-brief-until-starts-at-a-tag-before-it.md) | `brief --until` starts at the latest tag on or before that day | Accepted | `test_brief_tag_before_until.py` |
+| [0032](0032-gitpython-stays-the-runner.md) | GitPython stays as the Git runner | Proposed | `test_layering.py::test_the_probe_can_actually_see_a_framework` |
 
 ## Drift since acceptance
 
