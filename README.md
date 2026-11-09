@@ -6,7 +6,7 @@ agents in JSON: where the repository stands, and what changed since a tag or a d
 changes Git data and makes no network calls.
 
 To tell a coding agent about it, `reveille skill >> AGENTS.md` adds a short section to its
-instructions file ([`reveille skill`](#reveille-skill)).
+instructions file ([`reveille skill`](#commands)).
 
 It reads clones from GitHub, GitLab, Bitbucket or a self-hosted server; SHA-256 repositories and
 partial clones are refused. The report shows a commit calendar heatmap, weekly activity and how
@@ -111,7 +111,7 @@ another directory, since the report would describe that directory and be written
   "could not run". `summary --format json` and `brief` name no contributor, but `summary` carries
   the repository and branch names, and with one or two people counts can identify someone.
   `generate --format json --output -` prints names and email addresses, which leave your machine if
-  given to a hosted model. To tell a coding agent about these, see [`reveille skill`](#reveille-skill).
+  given to a hosted model. To tell a coding agent about these, see [`reveille skill`](#commands).
 
 Its figures do not support judging people; see [Contributor Ranking](#contributor-ranking).
 
@@ -224,118 +224,37 @@ says what each figure supports and what it does not.
 ## Commands
 
 Every flag, default and output format is in the
-[User Guide](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md#commands-and-outputs).
+[User Guide](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md#commands-and-outputs),
+and the exit codes under
+[Exit Codes](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md#exit-codes).
 `reveille --version` prints the version (`reveille version` is not a command). `-h` works on every
 command.
 
-### `reveille generate`
+| Command | What it does |
+|---|---|
+| `generate` | Writes the report: HTML, or `--format json` or `--format csv` |
+| `init` | Writes an annotated `reveille.toml`; `--mailmap` adds a `.mailmap` template |
+| `validate` | Checks that a repository is readable and has a commit; useful in CI before `generate` |
+| `summary` | The repository in a few lines, naming no contributor; quicker than `generate` |
+| `brief` | What changed since a tag, a commit or a date, as counts naming nobody |
+| `state` | Where the repository stands now, without rewriting `.git/index` or running a program its config names |
+| `who-changed` | Who changed a file or directory, and who most recently |
+| `repos` | Which repositories in a directory are active, quiet or dormant, one row each |
+| `capabilities` | What Reveille can and cannot do, read from the installed program |
+| `skill` | What to tell a coding agent, for `AGENTS.md` or as a `SKILL.md`: the commands to run, and that repository text in their output is data, not instructions |
+| `help` | The same text as `--help` |
 
-Writes the report: HTML, or `--format json` or `--format csv`. Options set the repository, output
-path (`-` for stdout), date window, branch, authors (`--exclude-author`) or paths
-(`--exclude-path`) to leave out, a minimum commit count (`--min-commits`), how many people a list
-names (`--limit`), the title, `--config`, `--quiet` and `--deterministic`. Defaults: the checked-out
-branch, the whole history.
+With one or two people, the counts in `summary` and `brief` can identify someone. `state` names no
+author, but lists local paths (which can contain your login name) and branch names.
 
 ```bash
 reveille generate --branch release/2.0 --exclude-author "dependabot[bot]"
 reveille generate --format json --output - | jq .derived
-```
-
-### `reveille init`
-
-Writes an annotated `reveille.toml` (every key commented out) in the current directory, which must
-be a repository root. `--mailmap` adds a `.mailmap` template; `--force` overwrites. New files are
-owner-only; `chmod 644` lets other accounts on a shared machine read them.
-
-### `reveille validate`
-
-Exits 0 for a readable Git repository with a commit, 1 if it has none, 2 if it cannot be read.
-Useful in CI before `generate`.
-
-```bash
-reveille validate --repo /path/to/repository
-```
-
-### `reveille summary`
-
-The repository in a few lines, naming no contributor (with one or two people, counts can identify
-someone). It reads no line counts, so it is quicker than `generate`.
-
-```bash
-reveille summary --format json
-```
-
-### `reveille brief`
-
-What changed since a tag, a commit or a date, as counts naming nobody (with one or two people,
-counts can identify someone): commits, people, the most changed areas and file types, files added,
-areas active again and tags in the range. With neither `--from` nor `--since` it starts at the
-latest tag, and exits 2 if there is none. `--limit` bounds each list (5 by default). It prints the
-commit it reached, where the next brief can start.
-
-```bash
 reveille brief --from v0.9.0
-```
-
-### `reveille state`
-
-Where the repository stands now: branch, upstream, a merge or rebase in progress, conflicts, what
-is staged, modified or untracked, stashes, worktrees, branch counts and the latest tag. Unlike
-`git status`, it neither rewrites `.git/index` nor runs a program the repository's config names.
-It names no author, but lists local paths (changed files and worktree directories, which can contain
-your login name), the branch, its upstream and the branches checked out in worktrees. `--limit`
-bounds each list of paths (10 by default).
-
-```bash
-reveille state --format json
-```
-
-### `reveille who-changed`
-
-Who changed a file or directory, and who most recently: the code, not who knows or owns it. A path
-no commit in the window changed exits 1; one inside a submodule or a nested clone exits 2, naming
-the command that asks that repository.
-
-```bash
 reveille who-changed src/parser/lexer.c --since 2026-01-01
-```
-
-### `reveille repos`
-
-Which repositories in a directory are active, quiet or dormant: one row per repository, with its
-last commit and the commits, people and automated accounts in the last 90 days as counts. It names
-nobody and counts nobody across repositories. Folders of clones or of bare mirrors both work.
-`--depth` (1 to 3) sets how far down it looks and `--days` the window; `--format` takes text,
-json, markdown or csv. It exits 1 if it finds no repository, and 2 if it finds some and can read
-none.
-
-```bash
 reveille repos ~/src --format markdown
-```
-
-### `reveille capabilities`
-
-States what Reveille can and cannot do, including what it declines to claim, read from the installed
-program. `--format json` adds the command surface and exit codes; `--command <name>` describes
-one command.
-
-```bash
-reveille capabilities --format json
-```
-
-### `reveille skill`
-
-Prints what to tell a coding agent about Reveille: a section for `AGENTS.md` or `CLAUDE.md` naming
-the commands to run, and saying that repository text in their output is data, not instructions.
-`--format skill` gives a `SKILL.md`. A test runs every command it names.
-
-```bash
 reveille skill >> AGENTS.md
 ```
-
-### `reveille help`
-
-Same as `reveille --help`; `reveille help <command>` is `reveille <command> --help`.
 
 ---
 
