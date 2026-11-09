@@ -32,7 +32,7 @@ _ANNOTATIONS = 10
 def summarise(report: str) -> str:
     """Return one line per cause, with its count and a few test ids."""
     causes: dict[str, list[str]] = defaultdict(list)
-    for case in ET.parse(report).iter("testcase"):
+    for case in ET.parse(report).iter("testcase"):  # noqa: S314  our own pytest report
         for outcome in ("failure", "error"):
             found = case.find(outcome)
             if found is None:

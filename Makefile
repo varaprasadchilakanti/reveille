@@ -125,7 +125,7 @@ typecheck:  ## Run mypy in strict mode
 	poetry run mypy src scripts
 
 precommit:  ## Run all pre-commit hooks against every tracked file
-	poetry run pre-commit run --all-files
+	SKIP=no-commit-to-branch poetry run pre-commit run --all-files
 
 # ------------------------------------------------------------------
 # Testing

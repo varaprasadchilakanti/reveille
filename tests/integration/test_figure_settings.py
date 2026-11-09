@@ -51,7 +51,7 @@ def repo(tmp_path_factory: pytest.TempPathFactory) -> Path:
     path = tmp_path_factory.mktemp("figures") / "r"
     path.mkdir()
     _git(path, "init", "-q", "-b", "main")
-    rng = random.Random(1)
+    rng = random.Random(1)  # noqa: S311  seeded test data
     (path / "a.py").write_text("".join(f"line {i} {rng.random()}\n" for i in range(400)))
     (path / "big.txt").write_text("".join(f"row {i}\n" for i in range(20000)))
     _git(path, "add", "-A")

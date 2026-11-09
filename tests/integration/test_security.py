@@ -269,6 +269,12 @@ class TestCsvFormulaInjection:
             "@SUM(1+1)*cmd",
             "-2+3+cmd",
             "\tsneaky",
+            "\r=1+1",
+            "\n=1+1",
+            "\uff1d1+1",
+            "\uff0b1+1",
+            "\uff0d1+1",
+            "\uff201+1",
         ],
     )
     def test_a_dangerous_name_cannot_start_a_cell(self, payload: str, tmp_path: Path) -> None:
@@ -280,7 +286,7 @@ class TestCsvFormulaInjection:
             rows = list(csv.DictReader(handle))
 
         assert rows, "no rows written"
-        assert not rows[0]["name"].startswith(("=", "+", "-", "@", "\t", "\r"))
+        assert rows[0]["name"].startswith("'")
 
     def test_an_ordinary_name_is_left_alone(self, tmp_path: Path) -> None:
         """The mitigation must not corrupt normal data."""

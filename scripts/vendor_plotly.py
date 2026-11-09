@@ -70,7 +70,7 @@ THE SOFTWARE.
 
 
 def _fetch(url: str) -> bytes:
-    with urllib.request.urlopen(url, timeout=120) as response:
+    with urllib.request.urlopen(url, timeout=120) as response:  # noqa: S310  constant https URLs
         data: bytes = response.read()
     return data
 

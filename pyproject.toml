@@ -179,6 +179,7 @@ select = [
     "D",    # pydocstyle
     "RUF",  # ruff-specific rules
     "TD",   # flake8-todos: the TODO format
+    "S",    # flake8-bandit: security
 ]
 ignore = [
     "E501",  # line too long (handled by formatter)
@@ -193,7 +194,9 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401", "F403"]
-"tests/**/*.py" = ["S101", "D"]
+# Tests and the sample-repository script start `git` by name; the script seeds `random`.
+"tests/**/*.py" = ["S101", "S603", "S607", "D"]
+"docs/images/make_sample_repository.py" = ["S311", "S603", "S607"]
 
 [tool.ruff.lint.mccabe]
 # Set explicitly: the `C` selector already enables C901 through mccabe, and the

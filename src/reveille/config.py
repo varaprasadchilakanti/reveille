@@ -98,7 +98,8 @@ class ReportConfig(BaseModel):
             paths: The paths as given.
 
         Returns:
-            The paths without surrounding spaces or trailing slashes.
+            The paths without trailing slashes or a leading `./`; spaces are kept, as
+            a path may begin or end with one.
 
         Raises:
             ValueError: If a path is empty, absolute, climbs out with `..`, or
@@ -106,10 +107,10 @@ class ReportConfig(BaseModel):
         """
         normalised: list[str] = []
         for raw in paths:
-            path = raw.strip().rstrip("/")
+            path = raw.rstrip("/")
             while path.startswith("./"):
                 path = path[2:]
-            if not path or path == ".":
+            if not path.strip() or path == ".":
                 raise ValueError(f"an excluded path is empty: {raw!r}.")
             if path.startswith("/") or (len(path) > 1 and path[1] == ":"):
                 raise ValueError(

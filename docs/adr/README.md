@@ -18,43 +18,50 @@ this index marks it superseded. The history is the point.
 **Context** — the situation and the constraint. **Decision** — what was
 chosen, stated plainly. **Consequences** — what this costs, including
 what it rules out. **Status** — Proposed, Accepted, Superseded by NNNN (wholly or
-in part), or Deprecated.
+in part), or Deprecated. From 0032 on, a closing `**Confirmation:**` line names the test that
+should fail if the decision is undone.
+
+For earlier records the index's "Confirmed by" column names a test that cites or exercises the
+record, so no accepted record is edited; "—" means the record is wholly superseded. That the named
+test would fail if the decision were undone is a judgement: `test_adr_index.py` checks only that
+it exists.
 
 ## Index
 
-| # | Decision | Status |
-|---|---|---|
-| [0001](0001-exclude-merge-commits.md) | Merge commits are excluded unconditionally | Accepted |
-| [0002](0002-email-as-identity-key.md) | Email is the contributor identity key | Accepted; extended by 0020; partly superseded by 0023 |
-| [0003](0003-bisect-left-for-percentile-ties.md) | Percentiles use lower-bound ranking | Accepted |
-| [0004](0004-single-pass-numstat-read.md) | History is read in a single `git log --numstat` pass | Superseded by 0019 |
-| [0005](0005-commit-concentration-not-bus-factor.md) | The concentration metric is not called a bus factor | Accepted |
-| [0006](0006-offline-single-file-report.md) | The report is a single offline file | Accepted; bundle source superseded by 0027 |
-| [0007](0007-apache-2-0-licence.md) | The licence moves from MIT to Apache-2.0 | Accepted; §5 qualified by 0009 |
-| [0008](0008-output-provenance-and-schema-version.md) | Output records its own provenance and declares a schema version | Accepted; partly superseded by 0021 |
-| [0009](0009-contributor-licence-agreement.md) | A contributor licence agreement is required for pull requests | Accepted |
-| [0010](0010-ranking-is-opt-in.md) | The contributor ranking is opt-in, and distribution is measured instead | Accepted; Lorenz population changed by 0017 |
-| [0011](0011-filters-choose-the-listing-not-the-analysis.md) | A filter chooses who is listed, not what the figures are about | Accepted; partly superseded by 0017 |
-| [0012](0012-the-repository-profile-is-a-table.md) | The repository profile is three measures in a table, not five on a radar | Accepted; partly superseded by 0016 |
-| [0013](0013-who-changes-what-is-opt-in-and-area-first.md) | "Who changes what" is opt-in, and organised by area, not by person | Accepted |
-| [0014](0014-co-authors-are-a-separate-fact.md) | Co-authors are read from trailers and reported as a separate fact | Accepted |
-| [0015](0015-an-interface-for-agents.md) | An interface for agents: summary, who-changed, stdout and bounded lists | Accepted; `--limit` extended to HTML by 0029 |
-| [0016](0016-the-profile-shape-returns-as-a-flower.md) | The repository profile's shape returns, as six separate petals beside the table (above it on a narrow screen) | Accepted |
-| [0017](0017-distribution-figures-count-people.md) | The distribution figures count people; automated accounts are stated beside them | Accepted |
-| [0018](0018-replace-refs-are-not-honoured.md) | Reveille reads the objects its hashes name; replace refs are not honoured | Accepted |
-| [0019](0019-how-history-is-read.md) | How history is read: an allowlisted log, and nothing lost without a word | Accepted |
-| [0020](0020-exclude-author-removes-a-person-by-address.md) | `--exclude-author` removes a person by every address the value reaches | Accepted |
-| [0021](0021-what-provenance-records-about-filters-and-time.md) | What provenance records about filters and time | Accepted |
-| [0022](0022-a-brief-from-a-point.md) | A brief from a point: `reveille brief --from` | Accepted; partly superseded by 0025 |
-| [0023](0023-noreply-addresses-fold-on-the-account-number.md) | GitHub noreply addresses fold on the account number | Accepted |
-| [0024](0024-the-state-of-a-repository-now.md) | The state of a repository now: `reveille state` | Accepted |
-| [0025](0025-brief-starts-at-the-latest-tag.md) | `brief` starts at the latest tag when no point is given | Accepted; which tag with `--until`, superseded by 0031 |
-| [0026](0026-many-repositories-one-row-each.md) | Many repositories, one row each: `reveille repos` | Accepted; exit-code consequence superseded by 0028, what counts as a working tree by 0030 |
-| [0027](0027-the-report-embeds-a-pinned-cartesian-bundle.md) | The report embeds a pinned plotly.js cartesian bundle, with its licences | Accepted |
-| [0028](0028-repos-exits-2-when-nothing-was-read.md) | `repos` exits 2 when no repository it found could be read | Accepted |
-| [0029](0029-the-html-names-a-bounded-list.md) | The HTML report names at most 1,000 people, or `--limit` | Accepted |
-| [0030](0030-repos-reads-a-git-link-and-no-store-twice.md) | `repos` reads a `.git` link, and gives a used Git directory no row of its own | Accepted |
-| [0031](0031-brief-until-starts-at-a-tag-before-it.md) | `brief --until` starts at the latest tag on or before that day | Accepted |
+| # | Decision | Status | Confirmed by |
+|---|---|---|---|
+| [0001](0001-exclude-merge-commits.md) | Merge commits are excluded unconditionally | Accepted | `test_merge_commits.py` |
+| [0002](0002-email-as-identity-key.md) | Email is the contributor identity key | Accepted; extended by 0020; partly superseded by 0023 | `test_exclude_a_person.py` |
+| [0003](0003-bisect-left-for-percentile-ties.md) | Percentiles use lower-bound ranking | Accepted | `test_ranking.py::test_tied_composite_scores_receive_lower_bound_percentile` |
+| [0004](0004-single-pass-numstat-read.md) | History is read in a single `git log --numstat` pass | Superseded by 0019 | — |
+| [0005](0005-commit-concentration-not-bus-factor.md) | The concentration metric is not called a bus factor | Accepted | `test_summary.py::test_concentration_carries_the_bus_factor_caveat` |
+| [0006](0006-offline-single-file-report.md) | The report is a single offline file | Accepted; bundle source superseded by 0027 | `test_cli.py::test_no_markup_attribute_fetches_a_remote_resource` |
+| [0007](0007-apache-2-0-licence.md) | The licence moves from MIT to Apache-2.0 | Accepted; §5 qualified by 0009 | `test_licence.py` |
+| [0008](0008-output-provenance-and-schema-version.md) | Output records its own provenance and declares a schema version | Accepted; partly superseded by 0021 | `test_provenance.py::test_schema_version_is_the_first_key` |
+| [0009](0009-contributor-licence-agreement.md) | A contributor licence agreement is required for pull requests | Accepted | `test_cla_gate.py` |
+| [0010](0010-ranking-is-opt-in.md) | The contributor ranking is opt-in, and distribution is measured instead | Accepted; Lorenz population changed by 0017 | `test_ranking_presentation.py` |
+| [0011](0011-filters-choose-the-listing-not-the-analysis.md) | A filter chooses who is listed, not what the figures are about | Accepted; partly superseded by 0017 | `test_filter_disclosure.py` |
+| [0012](0012-the-repository-profile-is-a-table.md) | The repository profile is three measures in a table, not five on a radar | Accepted; partly superseded by 0016 | `test_profile.py` |
+| [0013](0013-who-changes-what-is-opt-in-and-area-first.md) | "Who changes what" is opt-in, and organised by area, not by person | Accepted | `test_area_authors.py` |
+| [0014](0014-co-authors-are-a-separate-fact.md) | Co-authors are read from trailers and reported as a separate fact | Accepted | `test_co_authors.py` |
+| [0015](0015-an-interface-for-agents.md) | An interface for agents: summary, who-changed, stdout and bounded lists | Accepted; `--limit` extended to HTML by 0029 | `test_agent_interface.py` |
+| [0016](0016-the-profile-shape-returns-as-a-flower.md) | The repository profile's shape returns, as six separate petals beside the table (above it on a narrow screen) | Accepted | `test_file_charts.py::test_six_separate_petals_in_inline_svg` |
+| [0017](0017-distribution-figures-count-people.md) | The distribution figures count people; automated accounts are stated beside them | Accepted | `test_people_and_automation.py` |
+| [0018](0018-replace-refs-are-not-honoured.md) | Reveille reads the objects its hashes name; replace refs are not honoured | Accepted | `test_replace_refs.py` |
+| [0019](0019-how-history-is-read.md) | How history is read: an allowlisted log, and nothing lost without a word | Accepted | `test_unreadable_commits.py` |
+| [0020](0020-exclude-author-removes-a-person-by-address.md) | `--exclude-author` removes a person by every address the value reaches | Accepted | `test_exclude_a_person.py` |
+| [0021](0021-what-provenance-records-about-filters-and-time.md) | What provenance records about filters and time | Accepted | `test_provenance.py::test_records_filters_as_stated_parameters` |
+| [0022](0022-a-brief-from-a-point.md) | A brief from a point: `reveille brief --from` | Accepted; partly superseded by 0025 | `test_brief.py` |
+| [0023](0023-noreply-addresses-fold-on-the-account-number.md) | GitHub noreply addresses fold on the account number | Accepted | `test_git_reader.py::test_both_forms_take_the_accounts_address` |
+| [0024](0024-the-state-of-a-repository-now.md) | The state of a repository now: `reveille state` | Accepted | `test_state.py` |
+| [0025](0025-brief-starts-at-the-latest-tag.md) | `brief` starts at the latest tag when no point is given | Accepted; which tag with `--until`, superseded by 0031 | `test_brief_tag_before_until.py` |
+| [0026](0026-many-repositories-one-row-each.md) | Many repositories, one row each: `reveille repos` | Accepted; exit-code consequence superseded by 0028, what counts as a working tree by 0030 | `test_repos.py` |
+| [0027](0027-the-report-embeds-a-pinned-cartesian-bundle.md) | The report embeds a pinned plotly.js cartesian bundle, with its licences | Accepted | `test_vendored_bundle.py` |
+| [0028](0028-repos-exits-2-when-nothing-was-read.md) | `repos` exits 2 when no repository it found could be read | Accepted | `test_repos.py` |
+| [0029](0029-the-html-names-a-bounded-list.md) | The HTML report names at most 1,000 people, or `--limit` | Accepted | `test_html_names_a_bounded_list.py` |
+| [0030](0030-repos-reads-a-git-link-and-no-store-twice.md) | `repos` reads a `.git` link, and gives a used Git directory no row of its own | Accepted | `test_repos.py::test_a_git_directory_a_working_tree_here_uses_is_not_a_row_of_its_own` |
+| [0031](0031-brief-until-starts-at-a-tag-before-it.md) | `brief --until` starts at the latest tag on or before that day | Accepted | `test_brief_tag_before_until.py` |
+| [0032](0032-gitpython-stays-the-runner.md) | GitPython stays as the Git runner | Proposed | `test_layering.py::test_the_probe_can_actually_see_a_framework` |
 
 ## Drift since acceptance
 

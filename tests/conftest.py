@@ -17,7 +17,7 @@ import pytest
 
 from reveille.domain.models import Commit, ContributorStats
 
-# TODO: one shared `git` helper for the ~36 `_git` copies in tests (identity, stdin as bytes)
+# TODO(conftest): one shared `git` helper for the ~36 `_git` copies (identity, stdin as bytes).
 _EMPTY_CONFIG_HOME = pytest.StashKey[Path]()
 
 

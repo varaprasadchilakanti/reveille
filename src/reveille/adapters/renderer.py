@@ -154,7 +154,7 @@ def _script_sources(*scripts: str) -> Markup:
     Returns:
         One `'sha256-...'` source per script, space-separated.
     """
-    return Markup(
+    return Markup(  # noqa: S704  base64 hashes hold no markup
         " ".join(
             f"'sha256-{base64.b64encode(hashlib.sha256(str(script).encode()).digest()).decode()}'"
             for script in scripts
@@ -990,7 +990,7 @@ class Renderer:
             # The table's rows, and how many listed contributors it leaves to JSON and CSV.
             "html_listed": _html_listed(data),
             "html_unlisted": len(data.ranked_contributors) - len(_html_listed(data)),
-            # TODO: call generated_churn and _html_listed once each, not twice.
+            # TODO(renderer): call generated_churn and _html_listed once each (each runs twice).
             # What the hotspot ranking leaves out, stated beside it.
             "generated_files": generated_churn(data.file_stats)[0],
             "generated_lines": generated_churn(data.file_stats)[1],
@@ -1798,7 +1798,7 @@ def _build_commit_size_chart(commits: list[Commit]) -> str:
     dash = "\u2013"  # en dash, written as an escape so it cannot be mistaken
     labels = [*(f"{low:,}{dash}{high - 1:,}" for low, high in itertools.pairwise(edges)), "5,000+"]
     buckets = [0] * len(labels)
-    # TODO: bisect.bisect_right(edges, size) - 1 would replace this loop and the median's.
+    # TODO(renderer): bisect.bisect_right(edges, size) - 1 here and in the median (replaces two loops).
     for commit in commits:
         size = commit.lines_added + commit.lines_deleted
         index = len(edges) - 1
@@ -2038,8 +2038,21 @@ def _build_lorenz_chart(counts: list[int]) -> str:
 
 
 # Leading characters that make a spreadsheet read a cell as a formula; a
-# leading tab or carriage return is skipped, exposing what follows.
-_CSV_FORMULA_PREFIXES: tuple[str, ...] = ("=", "+", "-", "@", "\t", "\r")
+# leading tab, carriage return or line feed is skipped, exposing what follows.
+# The full-width forms of = + - @ are treated the same.
+_CSV_FORMULA_PREFIXES: tuple[str, ...] = (
+    "=",
+    "+",
+    "-",
+    "@",
+    "\t",
+    "\r",
+    "\n",
+    "\uff1d",
+    "\uff0b",
+    "\uff0d",
+    "\uff20",
+)
 
 
 def _assert_not_symlink(output_path: Path) -> None:

@@ -33,6 +33,9 @@ repos:
       - id: check-case-conflict
       - id: check-merge-conflict
       - id: detect-private-key
+      # Refuses a commit on main. It fails on main whatever the files, so CI
+      # names the hooks it runs and `make precommit` skips it.
+      - id: no-commit-to-branch
 
 # ------------------------------------------------------------------
 # Workflow correctness
