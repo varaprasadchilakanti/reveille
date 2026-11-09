@@ -36,10 +36,12 @@ Verify the environment with `poetry run reveille --version` and `make ci`. The c
 ## Supported operating systems
 
 Linux, Windows and macOS. CI runs the full suite on Linux for every supported CPython, and on
-Windows and macOS for the lowest and highest (`test-other-os` in `.github/workflows/ci.yml`). Where
-Windows lacks a POSIX call, the code takes another branch, and
-`tests/unit/test_windows_fallbacks.py` runs the write and no-follow fallbacks on every platform. A
-test that needs a POSIX feature is skipped where it is missing, with the reason.
+Windows and macOS for the lowest and highest (`test-other-os` in `.github/workflows/ci.yml`). A pull
+request that changes only Markdown, `llms.txt` or PNG and SVG images runs the suite on Linux 3.11
+alone; the other legs pass with their steps skipped. Where Windows lacks a POSIX call, the code
+takes another branch, and `tests/unit/test_windows_fallbacks.py` runs the write and no-follow
+fallbacks on every platform. A test that needs a POSIX feature is skipped where it is missing, with
+the reason.
 
 ## Supported Python versions
 
