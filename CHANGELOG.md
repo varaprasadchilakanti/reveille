@@ -63,6 +63,9 @@ before 0.8.0 predate the convention and are left as they were released.
 - `SECURITY.md` states a first reply to a vulnerability report within 14 days.
 - `SECURITY.md` lists each boundary of the threat model with the test that fails without its
   defence.
+- Dependabot no longer raises the declared dependency floors (`versioning-strategy: widen`).
+- A tracked `poetry.toml` makes `poetry lock` and `poetry update` skip releases under 7 days old,
+  matching Dependabot's cooldown. It needs Poetry 2.4 or newer.
 
 ### Security
 

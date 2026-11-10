@@ -76,7 +76,6 @@ venv.bak/
 #   https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file-to-version-control
 # ------------------------------------------------------------------
 
-poetry.toml
 
 
 # ------------------------------------------------------------------
