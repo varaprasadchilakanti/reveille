@@ -5,22 +5,32 @@ Reveille reads a local clone and writes a single HTML report, and answers script
 agents in JSON: where the repository stands, and what changed since a tag or a date. It never
 changes Git data and makes no network calls.
 
-To tell a coding agent about it, `reveille skill >> AGENTS.md` adds a short section to its
-instructions file ([`reveille skill`](#commands)).
-
-It reads clones from GitHub, GitLab, Bitbucket or a self-hosted server; SHA-256 repositories and
-partial clones are refused. The report shows a commit calendar heatmap, weekly activity and how
-commits are spread across contributors. `reveille state` and `reveille brief` say where the
-repository stands and what changed, from local history.
-
 [![PyPI](https://img.shields.io/pypi/v/reveille)](https://pypi.org/project/reveille/)
 [![Python](https://img.shields.io/pypi/pyversions/reveille)](https://pypi.org/project/reveille/)
 [![Licence: Apache-2.0](https://img.shields.io/badge/licence-Apache--2.0-blue)](https://github.com/varaprasadchilakanti/reveille/blob/main/LICENSE)
 [![CI](https://github.com/varaprasadchilakanti/reveille/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/varaprasadchilakanti/reveille/actions/workflows/ci.yml)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14502/badge)](https://www.bestpractices.dev/projects/14502)
 [![Coverage](https://codecov.io/gh/varaprasadchilakanti/reveille/graph/badge.svg)](https://codecov.io/gh/varaprasadchilakanti/reveille)
-[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-[![Checked with mypy](https://www.mypy-lang.org/static/mypy_badge.svg)](https://mypy-lang.org/)
+
+```bash
+pipx install reveille
+cd /path/to/repository
+reveille generate     # writes the HTML report
+reveille summary      # commit counts and spread, as text
+```
+
+Run on the sample repository pictured below (invented contributors),
+`reveille summary --deterministic` prints:
+
+```text
+sample-service (main), 2025-01-06 to 2025-12-18
+380 commits by 6 authors and 1 automated account; Gini 0.26, longest quiet run 10 days.
+- 380 commits over 347 days, landing on 211 distinct days.
+- Commits are spread across 6 contributors with no single majority; the busiest holds 30%.
+- Typically 1 day between active days, with a longest quiet run of 10 days.
+- 28 commits credit a co-author.
+Computed from Git history by fixed rules, offline. History can be incomplete or wrong (rewritten, shallow, misdated, split identities); check before relying on it for a decision.
+```
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/varaprasadchilakanti/reveille/main/docs/images/report-dark.png">
@@ -31,15 +41,18 @@ repository stands and what changed, from local history.
 [`docs/images/make_sample_repository.py`](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/images/make_sample_repository.py)
 and rendered with `reveille generate --deterministic`.*
 
-The report also shows where change concentrates and a per-contributor table; the figures are also
-JSON or CSV. `state`, `brief`, `summary` and `who-changed` answer single questions as text or JSON;
-the first three also give Markdown, and `state` and `brief` one line.
+**For coding agents.** `reveille skill >> AGENTS.md` adds a short section to the agent's
+instructions file. `state`, `brief`, `summary` and `who-changed` answer with `--format json`; each
+JSON document carries a `schema_version`. Exit `1` is a negative answer and `2` means it could not
+run ([exit codes](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/USER_GUIDE.md#exit-codes)).
+[`llms.txt`](https://github.com/varaprasadchilakanti/reveille/blob/main/llms.txt) indexes the
+documentation.
 
-```bash
-pipx install reveille
-cd /path/to/repository
-reveille generate
-```
+It reads clones from GitHub, GitLab, Bitbucket or a self-hosted server; SHA-256 repositories and
+partial clones are refused. The report shows a commit calendar heatmap, weekly activity, how
+commits are spread across contributors, where change concentrates and a per-contributor table; the
+figures are also JSON or CSV. `state`, `brief`, `summary` and `who-changed` answer single questions
+as text or JSON; the first three also give Markdown, and `state` and `brief` one line.
 
 **Properties.** Designed and tested on every change, not a warranty.
 [SECURITY.md](https://github.com/varaprasadchilakanti/reveille/blob/main/SECURITY.md)
