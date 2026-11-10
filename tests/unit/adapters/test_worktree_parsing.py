@@ -33,3 +33,21 @@ def test_newline_records_from_older_git() -> None:
         _MAIN,
         Worktree(path="/w", branch="side", locked=False, prunable=True),
     ]
+
+
+def test_newline_records_keep_a_line_separator_in_a_path() -> None:
+    # `splitlines` also ends a line at U+001E, U+0085 and U+2028; Git ends one at "\n".
+    out = "worktree /r\nHEAD 1\nbranch refs/heads/main\n\nworktree /w\x1ex\u2028y\x85z\ndetached\n"
+
+    assert _parse_worktrees(out, nul=False) == [
+        _MAIN,
+        Worktree(path="/w\x1ex\u2028y\x85z", branch=None, locked=False, prunable=False),
+    ]
+
+
+def test_newline_records_keep_a_line_separator_ending_the_last_branch() -> None:
+    out = "worktree /r\nHEAD 1\nbranch refs/heads/main\u2028\n\n"
+
+    assert _parse_worktrees(out, nul=False) == [
+        Worktree(path="/r", branch="main\u2028", locked=False, prunable=False)
+    ]
