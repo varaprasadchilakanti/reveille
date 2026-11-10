@@ -14,8 +14,13 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from hypothesis import settings
 
 from reveille.domain.models import Commit, ContributorStats
+
+# A long search for the property tests: `pytest --hypothesis-profile=fuzz`. CI uses
+# Hypothesis's own `ci` profile (derandomized, no deadline, no example database).
+settings.register_profile("fuzz", max_examples=5000)
 
 # TODO(conftest): one shared `git` helper for the ~36 `_git` copies (identity, stdin as bytes).
 _EMPTY_CONFIG_HOME = pytest.StashKey[Path]()

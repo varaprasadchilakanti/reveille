@@ -12,6 +12,7 @@ import pytest
 from reveille.adapters import git_reader
 from reveille.adapters.git_reader import (
     _bounded_match_key,
+    _co_author_identities,
     _co_author_value,
     _directory_prefixes,
     _exclusion_requests,
@@ -21,6 +22,7 @@ from reveille.adapters.git_reader import (
     _match_key,
     _normalise_github_noreply,
     _parse_log_record,
+    _parse_mailmap_line,
     _resolve_identity,
     _sum_numstat,
 )
@@ -308,6 +310,36 @@ class TestCoAuthorValue:
     @pytest.mark.parametrize("value", ["Ana <>", "Ana <a>b>", "Ana a@e.test>"])
     def test_an_empty_or_unbracketed_address_is_malformed(self, value: str) -> None:
         assert _co_author_value(value) is None
+
+
+@pytest.mark.unit
+def test_a_mailmap_name_keeps_a_vertical_tab_and_form_feed_as_git_does() -> None:
+    # `git check-mailmap` (Git 2.56) trims space, tab, CR and LF only.
+    assert _parse_mailmap_line("\vP\f <p@e.test> \tC\r <c@e.test>") == (
+        "\vP\f",
+        "p@e.test",
+        "C",
+        "c@e.test",
+    )
+
+
+@pytest.mark.unit
+def test_an_address_standing_in_for_a_name_is_cleaned_as_a_name() -> None:
+    """An empty name shows the address; a bidi override in it must not reach the name."""
+    sha = "a" * 40
+    record = "\x1f".join([sha, "\u200b", "\u202eev@e.test", "0", sha])
+
+    commit = _parse_log_record(record, _Mailmap(), set(), {sha: sha}, set())
+
+    assert commit is not None
+    assert (commit.author_name, commit.author_email) == ("ev@e.test", "\u202eev@e.test")
+
+
+@pytest.mark.unit
+def test_a_co_author_address_standing_in_for_a_name_is_cleaned_as_a_name() -> None:
+    found, _ = _co_author_identities("<\u202eev@e.test>", _Mailmap(), set(), set(), "a@e.test")
+
+    assert found == (("ev@e.test", "\u202eev@e.test"),)
 
 
 @pytest.mark.unit

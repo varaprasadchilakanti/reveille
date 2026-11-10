@@ -116,6 +116,14 @@ cookies or tracking. A change that breaks that will not be merged.
 New public functions need Google-style docstrings. New behaviour needs tests in the layer that fits
 (unit, integration or end-to-end).
 
+The parsers of Git's output have property tests (Hypothesis) in
+`tests/unit/adapters/test_git_text_properties.py`. When `CI` is set, Hypothesis loads its `ci`
+profile: the same inputs every run (`derandomize=True`), no deadline and no example database. A
+local run tries new inputs. For a longer search, run
+`poetry run pytest tests/unit/adapters/test_git_text_properties.py --hypothesis-profile=fuzz`
+(5000 examples each). When a property fails, add the input Hypothesis prints to that test as
+`@example(...).via("found by Hypothesis: ...")`, watch it fail, then fix the parser.
+
 ## Code Style
 
 Ruff handles linting and import ordering, including its security rules (`S`): where one must be
