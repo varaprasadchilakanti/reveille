@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 Vara Prasad Chilakanti
+# SPDX-License-Identifier: Apache-2.0
+
+# ==================================================================
+# Reveille at its declared dependency floors
+#
+# The `floors` CI job installs this environment and runs the suite in it.
+# Each direct runtime dependency is pinned to the lowest version the root
+# pyproject.toml admits, so a floor that no longer works fails a test
+# instead of a user's install; their own dependencies resolve as usual.
+# The test tools take the root's ranges. tests/unit/test_dependency_floors.py
+# fails when a pin and its floor disagree. Dependabot does not read this
+# directory: regenerate the lock by hand, `cd .github/floors && poetry lock`.
+# poetry.toml here keeps the root's 7-day release age for that resolution.
+# ==================================================================
+
+[tool.poetry]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.12"
+reveille = { path = "../..", develop = true }
+typer = "==0.18"
+gitpython = "==3.2.1"
+jinja2 = "==3.1.6"
+plotly = "==7.0"
+pydantic = "==2.4"
+pytest = ">=8,<10"
+pytest-cov = ">=5,<8"
+pytest-xdist = "^3.5.0"
+pytest-timeout = "^2.3.0"

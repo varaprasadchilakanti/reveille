@@ -66,6 +66,8 @@ before 0.8.0 predate the convention and are left as they were released.
 - Dependabot no longer raises the declared dependency floors (`versioning-strategy: widen`).
 - A tracked `poetry.toml` makes `poetry lock` and `poetry update` skip releases under 7 days old,
   matching Dependabot's cooldown. It needs Poetry 2.4 or newer.
+- CI runs the suite with each direct runtime dependency at its declared floor (Typer 0.18,
+  GitPython 3.2.1, Jinja2 3.1.6, Plotly 7.0, Pydantic 2.4) on Python 3.11.
 
 ### Security
 

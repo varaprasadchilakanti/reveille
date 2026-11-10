@@ -251,6 +251,47 @@ jobs:
           fail_ci_if_error: false
 
   # ----------------------------------------------------------------
+  # Declared floors
+  #
+  # The suite with each runtime dependency at the lowest version
+  # pyproject.toml admits, on the lowest supported CPython: a floor that
+  # stopped working fails here, not in a user's install. The pins and their
+  # lock are in .github/floors/; tests/unit/test_dependency_floors.py keeps
+  # them in step with pyproject.toml and poetry.lock.
+  # ----------------------------------------------------------------
+  floors:
+    name: Test at dependency floors (3.11)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [lockfile, changes]
+    if: ${{ !cancelled() && needs.lockfile.result == 'success' && needs.changes.outputs.code != 'false' }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # As in `test`: tests/integration/test_mailmap_file.py reads the full history.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+      - name: Install Poetry
+        uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
+        with:
+          version: "2.4.2"
+          virtualenvs-in-project: true
+      # Run from the directory: `poetry -C` writes a relative shebang into the
+      # installed `reveille` script, which the installed-command tests run.
+      - name: Install the floors
+        working-directory: .github/floors
+        run: |
+          poetry check --lock
+          poetry sync --no-interaction
+      - name: Run pytest
+        run: .github/floors/.venv/bin/python -m pytest -n auto --timeout=120 -p no:cacheprovider
+
+  # ----------------------------------------------------------------
   # Windows and macOS
   #
   # pyproject.toml classifies the package "OS Independent". Windows has no
