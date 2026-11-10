@@ -128,7 +128,8 @@ def _name_and_email(text: str, *, allow_empty: bool) -> tuple[str | None, str, s
     right = text.find(">", left + 1) if left >= 0 else -1
     if right < 0 or (right == left + 1 and not allow_empty):
         return None
-    name = text[:left].strip(" \t\r\n\v\f")
+    # Git's `isspace` is space, tab, CR and LF: a vertical tab or form feed is kept.
+    name = text[:left].strip(" \t\r\n")
     return (name or None), text[left + 1 : right], text[right + 1 :]
 
 
@@ -430,10 +431,12 @@ def _parse_worktrees(output: str, *, nul: bool = True) -> list[Worktree]:
         The worktrees, the main one first.
     """
     found: list[Worktree] = []
-    records = output.strip("\0").split("\0\0") if nul else output.strip().split("\n\n")
+    # "\n" alone: `splitlines` and `strip` also take U+001E, U+0085 and U+2028, which a
+    # path or branch name may hold.
+    records = output.strip("\0").split("\0\0") if nul else output.strip("\n").split("\n\n")
     for record in records:
         values: dict[str, str] = {}
-        for line in record.split("\0") if nul else record.splitlines():
+        for line in record.split("\0" if nul else "\n"):
             key, _, value = line.partition(" ")
             values[key] = value
         if "worktree" not in values:
@@ -2555,7 +2558,7 @@ def _co_author_identities(
         if len(found) == _MAX_CO_AUTHORS:
             dropped += 1
             continue
-        found[email] = name or email
+        found[email] = name or _strip_invisible(email)
     return tuple((name, email) for email, name in found.items()), dropped
 
 
@@ -3699,8 +3702,9 @@ def _identity(
     )
     author_name = _truncate(author_name, _MAX_NAME_LENGTH)
     author_email = _truncate(author_email, _MAX_EMAIL_LENGTH)
-    # A name of only invisible characters is empty once cleaned.
-    author_name = author_name or author_email
+    # A name of only invisible characters is empty once cleaned. The address stands in
+    # for it, cleaned as a name is; the address itself is kept as Git has it (ADR 0002).
+    author_name = author_name or _strip_invisible(author_email)
     return author_name, author_email, hits
 
 

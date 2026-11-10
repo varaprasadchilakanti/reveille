@@ -45,6 +45,14 @@ before 0.8.0 predate the convention and are left as they were released.
   refused.
 - `state` gave too high a merged-branch count when a branch name held a no-break space (U+00A0).
 - `brief` cut a tag name at a line separator (U+2028) or U+0085.
+- With Git older than 2.36, `state` and the report cut a worktree path holding U+001E, U+0085 or
+  U+2028 in two, and dropped those characters from the end of the last branch name.
+- When an author's or co-author's name is empty once cleaned, the address shown in its place kept
+  the direction controls, zero-width spaces and byte order marks removed from names, shown as
+  `\uXXXX`. They are now removed from the shown name, which is empty if the address holds nothing
+  else; the address itself keeps them.
+- A `.mailmap` name lost a leading or trailing vertical tab or form feed, which Git keeps, so a
+  four-field entry could match a commit name Git's does not.
 
 ### Changed
 
