@@ -48,3 +48,32 @@ def test_the_plotly_floor_is_the_release_tested_with_the_embedded_bundle() -> No
     ]["plotly"]
 
     assert _floor(declared) >= (7, 0), f"plotly {declared} allows a release never tested"
+
+
+_ENV = _PYPROJECT.parent / ".github" / "floors"
+
+
+def _lowest(constraint: str) -> str:
+    """Return the version written in the lower-bound clause of a caret or range constraint."""
+    clauses = [clause.strip() for clause in constraint.split(",")]
+    lower = [clause for clause in clauses if not clause.startswith("<")]
+    assert len(lower) == 1, f"no single lower bound in {constraint!r}"
+    return lower[0].lstrip("^>=~ ")
+
+
+@pytest.mark.unit
+def test_the_floors_environment_pins_each_declared_floor() -> None:
+    """The `floors` CI job tests what the lowest admitted versions do, not what they once did."""
+    declared = tomllib.loads(_PYPROJECT.read_text(encoding="utf-8"))["tool"]["poetry"][
+        "dependencies"
+    ]
+    pinned = tomllib.loads((_ENV / "pyproject.toml").read_text(encoding="utf-8"))["tool"]["poetry"][
+        "dependencies"
+    ]
+
+    for name, constraint in declared.items():
+        if name == "python":
+            major, minor = (int(part) for part in _lowest(constraint).split(".")[:2])
+            assert pinned["python"] == f">={major}.{minor},<{major}.{minor + 1}"
+            continue
+        assert pinned.get(name) == f"=={_lowest(constraint)}", f"{name} {constraint}"

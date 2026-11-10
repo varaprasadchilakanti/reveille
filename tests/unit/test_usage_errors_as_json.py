@@ -37,7 +37,9 @@ def test_an_unknown_option_is_one_json_error(command: str) -> None:
     assert len(lines) == 1, err
     message = json.loads(lines[0])
     assert message["level"] == "error"
-    assert "No such option: --no-such-option" in message["message"]
+    # Click words the rest; it differs across the supported Typer range (0.18 and 0.27).
+    assert "No such option" in message["message"]
+    assert "--no-such-option" in message["message"]
     assert f"capabilities --command {command} --format json" in message["message"]
 
 
