@@ -61,3 +61,36 @@ def test_every_tracked_python_directory_is_linted() -> None:
     )
 
     assert unlinted == []
+
+
+def _make_ci_recipe() -> list[str]:
+    """The lines of the `ci` target's recipe in the Makefile."""
+    makefile = (_ROOT / "Makefile").read_text(encoding="utf-8")
+    # A recipe runs to the next line that starts with neither a tab nor nothing at all.
+    recipe = re.search(r"^ci:.*\n((?:\t.*\n|\n)+)", makefile, re.MULTILINE)
+    assert recipe is not None, "the Makefile has no `ci` target"
+    return [line.strip() for line in recipe.group(1).split("\n") if line.strip()]
+
+
+def test_ci_runs_the_make_targets_make_ci_runs() -> None:
+    # CI lists its steps itself, to spread them over jobs; this keeps the two lists one list.
+    in_ci = {
+        line.removeprefix("run: make ")
+        for line in _commands(".github/workflows/ci.yml")
+        if line.startswith("run: make ")
+    }
+    in_make_ci = {
+        line.removeprefix("$(MAKE) ") for line in _make_ci_recipe() if line.startswith("$(MAKE) ")
+    }
+
+    assert in_ci == in_make_ci
+
+
+def test_ci_and_make_ci_measure_coverage_of_the_same_package() -> None:
+    def coverage(lines: list[str]) -> list[str]:
+        return [
+            w for line in lines if "pytest" in line for w in line.split() if w.startswith("--cov=")
+        ]
+
+    assert coverage(_make_ci_recipe()) == ["--cov=reveille"]
+    assert coverage(_commands(".github/workflows/ci.yml")) == ["--cov=reveille"]
