@@ -98,6 +98,12 @@ conflict prints `warning: Cannot merge binary files: poetry.lock` and leaves you
 The file is generated, and "keep both sides" silently duplicates TOML keys. Resolve it with
 `poetry lock`.
 
+`poetry.toml` is tracked and sets `solver.min-release-age = 7` (Poetry 2.4 or newer), so `poetry
+lock` and `poetry update` skip a release until it is 7 days old, as Dependabot's cooldown does.
+Keep machine settings such as `virtualenvs.in-project` in your global Poetry configuration. A local
+`poetry.toml` from before the file was tracked was ignored, so Git replaces it without asking: copy
+its settings out first.
+
 The HTML report is always a single self-contained file with no external dependencies, CDN calls,
 cookies or tracking. A change that breaks that will not be merged.
 

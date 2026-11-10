@@ -19,9 +19,9 @@
 # publish-then-withdraw: a hijacked maintainer account ships a release and
 # it is yanked once someone notices.
 #
-# Security updates are unaffected. GitHub's reference is explicit that
-# `cooldown` "is only available for version updates, not security
-# updates", so a dependency with a known vulnerability is still raised
+# Security updates are unaffected by the cooldown. GitHub's reference is
+# explicit that `cooldown` "is only available for version updates, not
+# security updates", so a dependency with a known vulnerability is still raised
 # immediately. CI's osv-scanner job is the backstop regardless.
 # ==================================================================
 
@@ -29,6 +29,10 @@ version: 2
 updates:
   - package-ecosystem: pip
     directory: "/"
+    # `widen` leaves declared floors alone; on a new major it raises the upper bound. The
+    # default can take the project for an app and raise every floor. The strategy applies to
+    # security updates too, so a floor is raised by hand, naming the advisory.
+    versioning-strategy: widen
     schedule:
       interval: weekly
       day: monday
