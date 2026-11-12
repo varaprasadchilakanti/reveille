@@ -16,6 +16,8 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    # A draft runs nothing until it is marked ready.
+    types: [opened, synchronize, reopened, ready_for_review]
 
 # A second push to the same branch makes the first run's result irrelevant.
 # Cancelling it frees a runner and removes a stale red/green signal from the
@@ -46,6 +48,8 @@ jobs:
   # ----------------------------------------------------------------
   lockfile:
     name: Lock file integrity
+    # Skipped for a draft, and with it every job that needs it.
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -171,6 +175,7 @@ jobs:
   # ----------------------------------------------------------------
   changes:
     name: What changed
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -196,7 +201,10 @@ jobs:
     # Runs if `changes` failed, and then tests everything: a skipped job would count as passed.
     if: ${{ !cancelled() && needs.lockfile.result == 'success' }}
     env:
-      RUN_TESTS: ${{ needs.changes.outputs.code != 'false' || matrix.python-version == '3.11' }}
+      # A pull request tests the lowest and highest CPython; a push to main tests all four.
+      RUN_TESTS: >-
+        ${{ matrix.python-version == '3.11' || (needs.changes.outputs.code != 'false'
+        && (github.event_name == 'push' || matrix.python-version == '3.14')) }}
     permissions:
       contents: read
     strategy:

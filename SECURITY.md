@@ -129,7 +129,7 @@ merge or need a bypass that records an approval that did not happen. The alert i
 deliberately. What partly compensates, without replacing it:
 
 - Every change reaches `main` through a pull request with required status checks.
-- CodeQL runs on every pull request with the `security-extended` query set.
+- CodeQL runs on every pull request not in draft, with the `security-extended` query set.
 - Action pinning (tested) and Trusted Publisher publishing with PEP 740 attestations, as under
   Release Integrity.
 - Tests, not review habit, assert layering, action pinning, lock-file validity, licence
