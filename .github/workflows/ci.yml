@@ -1,12 +1,10 @@
 # ==================================================================
 # Reveille -- Continuous Integration
 #
-# Runs on every push and pull request targeting main.
+# Runs on every push to main and every pull request to it not in draft.
 #
-# `lockfile` runs first and the other three depend on it: if poetry.lock
-# cannot be parsed, every job that installs from it fails with an error that
-# names the symptom rather than the cause. lint, typecheck and test then run
-# in parallel, and all four must pass before a PR is eligible to merge.
+# `lockfile` runs first and every job that installs needs it: a lock that cannot be parsed
+# fails each install with the symptom, not the cause.
 # ==================================================================
 
 name: CI
@@ -64,29 +62,30 @@ jobs:
       - name: Validate poetry.lock
         run: make check-lock
 
-  # Workflow correctness
+  # Static checks
   #
-  # actionlint is a pre-commit hook, but a hook runs only for developers
-  # who installed the git hooks locally. This job runs it on the server, so
-  # the check does not depend on each contributor's setup.
+  # One job: these share a checkout and a Python, and each job is billed
+  # in whole minutes. Every check runs after one fails, so each failure shows.
   #
-  # It runs through pre-commit rather than a separately downloaded binary
-  # so the version stays pinned in one place, `.pre-commit-config.yaml`.
-  # Complements zizmor rather than duplicating it: zizmor analyses
-  # security posture, actionlint analyses correctness -- unknown contexts,
-  # malformed matrices, expression type errors, and shellcheck over `run:`
-  # blocks.
+  # actionlint and the hygiene hooks run here because a hook runs only
+  # where a contributor installed it; through pre-commit, so the version
+  # is pinned in one place. zizmor covers security; actionlint, correctness.
+  #
+  # The build is made twice and compared: SOURCE_DATE_EPOCH is the analysed
+  # commit's date (as `--deterministic` uses), and Poetry's fallback date
+  # could make one build look reproducible for the wrong reason.
   # ----------------------------------------------------------------
-  workflows:
-    name: Workflow correctness (actionlint)
+  static:
+    name: Static checks (actionlint, ruff, mypy, reproducible build)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     needs: lockfile
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
@@ -95,72 +94,58 @@ jobs:
         run: python -m pip install --disable-pip-version-check --require-hashes -r .github/requirements/pre-commit.txt
       - name: Run actionlint
         run: pre-commit run actionlint --all-files --show-diff-on-failure
-      # The repository-hygiene hooks otherwise run only where a contributor
-      # installed pre-commit.
       - name: Run hygiene hooks
+        if: ${{ !cancelled() }}
         run: |
           for hook in trailing-whitespace end-of-file-fixer check-yaml check-case-conflict \
               check-merge-conflict detect-private-key; do
             pre-commit run "$hook" --all-files --show-diff-on-failure
           done
-
-  lint:
-    name: Lint (ruff)
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: lockfile
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: "3.11"
       - name: Install Poetry
+        if: ${{ !cancelled() }}
         uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
         with:
           version: "2.4.2"
           virtualenvs-in-project: true
       - name: Install dependencies
+        if: ${{ !cancelled() }}
         run: poetry install --no-interaction
       - name: Run ruff
+        if: ${{ !cancelled() }}
         run: make lint
       - name: Check formatting
+        if: ${{ !cancelled() }}
         run: make format-check
+      - name: Run mypy
+        if: ${{ !cancelled() }}
+        run: make typecheck
       - name: Check version sync
+        if: ${{ !cancelled() }}
         run: make check-version
       - name: Check licence declarations agree
+        if: ${{ !cancelled() }}
         run: make check-licence
       - name: Check poetry.lock agrees with pyproject.toml
+        if: ${{ !cancelled() }}
         run: make check-lock-sync
       - name: Check packaging contract
+        if: ${{ !cancelled() }}
         run: make check-packaging
-
-  typecheck:
-    name: Type Check (mypy)
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: lockfile
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: "3.11"
-      - name: Install Poetry
-        uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
-        with:
-          version: "2.4.2"
-          virtualenvs-in-project: true
-      - name: Install dependencies
-        run: poetry install --no-interaction
-      - name: Run mypy
-        run: make typecheck
+      - name: Build twice and compare
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          rm -rf dist && poetry build -q && mkdir -p /tmp/b1 && cp dist/* /tmp/b1/
+          rm -rf dist && poetry build -q && mkdir -p /tmp/b2 && cp dist/* /tmp/b2/
+          (cd /tmp/b1 && sha256sum ./*) > /tmp/sums1
+          (cd /tmp/b2 && sha256sum ./*) > /tmp/sums2
+          if diff /tmp/sums1 /tmp/sums2; then
+            echo "Build is reproducible."
+          else
+            echo "::error::Two builds of the same commit produced different bytes."
+            exit 1
+          fi
 
   # ----------------------------------------------------------------
   # What a pull request changes
@@ -376,55 +361,3 @@ jobs:
     with:
       scan-args: |-
         --lockfile=poetry.lock
-
-  # ----------------------------------------------------------------
-  # Build reproducibility
-  #
-  # SOURCE_DATE_EPOCH is set here: on the pinned Poetry 2.4.2, wheel entry
-  # timestamps track it.
-  #
-  # The epoch is derived from the analysed commit, the same convention the
-  # `--deterministic` report flag uses, so a build and a report generated
-  # from one commit agree on what "now" means.
-  #
-  # The check still builds twice and compares rather than trusting the
-  # mechanism. Poetry falls back to a fixed date when the variable is
-  # absent, so a build can be reproducible for the wrong reason; only
-  # comparing two builds shows whether the property actually holds.
-  # ----------------------------------------------------------------
-  reproducible-build:
-    name: Reproducible build
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: lockfile
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: "3.11"
-      - name: Install Poetry
-        uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
-        with:
-          version: "2.4.2"
-          virtualenvs-in-project: true
-      - name: Derive SOURCE_DATE_EPOCH from the analysed commit
-        run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> "$GITHUB_ENV"
-
-      - name: Build twice and compare
-        run: |
-          set -euo pipefail
-          rm -rf dist && poetry build -q && mkdir -p /tmp/b1 && cp dist/* /tmp/b1/
-          rm -rf dist && poetry build -q && mkdir -p /tmp/b2 && cp dist/* /tmp/b2/
-          (cd /tmp/b1 && sha256sum ./*) > /tmp/sums1
-          (cd /tmp/b2 && sha256sum ./*) > /tmp/sums2
-          if diff /tmp/sums1 /tmp/sums2; then
-            echo "Build is reproducible."
-          else
-            echo "::error::Two builds of the same commit produced different bytes."
-            exit 1
-          fi
