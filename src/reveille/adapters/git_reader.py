@@ -831,14 +831,16 @@ class GitReader:
         """
         candidates: list[Path] = []
         try:
-            found = str(self._git().rev_parse("--git-dir", "--git-common-dir")).splitlines()
+            # "\n" alone: a directory may hold U+001E, U+0085 or U+2028.
+            found = str(self._git().rev_parse("--git-dir", "--git-common-dir")).split("\n")
         except GitCommandError:
             found = []
         for line in found:
             git_dir = Path(line) if Path(line).is_absolute() else self._repo_path / line
             candidates.append(git_dir / "info" / "attributes")
         try:
-            configured = str(self._git().config("--get", "core.attributesFile")).strip()
+            # No strip: GitPython drops Git's final line feed; the rest is the value.
+            configured = str(self._git().config("--get", "core.attributesFile"))
         except GitCommandError:
             configured = ""
         if configured:
@@ -891,10 +893,10 @@ class GitReader:
         # so the setting itself is read.
         try:
             if "GIT_WORK_TREE" in os.environ:
-                named = str(self._git().config("--get", "core.worktree")).strip()
+                named = str(self._git().config("--get", "core.worktree"))  # no strip, as above
                 top = str(Path(self._repo.git_dir, named)) if named else ""
             else:
-                top = str(self._git().rev_parse("--show-toplevel")).strip()
+                top = str(self._git().rev_parse("--show-toplevel"))
         except GitCommandError:
             return  # No such setting, or a bare repository: no working tree elsewhere.
         if top and Path(top).resolve() != self._repo_path:
@@ -1528,13 +1530,14 @@ class GitReader:
         try:
             out = str(
                 self._git().config(
-                    "--get-regexp", r"^(remote\..*\.promisor|extensions\.partialclone)$"
+                    "-z", "--get-regexp", r"^(remote\..*\.promisor|extensions\.partialclone)$"
                 )
             )
         except GitCommandError as exc:
             return exc.status != 1  # 1: no such key anywhere
-        for line in out.splitlines():
-            key, _, value = line.partition(" ")
+        # `-z`: "key\nvalue" records ended by NUL; a remote name may hold a space.
+        for record in out.split("\0"):
+            key, _, value = record.partition("\n")
             if key.endswith(".promisor"):
                 # Git reads any non-zero number (`2`, `1k`) as true, so only its
                 # false spellings pass; anything else refuses.
@@ -1682,8 +1685,9 @@ class GitReader:
             ) from exc
         current: dict[str, str] = {}
         accounts_of: dict[str, set[str]] = defaultdict(set)
-        for line in out.splitlines():
-            match = _GITHUB_NOREPLY_RE.match(line.strip())
+        # "\n" only, no strip: an address may hold U+2028 or U+0085.
+        for line in out.split("\n"):
+            match = _GITHUB_NOREPLY_RE.match(line)
             if match is None:
                 continue
             account, username = match.group("account"), match.group("username")
@@ -2291,13 +2295,14 @@ class GitReader:
         try:
             listed = str(self._git().for_each_ref("--format=%(refname)", "refs/replace/"))
             # Not `--git-path`: it honours our GIT_GRAFT_FILE, the null device.
-            common = Path(str(self._git().rev_parse("--git-common-dir")).strip())
+            common = Path(str(self._git().rev_parse("--git-common-dir")))  # no strip, as above
         except GitCommandError:
             return 0, False
         if not common.is_absolute():
             common = self._repo_path / common
         grafts = common / "info" / "grafts"
-        return len([line for line in listed.splitlines() if line.strip()]), grafts.is_file()
+        # A ref name may hold U+2028 or U+0085, so "\n" alone ends one.
+        return len([line for line in listed.split("\n") if line]), grafts.is_file()
 
     def is_shallow(self) -> bool:
         """Report whether the repository is a shallow clone, so figures are partial.
@@ -3208,7 +3213,7 @@ def repository_root(path: Path) -> Path:
         # given cannot be entered.
         top = str(
             _TimedGit().execute(["git", "-C", str(path), "rev-parse", "--show-toplevel"])
-        ).strip()
+        )  # no strip: GitPython drops the final line feed; a path may end in a space
         git_dir = _absolute_git_dir(path)
     except (GitCommandError, OSError):
         return path.resolve()
@@ -3267,7 +3272,7 @@ def _refuse_git_files_that_block(start: Path, *, search_up: bool) -> None:
         return
     directories = [git_dir]
     if _checked(git_dir / "commondir"):
-        common = git_dir / (git_dir / "commondir").read_text("utf-8", "replace").strip()
+        common = git_dir / _gitfile_value((git_dir / "commondir").read_bytes())
         directories.append(common)
     configs: list[Path] = []
     for directory in directories:
@@ -3317,8 +3322,9 @@ def _object_directories(objects: Path) -> list[Path]:
         alternates = directory / "info" / "alternates"
         if depth >= _MAX_ALTERNATES_DEPTH or not _checked(alternates):
             continue
-        for line in alternates.read_text("utf-8", "replace").splitlines():
-            line = line.strip()
+        # As Git 2.56 reads it: "\n" ends a line; spaces and CR belong to the path.
+        # Bytes: `read_text` would also end a line at CR.
+        for line in alternates.read_bytes().decode("utf-8", "replace").split("\n"):
             if line and not line.startswith("#"):
                 target = Path(line.strip('"'))
                 pending.append((target if target.is_absolute() else directory / target, depth + 1))
@@ -3392,10 +3398,11 @@ def _git_dir_of(start: Path, *, search_up: bool) -> Path | None:
                 return dot_git
             if not _checked(dot_git):
                 return None
-            pointer = dot_git.read_text("utf-8", "replace").strip()
-            if not pointer.startswith("gitdir:"):
+            # As Git: the path after "gitdir: ", less trailing line ends.
+            pointer = _gitfile_value(dot_git.read_bytes())
+            if not pointer.startswith("gitdir: "):
                 return None
-            return directory / pointer.removeprefix("gitdir:").strip()
+            return directory / pointer.removeprefix("gitdir: ")
         if holds_a_git_directory(directory):
             return directory
     return None
