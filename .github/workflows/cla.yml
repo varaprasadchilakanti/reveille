@@ -1,11 +1,13 @@
 # .github/workflows/cla.yml
 #
-# Verifies two things on every pull request, and stores nothing:
+# Verifies three things on every pull request, and stores nothing:
 #   1. the contributor-agreement checkbox in the PR body is ticked, and names
 #      the CLA version this repository currently requires -- skipped when the
 #      pull request was opened by an app rather than a person, see below;
 #   2. every commit in the PR carries a Signed-off-by trailer (DCO 1.1), with
-#      no exemption for anyone.
+#      no exemption for anyone;
+#   3. a body line "Checked at `<full SHA>`" names an ancestor of the head with
+#      the same tree, so the checks it reports ran on what is merged.
 #
 # It writes no file, commits nothing, and calls no third-party service. The
 # evidence of acceptance is the pull request and the commit trailers
@@ -210,3 +212,33 @@ jobs:
 
           print(f"All {len(shas)} commits are signed off.")
           PY
+
+      # Commits after the checked one may only leave the tree as it was, as an
+      # empty sign-off commit does. A body without the line is not compared.
+      - name: The checks the body reports ran on this tree
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python3 - <<'TREE'
+          import os, re, subprocess, sys
+          body = re.sub(r"<!--.*?-->", "", os.environ.get("PR_BODY") or "", flags=re.DOTALL)
+          checked = re.findall(r"Checked at `([0-9a-f]{40})`", body)
+          if not checked:
+              print("No 'Checked at' line: nothing to compare.")
+              sys.exit(0)
+          head = os.environ["HEAD"]
+
+          def holds(*args: str) -> bool:
+              return subprocess.run(["git", *args], capture_output=True).returncode == 0
+
+          for sha in checked:
+              if not holds("cat-file", "-e", f"{sha}^{{commit}}"):
+                  print(f"::error::{sha}, where the checks ran, is not in this repository: run them again.")
+                  sys.exit(1)
+              if not (holds("merge-base", "--is-ancestor", sha, head)
+                      and holds("diff", "--quiet", sha, head, "--")):
+                  print(f"::error::The tree moved since {sha}, where the checks ran: run them again.")
+                  sys.exit(1)
+          print(f"The checks ran on this tree ({checked[-1][:12]}).")
+          TREE
