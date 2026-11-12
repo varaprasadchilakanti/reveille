@@ -3,6 +3,9 @@
 # ==================================================================
 
 .DEFAULT_GOAL := help
+# A failing command in a pipe, or an unset variable, fails the recipe.
+SHELL := /bin/bash
+.SHELLFLAGS := -eu -o pipefail -c
 
 .PHONY: help install lint format format-check fix typecheck precommit check-lock check-lock-sync check-licence check-version \
 	    check-packaging test test-unit \
@@ -13,7 +16,7 @@
 # ------------------------------------------------------------------
 
 help:  ## Display available targets
-	@echo "\nReveille -- Available Commands:"
+	@printf "\nReveille -- Available Commands:\n"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk \
 	'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
 	@echo ""
