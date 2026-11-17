@@ -196,7 +196,8 @@ sbom: $(SBOM_VENV)/installed  ## Generate a CycloneDX SBOM of the runtime depend
 	@VER=$$(poetry version --short); \
 	$(SBOM_VENV)/bin/cyclonedx-py poetry --no-dev --output-reproducible \
 		--of JSON -o "dist/reveille-$$VER-sbom.cdx.json" . && \
-	echo "SBOM written to dist/reveille-$$VER-sbom.cdx.json"
+	echo "SBOM written to dist/reveille-$$VER-sbom.cdx.json" && \
+	python3 .github/scripts/sbom_matches_lock.py "dist/reveille-$$VER-sbom.cdx.json" poetry.lock
 
 
 # ------------------------------------------------------------------
