@@ -23,7 +23,7 @@ reply within 14 days.
 
 ## Vulnerabilities in Dependencies
 
-The runtime dependencies are declared as version ranges: Typer `>=0.18,<0.28`, GitPython
+The runtime dependencies are declared as version ranges: Typer `>=0.18,<0.29`, GitPython
 `^3.2.1`, Jinja2 `^3.1.6`, Plotly `>=7.0,<8.0` and Pydantic `^2.4`. When a dependency publishes a
 fix inside its range, upgrading that package in the environment Reveille is installed in applies
 it, with no new Reveille release. When the fix lies outside the range, or the floor admits a
