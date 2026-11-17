@@ -79,7 +79,10 @@ itself as experimental and not a stable interface; the attestations are a publis
 
 Each tagged release generates a [CycloneDX](https://cyclonedx.org/) 1.6 SBOM in JSON, covering the
 runtime dependency graph resolved from `poetry.lock`. Development and test dependencies are
-excluded: they describe how Reveille is built, not what an installation contains.
+excluded: they describe how Reveille is built, not what an installation contains. Before it is
+attested, the release checks that the SBOM lists exactly the runtime packages in `poetry.lock`,
+by name and version, including those installed on one platform only. When it does not, the SBOM
+job fails and the GitHub Release is not drafted; publishing to PyPI does not wait for it.
 
 The SBOM is produced by a job independent of publishing, so a failure to generate one cannot
 withhold a release. It is uploaded as the `sbom` artifact of the workflow run and attached to the
@@ -129,7 +132,7 @@ merge or need a bypass that records an approval that did not happen. The alert i
 deliberately. What partly compensates, without replacing it:
 
 - Every change reaches `main` through a pull request with required status checks.
-- CodeQL runs on every pull request with the `security-extended` query set.
+- CodeQL runs on every pull request not in draft, with the `security-extended` query set.
 - Action pinning (tested) and Trusted Publisher publishing with PEP 740 attestations, as under
   Release Integrity.
 - Tests, not review habit, assert layering, action pinning, lock-file validity, licence

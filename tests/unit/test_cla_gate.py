@@ -141,3 +141,86 @@ class TestTheAgreementTextIsVersioned:
         text = (_ROOT / "docs" / "cla" / "CLA-1.0.md").read_bytes()
 
         assert hashlib.sha256(text).hexdigest() == _CLA_1_0_SHA256
+
+
+def _tree_script() -> str:
+    """The workflow's check that the body's checks ran on the head's tree."""
+    text = _WORKFLOW.read_text(encoding="utf-8")
+    match = re.search(r"python3 - <<'TREE'\n(.*?)\n[ \t]*TREE\n", text, re.DOTALL)
+    assert match is not None, "could not find the tree script in cla.yml"
+    lines = match.group(1).split("\n")
+    indent = min(len(ln) - len(ln.lstrip()) for ln in lines if ln.strip())
+    return "\n".join(ln[indent:] for ln in lines)
+
+
+def _git(repo: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", "-c", "user.name=A", "-c", "user.email=a@e.test", *args],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+@pytest.fixture
+def checked(tmp_path: Path) -> tuple[Path, str]:
+    """A repository and the commit its checks ran on."""
+    _git(tmp_path, "init", "-q", "-b", "main")
+    (tmp_path / "a").write_text("1\n", encoding="utf-8")
+    _git(tmp_path, "add", "a")
+    _git(tmp_path, "commit", "-qm", "a")
+    return tmp_path, _git(tmp_path, "rev-parse", "HEAD")
+
+
+def _run_tree(repo: Path, body: str) -> int:
+    head = _git(repo, "rev-parse", "HEAD")
+    return subprocess.run(
+        [sys.executable, "-c", _tree_script()],
+        cwd=repo,
+        env={"PR_BODY": body, "HEAD": head, "PATH": "/usr/bin:/bin"},
+        capture_output=True,
+        text=True,
+    ).returncode
+
+
+@pytest.mark.unit
+@pytest.mark.skipif(sys.platform == "win32", reason="the workflow runs on Linux")
+class TestTheBodyIsTiedToTheCheckedTree:
+    def test_no_line_is_not_compared(self, checked: tuple[Path, str]) -> None:
+        assert _run_tree(checked[0], "## Verified\n") == 0
+
+    def test_the_head_itself(self, checked: tuple[Path, str]) -> None:
+        assert _run_tree(checked[0], f"Checked at `{checked[1]}`.") == 0
+
+    def test_an_empty_commit_after_it(self, checked: tuple[Path, str]) -> None:
+        _git(checked[0], "commit", "-q", "--allow-empty", "-m", "sign off")
+        assert _run_tree(checked[0], f"Checked at `{checked[1]}`.") == 0
+
+    def test_a_change_after_it_fails(self, checked: tuple[Path, str]) -> None:
+        (checked[0] / "a").write_text("2\n", encoding="utf-8")
+        _git(checked[0], "commit", "-qam", "late")
+        assert _run_tree(checked[0], f"Checked at `{checked[1]}`.") == 1
+
+    def test_a_commit_not_in_the_branch_fails(self, checked: tuple[Path, str]) -> None:
+        """Same tree, other history: a rewrite since the checks ran."""
+        _git(checked[0], "commit", "-q", "--amend", "--allow-empty", "-m", "rewritten")
+        assert _run_tree(checked[0], f"Checked at `{checked[1]}`.") == 1
+
+    def test_a_line_in_a_comment_is_not_compared(self, checked: tuple[Path, str]) -> None:
+        body = f"<!-- Checked at `{'0' * 40}`. -->"
+        assert _run_tree(checked[0], body) == 0
+
+    def test_a_commit_not_in_the_clone_is_named_so(self, checked: tuple[Path, str]) -> None:
+        done = subprocess.run(
+            [sys.executable, "-c", _tree_script()],
+            cwd=checked[0],
+            env={
+                "PR_BODY": f"Checked at `{'0' * 40}`.",
+                "HEAD": checked[1],
+                "PATH": "/usr/bin:/bin",
+            },
+            capture_output=True,
+            text=True,
+        )
+        assert done.returncode == 1 and "is not in this repository" in done.stdout

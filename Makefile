@@ -3,6 +3,10 @@
 # ==================================================================
 
 .DEFAULT_GOAL := help
+# A failing command in a pipe, or an unset variable, fails the recipe. GNU make 3.82 or later:
+# 3.81, the make macOS ships, ignores .SHELLFLAGS.
+SHELL := /bin/bash
+.SHELLFLAGS := -eu -o pipefail -c
 
 .PHONY: help install lint format format-check fix typecheck precommit check-lock check-lock-sync check-licence check-version \
 	    check-packaging test test-unit \
@@ -13,7 +17,7 @@
 # ------------------------------------------------------------------
 
 help:  ## Display available targets
-	@echo "\nReveille -- Available Commands:"
+	@printf "\nReveille -- Available Commands:\n"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk \
 	'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
 	@echo ""
@@ -196,7 +200,8 @@ sbom: $(SBOM_VENV)/installed  ## Generate a CycloneDX SBOM of the runtime depend
 	@VER=$$(poetry version --short); \
 	$(SBOM_VENV)/bin/cyclonedx-py poetry --no-dev --output-reproducible \
 		--of JSON -o "dist/reveille-$$VER-sbom.cdx.json" . && \
-	echo "SBOM written to dist/reveille-$$VER-sbom.cdx.json"
+	echo "SBOM written to dist/reveille-$$VER-sbom.cdx.json" && \
+	python3 .github/scripts/sbom_matches_lock.py "dist/reveille-$$VER-sbom.cdx.json" poetry.lock
 
 
 # ------------------------------------------------------------------

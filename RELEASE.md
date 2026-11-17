@@ -165,12 +165,9 @@ These live on GitHub, not in the repository:
   | Workflow | Check |
   |---|---|
   | `ci.yml` | Lock file integrity |
-  | `ci.yml` | Workflow correctness (actionlint) |
-  | `ci.yml` | Lint (ruff) |
-  | `ci.yml` | Type Check (mypy) |
+  | `ci.yml` | Static checks (actionlint, ruff, mypy, reproducible build) |
   | `ci.yml` | Test (pytest) |
   | `ci.yml` | Known vulnerabilities (osv-scanner) |
-  | `ci.yml` | Reproducible build |
   | `cla.yml` | contributor agreement |
   | `zizmor.yml` | Analyse workflows (zizmor) |
 - A PyPI Trusted Publisher pointing at `publish.yml` with environment `pypi`.

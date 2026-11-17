@@ -53,6 +53,19 @@ before 0.8.0 predate the convention and are left as they were released.
   else; the address itself keeps them.
 - A `.mailmap` name lost a leading or trailing vertical tab or form feed, which Git keeps, so a
   four-field entry could match a commit name Git's does not.
+- A repository in a directory whose name ends in a space or U+2028 was refused as having its
+  working tree elsewhere, or, run from a subdirectory of a linked worktree so named, as not a Git
+  repository.
+- A full clone was refused as partial when a remote whose name holds a space had `promisor` false.
+- Paths Git hands over are read as Git reads them: a line ends at a line feed only, and nothing is
+  stripped. A space or U+2028 at the end of a path, or U+2028 within it, hid a named pipe from
+  the check made before Git runs, so Git waited until the deadline, at times reported as "a defect
+  in Reveille". Affected: `objects/info/alternates`, `info/attributes` read from a linked
+  worktree, a quoted `core.attributesFile`, and a Git directory a `.git` file or `commondir` names.
+- "This repository has N replace refs" counted a ref whose name holds U+2028 as two; the grafts
+  note was missing in a linked worktree of a bare repository whose path ends in U+2028.
+- A GitHub no-reply address followed by U+2028 was taken for that account's address, so the
+  account's other commits were shown under it.
 
 ### Changed
 
@@ -78,6 +91,10 @@ before 0.8.0 predate the convention and are left as they were released.
   matching Dependabot's cooldown. It needs Poetry 2.4 or newer.
 - CI runs the suite with each direct runtime dependency at its declared floor (Typer 0.18,
   GitPython 3.2.1, Jinja2 3.1.6, Plotly 7.0, Pydantic 2.4) on Python 3.11.
+- A release's SBOM job fails unless the SBOM lists exactly the runtime packages in `poetry.lock`,
+  by name and version, including those installed on one platform only; the GitHub Release is then
+  not drafted. `make sbom` runs the same check. The generator can exit 0 with an SBOM that lists
+  nothing.
 - Property tests (Hypothesis) generate the text Git prints for quoted paths, `.mailmap` lines,
   `git status`, `git worktree list`, log records and `--numstat`, and check each parser gives back
   the parts; one compares quoted paths with what Git lists.

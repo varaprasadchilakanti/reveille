@@ -21,7 +21,7 @@ declined regardless of their quality.
 > package, `poetry self update` will fail on a system directory; install it with
 > `pipx install "poetry==2.4.2"` instead, and keep `~/.local/bin` ahead of `/usr/bin` on your `PATH`.
 
-Requires Python 3.11 or later and Git 2.24 or later.
+Requires Python 3.11 or later and Git 2.24 or later; the Makefile needs GNU make and `/bin/bash`. Make 3.81, the version macOS ships, ignores `.SHELLFLAGS`, so a failing command in a pipe does not fail a recipe there; 3.82 or later does.
 
 ```bash
 git clone git@github.com:varaprasadchilakanti/reveille.git
@@ -35,20 +35,20 @@ Verify the environment with `poetry run reveille --version` and `make ci`. The c
 
 ## Supported operating systems
 
-Linux, Windows and macOS. CI runs the full suite on Linux for every supported CPython, and on
-Windows and macOS for the lowest and highest (`test-other-os` in `.github/workflows/ci.yml`). A pull
-request that changes only Markdown, `llms.txt` or PNG and SVG images runs the suite on Linux 3.11
-alone; the other legs pass with their steps skipped. Where Windows lacks a POSIX call, the code
-takes another branch, and `tests/unit/test_windows_fallbacks.py` runs the write and no-follow
-fallbacks on every platform. A test that needs a POSIX feature is skipped where it is missing, with
-the reason.
+Linux, Windows and macOS. CI runs the full suite on Linux for every supported CPython (a pull
+request: the lowest and highest), and on Windows and macOS for the lowest and highest
+(`test-other-os` in `.github/workflows/ci.yml`). A pull request that changes only Markdown,
+`llms.txt` or PNG and SVG images runs the suite on Linux 3.11 alone; the other legs pass with their
+steps skipped. Where Windows lacks a POSIX call, the code takes another branch, and
+`tests/unit/test_windows_fallbacks.py` runs the write and no-follow fallbacks on every platform. A
+test that needs a POSIX feature is skipped where it is missing, with the reason.
 
 ## Supported Python versions
 
 Reveille supports **every non-EOL CPython release at or above 3.11**: **3.11, 3.12, 3.13 and
-3.14**, all exercised on every pull request (the matrix is in `.github/workflows/ci.yml`). The 3.11
-floor is technical: `config.py` imports `tomllib` and `git_reader.py` uses `datetime.UTC`, both
-added in 3.11.
+3.14**. A pull request tests 3.11 and 3.14; a push to `main` tests all four
+(`.github/workflows/ci.yml`). The 3.11 floor is technical: `config.py` imports `tomllib` and
+`git_reader.py` uses `datetime.UTC`, both added in 3.11.
 
 1. A version is added to the classifiers only after CI passes on it, in the same pull request that
    adds it to the matrix. If it fails, fix the incompatibility or state the exclusion and its

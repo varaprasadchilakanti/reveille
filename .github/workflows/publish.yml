@@ -263,6 +263,15 @@ jobs:
           cyclonedx-py poetry --no-dev --output-reproducible \
             --of JSON -o "$SBOM_FILE" .
 
+      # cyclonedx-py can exit 0 with an SBOM that lists nothing: it reads the
+      # dependencies from Poetry's own table and finds none when they are declared
+      # elsewhere. An SBOM is attested and attached only when it lists exactly the
+      # lock's runtime packages, including those installed only on one platform.
+      - name: Check the SBOM against the lock
+        env:
+          SBOM_FILE: ${{ steps.release.outputs.file }}
+        run: python3 .github/scripts/sbom_matches_lock.py "$SBOM_FILE" poetry.lock
+
       # A plain attached file has no cryptographic binding to the run that
       # produced it, so it can be swapped for another. This binds the SBOM to
       # this workflow's identity using the same Sigstore model the
