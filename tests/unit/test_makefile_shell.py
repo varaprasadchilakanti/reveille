@@ -5,16 +5,29 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
 
+
+def _make_reads_shellflags() -> bool:
+    """Return whether `make` is GNU make 3.82 or later, the first to read `.SHELLFLAGS`."""
+    if shutil.which("make") is None or shutil.which("bash") is None:
+        return False
+    first = subprocess.run(
+        ["make", "--version"], capture_output=True, check=False, encoding="utf-8"
+    ).stdout.partition("\n")[0]
+    found = re.fullmatch(r"GNU Make (\d+)\.(\d+).*", first)
+    return found is not None and (int(found[1]), int(found[2])) >= (3, 82)
+
+
 pytestmark = [
     pytest.mark.unit,
     pytest.mark.skipif(
-        shutil.which("make") is None or shutil.which("bash") is None, reason="needs make and bash"
+        not _make_reads_shellflags(), reason="needs bash and GNU make 3.82+ (macOS ships 3.81)"
     ),
 ]
 

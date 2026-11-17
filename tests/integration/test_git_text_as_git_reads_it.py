@@ -227,6 +227,9 @@ def test_a_directory_named_like_a_rename_is_its_own_path(repo: Path) -> None:
 # Below: a value Git ends at a line feed alone, or keeps whole, that `splitlines` or `strip`
 # cut. LS, U+2028, is one character `splitlines` ends a line at and `strip` removes.
 LS = "\u2028"
+_KEEPS_TRAILING_SPACE = pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows drops a trailing space from a file name"
+)
 _POSIX_PIPES = pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="named pipes are POSIX")
 
 
@@ -257,7 +260,13 @@ def test_a_promisor_on_a_remote_whose_name_holds_a_space(
         assert result.exit_code == ExitCode.SUCCESS, result.stderr
 
 
-@pytest.mark.parametrize("name", ["r ", f"r{LS}"], ids=["space", "line-separator"])
+@pytest.mark.parametrize(
+    "name",
+    [
+        pytest.param("r ", id="space", marks=_KEEPS_TRAILING_SPACE),
+        pytest.param(f"r{LS}", id="line-separator"),
+    ],
+)
 def test_a_repository_whose_directory_name_ends_in_a_space_is_read(
     tmp_path: Path, name: str
 ) -> None:
@@ -278,8 +287,10 @@ def test_the_object_directories_are_those_git_reads(tmp_path: Path) -> None:
     objects, found, plain = tmp_path / "objects", tmp_path / f"a{LS}b", tmp_path / "plain"
     for directory in (objects, found, plain):
         (directory / "info").mkdir(parents=True)
+    # Windows drops a trailing space from a file name, so `plain ` there names `plain`.
+    trailing = "" if sys.platform == "win32" else f"{plain} \n"
     (objects / "info" / "alternates").write_bytes(
-        f"{found}\n {plain}\n{plain} \n{plain}\r\n# {plain}\n\n".encode()
+        f"{found}\n {plain}\n{trailing}{plain}\r\n# {plain}\n\n".encode()
     )
 
     assert _object_directories(objects) == [objects, found]
@@ -418,6 +429,7 @@ def test_an_address_that_only_looks_no_reply_once_stripped(repo: Path) -> None:
     assert "7+ana@users.noreply.github.com" in emails, report["contributors"]
 
 
+@_KEEPS_TRAILING_SPACE
 def test_the_root_of_a_worktree_whose_name_ends_in_a_space(repo: Path, tmp_path: Path) -> None:
     worktree = tmp_path / "wt "
     _git(repo, "worktree", "add", "-q", "-b", "w", str(worktree))

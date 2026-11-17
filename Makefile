@@ -3,7 +3,8 @@
 # ==================================================================
 
 .DEFAULT_GOAL := help
-# A failing command in a pipe, or an unset variable, fails the recipe.
+# A failing command in a pipe, or an unset variable, fails the recipe. GNU make 3.82 or later:
+# 3.81, the make macOS ships, ignores .SHELLFLAGS.
 SHELL := /bin/bash
 .SHELLFLAGS := -eu -o pipefail -c
 

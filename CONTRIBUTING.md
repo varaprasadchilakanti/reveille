@@ -21,7 +21,7 @@ declined regardless of their quality.
 > package, `poetry self update` will fail on a system directory; install it with
 > `pipx install "poetry==2.4.2"` instead, and keep `~/.local/bin` ahead of `/usr/bin` on your `PATH`.
 
-Requires Python 3.11 or later and Git 2.24 or later; the Makefile needs GNU make and `/bin/bash`.
+Requires Python 3.11 or later and Git 2.24 or later; the Makefile needs GNU make and `/bin/bash`. Make 3.81, the version macOS ships, ignores `.SHELLFLAGS`, so a failing command in a pipe does not fail a recipe there; 3.82 or later does.
 
 ```bash
 git clone git@github.com:varaprasadchilakanti/reveille.git
