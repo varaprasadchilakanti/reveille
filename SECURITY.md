@@ -79,7 +79,10 @@ itself as experimental and not a stable interface; the attestations are a publis
 
 Each tagged release generates a [CycloneDX](https://cyclonedx.org/) 1.6 SBOM in JSON, covering the
 runtime dependency graph resolved from `poetry.lock`. Development and test dependencies are
-excluded: they describe how Reveille is built, not what an installation contains.
+excluded: they describe how Reveille is built, not what an installation contains. Before it is
+attested, the release checks that the SBOM lists exactly the runtime packages in `poetry.lock`,
+by name and version, including those installed on one platform only. When it does not, the SBOM
+job fails and the GitHub Release is not drafted; publishing to PyPI does not wait for it.
 
 The SBOM is produced by a job independent of publishing, so a failure to generate one cannot
 withhold a release. It is uploaded as the `sbom` artifact of the workflow run and attached to the

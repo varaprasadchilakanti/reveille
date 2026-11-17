@@ -91,6 +91,10 @@ before 0.8.0 predate the convention and are left as they were released.
   matching Dependabot's cooldown. It needs Poetry 2.4 or newer.
 - CI runs the suite with each direct runtime dependency at its declared floor (Typer 0.18,
   GitPython 3.2.1, Jinja2 3.1.6, Plotly 7.0, Pydantic 2.4) on Python 3.11.
+- A release's SBOM job fails unless the SBOM lists exactly the runtime packages in `poetry.lock`,
+  by name and version, including those installed on one platform only; the GitHub Release is then
+  not drafted. `make sbom` runs the same check. The generator can exit 0 with an SBOM that lists
+  nothing.
 - Property tests (Hypothesis) generate the text Git prints for quoted paths, `.mailmap` lines,
   `git status`, `git worktree list`, log records and `--numstat`, and check each parser gives back
   the parts; one compares quoted paths with what Git lists.
