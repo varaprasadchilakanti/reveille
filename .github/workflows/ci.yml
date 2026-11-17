@@ -135,7 +135,8 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           set -euo pipefail
-          export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          export SOURCE_DATE_EPOCH
           rm -rf dist && poetry build -q && mkdir -p /tmp/b1 && cp dist/* /tmp/b1/
           rm -rf dist && poetry build -q && mkdir -p /tmp/b2 && cp dist/* /tmp/b2/
           (cd /tmp/b1 && sha256sum ./*) > /tmp/sums1
