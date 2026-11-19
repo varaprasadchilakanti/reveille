@@ -69,6 +69,10 @@ before 0.8.0 predate the convention and are left as they were released.
 
 ### Changed
 
+- Line counts are read by up to eight Git processes at once, no more than the CPUs Reveille may
+  run on or a cgroup v2 CPU quota allows. On a 4,376-commit repository `generate` took 2.2 s
+  instead of 6.2 s with 20 CPUs, 3.7 s instead of 5.6 s with two cores, and about as long as before
+  with one (Linux; macOS and Windows not measured). The commits and line counts read are the same.
 - The User Guide no longer says the exit codes change only with a major version: before 1.0 a
   minor release may change when one is returned, and the CHANGELOG says so. It now also states
   that a pipe closed early, as by `| head`, exits 0.

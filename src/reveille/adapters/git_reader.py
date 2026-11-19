@@ -7,8 +7,9 @@ Contributors are keyed on author email, named from their most recent commit.
 `.mailmap` is applied first, then GitHub's two noreply forms are folded together.
 Merge commits are excluded from all analysis.
 
-History is read in one `git log --numstat` subprocess; `Commit.stats` would
-spawn one `git diff` per commit.
+History is read by `git log --numstat` over the commits `rev-list` listed, in
+chunks across up to eight Git processes; `Commit.stats` would spawn one
+`git diff` per commit.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ import errno
 import functools
 import logging
 import os
+import queue
 import re
 import secrets
 import signal
@@ -29,7 +31,7 @@ import threading
 import time
 import unicodedata
 import weakref
-from collections import defaultdict
+from collections import defaultdict, deque
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field, replace
@@ -75,6 +77,20 @@ _SHA_RE = re.compile(r"[0-9a-f]{40}")
 _REPOSITORY_VARIABLES = frozenset(
     {"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY"}
 )
+
+#: `subprocess.PIPE`, for GitPython's `istream`: the package does not import
+#: `subprocess` (`test_architecture.py`), and GitPython starts every process.
+_PIPE = -1
+
+#: The most Git processes the history read runs at once. Measured on 4,376 commits
+#: (Git 2.56, 20 CPUs): one process 5.0 s, eight 1.1 s, sixteen no faster.
+_MAX_HISTORY_WORKERS = 8
+#: Chunks per process. Over eight processes 32 chunks took 2.4 s and 64 took 1.1 s;
+#: the likely cause is a chunk holding a very large commit holding up its process.
+_CHUNKS_PER_WORKER = 8
+#: The fewest commits given a process of their own: a judgement, not measured,
+#: so a small repository starts few processes.
+_MIN_HISTORY_CHUNK = 64
 
 #: The oldest Git every read works with: `--end-of-options` arrived in 2.24.
 _MIN_GIT = (2, 24)
@@ -928,7 +944,7 @@ class GitReader:
         report_unmatched: bool = True,
         co_authors: bool = True,
     ) -> list[Commit]:
-        """Read all non-merge commits in the analysis window, in one `git log`.
+        """Read all non-merge commits in the analysis window.
 
         Exclusions match name, resolved email and raw email, case-insensitively.
         `until` is inclusive.
@@ -969,7 +985,7 @@ class GitReader:
 
         # The range end is the branch; exclusions still reach its whole history (ADR 0020).
         walk = f"{from_commit}..{rev}" if from_commit is not None else rev
-        log_args, rev_list_args = _build_log_args(
+        log_args, rev_list_args, listed_args = _build_log_args(
             walk,
             since,
             until,
@@ -987,15 +1003,14 @@ class GitReader:
 
         self._refuse_attribute_files_that_block(counts_lines=line_counts and not name_status)
         _logger.debug("git log %s", " ".join(log_args))
-        # Started first, so Git writes both logs while the queries below run; the
-        # co-author read covers the same selection (ADR 0014).
-        stream = _LogStream(self._git().log(*log_args, as_process=True))
+        authentic_order = self._listed_commits(rev, rev_list_args)
+        # Started before the queries below, so Git writes both logs while they run;
+        # the co-author read covers the same selection (ADR 0014).
+        stream = self._history_stream(listed_args, authentic_order)
         trailers: _LogStream | None = None
         try:
             trailers = self._trailer_stream(log_args, co_authors)
-            records, authentic_order, mailmap, requests, reached = self._read_alongside(
-                stream, rev, rev_list_args, exclude_authors
-            )
+            records, mailmap, requests, reached = self._read_alongside(stream, rev, exclude_authors)
             co_author_records = self._trailer_records(trailers)
         finally:
             stream.close()
@@ -1395,35 +1410,25 @@ class GitReader:
         ref = self._active_revision()
         return "HEAD" if any("\udc80" <= c <= "\udcff" for c in ref) else ref
 
-    def _read_alongside(
-        self,
-        stream: _LogStream,
-        rev: str,
-        rev_list_args: list[str],
-        exclude_authors: list[str],
-    ) -> tuple[list[bytes], list[str], _Mailmap, dict[str, set[str]], dict[str, set[str]]]:
-        """Run the main read's other queries while Git writes the log, then take it.
+    def _listed_commits(self, rev: str, rev_list_args: list[str]) -> list[str]:
+        """List the selection's commits, newest first, and count its merges.
+
+        A crafted author name can inject a whole record, so authentic SHAs come
+        from `rev-list`; a record whose SHA is not among them is not a commit.
 
         Args:
-            stream: The main `git log`, already started.
             rev: The analysed revision.
             rev_list_args: The `rev-list` arguments matching the log's selection.
-            exclude_authors: The `--exclude-author` values.
 
         Returns:
-            The log's raw records, the authentic hashes in log order, the mailmap
-            with noreply accounts folded in, each exclusion's forms, and the
-            addresses each exclusion reaches in the branch's history.
+            The hashes, in log order: the co-author pass must line up one for one
+            (ADR 0014), and the history read logs them in this order.
 
         Raises:
-            RepositoryError: If the branch cannot be enumerated, the history an
-                exclusion is checked against cannot be read, or the log not read.
+            RepositoryError: If the branch cannot be enumerated.
         """
-        # A crafted author name can inject a whole record, so authentic SHAs come
-        # from `rev-list`; a record whose SHA is not among them is not a commit.
         _logger.debug("git rev-list %s", " ".join(rev_list_args))
         try:
-            # Ordered too: the co-author pass must line up one for one (ADR 0014).
             authentic_order = [
                 line.strip()
                 for line in str(self._git().rev_list(*rev_list_args)).splitlines()
@@ -1437,7 +1442,62 @@ class GitReader:
             raise RepositoryError(
                 f"Git could not list the commits on '{rev}': {_git_error(exc)}"
             ) from exc
+        return authentic_order
 
+    def _history_stream(self, args: list[str], shas: Sequence[str]) -> _ChunkedLog:
+        """Start the main read: `git log` over the listed commits, in chunks.
+
+        Line counts are most of the read's time and each commit's diff is
+        independent, so they are read in chunks in parallel. Without them, or
+        with one CPU, one process reads every commit: on 4,376 commits
+        `--name-status` took 0.24 s alone and saved at most 0.1 s in chunks.
+
+        Args:
+            args: The listed-commit arguments `_build_log_args` gives.
+            shas: The commits `rev-list` listed, in log order.
+
+        Returns:
+            The read, its first processes started.
+        """
+        workers = _history_workers() if "--numstat" in args else 1
+        size = max(_MIN_HISTORY_CHUNK, -(-len(shas) // (workers * _CHUNKS_PER_WORKER)))
+        if workers == 1:
+            size = max(size, len(shas))
+        _logger.debug("git log %s, %d commits in chunks of %d", " ".join(args), len(shas), size)
+
+        def start(chunk: Sequence[str]) -> _LogStream:
+            stream = _LogStream(self._git().log(*args, as_process=True, istream=_PIPE))
+            try:
+                stream.feed("".join(f"{sha}\n" for sha in chunk).encode("ascii"))
+            except BaseException:
+                stream.close()
+                raise
+            return stream
+
+        return _ChunkedLog(start, [shas[i : i + size] for i in range(0, len(shas), size)], workers)
+
+    def _read_alongside(
+        self,
+        stream: _ChunkedLog,
+        rev: str,
+        exclude_authors: list[str],
+    ) -> tuple[list[bytes], _Mailmap, dict[str, set[str]], dict[str, set[str]]]:
+        """Run the main read's other queries while Git writes the log, then take it.
+
+        Args:
+            stream: The main read, already started.
+            rev: The analysed revision.
+            exclude_authors: The `--exclude-author` values.
+
+        Returns:
+            The log's raw records, the mailmap with noreply accounts folded in,
+            each exclusion's forms, and the addresses each exclusion reaches in
+            the branch's history.
+
+        Raises:
+            RepositoryError: If the history an exclusion is checked against
+                cannot be read, or the log not read.
+        """
         # After the branch is known to exist: exclusions resolve through the mailmap.
         mailmap = self._read_mailmap()
         self._mailmap_applied = bool(mailmap.by_email or mailmap.by_name_and_email)
@@ -1452,7 +1512,7 @@ class GitReader:
             raise RepositoryError(
                 f"Git could not read the commits on '{rev}': {_git_error(exc)}"
             ) from exc
-        return records, authentic_order, mailmap, requests, reached
+        return records, mailmap, requests, reached
 
     def _credit_co_authors(
         self,
@@ -2089,7 +2149,7 @@ class GitReader:
         """Do the work of `tags_in_range`, letting Git's errors through."""
         rev = self.branch_revision(branch)
         walk = f"{from_commit}..{rev}" if from_commit is not None else rev
-        _, rev_list_args = _build_log_args(walk, since, until, self._supports_since_as_filter())
+        _, rev_list_args, _ = _build_log_args(walk, since, until, self._supports_since_as_filter())
         order = {
             sha: index
             for index, sha in enumerate(
@@ -2192,7 +2252,7 @@ class GitReader:
         Returns:
             The date, or None when the branch has no such commit.
         """
-        log_args, _ = _build_log_args(self._active_argument(), None, until, line_counts=False)
+        log_args, _, _ = _build_log_args(self._active_argument(), None, until, line_counts=False)
         log_args[log_args.index(_LOG_FORMAT)] = "--format=%ct"
         try:
             output = str(self._git().log(*log_args))
@@ -2598,6 +2658,156 @@ def _unreadable(
     return unreadable
 
 
+def _history_workers() -> int:
+    """Return how many Git processes the history read may run at once.
+
+    Returns:
+        The CPUs this process may use, at most `_MAX_HISTORY_WORKERS`.
+    """
+    # The CPUs this process may run on, as `taskset` or a container's cpuset limits
+    # them; `os.cpu_count` counts the machine's.
+    allowed = getattr(os, "process_cpu_count", None)  # Python 3.13
+    if allowed is not None:
+        counted = allowed()
+    elif hasattr(os, "sched_getaffinity"):
+        counted = len(os.sched_getaffinity(0))
+    else:
+        counted = os.cpu_count()
+    quota = _cgroup_cpu_quota()
+    if quota is not None and counted is not None:
+        counted = min(counted, quota)
+    return max(1, min(_MAX_HISTORY_WORKERS, counted or 1))
+
+
+def _cgroup_cpu_quota(
+    membership: Path = Path("/proc/self/cgroup"), root: Path = Path("/sys/fs/cgroup")
+) -> int | None:
+    """Return the CPUs a cgroup v2 CPU-time quota allows this process, rounded up.
+
+    A quota (`docker --cpus`, systemd `CPUQuota=`) throttles every process past
+    it, so more processes than it allows are no faster: under a 200% quota,
+    eight took 6.3 s and one 5.5 s and 6.3 s in two runs. cgroup v1 is not read.
+
+    Args:
+        membership: The file naming this process's cgroup.
+        root: Where the cgroup v2 hierarchy is mounted.
+
+    Returns:
+        The smallest quota on the cgroup or any ancestor, or None when no
+        quota is set or none can be read.
+    """
+    try:
+        lines = membership.read_text(encoding="utf-8").split("\n")
+    except (OSError, UnicodeDecodeError):
+        return None
+    group = next((line[3:] for line in lines if line.startswith("0::")), None)
+    if group is None:
+        return None
+    lowest: int | None = None
+    directory = root / group.lstrip("/")
+    for level in (directory, *directory.parents):
+        try:
+            quota, period = level.joinpath("cpu.max").read_text(encoding="ascii").split()
+            cpus = max(1, -(-int(quota) // int(period)))
+        except (OSError, UnicodeDecodeError, ValueError, ZeroDivisionError):
+            # No file at this level, or "max": no quota here.
+            cpus = None
+        if cpus is not None:
+            lowest = cpus if lowest is None else min(lowest, cpus)
+        if level == root:
+            break
+    return lowest
+
+
+class _ChunkedLog:
+    """The main `git log`, over chunks of the listed commits, a few processes at once.
+
+    Records come back exactly as one `git log` over all the commits would give
+    them: chunks' outputs are joined end to end, in chunk order. While the
+    records are being taken, a new chunk starts as soon as any running one
+    ends. Any chunk that fails fails the read.
+    Processes start only on the calling thread (see `_LogStream`).
+    """
+
+    def __init__(
+        self,
+        start: Callable[[Sequence[str]], _LogStream],
+        chunks: Sequence[Sequence[str]],
+        workers: int,
+    ) -> None:
+        """Start the first `workers` chunks.
+
+        Args:
+            start: Starts `git log` over one chunk of hashes.
+            chunks: The hashes, in log order, split into chunks.
+            workers: The most processes running at once.
+        """
+        self._start = start
+        self._waiting = deque(enumerate(chunks))
+        self._workers = workers
+        self._running: dict[int, _LogStream] = {}
+        # Each chunk's index, put when its output has been read to the end.
+        self._ended: queue.SimpleQueue[int] = queue.SimpleQueue()
+        try:
+            self._fill()
+        except BaseException:
+            self.close()
+            raise
+
+    def _fill(self) -> None:
+        """Start chunks until `workers` are running or none is left."""
+        while self._waiting and len(self._running) < self._workers:
+            index, chunk = self._waiting.popleft()
+            stream = self._running[index] = self._start(chunk)
+            # Only waits: no Git call leaves the calling thread.
+            threading.Thread(target=self._announce, args=(index, stream), daemon=True).start()
+
+    def _announce(self, index: int, stream: _LogStream) -> None:
+        """Wait until one chunk's output has been read, then say so.
+
+        Args:
+            index: The chunk's place in log order.
+            stream: Its `git log`.
+        """
+        stream.wait_read()
+        self._ended.put(index)
+
+    def raw_records(self) -> list[bytes]:
+        """Wait for every chunk and return the records, as one `git log` would.
+
+        Returns:
+            The records, the bytes before the first separator first.
+
+        Raises:
+            GitCommandError: If any chunk's Git exits with an error, or its
+                output could not be read to the end.
+            RepositoryError: If any chunk's Git was stopped for its silence.
+        """
+        parts: dict[int, list[bytes]] = {}
+        while self._running:
+            index = self._ended.get()
+            stream = self._running.pop(index)
+            try:
+                parts[index] = stream.raw_records()
+            finally:
+                stream.close()
+            self._fill()
+        records = [b""]
+        for index in sorted(parts):
+            part = parts.pop(index)
+            # Joined as the concatenated output splits: this chunk's leading bytes
+            # end the last record so far.
+            records[-1] += part[0]
+            records.extend(part[1:])
+        return records
+
+    def close(self) -> None:
+        """Stop every chunk still running, and start no more."""
+        self._waiting.clear()
+        while self._running:
+            self._running.popitem()[1].close()
+
+
 class _LogStream:
     """One `git log` read in the background, split into records as it arrives.
 
@@ -2672,6 +2882,30 @@ class _LogStream:
     def _drain_stderr(self) -> None:
         """Read Git's error output to its end."""
         self._stderr.append(self._process.proc.stderr.read())
+
+    def feed(self, data: bytes) -> None:
+        """Write `data` to Git's standard input and close it.
+
+        Git reads its input to the end before it writes, and the readers drain
+        what it writes, so the write cannot wait for ever: a Git that stops
+        reading is stopped for its silence. A Git that exits before reading it
+        all fails on its exit status, so a broken pipe is not raised here.
+
+        Args:
+            data: The input.
+        """
+        stdin = self._process.proc.stdin
+        if stdin is None:  # started without a pipe: nothing to write to
+            return
+        with contextlib.suppress(BrokenPipeError, OSError):
+            stdin.write(data)
+        with contextlib.suppress(BrokenPipeError, OSError):
+            stdin.close()
+
+    def wait_read(self) -> None:
+        """Wait until Git's output and error output have been read to their end."""
+        for thread in self._threads:
+            thread.join()
 
     def raw_records(self) -> list[bytes]:
         """Wait for Git and return the records as Git wrote them.
@@ -3834,11 +4068,11 @@ def _build_log_args(
     path: str | None = None,
     name_status: bool = False,
     exclude_paths: Sequence[str] = (),
-) -> tuple[list[str], list[str]]:
+) -> tuple[list[str], list[str], list[str]]:
     """Build the argument lists for the numstat read and the SHA allowlist.
 
-    Built together so both agree on revision and window (`rev-list` rejects
-    `--numstat`, so one cannot be derived from the other).
+    Built together so all agree on revision, window and paths (`rev-list`
+    rejects `--numstat`, so one cannot be derived from the other).
 
     Args:
         rev: The revision to walk, already checked not to begin with `-`.
@@ -3852,7 +4086,10 @@ def _build_log_args(
             changed nothing else is left out with them.
 
     Returns:
-        A `(log_args, rev_list_args)` pair.
+        `(log_args, rev_list_args, listed_args)`. `listed_args` log the hashes
+        given on standard input (`--no-walk=unsorted --stdin`, in the order
+        given), with the same per-file output and paths and no revision or
+        window: the hashes `rev-list` listed are the selection.
     """
     files = ["--name-status"] if name_status else ["--numstat"] if line_counts else []
     log_args: list[str] = ["--no-merges", *files, _LOG_FORMAT]
@@ -3876,21 +4113,22 @@ def _build_log_args(
         log_args.append(f"--before={boundary}")
         rev_list_args.append(f"--before={boundary}")
 
+    # With no other pathspec, Git subtracts an exclusion from the whole tree.
+    paths = [f":(literal){path}"] if path is not None else []
+    paths.extend(f":(top,exclude,literal){excluded}" for excluded in exclude_paths)
+    listed_args = ["--no-walk=unsorted", "--stdin", "--no-merges", *files, _LOG_FORMAT]
     # `--end-of-options` stops option parsing; `--` separates revision from path.
-    scoped = path is not None or bool(exclude_paths)
-    for args in (log_args, rev_list_args):
-        if scoped:
+    for args in (log_args, rev_list_args, listed_args):
+        if paths:
             # A pathspec turns on history simplification, which skips a merged
             # branch whose changes the merge did not keep (`-s ours`); commits
             # other figures count would vanish here.
             args.append("--full-history")
-        args.extend(["--end-of-options", rev, "--"])
-        if path is not None:
-            args.append(f":(literal){path}")
-        # With no other pathspec, Git subtracts an exclusion from the whole tree.
-        args.extend(f":(top,exclude,literal){excluded}" for excluded in exclude_paths)
+        if args is not listed_args:
+            args.extend(["--end-of-options", rev])
+        args.extend(["--", *paths])
 
-    return log_args, rev_list_args
+    return log_args, rev_list_args, listed_args
 
 
 def _match_key(value: str) -> str:

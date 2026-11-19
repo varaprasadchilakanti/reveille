@@ -26,9 +26,10 @@ Install and first run: [README](../README.md).
 
 ## How Reveille Works
 
-**Reading.** One `git log --numstat` pass reads the branch and date range, beside a `git rev-list`
-that authenticates each record and a second `git log` that reads only `Co-authored-by` trailers.
-The read scales with commits, not changed files. `summary` skips line counts, so it is quicker than
+**Reading.** A `git rev-list` lists the commits on the branch and in the date range, and
+authenticates each record; `git log --numstat` reads those commits, in chunks across up to eight
+Git processes, no more than the CPUs Reveille may run on or a cgroup v2 CPU quota allows. A second
+`git log` reads only `Co-authored-by` trailers. `summary` skips line counts, so it is quicker than
 `generate`.
 
 **Merge commits are excluded.** A merge repeats work already counted in the commits it joins, and
