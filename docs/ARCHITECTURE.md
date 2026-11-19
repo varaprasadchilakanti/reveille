@@ -198,10 +198,12 @@ default report.
 
 ### Reading history
 
-`read_commits` reads history in one `git log --numstat` pass, not GitPython's per-commit stats,
-because `Commit.stats` shells out to `git diff` once per commit. Beside it run a
-`git rev-list --no-merges` that authenticates each record and a second `git log` that reads only
-`Co-authored-by` trailers ([ADR-0019](adr/0019-how-history-is-read.md), which supersedes
+`read_commits` reads history with `git log --numstat`, not GitPython's per-commit stats,
+because `Commit.stats` shells out to `git diff` once per commit. A `git rev-list --no-merges`
+runs first and authenticates each record; the log reads the commits it listed, in chunks across
+up to eight processes when line counts are read ([ADR-0033](adr/0033-line-counts-are-read-in-chunks.md)).
+Beside it runs a second `git log` that reads only `Co-authored-by` trailers
+([ADR-0019](adr/0019-how-history-is-read.md), which supersedes
 [ADR-0004](adr/0004-single-pass-numstat-read.md)). Merge commits are always excluded
 ([ADR-0001](adr/0001-exclude-merge-commits.md)). An unborn `HEAD` raises `EmptyRepositoryError`,
 which the CLI maps to `NEGATIVE`.

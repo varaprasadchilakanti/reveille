@@ -48,7 +48,7 @@ it exists.
 | [0016](0016-the-profile-shape-returns-as-a-flower.md) | The repository profile's shape returns, as six separate petals beside the table (above it on a narrow screen) | Accepted | `test_file_charts.py::test_six_separate_petals_in_inline_svg` |
 | [0017](0017-distribution-figures-count-people.md) | The distribution figures count people; automated accounts are stated beside them | Accepted | `test_people_and_automation.py` |
 | [0018](0018-replace-refs-are-not-honoured.md) | Reveille reads the objects its hashes name; replace refs are not honoured | Accepted | `test_replace_refs.py` |
-| [0019](0019-how-history-is-read.md) | How history is read: an allowlisted log, and nothing lost without a word | Accepted | `test_unreadable_commits.py` |
+| [0019](0019-how-history-is-read.md) | How history is read: an allowlisted log, and nothing lost without a word | Accepted; partly superseded by 0033 | `test_unreadable_commits.py` |
 | [0020](0020-exclude-author-removes-a-person-by-address.md) | `--exclude-author` removes a person by every address the value reaches | Accepted | `test_exclude_a_person.py` |
 | [0021](0021-what-provenance-records-about-filters-and-time.md) | What provenance records about filters and time | Accepted | `test_provenance.py::test_records_filters_as_stated_parameters` |
 | [0022](0022-a-brief-from-a-point.md) | A brief from a point: `reveille brief --from` | Accepted; partly superseded by 0025 | `test_brief.py` |
@@ -62,6 +62,7 @@ it exists.
 | [0030](0030-repos-reads-a-git-link-and-no-store-twice.md) | `repos` reads a `.git` link, and gives a used Git directory no row of its own | Accepted | `test_repos.py::test_a_git_directory_a_working_tree_here_uses_is_not_a_row_of_its_own` |
 | [0031](0031-brief-until-starts-at-a-tag-before-it.md) | `brief --until` starts at the latest tag on or before that day | Accepted | `test_brief_tag_before_until.py` |
 | [0032](0032-gitpython-stays-the-runner.md) | GitPython stays as the Git runner | Proposed | `test_layering.py::test_the_probe_can_actually_see_a_framework` |
+| [0033](0033-line-counts-are-read-in-chunks.md) | Line counts are read in chunks, by up to eight Git processes | Proposed | `test_chunked_history_read.py::test_chunks_give_the_bytes_one_git_log_gives` |
 
 ## Drift since acceptance
 
