@@ -116,7 +116,7 @@ hypothesis = ">=6.170,<7"
 mypy = ">=1.8,<3.0"
 
 # Linting & Formatting
-ruff = ">=0.16.9"
+ruff = ">=0.17.5"
 
 # Pre-commit Hooks
 pre-commit = ">=3.6,<5.0"
