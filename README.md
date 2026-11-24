@@ -327,10 +327,10 @@ for *contributors to this project*, not for users of the tool.
 
 ## Licence
 
-Reveille is released under the [Apache Licence 2.0](https://github.com/varaprasadchilakanti/reveille/blob/main/LICENSE).
+Reveille is released under the [Apache License, Version 2.0](https://github.com/varaprasadchilakanti/reveille/blob/main/LICENSE).
 Copyright 2026 Vara Prasad Chilakanti. The software is provided "AS IS"; sections 7 and 8 of the
 licence disclaim warranty and limit liability as far as applicable law allows. Versions up to and including 0.7.0 were released
-under the MIT Licence, and anything obtained under it stays under it; see
+under the MIT License, and anything obtained under it stays under it; see
 [ADR 0007](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/adr/0007-apache-2-0-licence.md).
 
 Git is a trademark of the Software Freedom Conservancy. Reveille is not affiliated with

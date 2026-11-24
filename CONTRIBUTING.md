@@ -148,8 +148,8 @@ chore(release): bump version to 0.4.0
 
 ## Licence
 
-Reveille is licensed under the [Apache Licence 2.0](LICENSE) from version 0.8.0. Versions up to and
-including 0.7.0 were released under the MIT Licence, and that grant is unaffected. New source files
+Reveille is licensed under the [Apache License, Version 2.0](LICENSE) from version 0.8.0. Versions up to and
+including 0.7.0 were released under the MIT License, and that grant is unaffected. New source files
 carry the two-line SPDX header the rest of the tree uses:
 
 ```python
