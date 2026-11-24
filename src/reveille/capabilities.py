@@ -552,7 +552,10 @@ def _default_and_range(param: Any) -> dict[str, Any]:
     if default is not None and not callable(default):
         found["default"] = default if isinstance(default, bool | int | str) else str(default)
     for key, attribute in (("minimum", "min"), ("maximum", "max")):
-        bound = getattr(param.type, attribute, None)
+        # Typer 0.29 holds the bounds on the option; earlier, on its IntRange type.
+        bound = getattr(param, attribute, None)
+        if bound is None:
+            bound = getattr(getattr(param, "type", None), attribute, None)
         if isinstance(bound, int) and not isinstance(bound, bool):
             found[key] = bound
     return found

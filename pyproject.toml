@@ -73,7 +73,7 @@ python = "^3.11"
 # No `extras = ["all"]`: Typer declares no extras in this range, and pip warns
 # about a missing one. `rich` and `shellingham` are ordinary dependencies of
 # `typer` itself; `typer-slim` omits them and Reveille does not use it.
-typer = ">=0.18,<0.29"
+typer = ">=0.18,<0.30"
 
 # Git Data Layer
 # Floor: 3.2.1 fixed GHSA-83vg-56qc-22m7 (a submodule cloned into `.git/hooks` by
