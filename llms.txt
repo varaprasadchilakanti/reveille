@@ -1,6 +1,6 @@
 # Reveille
 
-> Offline Git history report: a Python CLI that reads a local Git repository and writes one self-contained HTML report of its commit history, and answers single questions (repository state, what changed since a tag, who changed a file) as JSON for scripts, CI and coding agents. Never changes Git data; no network call; SHA-256 repositories and partial clones are refused. Install with `pipx install reveille` (or run once with `uvx reveille summary`); run `reveille generate`.
+> Offline Git history report: a Python CLI that reads a local Git repository and writes one self-contained HTML report of its commit history, and answers single questions (repository state, what changed since a tag, who changed a file) as JSON for scripts, CI and coding agents. Never changes Git data; no network call; SHA-256 repositories and partial clones are refused. Install with `uv tool install reveille` (or `pipx install reveille`; run once with `uvx reveille summary`); run `reveille generate`.
 
 It reads `.git` on disk, so GitHub, GitLab, Bitbucket and self-hosted repositories work alike; a bare repository needs `--output`.
 
