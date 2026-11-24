@@ -36,6 +36,12 @@ def document() -> dict:
     return build_capabilities(get_command(app), ExitCode)
 
 
+def _bound(param: object, attribute: str) -> object:
+    """A bound as the parser holds it: on the option from Typer 0.29, before that on its type."""
+    held = getattr(param, attribute, None)
+    return held if held is not None else getattr(getattr(param, "type", None), attribute, None)
+
+
 @pytest.mark.unit
 class TestDerivedFactsCannotDrift:
     """Anything derivable from the program is derived, not restated."""
@@ -113,15 +119,25 @@ class TestDerivedFactsCannotDrift:
                     assert "default" not in option, option
                 else:
                     assert str(option["default"]) == str(default), option
-                assert option.get("minimum") == getattr(param.type, "min", None), option
-                assert option.get("maximum") == getattr(param.type, "max", None), option
+                assert option.get("minimum") == _bound(param, "min"), option
+                assert option.get("maximum") == _bound(param, "max"), option
 
-    def test_repos_says_its_bounds(self, document: dict) -> None:
-        """Positive control: the bounds an agent most needs are there."""
-        repos = next(c for c in document["commands"] if c["name"] == "repos")
-        depth = next(o for o in repos["options"] if o["flags"][0] == "--depth")
+    def test_each_bounded_option_says_its_bounds(self, document: dict) -> None:
+        """Positive control, written out: the parity test above reads bounds as the code does."""
+        found = {
+            (command["name"], option["flags"][0]): (option.get("minimum"), option.get("maximum"))
+            for command in document["commands"]
+            for option in command["options"]
+            if "minimum" in option or "maximum" in option
+        }
 
-        assert (depth["default"], depth["minimum"], depth["maximum"]) == (1, 1, 3)
+        assert found == {
+            ("brief", "--limit"): (1, None),
+            ("state", "--limit"): (1, None),
+            ("repos", "--depth"): (1, 3),
+            ("repos", "--days"): (1, 3650),
+            ("who-changed", "--limit"): (1, None),
+        }
 
     def test_a_json_reader_is_told_the_guarantees_are_not_a_warranty(self, document: dict) -> None:
         assert "not a warranty" in document["guarantees_are"]

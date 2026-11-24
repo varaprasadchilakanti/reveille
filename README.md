@@ -13,7 +13,7 @@ changes Git data and makes no network calls.
 [![Coverage](https://codecov.io/gh/varaprasadchilakanti/reveille/graph/badge.svg)](https://codecov.io/gh/varaprasadchilakanti/reveille)
 
 ```bash
-pipx install reveille
+uv tool install reveille
 cd /path/to/repository
 reveille generate     # writes the HTML report
 reveille summary      # commit counts and spread, as text
@@ -135,13 +135,13 @@ Its figures do not support judging people; see [Contributor Ranking](#contributo
 Needs Python 3.11 or later and Git 2.24 or later (older Git is refused with exit 2).
 
 ```bash
-pipx install reveille      # or: uv tool install reveille, or pip install reveille
+uv tool install reveille   # or: pipx install reveille, or pip install reveille
 reveille --version
 ```
 
 Two names for one command are installed, `reveille` and `reile`; if another tool owns either, use
 `python -m reveille`. To run once without installing: `uvx reveille summary`. To remove, use the
-installing tool (`pipx uninstall reveille`, `pip uninstall reveille` or `uv tool uninstall reveille`).
+installing tool (`uv tool uninstall reveille`, `pipx uninstall reveille` or `pip uninstall reveille`).
 Reveille keeps no cache or settings.
 
 ---
@@ -327,10 +327,10 @@ for *contributors to this project*, not for users of the tool.
 
 ## Licence
 
-Reveille is released under the [Apache Licence 2.0](https://github.com/varaprasadchilakanti/reveille/blob/main/LICENSE).
+Reveille is released under the [Apache License, Version 2.0](https://github.com/varaprasadchilakanti/reveille/blob/main/LICENSE).
 Copyright 2026 Vara Prasad Chilakanti. The software is provided "AS IS"; sections 7 and 8 of the
 licence disclaim warranty and limit liability as far as applicable law allows. Versions up to and including 0.7.0 were released
-under the MIT Licence, and anything obtained under it stays under it; see
+under the MIT License, and anything obtained under it stays under it; see
 [ADR 0007](https://github.com/varaprasadchilakanti/reveille/blob/main/docs/adr/0007-apache-2-0-licence.md).
 
 Git is a trademark of the Software Freedom Conservancy. Reveille is not affiliated with

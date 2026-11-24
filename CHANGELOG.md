@@ -88,7 +88,10 @@ before 0.8.0 predate the convention and are left as they were released.
 - `SECURITY.md` states a first reply to a vulnerability report within 14 days.
 - `SECURITY.md` lists each boundary of the threat model with the test that fails without its
   defence.
-- Dependabot no longer raises the declared dependency floors (`versioning-strategy: widen`).
+- Dependabot is set to widen a range rather than raise its floor (`versioning-strategy: widen`).
+  It can still raise one, as it did for Typer; the floor tests then fail.
+- The Typer range is `>=0.18,<0.30`, from `<0.29`. Under Typer 0.29, which holds an option's
+  bounds on the option rather than on its type, `capabilities` reads them there.
 - A test fails when CI and `make ci` run different make targets, or measure coverage of
   different packages.
 - A tracked `poetry.toml` makes `poetry lock` and `poetry update` skip releases under 7 days old,
